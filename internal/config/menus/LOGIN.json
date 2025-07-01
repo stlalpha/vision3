@@ -1,0 +1,27 @@
+{
+  "ansiFile": "TESTLOGIN.ans",
+  "items": [
+    {
+      "id": "handle",
+      "type": "input",
+      "x": 12,
+      "y": 10,
+      "length": 20,
+      "hidden": false,
+      "visionCode": "N",
+      "onEnterAction": "GOTO_FIELD",
+      "onEnterTarget": "password"
+    },
+    {
+      "id": "password",
+      "type": "input",
+      "x": 12,
+      "y": 11,
+      "length": 20,
+      "hidden": true,
+      "visionCode": "P",
+      "onEnterAction": "SUBMIT"
+    }
+  ],
+  "submitAction": "DO_LOGIN"
+} 

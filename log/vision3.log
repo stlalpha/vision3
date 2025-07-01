@@ -1,0 +1,91 @@
+2025/04/27 16:56:19 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 16:56:19 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 16:56:19 main.go:376: CRITICAL: Failed to load main configuration (config/config.json): failed to read config file config/config.json: open config/config.json: no such file or directory
+2025/04/27 16:56:31 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 16:56:31 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 16:56:31 main.go:376: CRITICAL: Failed to load main configuration (config/config.json): failed to read config file config/config.json: open config/config.json: no such file or directory
+2025/04/27 16:56:43 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 16:56:43 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 16:56:43 main.go:376: CRITICAL: Failed to load main configuration (config/config.json): failed to read config file config/config.json: open config/config.json: no such file or directory
+2025/04/27 16:58:04 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 16:58:04 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 16:58:04 main.go:378: Main configuration loaded successfully. Board: PiRATE MiND STATiON
+2025/04/27 16:58:04 config.go:271: DEBUG: Loading door config from: config/doors.json
+2025/04/27 16:58:04 main.go:387: Loaded 0 door configurations.
+2025/04/27 16:58:04 config.go:238: DEBUG: Loading strings config from: config/strings.json/strings.json
+2025/04/27 16:58:04 config.go:241: ERROR: Failed to read strings file config/strings.json/strings.json: open config/strings.json/strings.json: no such file or directory
+2025/04/27 16:58:04 main.go:392: CRITICAL: Failed to load strings configuration (config/strings.json): failed to read strings file config/strings.json/strings.json: open config/strings.json/strings.json: no such file or directory
+2025/04/27 16:58:12 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 16:58:12 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 16:58:12 main.go:378: Main configuration loaded successfully. Board: PiRATE MiND STATiON
+2025/04/27 16:58:12 config.go:271: DEBUG: Loading door config from: config/doors.json
+2025/04/27 16:58:12 main.go:387: Loaded 0 door configurations.
+2025/04/27 16:58:12 config.go:238: DEBUG: Loading strings config from: config/strings.json/strings.json
+2025/04/27 16:58:12 config.go:241: ERROR: Failed to read strings file config/strings.json/strings.json: open config/strings.json/strings.json: no such file or directory
+2025/04/27 16:58:12 main.go:392: CRITICAL: Failed to load strings configuration (config/strings.json): failed to read strings file config/strings.json/strings.json: open config/strings.json/strings.json: no such file or directory
+2025/04/27 16:58:37 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 16:58:37 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 16:58:37 main.go:378: Main configuration loaded successfully. Board: PiRATE MiND STATiON
+2025/04/27 16:58:37 config.go:272: DEBUG: Loading door config from: config/doors.json
+2025/04/27 16:58:37 main.go:387: Loaded 0 door configurations.
+2025/04/27 16:58:37 config.go:239: DEBUG: Loading strings config from: config/strings.json/strings.json
+2025/04/27 16:58:37 config.go:242: ERROR: Failed to read strings file config/strings.json/strings.json: open config/strings.json/strings.json: no such file or directory
+2025/04/27 16:58:37 main.go:392: CRITICAL: Failed to load strings configuration (config/strings.json): failed to read strings file config/strings.json/strings.json: open config/strings.json/strings.json: no such file or directory
+2025/04/27 16:59:00 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 16:59:00 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 16:59:00 main.go:378: Main configuration loaded successfully. Board: PiRATE MiND STATiON
+2025/04/27 16:59:00 config.go:272: DEBUG: Loading door config from: config/doors.json
+2025/04/27 16:59:00 main.go:387: Loaded 0 door configurations.
+2025/04/27 16:59:00 config.go:239: DEBUG: Loading strings config from: config/strings.json/strings.json
+2025/04/27 16:59:00 config.go:242: ERROR: Failed to read strings file config/strings.json/strings.json: open config/strings.json/strings.json: no such file or directory
+2025/04/27 16:59:00 main.go:392: CRITICAL: Failed to load strings configuration (config/strings.json): failed to read strings file config/strings.json/strings.json: open config/strings.json/strings.json: no such file or directory
+2025/04/27 16:59:34 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 16:59:34 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 16:59:34 main.go:378: Main configuration loaded successfully. Board: PiRATE MiND STATiON
+2025/04/27 16:59:34 config.go:272: DEBUG: Loading door config from: config/doors.json
+2025/04/27 16:59:34 main.go:387: Loaded 0 door configurations.
+2025/04/27 16:59:34 config.go:239: DEBUG: Loading strings config from: config/strings.json
+2025/04/27 16:59:34 config.go:242: ERROR: Failed to read strings file config/strings.json: open config/strings.json: no such file or directory
+2025/04/27 16:59:34 main.go:392: CRITICAL: Failed to load strings configuration (config/strings.json): failed to read strings file config/strings.json: open config/strings.json: no such file or directory
+2025/04/27 17:01:44 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 17:01:44 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 17:01:44 main.go:378: Main configuration loaded successfully. Board: PiRATE MiND STATiON
+2025/04/27 17:01:44 config.go:272: DEBUG: Loading door config from: config/doors.json
+2025/04/27 17:01:44 main.go:387: Loaded 0 door configurations.
+2025/04/27 17:01:44 config.go:239: DEBUG: Loading strings config from: config/strings.json
+2025/04/27 17:01:44 config.go:253: INFO: Successfully loaded strings configuration.
+2025/04/27 17:01:44 main.go:394: Strings configuration loaded successfully.
+2025/04/27 17:01:44 config.go:309: INFO: Loading theme configuration from config/theme.json/theme.json
+2025/04/27 17:01:44 config.go:320: WARN: theme.json not found at config/theme.json/theme.json. Using default theme settings.
+2025/04/27 17:01:44 main.go:402: Theme configuration loaded successfully.
+2025/04/27 17:01:44 main.go:406: Initializing User Manager with data directory: data
+2025/04/27 17:01:44 manager.go:188: DEBUG: Loaded 19 call history records from callhistory.json
+2025/04/27 17:01:44 manager.go:130: TRACE: Loaded user felonius (Handle: Felonius, Group: FAiRLiGHT/PC) from JSON.
+2025/04/27 17:01:44 manager.go:153: DEBUG: Determined next User ID to be 2
+2025/04/27 17:01:44 main.go:411: User Manager initialized successfully.
+2025/04/27 17:01:44 main.go:420: Initializing Menu Executor for menu set: menus/v3
+2025/04/27 17:01:44 main.go:425: Derived local area code: 314
+2025/04/27 17:01:44 main.go:440: Menu Executor initialized successfully.
+2025/04/27 17:01:44 main.go:445: Starting SSH server on 0.0.0.0:2222
+2025/04/27 17:01:44 main.go:493: FATAL: Failed to read host key id_rsa: open id_rsa: no such file or directory
+2025/04/27 17:02:37 main.go:368: --- Vision/GO Server Starting ---
+2025/04/27 17:02:37 main.go:373: Loading main configuration from: config/config.json
+2025/04/27 17:02:37 main.go:378: Main configuration loaded successfully. Board: PiRATE MiND STATiON
+2025/04/27 17:02:37 config.go:272: DEBUG: Loading door config from: config/doors.json
+2025/04/27 17:02:37 main.go:387: Loaded 0 door configurations.
+2025/04/27 17:02:37 config.go:239: DEBUG: Loading strings config from: config/strings.json
+2025/04/27 17:02:37 config.go:253: INFO: Successfully loaded strings configuration.
+2025/04/27 17:02:37 main.go:394: Strings configuration loaded successfully.
+2025/04/27 17:02:37 config.go:309: INFO: Loading theme configuration from config/theme.json/theme.json
+2025/04/27 17:02:37 config.go:320: WARN: theme.json not found at config/theme.json/theme.json. Using default theme settings.
+2025/04/27 17:02:37 main.go:402: Theme configuration loaded successfully.
+2025/04/27 17:02:37 main.go:406: Initializing User Manager with data directory: data
+2025/04/27 17:02:37 manager.go:188: DEBUG: Loaded 19 call history records from callhistory.json
+2025/04/27 17:02:37 manager.go:130: TRACE: Loaded user felonius (Handle: Felonius, Group: FAiRLiGHT/PC) from JSON.
+2025/04/27 17:02:37 manager.go:153: DEBUG: Determined next User ID to be 2
+2025/04/27 17:02:37 main.go:411: User Manager initialized successfully.
+2025/04/27 17:02:37 main.go:420: Initializing Menu Executor for menu set: menus/v3
+2025/04/27 17:02:37 main.go:425: Derived local area code: 314
+2025/04/27 17:02:37 main.go:440: Menu Executor initialized successfully.
+2025/04/27 17:02:37 main.go:445: Starting SSH server on 0.0.0.0:2222
+2025/04/27 17:02:37 main.go:493: FATAL: Failed to read host key id_rsa: open id_rsa: no such file or directory
