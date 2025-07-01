@@ -93,6 +93,12 @@ Your reward? The satisfaction of knowing that somewhere, someone is reliving the
 
 **Please submit PRs!**
 
+### 💬 Discord Community Manager
+
+Do we need a Discord? Do you want to host it? Contact me!
+
+**spaceman@vision3bbs.com**
+
 ## Current Status
 
 ### Working Features
