@@ -5,6 +5,12 @@
 echo "=== ViSiON/3 BBS Setup Script ==="
 echo
 
+# Check if Go is installed
+if ! command -v go &> /dev/null; then
+    echo "Error: Go is not installed. Please install Go and try again."
+    exit 1
+fi
+
 # Check if SSH host keys exist
 if [ ! -f "configs/ssh_host_rsa_key" ]; then
     echo "Generating SSH host keys..."
@@ -79,4 +85,4 @@ echo "To start the BBS:"
 echo "  cd cmd/vision3 && ./vision3"
 echo
 echo "To connect:"
-echo "  ssh felonius@localhost -p 2222" 
+echo "  ssh felonius@localhost -p 2222"
