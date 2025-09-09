@@ -1,0 +1,16 @@
+; ViSiON/3 BBS - Message Menu Configuration
+
+[MENU]
+Name=Message Menu
+ANSI=MSGMENU.ANS
+Prompt=MessageMenuPrompt
+Position=CENTER
+Parent=MAIN
+
+[COMMANDS]
+; Format: KEYS    ACTION           ACS    "DESCRIPTION"
+*         RUN:LISTMSGAR         *      "List Message Areas"
+N         RUN:NEWSCAN           *      "New Message Scan"
+P         RUN:COMPOSEMSG        *      "Post Message"
+R         RUN:READMSGS          *      "Read Messages"
+Q         GOTO:MAIN             *      "Quit to Main Menu"

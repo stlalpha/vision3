@@ -1,0 +1,14 @@
+; ViSiON/3 BBS - System Statistics Menu Configuration
+
+[MENU]
+Name=System Statistics
+ANSI=SYSSTATS.ANS
+Prompt=StatisticsPrompt
+Position=CENTER
+Theme=default
+Parent=MAIN
+
+[COMMANDS]
+; Format: KEYS    ACTION           ACS    "DESCRIPTION"
+ENTER     GOTO:MAIN            *      "Return to Main Menu"
+Q         GOTO:MAIN            *      "Return to Main Menu"

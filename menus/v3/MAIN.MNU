@@ -1,0 +1,42 @@
+; ViSiON/3 BBS - Main Menu Configuration
+; Classic BBS menu format for maximum SysOp compatibility
+
+[MENU]
+Name=Main Menu
+ANSI=MAIN_SIMPLE.ANS
+Prompt=MainMenuPrompt
+Position=CENTER
+Theme=default
+
+[COMMANDS]
+; Format: KEYS    ACTION           ACS    "DESCRIPTION"
+A         RUN:PLACEHOLDER       *      "TopTen Stats"
+B         GOTO:BBSLISTM         *      "BBS List Menu"
+C         RUN:PLACEHOLDER       *      "Chat with SysOp"
+D         RUN:PLACEHOLDER       *      "Daily Log"
+E         GOTO:EMAILM           *      "Email Menu"
+F         GOTO:FEEDM            *      "Feed Menu"
+G         LOGOFF               *      "Goodbye (Logoff)"
+I         RUN:PLACEHOLDER       *      "System Info"
+K         GOTO:CONFIGLM         *      "Configuration Menu"
+L         RUN:LISTUSERS         *      "List Users"
+M         GOTO:MSGMENU          *      "Message Menu"
+N         GOTO:NEWSM            *      "News Menu"
+O         RUN:ONELINER          *      "One-Liner"
+P         GOTO:DOORSM           *      "Programs/Doors Menu"
+Q         GOTO:QUICKM           *      "Quick Menu"
+R         GOTO:RUMORM           *      "Rumor Menu"
+S         GOTO:SYSSTATS         *      "System Statistics"
+T         GOTO:FILEM            *      "Transfer/Files Menu"
+U         RUN:PLACEHOLDER       *      "AutoSig Editor"
+W         RUN:LASTCALLERS       *      "Who Called"
+Y         RUN:SHOWSTATS         *      "Your Statistics"
+Z         RUN:PLACEHOLDER       *      "Pointer Set"
+!         RUN:PLACEHOLDER       *      "Chat Request"
++         RUN:PLACEHOLDER       *      "Change Password"
+-         RUN:PLACEHOLDER       *      "Change Menu Style"
+^         RUN:SHOWVERSION       *      "Version Information"
+VOTE      GOTO:VOTINGM          *      "Voting Menu"
+/O        RUN:PLACEHOLDER       *      "Quick Offline"
+/W        RUN:PLACEHOLDER       *      "Who's Online"
+/SE       RUN:PLACEHOLDER       *      "Send Message"

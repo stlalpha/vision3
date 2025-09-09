@@ -8,9 +8,10 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
-	"golang.org/x/term" // Keep for potential future use (e.g., baud check)
+	// "golang.org/x/term" // Keep for potential future use (e.g., baud check)
 
 	// Update local imports
+	"github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/user"
 )
 
@@ -155,7 +156,7 @@ func infixToRPN(tokens []token) ([]token, error) {
 
 // --- RPN Evaluator ---
 // Updated to handle unary '!' operator
-func evaluateRPN(rpnQueue []token, u *user.User, s ssh.Session, terminal *term.Terminal, startTime time.Time) (bool, error) {
+func evaluateRPN(rpnQueue []token, u *user.User, s ssh.Session, terminal *terminal.Terminal, startTime time.Time) (bool, error) {
 	var evalStack []bool
 
 	for _, t := range rpnQueue {
@@ -206,7 +207,7 @@ func evaluateRPN(rpnQueue []token, u *user.User, s ssh.Session, terminal *term.T
 // --- Refactored checkACS ---
 // checkACS evaluates a ViSiON/2 Access Control String (ACS) against user credentials.
 // Returns true if the user meets the ACS requirements, false otherwise.
-func checkACS(acsString string, u *user.User, s ssh.Session, terminal *term.Terminal, startTime time.Time) bool {
+func checkACS(acsString string, u *user.User, s ssh.Session, terminal *terminal.Terminal, startTime time.Time) bool {
 	// log.Printf("DEBUG: [checkACS] Received ACS: '%s' (Length: %d)", acsString, len(acsString))
 
 	if acsString == "" {
@@ -256,7 +257,7 @@ func checkACS(acsString string, u *user.User, s ssh.Session, terminal *term.Term
 // evaluateCondition evaluates a single ACS condition (e.g., S50, L, Fx).
 // Note: It no longer handles the '!' prefix; that's done by the RPN evaluator.
 // Returns true if the condition is met, false otherwise.
-func evaluateCondition(condition string, u *user.User, s ssh.Session, terminal *term.Terminal, startTime time.Time) bool {
+func evaluateCondition(condition string, u *user.User, s ssh.Session, terminal *terminal.Terminal, startTime time.Time) bool {
 	// Negation handling removed - done in evaluateRPN
 
 	if len(condition) == 0 {

@@ -13,6 +13,7 @@ type MenuRecord struct {
 	Fallback     string `json:"FALLBACK"`
 	ACS          string `json:"ACS"`
 	Password     string `json:"PASS"`
+	ANSIFile     string // ANSI file to display (from .MNU ANSI= line)
 }
 
 // Getters for boolean fields (using the JSON bool types directly)

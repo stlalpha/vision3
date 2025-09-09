@@ -344,4 +344,83 @@ func LoadThemeConfig(menuSetPath string) (ThemeConfig, error) {
 	return theme, nil
 }
 
+// SSHAuthConfig holds SSH authentication settings
+type SSHAuthConfig struct {
+	AllowNewUsers       bool   `json:"allowNewUsers"`       // Whether new user registration is enabled
+	MinPasswordLength   int    `json:"minPasswordLength"`   // Minimum password length for new users
+	MaxFailedAttempts   int    `json:"maxFailedAttempts"`   // Max failed attempts before rate limiting
+	RateLimitDuration   int    `json:"rateLimitDuration"`   // Rate limit duration in seconds
+	MaxConnectionsPerIP int    `json:"maxConnectionsPerIP"` // Max simultaneous connections per IP
+	RequireValidation   bool   `json:"requireValidation"`   // Whether new users need validation
+}
+
+// MenuConfig holds menu system configuration
+type MenuSystemConfig struct {
+	StartMenu       string `json:"startMenu"`       // Starting menu after authentication
+	MenuPath        string `json:"menuPath"`        // Base path for .MNU files
+	ANSIPath        string `json:"ansiPath"`        // Path to ANSI files
+	DefaultPosition string `json:"defaultPosition"` // Default screen position (CENTER, TOP, OFFSET)
+}
+
+// GlobalConfig holds all global BBS configuration settings
+type GlobalConfig struct {
+	BoardName        string           `json:"boardName"`
+	BoardPhoneNumber string           `json:"boardPhoneNumber"`
+	SysOpLevel       int              `json:"sysOpLevel"`
+	CoSysLevel       int              `json:"coSysLevel"`
+	LogonLevel       int              `json:"logonLevel"`
+	SSHAuth          SSHAuthConfig    `json:"sshAuth"`
+	Menus            MenuSystemConfig `json:"menus"`
+}
+
+// LoadGlobalConfig loads the main BBS configuration
+func LoadGlobalConfig(configPath string) (GlobalConfig, error) {
+	filePath := filepath.Join(configPath, "config.json")
+	log.Printf("INFO: Loading global configuration from %s", filePath)
+	
+	// Default configuration
+	defaultConfig := GlobalConfig{
+		BoardName:        "ViSiON/3 BBS",
+		BoardPhoneNumber: "555-1234",
+		SysOpLevel:       255,
+		CoSysLevel:       250,
+		LogonLevel:       100,
+		SSHAuth: SSHAuthConfig{
+			AllowNewUsers:       true,
+			MinPasswordLength:   6,
+			MaxFailedAttempts:   3,
+			RateLimitDuration:   300, // 5 minutes
+			MaxConnectionsPerIP: 3,
+			RequireValidation:   false,
+		},
+		Menus: MenuSystemConfig{
+			StartMenu:       "MAIN",
+			MenuPath:        "menus/v3",
+			ANSIPath:        "menus/v3/ansi",
+			DefaultPosition: "CENTER",
+		},
+	}
+	
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("WARN: config.json not found at %s. Using default configuration.", filePath)
+			return defaultConfig, nil
+		}
+		log.Printf("ERROR: Failed to read config file %s: %v", filePath, err)
+		return defaultConfig, fmt.Errorf("failed to read config file %s: %w", filePath, err)
+	}
+	
+	var config GlobalConfig
+	config = defaultConfig // Start with defaults
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		log.Printf("ERROR: Failed to parse config JSON from %s: %v. Using default configuration.", filePath, err)
+		return defaultConfig, fmt.Errorf("failed to parse config JSON from %s: %w", filePath, err)
+	}
+	
+	log.Printf("INFO: Successfully loaded global configuration from %s", filePath)
+	return config, nil
+}
+
 // Add other shared config structs here later if needed.

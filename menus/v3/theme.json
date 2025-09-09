@@ -1,4 +1,8 @@
 {
     "yesNoHighlightColor": 31,
-    "yesNoRegularColor": 15
+    "yesNoRegularColor": 15,
+    "screenPositioning": {
+        "default": "center",
+        "offset": 3
+    }
 } 

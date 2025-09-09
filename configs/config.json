@@ -3,5 +3,19 @@
   "boardPhoneNumber": "314-567-3833",
   "sysOpLevel": 255,
   "coSysLevel": 250,
-  "logonLevel": 100
+  "logonLevel": 100,
+  "sshAuth": {
+    "allowNewUsers": true,
+    "minPasswordLength": 6,
+    "maxFailedAttempts": 3,
+    "rateLimitDuration": 300,
+    "maxConnectionsPerIP": 3,
+    "requireValidation": false
+  },
+  "menus": {
+    "startMenu": "MAIN",
+    "menuPath": "menus/v3",
+    "ansiPath": "menus/v3/ansi",
+    "defaultPosition": "CENTER"
+  }
 } 

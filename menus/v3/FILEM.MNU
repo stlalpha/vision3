@@ -1,0 +1,37 @@
+; ViSiON/3 BBS - Files Menu Configuration
+; Classic BBS menu format for maximum SysOp compatibility
+
+[MENU]
+Name=Files Menu  
+ANSI=FILEM.ANS
+Prompt=defPrompt
+Position=CENTER
+Theme=default
+Parent=MAIN
+
+[COMMANDS]
+; Format: KEYS    ACTION           ACS    "DESCRIPTION"
+A         RUN:PLACEHOLDER       *      "Area Change"
+B         RUN:PLACEHOLDER       *      "List Batch"  
+C         RUN:PLACEHOLDER       *      "Config Newscan"
+D         RUN:PLACEHOLDER       *      "Download Files"
+E         RUN:PLACEHOLDER       *      "Edit a File"
+F         RUN:PLACEHOLDER       *      "File Listing"
+G         LOGOFF               *      "Logoff BBS"
+I         RUN:PLACEHOLDER       *      "Info on a File"
+K         RUN:PLACEHOLDER       *      "Config Listing"
+L         RUN:PLACEHOLDER       *      "List Files"
+M         GOTO:MSGMENU          *      "Goto Messages"
+N         RUN:PLACEHOLDER       *      "Newscan"
+Q         GOTO:MAIN             *      "Quit to Main"
+R         RUN:PLACEHOLDER       *      "Untag File"
+S         RUN:PLACEHOLDER       *      "Search for File"
+T         RUN:PLACEHOLDER       *      "Type a File"
+U         RUN:PLACEHOLDER       *      "Upload File/Files"
+V         RUN:PLACEHOLDER       *      "View a File"
+W         RUN:PLACEHOLDER       *      "Extended Listing"
+X         RUN:PLACEHOLDER       *      "Sysop's Want List"
+Z         RUN:PLACEHOLDER       *      "Newscan Area"
+-         RUN:PLACEHOLDER       *      "Zap Batch"
++         RUN:PLACEHOLDER       *      "Tag Files"
+*         RUN:PLACEHOLDER       *      "Change Area"

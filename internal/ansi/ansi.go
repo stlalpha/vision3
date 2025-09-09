@@ -971,3 +971,101 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 	result.DisplayBytes = displayBuf.Bytes()
 	return result, nil
 }
+
+// StripANSICodes removes ANSI escape sequences from data
+func StripANSICodes(data []byte) []byte {
+	var result bytes.Buffer
+	
+	for i := 0; i < len(data); i++ {
+		if data[i] == 0x1B && i+1 < len(data) { // ESC sequence
+			// Skip ANSI sequence
+			seqEnd := i + 1
+			if seqEnd < len(data) && data[seqEnd] == '[' { // CSI sequence
+				seqEnd++
+				for seqEnd < len(data) {
+					c := data[seqEnd]
+					if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+						seqEnd++
+						break
+					}
+					seqEnd++
+					if seqEnd-i > 32 { // Safety limit
+						break
+					}
+				}
+			} else if seqEnd < len(data) && (data[seqEnd] == '(' || data[seqEnd] == ')') {
+				seqEnd += 2 // Character set sequence
+			} else {
+				seqEnd++ // Simple ESC sequence
+			}
+			i = seqEnd - 1 // Skip the entire sequence
+		} else {
+			result.WriteByte(data[i]) // Keep non-ANSI data
+		}
+	}
+	
+	return result.Bytes()
+}
+
+// ConvertToLineDrawing converts CP437 characters to VT100 line drawing
+func ConvertToLineDrawing(data []byte) []byte {
+	var result bytes.Buffer
+	inDrawingMode := false
+	
+	for i := 0; i < len(data); i++ {
+		b := data[i]
+		
+		// Handle ANSI escape sequences (pass through unchanged)
+		if b == 0x1B && i+1 < len(data) {
+			escStart := i
+			seqEnd := i + 1
+			if seqEnd < len(data) && data[seqEnd] == '[' { // CSI sequence
+				seqEnd++
+				for seqEnd < len(data) {
+					c := data[seqEnd]
+					if (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') {
+						seqEnd++
+						break
+					}
+					seqEnd++
+					if seqEnd-escStart > 32 {
+						break
+					}
+				}
+			} else if seqEnd < len(data) && (data[seqEnd] == '(' || data[seqEnd] == ')') {
+				seqEnd += 2
+			} else {
+				seqEnd++
+			}
+			
+			// Copy entire ANSI sequence unchanged
+			for j := escStart; j < seqEnd && j < len(data); j++ {
+				result.WriteByte(data[j])
+			}
+			i = seqEnd - 1
+			continue
+		}
+		
+		// Check if this byte should be converted to line drawing
+		if vt100Char, exists := cp437ToVT100[b]; exists {
+			if !inDrawingMode {
+				result.WriteString("\x1b(0") // Enter line drawing mode
+				inDrawingMode = true
+			}
+			result.WriteByte(vt100Char)
+		} else {
+			if inDrawingMode && b >= 0x20 && b < 0x7F { // Regular ASCII printable
+				result.WriteString("\x1b(B") // Exit line drawing mode
+				inDrawingMode = false
+			}
+			result.WriteByte(b)
+		}
+	}
+	
+	// Exit line drawing mode if we're still in it
+	if inDrawingMode {
+		result.WriteString("\x1b(B")
+	}
+	
+	return result.Bytes()
+}
