@@ -97,7 +97,9 @@ LDFLAGS="-s -w -X main.version=${VERSION} -X main.buildDate=${BUILD_DATE} -X mai
 check_gpg_setup
 
 # Create version-specific dist directory (relative to project root)
-DIST_DIR="../../dist/${VERSION}"
+SCRIPT_DIR="$(dirname "$0")"
+PROJECT_ROOT="$SCRIPT_DIR/../.."
+DIST_DIR="$PROJECT_ROOT/dist/${VERSION}"
 rm -rf $DIST_DIR
 mkdir -p $DIST_DIR
 
@@ -125,9 +127,9 @@ for platform in "${PLATFORMS[@]}"; do
     
     print_status "Building installer for ${GOOS}/${GOARCH}..."
     
-    cd ../../cmd/install
+    cd "$(dirname "$0")/../../cmd/install"
     env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "../../${DIST_DIR}/${OUTPUT_NAME}"
-    cd ../../scripts/build
+    cd "$(dirname "$0")"
     
     # Sign the installer
     sign_file "${DIST_DIR}/${OUTPUT_NAME}"
@@ -162,19 +164,19 @@ for platform in "${PLATFORMS[@]}"; do
             OUTPUT_NAME="${app}.exe"
         fi
         
-        cd "../../cmd/$app"
+        cd "$(dirname "$0")/../../cmd/$app"
         env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "../../${PLATFORM_DIR}/bin/${OUTPUT_NAME}"
-        cd ../../scripts/build
+        cd "$(dirname "$0")"
     done
     
     # Copy configuration files and assets
     print_status "Copying assets for ${GOOS}/${GOARCH}..."
-    cp -r ../../configs "${PLATFORM_DIR}/"
-    cp -r ../../menus "${PLATFORM_DIR}/"
-    cp -r ../../data "${PLATFORM_DIR}/"
-    cp ../../README.md "${PLATFORM_DIR}/"
-    cp ../../LICENSE "${PLATFORM_DIR}/"
-    cp ../../ViSiON3.png "${PLATFORM_DIR}/"
+    cp -r "$PROJECT_ROOT/configs" "${PLATFORM_DIR}/"
+    cp -r "$PROJECT_ROOT/menus" "${PLATFORM_DIR}/"
+    cp -r "$PROJECT_ROOT/data" "${PLATFORM_DIR}/"
+    cp "$PROJECT_ROOT/README.md" "${PLATFORM_DIR}/"
+    cp "$PROJECT_ROOT/LICENSE" "${PLATFORM_DIR}/"
+    cp "$PROJECT_ROOT/ViSiON3.png" "${PLATFORM_DIR}/"
     
     # Create platform-specific installation guide
     if [ $GOOS = "windows" ]; then
@@ -380,8 +382,8 @@ EOF
     done
     
     # Add public key and verification scripts to distribution if they exist
-    if [ -f "../../vision3-signing-key.asc" ]; then
-        cp "../../vision3-signing-key.asc" .
+    if [ -f "$PROJECT_ROOT/vision3-signing-key.asc" ]; then
+        cp "$PROJECT_ROOT/vision3-signing-key.asc" .
         print_status "Added public key to distribution"
     fi
     
