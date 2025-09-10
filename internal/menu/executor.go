@@ -4564,51 +4564,35 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			if len(filesToDownload) > 0 {
 				// **** Actual ZMODEM Transfer using sz ****
 				log.Printf("INFO: Node %d: Attempting ZMODEM transfer for files: %v", nodeNumber, filenamesOnly)
-				terminalio.WriteProcessedBytes(terminal, []byte("|15Initiating ZMODEM transfer (sz)...\\r\\n"), outputMode)
+				terminalio.WriteProcessedBytes(terminal, []byte("|15Initiating ZMODEM transfer...\\r\\n"), outputMode)
 				terminalio.WriteProcessedBytes(terminal, []byte("|07Please start the ZMODEM receive function in your terminal.\\r\\n"), outputMode)
 
-				// 1. Find sz executable
-				szPath, err := exec.LookPath("sz")
-				if err != nil {
-					log.Printf("ERROR: Node %d: 'sz' command not found in PATH: %v", nodeNumber, err)
-					terminalio.WriteProcessedBytes(terminal, []byte("|01Error: 'sz' command not found on server. Cannot start download.\\r\\n"), outputMode)
-					failCount = len(filesToDownload) // Mark all as failed
+				// Use the unified protocol manager for ZMODEM transfer
+				pm := transfer.NewProtocolManager()
+				transferErr := pm.SendFiles(s, "ZMODEM", filesToDownload...)
+
+				// Handle Result
+				if transferErr != nil {
+					// Transfer failed or was cancelled
+					log.Printf("ERROR: Node %d: ZMODEM transfer failed: %v", nodeNumber, transferErr)
+					terminalio.WriteProcessedBytes(terminal, []byte("|01ZMODEM transfer failed or was cancelled.\\r\\n"), outputMode)
+					failCount = len(filesToDownload) // Assume all failed if transfer returns error
+					successCount = 0
 				} else {
-					// 2. Prepare arguments - Re-add -e flag
-					args := []string{"-b", "-e"} // Binary, Escape control chars
-					args = append(args, filesToDownload...)
-					log.Printf("DEBUG: Node %d: Executing command: %s %v", nodeNumber, szPath, args)
+					// Transfer completed successfully
+					log.Printf("INFO: Node %d: ZMODEM transfer completed successfully.", nodeNumber)
+					terminalio.WriteProcessedBytes(terminal, []byte("|07ZMODEM transfer complete.\\r\\n"), outputMode)
+					successCount = len(filesToDownload) // Assume all succeeded if transfer exits cleanly
+					failCount = 0
 
-					// 3. Create command and use PTY helper
-					cmd := exec.Command(szPath, args...)
-					// Note: Stdin/Stdout/Stderr are handled by runCommandWithPTY
-
-					log.Printf("INFO: Node %d: Executing Zmodem send via runCommandWithPTY: %s %v", nodeNumber, szPath, args)
-
-					// 4. Execute using the PTY helper from the transfer package
-					transferErr := transfer.RunCommandWithPTY(s, cmd) // Pass the ssh.Session and the command (Use exported name)
-
-					// 5. Handle Result
-					if transferErr != nil {
-						// sz likely exited with an error (transfer failed or cancelled)
-						log.Printf("ERROR: Node %d: 'sz' command execution failed: %v", nodeNumber, transferErr)
-						terminalio.WriteProcessedBytes(terminal, []byte("|01ZMODEM transfer failed or was cancelled.\\r\\n"), outputMode)
-						failCount = len(filesToDownload) // Assume all failed if sz returns error
-						successCount = 0
-					} else {
-						// sz exited successfully (transfer presumed complete)
-						log.Printf("INFO: Node %d: 'sz' command completed successfully.", nodeNumber)
-						terminalio.WriteProcessedBytes(terminal, []byte("|07ZMODEM transfer complete.\\r\\n"), outputMode)
-						successCount = len(filesToDownload) // Assume all succeeded if sz exits cleanly
-						failCount = 0                       // Reset fail count determined earlier
-
-						// Increment download counts only on successful transfer completion
-						for _, fileID := range currentUser.TaggedFileIDs {
-							// Check again if we had a valid path originally
-							if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
-								if err := e.FileMgr.IncrementDownloadCount(fileID); err != nil {
-									log.Printf("WARN: Node %d: Failed to increment download count for file %s after successful sz: %v", nodeNumber, fileID, err)
-								}
+					// Increment download counts only on successful transfer completion
+					for _, fileID := range currentUser.TaggedFileIDs {
+						// Check again if we had a valid path originally
+						if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
+							if err := e.FileMgr.IncrementDownloadCount(fileID); err != nil {
+								log.Printf("WARN: Node %d: Failed to increment download count for file %s after successful transfer: %v", nodeNumber, fileID, err)
+							} else {
+								log.Printf("DEBUG: Node %d: Incremented download count for file %s after successful transfer.", nodeNumber, fileID)
 							}
 						}
 					}

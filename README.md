@@ -6,11 +6,11 @@
 
 ## Overview
 
-This project is a work-in-progress refactor and modernization of the classic ViSiON/2 BBS software, written in Go. The goal is to recreate the core functionality of the classic BBS experience using modern technologies.
+This project is a modern recreation of classic BBS software, written in Go. It provides multi-node BBS functionality with SSH access, supporting user authentication, message areas, file areas, and external door programs.
 
-This version utilizes the `gliderlabs/ssh` library for handling SSH connections.
+This version utilizes the `gliderlabs/ssh` library for secure SSH connections.
 
-**Note:** This is currently under active development and is not yet feature-complete.
+**Note:** This project is under active development.
 
 ## STUFF WE NEED
 
@@ -81,7 +81,8 @@ Do you write Go? Do you have fond memories of waiting 3 minutes for a single GIF
 If you aren't old enough to have experienced it first-hand, have you read a weird text file or listened to some wild-eyed GenX nutjob ramble on about how much we enjoyed it and decided "I need me some of that?"
 
 **Areas where we need help:**
-- File transfer protocols (ZMODEM upload support, XMODEM, YMODEM)
+- File upload support (ZMODEM via `rz` command is implemented but not integrated)
+- Additional transfer protocols (XMODEM, YMODEM via external drivers)
 - Message threading and advanced message base features
 - Performance optimization and scalability
 - Terminal emulation improvements
@@ -108,32 +109,23 @@ Do we need a Discord? Do you want to host it? Contact me!
 *   User Persistence (`data/users/users.json`)
 *   Menu System Loading & Execution (`.MNU`, `.CFG`, `.ANS` files)
 *   Access Control System (ACS) Evaluation with basic operators (`!`, `&`, `|`, `()`)
-*   Menu Password Protection
-*   Message Areas (basic implementation):
+*   Message Areas:
     *   List message areas
-    *   Compose messages
-    *   Read messages
+    *   Compose messages (with TUI editor)
+    *   Read messages with pagination
     *   Newscan functionality
-*   File Areas (basic implementation):
-    *   List files
+*   File Areas:
+    *   List files with metadata
     *   List file areas
     *   Select file area
+    *   File downloading via external ZMODEM (`sz` command)
 *   User Statistics Display
 *   Last Callers Display
 *   User Listing
 *   One-liner System
 *   Door/External Program Support (with dropfile generation)
 *   Call History Tracking
-
-### In Development / TODO
-
-*   Full Message Base Implementation (threading, replies, etc.)
-*   File Transfer Protocols (upload/download)
-*   Complete SysOp Tools
-*   User Editor
-*   Full File Base Implementation
-*   Comprehensive Testing
-*   Complete Documentation
+*   Configuration Tool (`vision3-config`) with Turbo Pascal-style interface
 
 See `docs/status.md` for detailed progress and `tasks/tasks.md` for specific development tasks.
 
@@ -144,6 +136,8 @@ See `docs/status.md` for detailed progress and `tasks/tasks.md` for specific dev
 *   **Terminal Handling:** `golang.org/x/term`
 *   **Password Hashing:** `golang.org/x/crypto/bcrypt`
 *   **Data Format:** JSON (for users, configuration, and message storage)
+*   **TUI Framework:** `github.com/charmbracelet/bubbletea` (for editors and config tool)
+*   **External Protocols:** `sz`/`rz` commands for ZMODEM file transfers
 
 ## Project Structure
 
@@ -151,32 +145,38 @@ See `docs/status.md` for detailed progress and `tasks/tasks.md` for specific dev
 vision3/
 ├── cmd/
 │   ├── ansitest/        # ANSI color test utility
-│   └── vision3/         # Main BBS server application
+│   ├── stringtool/      # String configuration standalone tool
+│   ├── vision3/         # Main BBS server application
+│   ├── vision3-bbsconfig/ # Alternative config tool
+│   └── vision3-config/  # Main configuration tool (Turbo Pascal style)
 ├── configs/             # Global configuration files
 │   ├── config.json      
 │   ├── doors.json       # Door/external program configurations
 │   ├── file_areas.json  # File area definitions
 │   ├── strings.json     # BBS string customizations
-│   └── ssh_host_rsa_key # SSH host key
+│   └── ssh_host_*_key   # SSH host keys
 ├── data/                # Runtime data
 │   ├── users/           # User database and call history
-│   ├── files/           # File areas
+│   ├── files/           # File areas with metadata
 │   ├── logs/            # Application logs
-│   └── message_*.jsonl  # Message base files
+│   ├── message_areas.json # Message area definitions
+│   ├── messages_area_*.jsonl # Message base files
+│   └── oneliners.json   # One-liner database
 ├── internal/            # Internal packages
 │   ├── ansi/            # ANSI/pipe code processing
 │   ├── config/          # Configuration loading
-│   ├── editor/          # Text editor
+│   ├── editor/          # TUI text editor (Bubble Tea)
 │   ├── file/            # File area management
-│   ├── menu/            # Menu system
+│   ├── menu/            # Menu system with lightbar support
 │   ├── message/         # Message base system
 │   ├── session/         # Session management
 │   ├── terminalio/      # Terminal I/O handling
-│   ├── transfer/        # File transfer protocols
+│   ├── transfer/        # External protocol support (sz/rz for ZMODEM)
 │   ├── types/           # Shared types
-│   └── user/            # User management
+│   └── user/            # User management with ACS
 ├── menus/v3/            # Menu set files
-│   ├── ansi/            # ANSI art files
+│   ├── ansi/            # ANSI art files (70+ files)
+│   ├── bar/             # Lightbar menu definitions
 │   ├── cfg/             # Menu configuration files
 │   ├── mnu/             # Menu definition files
 │   └── templates/       # Display templates
@@ -271,6 +271,25 @@ Configuration files are located in the `configs/` directory:
 - `doors.json`: Configure external door programs
 - `file_areas.json`: Define file areas
 - `config.json`: General BBS configuration
+
+### Configuration Tool
+
+Use the Turbo Pascal-style configuration tool:
+
+```bash
+# Build and run the configuration tool
+go build -o vision3-config ./cmd/vision3-config
+./vision3-config
+
+# Or specify custom config directory
+./vision3-config -config /path/to/configs
+```
+
+The configuration tool provides:
+- String editing with ANSI color preview
+- Message and file area configuration
+- Door configuration and testing
+- Multi-node monitoring and management
 
 ## Contributing
 
