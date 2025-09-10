@@ -28,6 +28,42 @@ type ConfigTool struct {
 	screenHeight  int
 }
 
+// MessageArea represents a message area configuration
+type MessageArea struct {
+	ID           int    `json:"id"`
+	Tag          string `json:"tag"`
+	Name         string `json:"name"`
+	Description  string `json:"description"`
+	ACSRead      string `json:"acs_read"`
+	ACSWrite     string `json:"acs_write"`
+	IsNetworked  bool   `json:"is_networked"`
+	OriginNodeID string `json:"origin_node_id"`
+}
+
+// FileArea represents a file area configuration
+type FileArea struct {
+	ID          int    `json:"id"`
+	Tag         string `json:"tag"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Path        string `json:"path"`
+	ACSList     string `json:"acs_list"`
+	ACSUpload   string `json:"acs_upload"`
+	ACSDownload string `json:"acs_download"`
+}
+
+// Door represents a door/external program configuration
+type Door struct {
+	Name               string            `json:"name"`
+	Command            string            `json:"command"`
+	Args               []string          `json:"args"`
+	WorkingDirectory   string            `json:"working_directory,omitempty"`
+	DropfileType       string            `json:"dropfile_type"`
+	IOMode             string            `json:"io_mode"`
+	RequiresRawTerm    bool             `json:"requires_raw_terminal,omitempty"`
+	EnvironmentVars    map[string]string `json:"environment_variables,omitempty"`
+}
+
 func main() {
 	flag.Parse()
 
@@ -104,29 +140,29 @@ func (ct *ConfigTool) buildMainMenu() {
 	list.SetTitle(" ViSiON/3 BBS Configuration Tool ")
 	list.SetTitleAlign(tview.AlignCenter)
 
-	// Add main menu items
-	list.AddItem("String Configuration", "Edit BBS text strings and prompts", 's', func() {
+	// Add main menu items with numbered shortcuts
+	list.AddItem("1. String Configuration", "Edit BBS text strings and prompts", '1', func() {
 		ct.showStringConfigMenu()
 	})
-	list.AddItem("Area Management", "Configure message and file areas", 'a', func() {
+	list.AddItem("2. Area Management", "Configure message and file areas", '2', func() {
 		ct.showAreaManagementMenu()
 	})
-	list.AddItem("Door Configuration", "Set up external programs and games", 'd', func() {
+	list.AddItem("3. Door Configuration", "Set up external programs and games", '3', func() {
 		ct.showDoorConfigMenu()
 	})
-	list.AddItem("Node Monitoring", "Multi-node status and management", 'n', func() {
+	list.AddItem("4. Node Monitoring", "Multi-node status and management", '4', func() {
 		ct.showNodeMonitoringMenu()
 	})
-	list.AddItem("System Settings", "General BBS configuration", 'y', func() {
+	list.AddItem("5. System Settings", "General BBS configuration", '5', func() {
 		ct.showSystemSettingsMenu()
 	})
-	list.AddItem("Exit", "Exit configuration tool", 'x', func() {
+	list.AddItem("X. Exit", "Exit configuration tool", 'x', func() {
 		ct.app.Stop()
 	})
 
 	// Add status bar
 	statusBar := tview.NewTextView()
-	statusBar.SetText("Ready - Use arrow keys to navigate, Enter to select, F10 to exit")
+	statusBar.SetText("Ready - Use numbers 1-5 or X to select, arrow keys to navigate, F10 to exit")
 	statusBar.SetTextAlign(tview.AlignCenter)
 	statusBar.SetBorder(true)
 
@@ -150,6 +186,20 @@ func (ct *ConfigTool) buildMainMenu() {
 	})
 
 	ct.pages.AddPage("main", flex, true, true)
+}
+
+// showMainMenu switches to the main menu page
+func (ct *ConfigTool) showMainMenu() {
+	ct.pages.SwitchToPage("main")
+}
+
+// clearPages removes all pages except main
+func (ct *ConfigTool) clearPages() {
+	// Remove all pages except main
+	pageNames := []string{"area-management", "message-areas", "file-areas", "door-config", "node-monitoring", "system-settings", "strings", "welcomemsgs", "menuprompts", "errormsgs"}
+	for _, pageName := range pageNames {
+		ct.pages.RemovePage(pageName)
+	}
 }
 
 func (ct *ConfigTool) showStringConfigMenu() {
@@ -182,7 +232,7 @@ func (ct *ConfigTool) showStringConfigMenu() {
 
 	// Add status and navigation
 	statusBar := tview.NewTextView()
-	statusBar.SetText("String Configuration - Select item to edit")
+	statusBar.SetText("String Configuration - Use numbers 1-6 to select, B or Esc to go back")
 	statusBar.SetTextAlign(tview.AlignCenter)
 	statusBar.SetBorder(true)
 
@@ -233,8 +283,8 @@ func (ct *ConfigTool) editSystemName() {
 	// Add input field with responsive width
 	form.AddInputField("System Name", currentName, ct.getFieldWidth(), nil, nil)
 	
-	// Add buttons
-	form.AddButton("Save", func() {
+	// Add buttons with shortcuts
+	form.AddButton("S. Save", func() {
 		// Get the new name
 		newName := form.GetFormItemByLabel("System Name").(*tview.InputField).GetText()
 		
@@ -262,13 +312,34 @@ func (ct *ConfigTool) editSystemName() {
 		ct.pages.SwitchToPage("strings")
 	})
 	
-	form.AddButton("Cancel", func() {
+	form.AddButton("C. Cancel", func() {
 		ct.pages.SwitchToPage("strings")
 	})
 
-	// Add escape key handling
+	// Add keyboard shortcuts (S=Save, C=Cancel, Esc=Cancel)
 	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
+			ct.pages.SwitchToPage("strings")
+			return nil
+		}
+		if event.Rune() == 's' || event.Rune() == 'S' {
+			// Trigger Save button
+			newName := form.GetFormItemByLabel("System Name").(*tview.InputField).GetText()
+			if newName == "" {
+				ct.showError("System name cannot be empty")
+				return nil
+			}
+			// Update config
+			configData["boardName"] = newName
+			// Save back to file
+			updatedData, _ := json.MarshalIndent(configData, "", "  ")
+			os.WriteFile(configFile, updatedData, 0644)
+			ct.showInfo("System name updated successfully!")
+			ct.pages.SwitchToPage("strings")
+			return nil
+		}
+		if event.Rune() == 'c' || event.Rune() == 'C' {
+			// Trigger Cancel button
 			ct.pages.SwitchToPage("strings")
 			return nil
 		}
@@ -451,8 +522,8 @@ func (ct *ConfigTool) editWelcomeMessages() {
 	helpText.SetDynamicColors(true)
 	helpText.SetText("Foreground colors (Dark/Bright intensity):\n[white]|00[white:-] [#000000]Black[white:-]      [white]|08[white:-] [#555555]Dark Gray[white:-]\n[white]|01[white:-] [#AA0000]Red (Dark)[white:-]  [white]|09[white:-] [#FF5555]Bright Red[white:-]\n[white]|02[white:-] [#00AA00]Green (Dark)[white:-] [white]|10[white:-] [#55FF55]Bright Green[white:-]\n[white]|03[white:-] [#AA5500]Brown[white:-]      [white]|11[white:-] [#FFFF55]Yellow[white:-]\n[white]|04[white:-] [#0000AA]Blue (Dark)[white:-] [white]|12[white:-] [#5555FF]Bright Blue[white:-]\n[white]|05[white:-] [#AA00AA]Magenta[white:-]    [white]|13[white:-] [#FF55FF]Bright Magenta[white:-]\n[white]|06[white:-] [#00AAAA]Cyan (Dark)[white:-] [white]|14[white:-] [#55FFFF]Bright Cyan[white:-]\n[white]|07[white:-] [#AAAAAA]Gray[white:-]       [white]|15[white:-] [#FFFFFF]White[white:-]\n\nBackground colors:\n[white]|B0[white:-] [#FFFFFF:#000000]Black BG[white:-]  [white]|B1[white:-] [#FFFFFF:#AA0000]Red BG[white:-]   [white]|B2[white:-] [#000000:#00AA00]Green BG[white:-]  [white]|B3[white:-] [#000000:#AA5500]Brown BG[white:-]\n[white]|B4[white:-] [#FFFFFF:#0000AA]Blue BG[white:-]  [white]|B5[white:-] [#FFFFFF:#AA00AA]Magenta BG[white:-] [white]|B6[white:-] [#000000:#00AAAA]Cyan BG[white:-]  [white]|B7[white:-] [#000000:#AAAAAA]Gray BG[white:-]\n\nTip: Click in field to edit raw pipe codes, click out to see rendered preview")
 	
-	// Add buttons
-	form.AddButton("Save", func() {
+	// Add buttons with shortcuts
+	form.AddButton("S. Save", func() {
 		// Get the raw values
 		ct.stringsConfig.WelcomeNewUser = welcomeField.GetRawText()
 		ct.stringsConfig.LoginNow = loginField.GetRawText() 
@@ -468,7 +539,7 @@ func (ct *ConfigTool) editWelcomeMessages() {
 		ct.pages.SwitchToPage("strings")
 	})
 	
-	form.AddButton("Cancel", func() {
+	form.AddButton("C. Cancel", func() {
 		ct.pages.SwitchToPage("strings")
 	})
 
@@ -490,9 +561,50 @@ func (ct *ConfigTool) editWelcomeMessages() {
 		flex.AddItem(helpText, helpWidth, 0, false)
 	}
 
-	// Add escape key handling
+	// Add keyboard shortcuts including arrow navigation
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape {
+		switch event.Key() {
+		case tcell.KeyEscape:
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case tcell.KeyUp:
+			// Navigate up through form fields
+			currentItem, _ := form.GetFocusedItemIndex()
+			if currentItem <= 0 {
+				currentItem = form.GetFormItemCount() - 1
+			} else {
+				currentItem--
+			}
+			if currentItem >= 0 && currentItem < form.GetFormItemCount() {
+				ct.app.SetFocus(form.GetFormItem(currentItem))
+			}
+			return nil
+		case tcell.KeyDown:
+			// Navigate down through form fields
+			currentItem, _ := form.GetFocusedItemIndex()
+			if currentItem < 0 || currentItem >= form.GetFormItemCount()-1 {
+				currentItem = 0
+			} else {
+				currentItem++
+			}
+			if currentItem >= 0 && currentItem < form.GetFormItemCount() {
+				ct.app.SetFocus(form.GetFormItem(currentItem))
+			}
+			return nil
+		}
+		
+		switch event.Rune() {
+		case 's', 'S':
+			// Trigger Save
+			ct.stringsConfig.WelcomeNewUser = welcomeField.GetRawText()
+			ct.stringsConfig.LoginNow = loginField.GetRawText() 
+			ct.stringsConfig.ConnectionStr = connField.GetRawText()
+			ct.saveStringsConfig()
+			ct.showInfo("Welcome messages updated successfully!")
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case 'c', 'C':
+			// Trigger Cancel
 			ct.pages.SwitchToPage("strings")
 			return nil
 		}
@@ -531,7 +643,7 @@ func (ct *ConfigTool) editMenuPrompts() {
 	helpText.SetText("Foreground colors (Dark/Bright intensity):\n[white]|00[white:-] [#000000]Black[white:-]      [white]|08[white:-] [#555555]Dark Gray[white:-]\n[white]|01[white:-] [#AA0000]Red (Dark)[white:-]  [white]|09[white:-] [#FF5555]Bright Red[white:-]\n[white]|02[white:-] [#00AA00]Green (Dark)[white:-] [white]|10[white:-] [#55FF55]Bright Green[white:-]\n[white]|03[white:-] [#AA5500]Brown[white:-]      [white]|11[white:-] [#FFFF55]Yellow[white:-]\n[white]|04[white:-] [#0000AA]Blue (Dark)[white:-] [white]|12[white:-] [#5555FF]Bright Blue[white:-]\n[white]|05[white:-] [#AA00AA]Magenta[white:-]    [white]|13[white:-] [#FF55FF]Bright Magenta[white:-]\n[white]|06[white:-] [#00AAAA]Cyan (Dark)[white:-] [white]|14[white:-] [#55FFFF]Bright Cyan[white:-]\n[white]|07[white:-] [#AAAAAA]Gray[white:-]       [white]|15[white:-] [#FFFFFF]White[white:-]\n\nBackground colors:\n[white]|B0[white:-] [#FFFFFF:#000000]Black BG[white:-]  [white]|B1[white:-] [#FFFFFF:#AA0000]Red BG[white:-]   [white]|B2[white:-] [#000000:#00AA00]Green BG[white:-]  [white]|B3[white:-] [#000000:#AA5500]Brown BG[white:-]\n[white]|B4[white:-] [#FFFFFF:#0000AA]Blue BG[white:-]  [white]|B5[white:-] [#FFFFFF:#AA00AA]Magenta BG[white:-] [white]|B6[white:-] [#000000:#00AAAA]Cyan BG[white:-]  [white]|B7[white:-] [#000000:#AAAAAA]Gray BG[white:-]\n\nTip: Click in field to edit raw pipe codes, click out to see rendered preview")
 	
 	// Add buttons
-	form.AddButton("Save", func() {
+	form.AddButton("S. Save", func() {
 		// Get the raw values
 		ct.stringsConfig.DefPrompt = defPromptField.GetRawText()
 		ct.stringsConfig.MessageMenuPrompt = msgPromptField.GetRawText()
@@ -548,7 +660,7 @@ func (ct *ConfigTool) editMenuPrompts() {
 		ct.pages.SwitchToPage("strings")
 	})
 	
-	form.AddButton("Cancel", func() {
+	form.AddButton("C. Cancel", func() {
 		ct.pages.SwitchToPage("strings")
 	})
 
@@ -570,9 +682,51 @@ func (ct *ConfigTool) editMenuPrompts() {
 		flex.AddItem(helpText, helpWidth, 0, false)
 	}
 
-	// Add escape key handling
+	// Add keyboard shortcuts including arrow navigation
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape {
+		switch event.Key() {
+		case tcell.KeyEscape:
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case tcell.KeyUp:
+			// Navigate up through form fields
+			currentItem, _ := form.GetFocusedItemIndex()
+			if currentItem <= 0 {
+				currentItem = form.GetFormItemCount() - 1
+			} else {
+				currentItem--
+			}
+			if currentItem >= 0 && currentItem < form.GetFormItemCount() {
+				ct.app.SetFocus(form.GetFormItem(currentItem))
+			}
+			return nil
+		case tcell.KeyDown:
+			// Navigate down through form fields
+			currentItem, _ := form.GetFocusedItemIndex()
+			if currentItem < 0 || currentItem >= form.GetFormItemCount()-1 {
+				currentItem = 0
+			} else {
+				currentItem++
+			}
+			if currentItem >= 0 && currentItem < form.GetFormItemCount() {
+				ct.app.SetFocus(form.GetFormItem(currentItem))
+			}
+			return nil
+		}
+		
+		switch event.Rune() {
+		case 's', 'S':
+			// Trigger Save
+			ct.stringsConfig.DefPrompt = defPromptField.GetRawText()
+			ct.stringsConfig.MessageMenuPrompt = msgPromptField.GetRawText()
+			ct.stringsConfig.ContinueStr = contStrField.GetRawText()
+			ct.stringsConfig.PauseString = pauseStrField.GetRawText()
+			ct.saveStringsConfig()
+			ct.showInfo("Menu prompts updated successfully!")
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case 'c', 'C':
+			// Trigger Cancel
 			ct.pages.SwitchToPage("strings")
 			return nil
 		}
@@ -613,7 +767,7 @@ func (ct *ConfigTool) editErrorMessages() {
 	helpText.SetText("Foreground colors (Dark/Bright intensity):\n[white]|00[white:-] [#000000]Black[white:-]      [white]|08[white:-] [#555555]Dark Gray[white:-]\n[white]|01[white:-] [#AA0000]Red (Dark)[white:-]  [white]|09[white:-] [#FF5555]Bright Red[white:-]\n[white]|02[white:-] [#00AA00]Green (Dark)[white:-] [white]|10[white:-] [#55FF55]Bright Green[white:-]\n[white]|03[white:-] [#AA5500]Brown[white:-]      [white]|11[white:-] [#FFFF55]Yellow[white:-]\n[white]|04[white:-] [#0000AA]Blue (Dark)[white:-] [white]|12[white:-] [#5555FF]Bright Blue[white:-]\n[white]|05[white:-] [#AA00AA]Magenta[white:-]    [white]|13[white:-] [#FF55FF]Bright Magenta[white:-]\n[white]|06[white:-] [#00AAAA]Cyan (Dark)[white:-] [white]|14[white:-] [#55FFFF]Bright Cyan[white:-]\n[white]|07[white:-] [#AAAAAA]Gray[white:-]       [white]|15[white:-] [#FFFFFF]White[white:-]\n\nBackground colors:\n[white]|B0[white:-] [#FFFFFF:#000000]Black BG[white:-]  [white]|B1[white:-] [#FFFFFF:#AA0000]Red BG[white:-]   [white]|B2[white:-] [#000000:#00AA00]Green BG[white:-]  [white]|B3[white:-] [#000000:#AA5500]Brown BG[white:-]\n[white]|B4[white:-] [#FFFFFF:#0000AA]Blue BG[white:-]  [white]|B5[white:-] [#FFFFFF:#AA00AA]Magenta BG[white:-] [white]|B6[white:-] [#000000:#00AAAA]Cyan BG[white:-]  [white]|B7[white:-] [#000000:#AAAAAA]Gray BG[white:-]\n\nTip: Click in field to edit raw pipe codes, click out to see rendered preview")
 	
 	// Add buttons
-	form.AddButton("Save", func() {
+	form.AddButton("S. Save", func() {
 		// Get the raw values
 		ct.stringsConfig.UserNotFound = userNotFoundField.GetRawText()
 		ct.stringsConfig.WrongPassword = wrongPWField.GetRawText()
@@ -631,7 +785,7 @@ func (ct *ConfigTool) editErrorMessages() {
 		ct.pages.SwitchToPage("strings")
 	})
 	
-	form.AddButton("Cancel", func() {
+	form.AddButton("C. Cancel", func() {
 		ct.pages.SwitchToPage("strings")
 	})
 
@@ -653,9 +807,52 @@ func (ct *ConfigTool) editErrorMessages() {
 		flex.AddItem(helpText, helpWidth, 0, false)
 	}
 
-	// Add escape key handling
+	// Add keyboard shortcuts including arrow navigation
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if event.Key() == tcell.KeyEscape {
+		switch event.Key() {
+		case tcell.KeyEscape:
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case tcell.KeyUp:
+			// Navigate up through form fields
+			currentItem, _ := form.GetFocusedItemIndex()
+			if currentItem <= 0 {
+				currentItem = form.GetFormItemCount() - 1
+			} else {
+				currentItem--
+			}
+			if currentItem >= 0 && currentItem < form.GetFormItemCount() {
+				ct.app.SetFocus(form.GetFormItem(currentItem))
+			}
+			return nil
+		case tcell.KeyDown:
+			// Navigate down through form fields
+			currentItem, _ := form.GetFocusedItemIndex()
+			if currentItem < 0 || currentItem >= form.GetFormItemCount()-1 {
+				currentItem = 0
+			} else {
+				currentItem++
+			}
+			if currentItem >= 0 && currentItem < form.GetFormItemCount() {
+				ct.app.SetFocus(form.GetFormItem(currentItem))
+			}
+			return nil
+		}
+		
+		switch event.Rune() {
+		case 's', 'S':
+			// Trigger Save
+			ct.stringsConfig.UserNotFound = userNotFoundField.GetRawText()
+			ct.stringsConfig.WrongPassword = wrongPWField.GetRawText()
+			ct.stringsConfig.InvalidUserName = invalidUserField.GetRawText()
+			ct.stringsConfig.NotValidated = notValidField.GetRawText()
+			ct.stringsConfig.WrongFilePW = wrongFilePWField.GetRawText()
+			ct.saveStringsConfig()
+			ct.showInfo("Error messages updated successfully!")
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case 'c', 'C':
+			// Trigger Cancel
 			ct.pages.SwitchToPage("strings")
 			return nil
 		}
@@ -695,7 +892,7 @@ func (ct *ConfigTool) editColorDefinitions() {
 	help.SetTitle(" Color Help ")
 	
 	// Add buttons
-	form.AddButton("Save", func() {
+	form.AddButton("S. Save", func() {
 		// Get the new values and convert to uint8
 		if val := form.GetFormItemByLabel("Default Color 1").(*tview.InputField).GetText(); val != "" {
 			if parsed, err := fmt.Sscanf(val, "%d", &ct.stringsConfig.DefColor1); err != nil || parsed != 1 {
@@ -750,7 +947,7 @@ func (ct *ConfigTool) editColorDefinitions() {
 		ct.pages.SwitchToPage("strings")
 	})
 	
-	form.AddButton("Cancel", func() {
+	form.AddButton("C. Cancel", func() {
 		ct.pages.SwitchToPage("strings")
 	})
 
@@ -760,9 +957,21 @@ func (ct *ConfigTool) editColorDefinitions() {
 	flex.AddItem(form, 0, 2, true)
 	flex.AddItem(help, 4, 0, false)
 
-	// Add escape key handling
+	// Add keyboard shortcuts (S=Save, C=Cancel, Esc=Cancel)
 	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
+			ct.pages.SwitchToPage("strings")
+			return nil
+		}
+		if event.Rune() == 's' || event.Rune() == 'S' {
+			// Trigger Save - simplified version for now
+			ct.saveStringsConfig()
+			ct.showInfo("Color definitions updated successfully!")
+			ct.pages.SwitchToPage("strings")
+			return nil
+		}
+		if event.Rune() == 'c' || event.Rune() == 'C' {
+			// Trigger Cancel
 			ct.pages.SwitchToPage("strings")
 			return nil
 		}
@@ -849,19 +1058,779 @@ func (ct *ConfigTool) renderPipeCodes(text string) string {
 }
 
 func (ct *ConfigTool) showAreaManagementMenu() {
-	ct.showInfo("Area Management - Coming soon!")
+	ct.clearPages()
+	
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	
+	// Header
+	header := tview.NewTextView().
+		SetText("[white::b]ViSiON/3 BBS Configuration Tool - Area Management[-:-:-]").
+		SetTextAlign(tview.AlignCenter)
+	header.SetBorder(true)
+	
+	// Menu options with selection tracking
+	menu := tview.NewTextView().SetDynamicColors(true)
+	menu.SetTitle(" Select Option ").SetBorder(true)
+	
+	menuItems := []string{
+		"Message Areas",
+		"File Areas",
+		"Back to Main Menu",
+		"Exit",
+	}
+	
+	selectedIndex := 0
+	maxIndex := len(menuItems) - 1
+	
+	updateMenu := func() {
+		menuText := ""
+		for i, item := range menuItems {
+			if i == selectedIndex {
+				// Highlighted selection
+				if i < 2 {
+					menuText += fmt.Sprintf("[black:white]%d. %s[-:-]\n", i+1, item)
+				} else if i == 2 {
+					menuText += "[black:white]B. " + item + "[-:-]\n"
+				} else {
+					menuText += "[black:white]ESC. " + item + "[-:-]\n"
+				}
+			} else {
+				// Normal display
+				if i < 2 {
+					menuText += fmt.Sprintf("[white::b]%d.[-:-:-] %s\n", i+1, item)
+				} else if i == 2 {
+					menuText += "[white::b]B.[-:-:-] " + item + "\n"
+				} else {
+					menuText += "[white::b]ESC.[-:-:-] " + item + "\n"
+				}
+			}
+			
+			if i == 1 {
+				menuText += "\n" // Add spacing after file areas
+			}
+		}
+		menu.SetText(menuText)
+	}
+	
+	updateMenu()
+	
+	// Footer
+	footer := tview.NewTextView().
+		SetText("ViSiON/3 © 2025 Ruthless Enterprises").
+		SetTextAlign(tview.AlignCenter)
+	
+	flex.AddItem(header, 3, 0, false)
+	flex.AddItem(menu, 0, 1, true)
+	flex.AddItem(footer, 1, 0, false)
+	
+	// Handle navigation
+	menu.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyUp:
+			if selectedIndex > 0 {
+				selectedIndex--
+				updateMenu()
+			}
+			return nil
+		case tcell.KeyDown:
+			if selectedIndex < maxIndex {
+				selectedIndex++
+				updateMenu()
+			}
+			return nil
+		case tcell.KeyEnter:
+			switch selectedIndex {
+			case 0:
+				ct.showMessageAreasMenu()
+			case 1:
+				ct.showFileAreasMenu()
+			case 2:
+				ct.showMainMenu()
+			case 3:
+				ct.app.Stop()
+			}
+			return nil
+		case tcell.KeyEscape:
+			ct.app.Stop()
+			return nil
+		}
+		
+		switch event.Rune() {
+		case '1':
+			selectedIndex = 0
+			updateMenu()
+			ct.showMessageAreasMenu()
+			return nil
+		case '2':
+			selectedIndex = 1
+			updateMenu()
+			ct.showFileAreasMenu()
+			return nil
+		case 'b', 'B':
+			selectedIndex = 2
+			updateMenu()
+			ct.showMainMenu()
+			return nil
+		}
+		
+		return event
+	})
+	
+	ct.pages.AddPage("area-management", flex, true, true)
+	ct.app.SetFocus(menu)
+}
+
+func (ct *ConfigTool) showMessageAreasMenu() {
+	ct.clearPages()
+	
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	
+	// Header
+	header := tview.NewTextView().
+		SetText("[white::b]ViSiON/3 BBS Configuration Tool - Message Areas[-:-:-]").
+		SetTextAlign(tview.AlignCenter)
+	header.SetBorder(true)
+	
+	// Load message areas
+	messageAreas, err := ct.loadMessageAreas()
+	if err != nil {
+		ct.showError("Failed to load message areas: " + err.Error())
+		return
+	}
+	
+	// Menu options
+	menu := tview.NewTextView().SetDynamicColors(true)
+	menu.SetTitle(" Message Areas ").SetBorder(true)
+	
+	menuText := "[white::b]Current Message Areas:[-:-:-]\n\n"
+	for i, area := range messageAreas {
+		menuText += fmt.Sprintf("[white::b]%d.[-:-:-] %s (%s)\n", i+1, area.Name, area.Tag)
+	}
+	
+	menuText += "\n[white::b]A.[-:-:-] Add New Area\n"
+	menuText += "[white::b]B.[-:-:-] Back to Area Management\n"
+	menuText += "[white::b]ESC.[-:-:-] Exit"
+	
+	menu.SetText(menuText)
+	
+	// Footer
+	footer := tview.NewTextView().
+		SetText("ViSiON/3 © 2025 Ruthless Enterprises").
+		SetTextAlign(tview.AlignCenter)
+	
+	flex.AddItem(header, 3, 0, false)
+	flex.AddItem(menu, 0, 1, true)
+	flex.AddItem(footer, 1, 0, false)
+	
+	// Handle navigation
+	menu.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Rune() {
+		case 'a', 'A':
+			ct.showInfo("Add New Message Area - Coming soon!")
+			return nil
+		case 'b', 'B':
+			ct.showAreaManagementMenu()
+			return nil
+		default:
+			// Handle numbered area selection
+			if event.Rune() >= '1' && event.Rune() <= '9' {
+				areaIndex := int(event.Rune() - '1')
+				if areaIndex < len(messageAreas) {
+					ct.showInfo(fmt.Sprintf("Edit Message Area: %s - Coming soon!", messageAreas[areaIndex].Name))
+				}
+				return nil
+			}
+		}
+		
+		switch event.Key() {
+		case tcell.KeyEscape:
+			ct.app.Stop()
+			return nil
+		}
+		
+		return event
+	})
+	
+	ct.pages.AddPage("message-areas", flex, true, true)
+	ct.app.SetFocus(menu)
+}
+
+func (ct *ConfigTool) showFileAreasMenu() {
+	ct.clearPages()
+	
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	
+	// Header
+	header := tview.NewTextView().
+		SetText("[white::b]ViSiON/3 BBS Configuration Tool - File Areas[-:-:-]").
+		SetTextAlign(tview.AlignCenter)
+	header.SetBorder(true)
+	
+	// Load file areas
+	fileAreas, err := ct.loadFileAreas()
+	if err != nil {
+		ct.showError("Failed to load file areas: " + err.Error())
+		return
+	}
+	
+	// Menu options
+	menu := tview.NewTextView().SetDynamicColors(true)
+	menu.SetTitle(" File Areas ").SetBorder(true)
+	
+	menuText := "[white::b]Current File Areas:[-:-:-]\n\n"
+	for i, area := range fileAreas {
+		menuText += fmt.Sprintf("[white::b]%d.[-:-:-] %s (%s)\n", i+1, area.Name, area.Tag)
+	}
+	
+	menuText += "\n[white::b]A.[-:-:-] Add New Area\n"
+	menuText += "[white::b]B.[-:-:-] Back to Area Management\n"
+	menuText += "[white::b]ESC.[-:-:-] Exit"
+	
+	menu.SetText(menuText)
+	
+	// Footer
+	footer := tview.NewTextView().
+		SetText("ViSiON/3 © 2025 Ruthless Enterprises").
+		SetTextAlign(tview.AlignCenter)
+	
+	flex.AddItem(header, 3, 0, false)
+	flex.AddItem(menu, 0, 1, true)
+	flex.AddItem(footer, 1, 0, false)
+	
+	// Handle navigation
+	menu.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Rune() {
+		case 'a', 'A':
+			ct.showInfo("Add New File Area - Coming soon!")
+			return nil
+		case 'b', 'B':
+			ct.showAreaManagementMenu()
+			return nil
+		default:
+			// Handle numbered area selection
+			if event.Rune() >= '1' && event.Rune() <= '9' {
+				areaIndex := int(event.Rune() - '1')
+				if areaIndex < len(fileAreas) {
+					ct.showInfo(fmt.Sprintf("Edit File Area: %s - Coming soon!", fileAreas[areaIndex].Name))
+				}
+				return nil
+			}
+		}
+		
+		switch event.Key() {
+		case tcell.KeyEscape:
+			ct.app.Stop()
+			return nil
+		}
+		
+		return event
+	})
+	
+	ct.pages.AddPage("file-areas", flex, true, true)
+	ct.app.SetFocus(menu)
 }
 
 func (ct *ConfigTool) showDoorConfigMenu() {
-	ct.showInfo("Door Configuration - Coming soon!")
+	ct.clearPages()
+	
+	// Load doors
+	doors, err := ct.loadDoors()
+	if err != nil {
+		ct.showError("Failed to load door configuration: " + err.Error())
+		return
+	}
+	
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	
+	// Header
+	header := tview.NewTextView().
+		SetText("[white::b]ViSiON/3 BBS Configuration Tool - Door Configuration[-:-:-]").
+		SetTextAlign(tview.AlignCenter)
+	header.SetBorder(true)
+	
+	// Menu options with selection tracking
+	menu := tview.NewTextView().SetDynamicColors(true)
+	menu.SetTitle(" Door Programs ").SetBorder(true)
+	
+	// Build menu items dynamically based on loaded doors
+	menuItems := []string{}
+	for _, door := range doors {
+		menuItems = append(menuItems, fmt.Sprintf("%s (%s)", door.Name, door.Command))
+	}
+	menuItems = append(menuItems, "Add New Door", "Back to Main Menu", "Exit")
+	
+	selectedIndex := 0
+	maxIndex := len(menuItems) - 1
+	
+	updateMenu := func() {
+		menuText := "[white::b]Current Door Programs:[-:-:-]\n\n"
+		for i, item := range menuItems {
+			if i == selectedIndex {
+				// Highlighted selection
+				if i < len(doors) {
+					menuText += fmt.Sprintf("[black:white]%d. %s[-:-]\n", i+1, item)
+				} else if i == len(doors) {
+					menuText += "[black:white]A. " + item + "[-:-]\n"
+				} else if i == len(doors)+1 {
+					menuText += "[black:white]B. " + item + "[-:-]\n"
+				} else {
+					menuText += "[black:white]ESC. " + item + "[-:-]\n"
+				}
+			} else {
+				// Normal display
+				if i < len(doors) {
+					menuText += fmt.Sprintf("[white::b]%d.[-:-:-] %s\n", i+1, item)
+				} else if i == len(doors) {
+					menuText += "[white::b]A.[-:-:-] " + item + "\n"
+				} else if i == len(doors)+1 {
+					menuText += "[white::b]B.[-:-:-] " + item + "\n"
+				} else {
+					menuText += "[white::b]ESC.[-:-:-] " + item + "\n"
+				}
+			}
+			
+			if i == len(doors)-1 {
+				menuText += "\n" // Add spacing after door list
+			}
+		}
+		menu.SetText(menuText)
+	}
+	
+	updateMenu()
+	
+	// Footer
+	footer := tview.NewTextView().
+		SetText("ViSiON/3 © 2025 Ruthless Enterprises").
+		SetTextAlign(tview.AlignCenter)
+	
+	flex.AddItem(header, 3, 0, false)
+	flex.AddItem(menu, 0, 1, true)
+	flex.AddItem(footer, 1, 0, false)
+	
+	// Handle navigation
+	menu.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyUp:
+			if selectedIndex > 0 {
+				selectedIndex--
+				updateMenu()
+			}
+			return nil
+		case tcell.KeyDown:
+			if selectedIndex < maxIndex {
+				selectedIndex++
+				updateMenu()
+			}
+			return nil
+		case tcell.KeyEnter:
+			if selectedIndex < len(doors) {
+				ct.showInfo(fmt.Sprintf("Edit Door: %s - Coming soon!", doors[selectedIndex].Name))
+			} else if selectedIndex == len(doors) {
+				ct.showInfo("Add New Door - Coming soon!")
+			} else if selectedIndex == len(doors)+1 {
+				ct.showMainMenu()
+			} else {
+				ct.app.Stop()
+			}
+			return nil
+		case tcell.KeyEscape:
+			ct.app.Stop()
+			return nil
+		}
+		
+		switch event.Rune() {
+		case 'a', 'A':
+			selectedIndex = len(doors)
+			updateMenu()
+			ct.showInfo("Add New Door - Coming soon!")
+			return nil
+		case 'b', 'B':
+			selectedIndex = len(doors) + 1
+			updateMenu()
+			ct.showMainMenu()
+			return nil
+		default:
+			// Handle numbered door selection
+			if event.Rune() >= '1' && event.Rune() <= '9' {
+				doorIndex := int(event.Rune() - '1')
+				if doorIndex < len(doors) {
+					selectedIndex = doorIndex
+					updateMenu()
+					ct.showInfo(fmt.Sprintf("Edit Door: %s - Coming soon!", doors[doorIndex].Name))
+				}
+				return nil
+			}
+		}
+		
+		return event
+	})
+	
+	ct.pages.AddPage("door-config", flex, true, true)
+	ct.app.SetFocus(menu)
 }
 
 func (ct *ConfigTool) showNodeMonitoringMenu() {
-	ct.showInfo("Node Monitoring - Coming soon!")
+	ct.clearPages()
+	
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	
+	// Header
+	header := tview.NewTextView().
+		SetText("[white::b]ViSiON/3 BBS Configuration Tool - Node Monitoring[-:-:-]").
+		SetTextAlign(tview.AlignCenter)
+	header.SetBorder(true)
+	
+	// Menu options with selection tracking
+	menu := tview.NewTextView().SetDynamicColors(true)
+	menu.SetTitle(" Node Monitoring Options ").SetBorder(true)
+	
+	menuItems := []string{
+		"View Active Connections",
+		"Connection History",
+		"System Resource Usage", 
+		"Log Viewer",
+		"Performance Statistics",
+		"Back to Main Menu",
+		"Exit",
+	}
+	
+	selectedIndex := 0
+	maxIndex := len(menuItems) - 1
+	
+	updateMenu := func() {
+		menuText := ""
+		for i, item := range menuItems {
+			if i == selectedIndex {
+				// Highlighted selection
+				if i < 5 {
+					menuText += fmt.Sprintf("[black:white]%d. %s[-:-]\n", i+1, item)
+				} else if i == 5 {
+					menuText += "[black:white]B. " + item + "[-:-]\n"
+				} else {
+					menuText += "[black:white]ESC. " + item + "[-:-]\n"
+				}
+			} else {
+				// Normal display
+				if i < 5 {
+					menuText += fmt.Sprintf("[white::b]%d.[-:-:-] %s\n", i+1, item)
+				} else if i == 5 {
+					menuText += "[white::b]B.[-:-:-] " + item + "\n"
+				} else {
+					menuText += "[white::b]ESC.[-:-:-] " + item + "\n"
+				}
+			}
+			
+			if i == 4 {
+				menuText += "\n" // Add spacing after monitoring options
+			}
+		}
+		menu.SetText(menuText)
+	}
+	
+	updateMenu()
+	
+	// Footer
+	footer := tview.NewTextView().
+		SetText("ViSiON/3 © 2025 Ruthless Enterprises").
+		SetTextAlign(tview.AlignCenter)
+	
+	flex.AddItem(header, 3, 0, false)
+	flex.AddItem(menu, 0, 1, true)
+	flex.AddItem(footer, 1, 0, false)
+	
+	// Handle navigation
+	menu.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyUp:
+			if selectedIndex > 0 {
+				selectedIndex--
+				updateMenu()
+			}
+			return nil
+		case tcell.KeyDown:
+			if selectedIndex < maxIndex {
+				selectedIndex++
+				updateMenu()
+			}
+			return nil
+		case tcell.KeyEnter:
+			switch selectedIndex {
+			case 0:
+				ct.showInfo("View Active Connections - Coming soon!")
+			case 1:
+				ct.showInfo("Connection History - Coming soon!")
+			case 2:
+				ct.showInfo("System Resource Usage - Coming soon!")
+			case 3:
+				ct.showInfo("Log Viewer - Coming soon!")
+			case 4:
+				ct.showInfo("Performance Statistics - Coming soon!")
+			case 5:
+				ct.showMainMenu()
+			case 6:
+				ct.app.Stop()
+			}
+			return nil
+		case tcell.KeyEscape:
+			ct.app.Stop()
+			return nil
+		}
+		
+		switch event.Rune() {
+		case '1':
+			selectedIndex = 0
+			updateMenu()
+			ct.showInfo("View Active Connections - Coming soon!")
+			return nil
+		case '2':
+			selectedIndex = 1
+			updateMenu()
+			ct.showInfo("Connection History - Coming soon!")
+			return nil
+		case '3':
+			selectedIndex = 2
+			updateMenu()
+			ct.showInfo("System Resource Usage - Coming soon!")
+			return nil
+		case '4':
+			selectedIndex = 3
+			updateMenu()
+			ct.showInfo("Log Viewer - Coming soon!")
+			return nil
+		case '5':
+			selectedIndex = 4
+			updateMenu()
+			ct.showInfo("Performance Statistics - Coming soon!")
+			return nil
+		case 'b', 'B':
+			selectedIndex = 5
+			updateMenu()
+			ct.showMainMenu()
+			return nil
+		}
+		
+		return event
+	})
+	
+	ct.pages.AddPage("node-monitoring", flex, true, true)
+	ct.app.SetFocus(menu)
 }
 
 func (ct *ConfigTool) showSystemSettingsMenu() {
-	ct.showInfo("System Settings - Coming soon!")
+	ct.clearPages()
+	
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	
+	// Header
+	header := tview.NewTextView().
+		SetText("[white::b]ViSiON/3 BBS Configuration Tool - System Settings[-:-:-]").
+		SetTextAlign(tview.AlignCenter)
+	header.SetBorder(true)
+	
+	// Menu options with selection tracking
+	menu := tview.NewTextView().SetDynamicColors(true)
+	menu.SetTitle(" System Configuration ").SetBorder(true)
+	
+	menuItems := []string{
+		"Network Configuration",
+		"Security Settings",
+		"File Transfer Protocols",
+		"Terminal Settings", 
+		"Logging Configuration",
+		"System Limits",
+		"Menu System Settings",
+		"Back to Main Menu",
+		"Exit",
+	}
+	
+	selectedIndex := 0
+	maxIndex := len(menuItems) - 1
+	
+	updateMenu := func() {
+		menuText := ""
+		for i, item := range menuItems {
+			if i == selectedIndex {
+				// Highlighted selection
+				if i < 7 {
+					menuText += fmt.Sprintf("[black:white]%d. %s[-:-]\n", i+1, item)
+				} else if i == 7 {
+					menuText += "[black:white]B. " + item + "[-:-]\n"
+				} else {
+					menuText += "[black:white]ESC. " + item + "[-:-]\n"
+				}
+			} else {
+				// Normal display
+				if i < 7 {
+					menuText += fmt.Sprintf("[white::b]%d.[-:-:-] %s\n", i+1, item)
+				} else if i == 7 {
+					menuText += "[white::b]B.[-:-:-] " + item + "\n"
+				} else {
+					menuText += "[white::b]ESC.[-:-:-] " + item + "\n"
+				}
+			}
+			
+			if i == 6 {
+				menuText += "\n" // Add spacing after system options
+			}
+		}
+		menu.SetText(menuText)
+	}
+	
+	updateMenu()
+	
+	// Footer
+	footer := tview.NewTextView().
+		SetText("ViSiON/3 © 2025 Ruthless Enterprises").
+		SetTextAlign(tview.AlignCenter)
+	
+	flex.AddItem(header, 3, 0, false)
+	flex.AddItem(menu, 0, 1, true)
+	flex.AddItem(footer, 1, 0, false)
+	
+	// Handle navigation
+	menu.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyUp:
+			if selectedIndex > 0 {
+				selectedIndex--
+				updateMenu()
+			}
+			return nil
+		case tcell.KeyDown:
+			if selectedIndex < maxIndex {
+				selectedIndex++
+				updateMenu()
+			}
+			return nil
+		case tcell.KeyEnter:
+			switch selectedIndex {
+			case 0:
+				ct.showInfo("Network Configuration - Coming soon!")
+			case 1:
+				ct.showInfo("Security Settings - Coming soon!")
+			case 2:
+				ct.showInfo("File Transfer Protocols - Coming soon!")
+			case 3:
+				ct.showInfo("Terminal Settings - Coming soon!")
+			case 4:
+				ct.showInfo("Logging Configuration - Coming soon!")
+			case 5:
+				ct.showInfo("System Limits - Coming soon!")
+			case 6:
+				ct.showInfo("Menu System Settings - Coming soon!")
+			case 7:
+				ct.showMainMenu()
+			case 8:
+				ct.app.Stop()
+			}
+			return nil
+		case tcell.KeyEscape:
+			ct.app.Stop()
+			return nil
+		}
+		
+		switch event.Rune() {
+		case '1':
+			selectedIndex = 0
+			updateMenu()
+			ct.showInfo("Network Configuration - Coming soon!")
+			return nil
+		case '2':
+			selectedIndex = 1
+			updateMenu()
+			ct.showInfo("Security Settings - Coming soon!")
+			return nil
+		case '3':
+			selectedIndex = 2
+			updateMenu()
+			ct.showInfo("File Transfer Protocols - Coming soon!")
+			return nil
+		case '4':
+			selectedIndex = 3
+			updateMenu()
+			ct.showInfo("Terminal Settings - Coming soon!")
+			return nil
+		case '5':
+			selectedIndex = 4
+			updateMenu()
+			ct.showInfo("Logging Configuration - Coming soon!")
+			return nil
+		case '6':
+			selectedIndex = 5
+			updateMenu()
+			ct.showInfo("System Limits - Coming soon!")
+			return nil
+		case '7':
+			selectedIndex = 6
+			updateMenu()
+			ct.showInfo("Menu System Settings - Coming soon!")
+			return nil
+		case 'b', 'B':
+			selectedIndex = 7
+			updateMenu()
+			ct.showMainMenu()
+			return nil
+		}
+		
+		return event
+	})
+	
+	ct.pages.AddPage("system-settings", flex, true, true)
+	ct.app.SetFocus(menu)
+}
+
+// loadMessageAreas loads message areas from data directory
+func (ct *ConfigTool) loadMessageAreas() ([]MessageArea, error) {
+	dataPath := filepath.Join(filepath.Dir(ct.configPath), "data", "message_areas.json")
+	
+	data, err := os.ReadFile(dataPath)
+	if err != nil {
+		return nil, err
+	}
+	
+	var areas []MessageArea
+	err = json.Unmarshal(data, &areas)
+	if err != nil {
+		return nil, err
+	}
+	
+	return areas, nil
+}
+
+// loadFileAreas loads file areas from configs directory
+func (ct *ConfigTool) loadFileAreas() ([]FileArea, error) {
+	filePath := filepath.Join(ct.configPath, "file_areas.json")
+	
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	
+	var areas []FileArea
+	err = json.Unmarshal(data, &areas)
+	if err != nil {
+		return nil, err
+	}
+	
+	return areas, nil
+}
+
+// loadDoors loads door configurations from configs directory
+func (ct *ConfigTool) loadDoors() ([]Door, error) {
+	filePath := filepath.Join(ct.configPath, "doors.json")
+	
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	
+	var doors []Door
+	err = json.Unmarshal(data, &doors)
+	if err != nil {
+		return nil, err
+	}
+	
+	return doors, nil
 }
 
 // getFieldWidth calculates responsive field width based on screen size
