@@ -9,7 +9,7 @@ import (
 	"time"
 	"unsafe"
 
-	"vision3/internal/configtool/msgbase"
+	"github.com/stlalpha/vision3/internal/configtool/msgbase"
 )
 
 // MessageBaseMaintenance handles message base maintenance operations

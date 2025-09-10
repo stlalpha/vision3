@@ -12,7 +12,7 @@ import (
 	"time"
 	"unsafe"
 
-	"vision3/internal/configtool/filebase"
+	"github.com/stlalpha/vision3/internal/configtool/filebase"
 )
 
 // FileBaseMaintenance handles file base maintenance operations

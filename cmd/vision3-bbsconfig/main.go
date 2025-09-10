@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"vision3/internal/configtool/ui"
+	"github.com/stlalpha/vision3/internal/configtool/ui"
 )
 
 const (

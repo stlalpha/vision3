@@ -17,15 +17,14 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh" // Alias standard crypto/ssh
-	"golang.org/x/term"
 
 	// Local packages (Update paths)
-	"github.com/stlalpha/vision3/internal/ansi"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/menu"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/session"
+	"github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
 	// Needed for test code / shared types? Keep imports but ensure they are still needed.
@@ -128,13 +127,13 @@ func sessionHandler(s ssh.Session) {
 	}
 
 	// --- Determine Output Mode ---
-	effectiveMode := ansi.OutputModeAuto // Start with Auto as the base
+	effectiveMode := terminal.OutputModeAuto // Start with Auto as the base
 	switch outputModeFlag {              // Check the global flag first
 	case "utf8":
-		effectiveMode = ansi.OutputModeUTF8
+		effectiveMode = terminal.OutputModeUTF8
 		log.Printf("Node %d: Output mode forced to UTF-8 by flag.", nodeID)
 	case "cp437":
-		effectiveMode = ansi.OutputModeCP437
+		effectiveMode = terminal.OutputModeCP437
 		log.Printf("Node %d: Output mode forced to CP437 by flag.", nodeID)
 	case "auto":
 		// Auto mode: Use PTY info if available
@@ -144,27 +143,27 @@ func sessionHandler(s ssh.Session) {
 			// Heuristic: Check for known CP437-preferring TERM types
 			if termType == "sync" || termType == "ansi" || termType == "scoansi" || strings.HasPrefix(termType, "vt100") {
 				log.Printf("Node %d: Auto mode selecting CP437 output for TERM='%s'", nodeID, termType)
-				effectiveMode = ansi.OutputModeCP437
+				effectiveMode = terminal.OutputModeCP437
 			} else {
 				log.Printf("Node %d: Auto mode selecting UTF-8 output for TERM='%s'", nodeID, termType)
-				effectiveMode = ansi.OutputModeUTF8
+				effectiveMode = terminal.OutputModeUTF8
 			}
 		} else {
 			// No PTY, safer to default to UTF-8? Or CP437?
 			// Let's default to UTF-8 for non-PTY as it's more common for raw streams.
 			log.Printf("Node %d: Auto mode selecting UTF-8 output (no PTY requested).", nodeID)
-			effectiveMode = ansi.OutputModeUTF8
+			effectiveMode = terminal.OutputModeUTF8
 		}
 	}
 
 	// --- Create Terminal ---
 	log.Printf("Node %d: Creating terminal for session", nodeID)
-	terminal := term.NewTerminal(s, "") // Use session 's' as the R/W source for the terminal
+	terminalInstance := terminal.New(s, effectiveMode) // Use new terminal API
 
 	// --- Simple Test Output ---
 	testMsg := "\r\n\x1b[31mSimple Test: RED\x1b[0m | \x1b[32mGREEN\x1b[0m | ASCII: Hello! 123?.,;\r\n"
 	log.Printf("Node %d: Writing simple test message...", nodeID)
-	_, testErr := terminal.Write([]byte(testMsg))
+	_, testErr := terminalInstance.Write([]byte(testMsg))
 	if testErr != nil {
 		log.Printf("Node %d: Error writing test message: %v", nodeID, testErr)
 	}
@@ -245,7 +244,7 @@ func sessionHandler(s ssh.Session) {
 	for authenticatedUser == nil {
 		if currentMenuName == "" || currentMenuName == "LOGOFF" {
 			log.Printf("Node %d: Login failed or aborted. Terminating session.", nodeID)
-			fmt.Fprintln(terminal, "\r\nLogin failed or aborted.")
+			fmt.Fprintln(terminalInstance, "\r\nLogin failed or aborted.")
 			return
 		}
 
@@ -254,12 +253,12 @@ func sessionHandler(s ssh.Session) {
 		// Pass nodeID directly as int, use sessionStartTime from context
 		// Pass the session's autoRunLog
 		// Pass "" for currentAreaName during login
-		nextMenuName, authUser, execErr := menuExecutor.Run(s, terminal, userMgr, nil, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "")
+		nextMenuName, authUser, execErr := menuExecutor.Run(s, terminalInstance, userMgr, nil, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "")
 		if execErr != nil {
 			// Log the error and decide how to proceed
 			log.Printf("Node %d: Error executing menu '%s': %v", nodeID, currentMenuName, execErr)
 			// Optionally display an error message to the user
-			fmt.Fprintf(terminal, "\r\nSystem error during menu execution: %v\r\n", execErr)
+			fmt.Fprintf(terminalInstance, "\r\nSystem error during menu execution: %v\r\n", execErr)
 			// Maybe force logoff or retry?
 			currentMenuName = "LOGOFF" // Force logoff on error for now
 			continue
@@ -313,7 +312,7 @@ func sessionHandler(s ssh.Session) {
 	for {
 		if currentMenuName == "" || currentMenuName == "LOGOFF" {
 			log.Printf("Node %d: User %s selected Logoff or reached end state.", nodeID, authenticatedUser.Handle)
-			fmt.Fprintln(terminal, "\r\nLogging off...")
+			fmt.Fprintln(terminalInstance, "\r\nLogging off...")
 			// Add any cleanup tasks before closing the session
 			break // Exit the loop
 		}
@@ -325,10 +324,10 @@ func sessionHandler(s ssh.Session) {
 		// Pass nodeID directly as int, use sessionStartTime from context
 		// Pass the session's autoRunLog
 		// Pass "" for currentAreaName for now (TODO: Pass actual session area name)
-		nextMenuName, _, execErr := menuExecutor.Run(s, terminal, userMgr, authenticatedUser, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "")
+		nextMenuName, _, execErr := menuExecutor.Run(s, terminalInstance, userMgr, authenticatedUser, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "")
 		if execErr != nil {
 			log.Printf("Node %d: Error executing menu '%s': %v", nodeID, currentMenuName, execErr)
-			fmt.Fprintf(terminal, "\r\nSystem error during menu execution: %v\r\n", execErr)
+			fmt.Fprintf(terminalInstance, "\r\nSystem error during menu execution: %v\r\n", execErr)
 			// Logoff on error?
 			currentMenuName = "LOGOFF"
 			continue

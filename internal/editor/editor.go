@@ -13,7 +13,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/stlalpha/vision3/internal/terminalio"
+	// TODO: Update editor to use new terminal package
+	// "github.com/stlalpha/vision3/internal/terminalio"
 )
 
 // Setup debug file
@@ -275,7 +276,8 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, termTyp
 	teeOutput := io.MultiWriter(output, outputCapture)
 
 	// Wrap with CP437 encoder
-	cp437Output := terminalio.NewSelectiveCP437Writer(teeOutput)
+	// TODO: Implement CP437 writer using new terminal package
+	cp437Output := teeOutput // Temporary placeholder
 	debugLog("Created SelectiveCP437Writer wrapper")
 
 	p := tea.NewProgram(

@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/terminal"
 )
 
 // ANSIColorInfo represents information about an ANSI color code
@@ -159,7 +159,7 @@ func (ah *ANSIHelper) ExtractANSICodes(text string) []string {
 // RenderWithColors converts ViSiON/2 codes to ANSI escape sequences for preview
 func (ah *ANSIHelper) RenderWithColors(text string) string {
 	// Use the existing ANSI package pipe code replacement
-	return string(ansi.ReplacePipeCodes([]byte(text)))
+	return string(terminal.ReplacePipeCodes([]byte(text)))
 }
 
 // StripColors removes all color codes from text

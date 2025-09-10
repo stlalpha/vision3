@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"vision3/internal/configtool/filebase"
-	"vision3/internal/configtool/msgbase"
-	"vision3/internal/configtool/multinode"
+	"github.com/stlalpha/vision3/internal/configtool/filebase"
+	"github.com/stlalpha/vision3/internal/configtool/msgbase"
+	"github.com/stlalpha/vision3/internal/configtool/multinode"
 )
 
 // ConfigManager handles the configuration interface

@@ -11,11 +11,11 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	gossh "golang.org/x/crypto/ssh"
-	terminal "golang.org/x/crypto/ssh/terminal"
+	sshterminal "golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/text/encoding/charmap"
 
-	// Use the internal ansi package for Cp437ToUnicode
-	"github.com/stlalpha/vision3/internal/ansi"
+	// Use the internal terminal package
+	"github.com/stlalpha/vision3/internal/terminal"
 )
 
 // --- ANSI Test Code (Moved from cmd/vision3/main.go) ---
@@ -44,7 +44,7 @@ func handleAnsiTestSession(session ssh.Session) {
 		return
 	}
 
-	term := terminal.NewTerminal(session, "TEST> ")
+	term := sshterminal.NewTerminal(session, "TEST> ")
 	term.SetSize(ptyReq.Window.Width, ptyReq.Window.Height)
 
 	go func() {
@@ -151,7 +151,7 @@ func testUTF8Encoding(session ssh.Session) {
 	w := bufio.NewWriter(session)
 	for _, b := range testChars {
 		// Use the exported map from the ansi package
-		r := ansi.Cp437ToUnicode[b]
+		r := terminal.Cp437ToUnicode[b]
 		w.WriteRune(r)
 	}
 	w.Flush()
@@ -216,7 +216,7 @@ func testCharacterSetSwitching(session ssh.Session) {
 	fmt.Fprint(session, "UTF-8:      \x1B%G")
 	w := bufio.NewWriter(session)
 	for _, b := range testChars {
-		r := ansi.Cp437ToUnicode[b]
+		r := terminal.Cp437ToUnicode[b]
 		w.WriteRune(r)
 	}
 	w.Flush()
@@ -235,7 +235,7 @@ func testByteByByte(session ssh.Session) {
 		fmt.Fprintf(w, "  0x%02X    |  ", b)
 		w.WriteByte(b)
 		fmt.Fprint(w, "  |  ")
-		r := ansi.Cp437ToUnicode[b]
+		r := terminal.Cp437ToUnicode[b]
 		w.WriteRune(r)
 		fmt.Fprint(w, "  |  ")
 		if vt100Char, ok := cp437ToVT100[b]; ok {
@@ -270,7 +270,7 @@ func testANSFile(session ssh.Session) {
 		fmt.Fprintln(session, "Error reading sample file:", err)
 		return
 	}
-	term := terminal.NewTerminal(session, "")
+	term := sshterminal.NewTerminal(session, "")
 
 	fmt.Fprintln(session, "Press Enter to see the file displayed with raw bytes...")
 	term.ReadLine()
