@@ -90,3 +90,10 @@ Thumbs.db
 
 # Cursor rules (local development)
 .cursorrules
+
+# Git worktrees directory
+worktrees/
+
+# Verification scripts (should only be in dist packages)
+/verify.sh
+/verify.bat
