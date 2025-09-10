@@ -378,6 +378,20 @@ func (um *UserMgr) GetUserByHandle(handle string) (*User, bool) { // Receiver us
 	return nil, false
 }
 
+// GetUserByID retrieves a user by their ID.
+func (um *UserMgr) GetUserByID(userID int) (*User, bool) {
+	um.mu.RLock()
+	defer um.mu.RUnlock()
+	for _, user := range um.users {
+		if user.ID == userID {
+			// Return a copy to prevent modification of the internal user data
+			userCopy := *user
+			return &userCopy, true
+		}
+	}
+	return nil, false
+}
+
 // AddUser creates a new user, hashes the password, assigns an ID, and saves.
 // Added GroupLocation parameter.
 func (um *UserMgr) AddUser(username, password, handle, realName, phoneNum, groupLocation string) (*User, error) { // Receiver uses renamed type
@@ -491,4 +505,32 @@ func (um *UserMgr) GetAllUsers() []*User {
 		usersSlice = append(usersSlice, user)
 	}
 	return usersSlice
+}
+
+// UpdateUser updates an existing user in the database
+func (um *UserMgr) UpdateUser(user *User) error {
+	if user == nil {
+		return fmt.Errorf("user cannot be nil")
+	}
+
+	lowerUsername := strings.ToLower(user.Username)
+
+	um.mu.Lock()
+	defer um.mu.Unlock()
+
+	// Check if user exists
+	if _, exists := um.users[lowerUsername]; !exists {
+		return ErrUserNotFound
+	}
+
+	// Update the user in the map
+	um.users[lowerUsername] = user
+
+	// Save the updated user list while still holding the lock
+	if err := um.saveUsersLocked(); err != nil {
+		log.Printf("ERROR: Failed to save users after updating %s: %v", user.Username, err)
+		return fmt.Errorf("failed to save user data: %w", err)
+	}
+
+	return nil
 }

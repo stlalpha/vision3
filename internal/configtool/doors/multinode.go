@@ -7,7 +7,6 @@ import (
 	"errors"
 	"sort"
 	"math/rand"
-	"context"
 	"encoding/json"
 	"path/filepath"
 	"os"
@@ -58,7 +57,7 @@ type MultiNodeConfig struct {
 // NodeDoorState represents the door state for a specific node
 type NodeDoorState struct {
 	NodeID           int                        `json:"node_id"`            // Node ID
-	Status           multinode.NodeStatus       `json:"status"`             // Node status
+	Status           uint8                      `json:"status"`             // Node status
 	ActiveInstances  map[string]*DoorInstance   `json:"active_instances"`   // Active door instances
 	MaxInstances     int                        `json:"max_instances"`      // Maximum instances per node
 	LoadScore        float64                    `json:"load_score"`         // Current load score
@@ -238,7 +237,7 @@ func (mnc *MultiNodeCoordinator) RegisterNode(nodeID int, capabilities NodeCapab
 	
 	nodeState := &NodeDoorState{
 		NodeID:          nodeID,
-		Status:          multinode.NodeStatusAvailable,
+		Status:          multinode.NodeStatusWaiting,
 		ActiveInstances: make(map[string]*DoorInstance),
 		MaxInstances:    10, // Default max instances
 		LoadScore:       0.0,
@@ -534,8 +533,8 @@ func (mnc *MultiNodeCoordinator) getAvailableNodes(doorID string) []int {
 // isNodeAvailableForDoor checks if a node is available for a door
 func (mnc *MultiNodeCoordinator) isNodeAvailableForDoor(nodeState *NodeDoorState, doorID string) bool {
 	// Check node status
-	if nodeState.Status != multinode.NodeStatusAvailable && 
-	   nodeState.Status != multinode.NodeStatusLoggedIn {
+	if nodeState.Status != multinode.NodeStatusWaiting && 
+	   nodeState.Status != multinode.NodeStatusLogin {
 		return false
 	}
 	

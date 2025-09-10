@@ -331,7 +331,6 @@ func (rm *ResourceManager) DetectDeadlocks() []DeadlockInfo {
 	// Simple deadlock detection: look for circular wait conditions
 	// This is a basic implementation; more sophisticated algorithms exist
 	doorResources := make(map[string][]string) // door -> resources it holds
-	resourceWaiters := make(map[string][]string) // resource -> doors waiting
 	
 	// Build dependency graph
 	for _, lock := range rm.locks {

@@ -11,7 +11,6 @@ import (
 	"text/template"
 	"bytes"
 	"errors"
-	"encoding/json"
 	
 	"github.com/stlalpha/vision3/internal/user"
 	"github.com/stlalpha/vision3/internal/session"

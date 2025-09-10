@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 	"context"
@@ -721,7 +722,6 @@ func (dt *DoorTester) createTestDropFile(doorConfig *DoorConfiguration, testDir 
 	}
 	
 	mockSession := &session.BbsSession{
-		UserID:         1,
 		NodeID:         dt.config.TestNodeID,
 		ConnectTime:    time.Now(),
 		BaudRate:       38400,

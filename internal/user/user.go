@@ -1,6 +1,7 @@
 package user
 
 import (
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,6 +46,19 @@ type User struct {
 	CurrentFileAreaID  int         `json:"current_file_area_id,omitempty"`  // Added for default file area tracking
 	CurrentFileAreaTag string      `json:"current_file_area_tag,omitempty"` // Added for default file area tracking
 	TaggedFileIDs      []uuid.UUID `json:"tagged_file_ids,omitempty"`       // List of FileRecord IDs marked for batch download
+
+	// Door/Game System Fields
+	Location    string    `json:"location,omitempty"`     // User's location (city/state)
+	Credits     int       `json:"credits,omitempty"`      // Game/door credits
+	TimeLeft    int       `json:"time_left,omitempty"`    // Minutes left in current session
+	LastCall    time.Time `json:"last_call,omitempty"`    // Last call date (different from login)
+	TimesOn     int       `json:"times_on,omitempty"`     // Total times online (different from calls)
+	PageLength  int       `json:"page_length,omitempty"`  // Screen page length for doors
+}
+
+// HasFlag checks if a user has a specific flag
+func (u *User) HasFlag(flag string) bool {
+	return strings.Contains(u.Flags, flag)
 }
 
 // CallRecord stores information about a single call session.

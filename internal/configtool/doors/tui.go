@@ -2,13 +2,10 @@ package doors
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	
-	"github.com/stlalpha/vision3/internal/configtool/tui"
 )
 
 // DoorConfigTUI represents the door configuration TUI interface
@@ -61,6 +58,25 @@ type DoorForm struct {
 	modified      bool
 	errors        map[string]string
 	mode          FormMode
+}
+
+// Update implements the tea.Model interface for DoorForm
+func (df *DoorForm) Update(msg tea.Msg) (*DoorForm, tea.Cmd) {
+	// Basic implementation - handle basic navigation and input
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "up":
+			if df.currentField > 0 {
+				df.currentField--
+			}
+		case "down":
+			if df.currentField < len(df.fields)-1 {
+				df.currentField++
+			}
+		}
+	}
+	return df, nil
 }
 
 // FormField represents a field in the door configuration form

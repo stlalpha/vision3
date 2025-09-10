@@ -66,7 +66,8 @@ type MessageAreaConfig struct {
 	Flags        uint32    // Area flags (see AreaFlag constants)
 	HighMsgNum   uint32    // Highest message number used
 	TotalMsgs    uint32    // Total active messages
-	Reserved     [32]byte  // Reserved for future expansion
+	TotalKBytes  uint32    // Total kilobytes used by messages
+	Reserved     [28]byte  // Reserved for future expansion
 } // Total: 512 bytes
 
 // Message area flags

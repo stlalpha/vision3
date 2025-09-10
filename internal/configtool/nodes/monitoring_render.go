@@ -2,8 +2,6 @@ package nodes
 
 import (
 	"fmt"
-	"math"
-	"sort"
 	"strings"
 	"time"
 

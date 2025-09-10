@@ -33,6 +33,18 @@ type BbsSession struct {
 	AutoRunLog  types.AutoRunTracker // Tracks run-once commands executed (Use types.AutoRunTracker)
 	LastMenu    string               // Tracks the previously visited menu
 	StartTime   time.Time            // Tracks the session start time
+	
+	// Door/Game System Fields
+	ConnectTime    time.Time // Connection time for door/game compatibility
+	BaudRate       int       // Connection baud rate (often simulated for SSH)
+	ConnectionType string    // Connection type (SSH, Telnet, etc.)
+	CallerID       string    // Caller ID information
+	TerminalType   string    // Terminal type (ANSI, VT100, etc.)
+	ScreenWidth    int       // Screen width (same as Width but for door compatibility)
+	ScreenHeight   int       // Screen height (same as Height but for door compatibility)
+	ANSISupport    bool      // ANSI support capability
+	ColorSupport   bool      // Color support capability
+	IBMChars       bool      // IBM character support
 }
 
 // NewSession creates a new Session object.

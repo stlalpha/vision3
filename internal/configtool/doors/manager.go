@@ -9,11 +9,7 @@ import (
 	"time"
 	"sort"
 	"errors"
-	"context"
 	"strings"
-	
-	"github.com/stlalpha/vision3/internal/user"
-	"github.com/stlalpha/vision3/internal/session"
 )
 
 // DoorManagerImpl implements the DoorManager interface
@@ -673,7 +669,7 @@ func (dm *DoorManagerImpl) TestDoorConfig(doorID string) error {
 		return errors.New("testing not available")
 	}
 	
-	door, err := dm.GetDoorConfig(doorID)
+	_, err := dm.GetDoorConfig(doorID)
 	if err != nil {
 		return err
 	}

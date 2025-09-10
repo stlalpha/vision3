@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sync"
 	"time"
-	"context"
 	"os"
 	"path/filepath"
 	"encoding/json"
@@ -229,7 +228,7 @@ const (
 	EventThresholdExceeded
 	EventHealthCheck
 	EventMetricsUpdated
-	EventSystemAlert
+	EventMonitorSystemAlert
 )
 
 func (met MonitorEventType) String() string {
@@ -248,7 +247,7 @@ func (met MonitorEventType) String() string {
 		return "Health Check"
 	case EventMetricsUpdated:
 		return "Metrics Updated"
-	case EventSystemAlert:
+	case EventMonitorSystemAlert:
 		return "System Alert"
 	default:
 		return "Unknown"

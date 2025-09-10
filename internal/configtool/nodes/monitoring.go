@@ -2,13 +2,9 @@ package nodes
 
 import (
 	"fmt"
-	"math"
-	"sort"
-	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // MonitoringSystem represents the performance monitoring and alerting system
@@ -217,7 +213,7 @@ func (ms *MonitoringSystem) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 		ms.currentView = PerformanceGraphView
 	case "f4":
 		ms.currentView = AlertsView
-	case "f5":
+	case "t":
 		ms.currentView = ThresholdsView
 	case "f6":
 		ms.currentView = HistoryView
@@ -247,11 +243,11 @@ func (ms *MonitoringSystem) handleKeyPress(msg tea.KeyMsg) (tea.Model, tea.Cmd) 
 		ms.clearSelectedAlert()
 	case "g":
 		ms.cycleGraphType()
-	case "l":
+	case "L":
 		ms.showLegend = !ms.showLegend
 	case "s":
 		ms.autoScale = !ms.autoScale
-	case "t":
+	case "T":
 		ms.cycleTimeRange()
 	case "enter":
 		ms.handleEnterKey()

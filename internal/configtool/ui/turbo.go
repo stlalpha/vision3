@@ -6,9 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"unsafe"
 
-	"golang.org/x/sys/unix"
+	"golang.org/x/term"
 )
 
 // TurboUI provides a Turbo Pascal-style text user interface
@@ -16,7 +15,7 @@ type TurboUI struct {
 	screenWidth  int
 	screenHeight int
 	currentColor int
-	savedState   *unix.Termios
+	savedState   *term.State
 }
 
 // Color constants (DOS/Turbo Pascal style)
@@ -123,22 +122,13 @@ func NewTurboUI() (*TurboUI, error) {
 
 // Initialize terminal for raw mode input
 func (ui *TurboUI) initTerminal() error {
-	// Get current terminal attributes
-	termios, err := unix.IoctlGetTermios(int(os.Stdin.Fd()), unix.TCGETS)
+	// Save current terminal state and set raw mode
+	savedState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
 		return err
 	}
-	ui.savedState = termios
-
-	// Set raw mode
-	newTermios := *termios
-	newTermios.Iflag &^= unix.IGNBRK | unix.BRKINT | unix.PARMRK | unix.ISTRIP | unix.INLCR | unix.IGNCR | unix.ICRNL | unix.IXON
-	newTermios.Oflag &^= unix.OPOST
-	newTermios.Lflag &^= unix.ECHO | unix.ECHONL | unix.ICANON | unix.ISIG | unix.IEXTEN
-	newTermios.Cflag &^= unix.CSIZE | unix.PARENB
-	newTermios.Cflag |= unix.CS8
-
-	return unix.IoctlSetTermios(int(os.Stdin.Fd()), unix.TCSETS, &newTermios)
+	ui.savedState = savedState
+	return nil
 }
 
 // Cleanup restores terminal state
@@ -149,7 +139,7 @@ func (ui *TurboUI) Cleanup() {
 
 	// Restore terminal state
 	if ui.savedState != nil {
-		unix.IoctlSetTermios(int(os.Stdin.Fd()), unix.TCSETS, ui.savedState)
+		term.Restore(int(os.Stdin.Fd()), ui.savedState)
 	}
 }
 
@@ -380,7 +370,7 @@ func (ui *TurboUI) InputDialog(title string, fields []InputField) ([]string, boo
 	// Draw fields
 	results := make([]string, len(fields))
 	for i, field := range fields {
-		copy(results[i:], field.Value)
+		results[i] = field.Value
 	}
 
 	currentField := 0

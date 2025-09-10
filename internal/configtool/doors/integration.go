@@ -3,14 +3,12 @@ package doors
 import (
 	"fmt"
 	"time"
-	"context"
 	
 	tea "github.com/charmbracelet/bubbletea"
 	
 	"github.com/stlalpha/vision3/internal/configtool/tui"
 	"github.com/stlalpha/vision3/internal/configtool/nodes"
 	"github.com/stlalpha/vision3/internal/user"
-	"github.com/stlalpha/vision3/internal/session"
 )
 
 // DoorIntegrator integrates the door system with existing BBS components
@@ -183,9 +181,9 @@ func (di *DoorIntegrator) Shutdown() error {
 // LaunchDoorForUser launches a door for a user on a specific node
 func (di *DoorIntegrator) LaunchDoorForUser(doorID string, nodeID int, userID int) (*DoorInstance, error) {
 	// Get user information
-	user, err := di.userManager.GetUser(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get user: %w", err)
+	user, exists := di.userManager.GetUserByID(userID)
+	if !exists {
+		return nil, fmt.Errorf("user with ID %d not found", userID)
 	}
 	
 	// Check if user has sufficient time
@@ -493,8 +491,8 @@ func (di *DoorIntegrator) monitorDoorSession(instance *DoorInstance, user *user.
 }
 
 func (di *DoorIntegrator) updateUserTime(userID int, duration time.Duration) {
-	user, err := di.userManager.GetUser(userID)
-	if err != nil {
+	user, exists := di.userManager.GetUserByID(userID)
+	if !exists {
 		return
 	}
 	
@@ -764,16 +762,10 @@ func (di *DoorIntegrator) GetDoorMenuItems() ([]tui.MenuItem, error) {
 	for _, door := range doors {
 		if door.Enabled {
 			menuItem := tui.MenuItem{
-				ID:          door.ID,
-				Label:       door.Name,
-				Description: door.Description,
-				Category:    door.Category.String(),
-				Action:      "launch_door",
-				Data: map[string]interface{}{
-					"door_id":    door.ID,
-					"door_name":  door.Name,
-					"time_limit": door.TimeLimit,
-				},
+				Label:   door.Name,
+				Key:     rune(door.Name[0]), // Use first character as hotkey
+				Action:  func() tea.Cmd { return nil }, // Placeholder action
+				Enabled: true,
 			}
 			menuItems = append(menuItems, menuItem)
 		}

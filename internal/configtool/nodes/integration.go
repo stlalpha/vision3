@@ -216,7 +216,7 @@ func (sw *SessionWrapper) Login(username, password string) (*user.User, error) {
 	}
 	
 	// Update node with user information
-	node, err := sw.integration.nodeManager.GetNode(sw.nodeID)
+	_, err := sw.integration.nodeManager.GetNode(sw.nodeID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get node: %w", err)
 	}
