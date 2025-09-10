@@ -268,38 +268,91 @@ func (ct *ConfigTool) editSystemName() {
 	ct.pages.SwitchToPage("systemname")
 }
 
-// PipeCodeInputField creates a custom input field that shows rendered text when not focused
+// PipeCodeInputField creates a custom component that shows rendered text when not focused
 type PipeCodeInputField struct {
-	*tview.InputField
+	*tview.Flex
+	inputField   *tview.InputField
+	textView     *tview.TextView
 	rawText      string
 	renderFunc   func(string) string
-	isMultiline  bool
+	label        string
+	isEditing    bool
 }
 
 func (ct *ConfigTool) newPipeCodeInputField(label, text string, width int, renderFunc func(string) string) *PipeCodeInputField {
+	// Create the input field for editing
+	inputField := tview.NewInputField().
+		SetLabel(label + ": ").
+		SetFieldWidth(width).
+		SetText(text)
+	
+	// Create the text view for display
+	textView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetWrap(false)
+	
+	// Create the flex container
+	flex := tview.NewFlex().SetDirection(tview.FlexRow)
+	
 	field := &PipeCodeInputField{
-		InputField: tview.NewInputField(),
+		Flex:       flex,
+		inputField: inputField,
+		textView:   textView,
 		rawText:    text,
 		renderFunc: renderFunc,
+		label:      label,
+		isEditing:  false,
 	}
-	
-	field.SetLabel(label).SetFieldWidth(width).SetText(text)
 	
 	// Show rendered text initially
 	field.showRendered()
 	
-	// Set up focus handlers
-	field.SetFocusFunc(func() {
+	// Set up focus handlers for the input field
+	inputField.SetFocusFunc(func() {
 		field.showRaw()
 	})
 	
-	field.SetBlurFunc(func() {
-		field.rawText = field.GetText()
+	inputField.SetBlurFunc(func() {
+		field.rawText = inputField.GetText()
 		field.showRendered()
 	})
 	
-	field.SetChangedFunc(func(text string) {
+	inputField.SetChangedFunc(func(text string) {
 		field.rawText = text
+	})
+	
+	// Set up focus delegation from the Flex to the appropriate child
+	flex.SetFocusFunc(func() {
+		if field.isEditing {
+			// Focus the input field when editing
+			ct.app.SetFocus(inputField)
+		} else {
+			// Switch to editing mode when focused
+			field.showRaw()
+			ct.app.SetFocus(inputField)
+		}
+	})
+	
+	// Add mouse click handling to the text view to start editing
+	textView.SetMouseCapture(func(action tview.MouseAction, event *tcell.EventMouse) (tview.MouseAction, *tcell.EventMouse) {
+		if action == tview.MouseLeftClick {
+			field.showRaw()
+			ct.app.SetFocus(inputField)
+			return tview.MouseConsumed, nil
+		}
+		return action, event
+	})
+	
+	// Handle key events for the flex container
+	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Key() == tcell.KeyEnter || event.Key() == tcell.KeyTab {
+			if !field.isEditing {
+				field.showRaw()
+				ct.app.SetFocus(inputField)
+				return nil
+			}
+		}
+		return event
 	})
 	
 	return field
@@ -308,26 +361,58 @@ func (ct *ConfigTool) newPipeCodeInputField(label, text string, width int, rende
 func (pcif *PipeCodeInputField) showRendered() {
 	if pcif.renderFunc != nil {
 		rendered := pcif.renderFunc(pcif.rawText)
-		// Temporarily disable change handler to avoid loops
-		pcif.SetChangedFunc(nil)
-		pcif.SetText(rendered)
-		pcif.SetChangedFunc(func(text string) {
-			pcif.rawText = text
-		})
+		pcif.textView.SetText(fmt.Sprintf("%s: %s", pcif.label, rendered))
+		
+		// Clear and show text view
+		pcif.Clear()
+		pcif.AddItem(pcif.textView, 1, 0, true)
+		pcif.isEditing = false
 	}
 }
 
 func (pcif *PipeCodeInputField) showRaw() {
-	// Temporarily disable change handler to avoid loops
-	pcif.SetChangedFunc(nil)
-	pcif.SetText(pcif.rawText)
-	pcif.SetChangedFunc(func(text string) {
-		pcif.rawText = text
-	})
+	// Update the input field with current raw text
+	pcif.inputField.SetText(pcif.rawText)
+	
+	// Clear and show input field
+	pcif.Clear()
+	pcif.AddItem(pcif.inputField, 1, 0, true)
+	pcif.isEditing = true
 }
 
 func (pcif *PipeCodeInputField) GetRawText() string {
 	return pcif.rawText
+}
+
+// FormItem interface implementation
+func (pcif *PipeCodeInputField) GetLabel() string {
+	return pcif.label
+}
+
+func (pcif *PipeCodeInputField) GetFieldWidth() int {
+	return pcif.inputField.GetFieldWidth()
+}
+
+func (pcif *PipeCodeInputField) GetFieldHeight() int {
+	return 1 // Always single line
+}
+
+func (pcif *PipeCodeInputField) SetFormAttributes(labelWidth int, labelColor, bgColor, fieldTextColor, fieldBgColor tcell.Color) tview.FormItem {
+	// Apply to the input field when editing
+	pcif.inputField.SetFormAttributes(labelWidth, labelColor, bgColor, fieldTextColor, fieldBgColor)
+	return pcif
+}
+
+func (pcif *PipeCodeInputField) SetFinishedFunc(handler func(key tcell.Key)) tview.FormItem {
+	// Apply to the input field
+	pcif.inputField.SetFinishedFunc(handler)
+	return pcif
+}
+
+func (pcif *PipeCodeInputField) SetDisabled(disabled bool) tview.FormItem {
+	// Apply to the input field
+	pcif.inputField.SetDisabled(disabled)
+	return pcif
 }
 
 func (ct *ConfigTool) editWelcomeMessages() {
