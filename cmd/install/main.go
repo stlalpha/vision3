@@ -182,6 +182,15 @@ func (i *Installer) checkSystem() {
 func (i *Installer) verifySignature() {
 	fmt.Printf("%s[SIGNATURE VERIFICATION]%s\n", colorBlue+colorBold, colorReset)
 	
+	// Check if signature data is available
+	if len(publicKeyData) == 0 || len(releaseSignature) == 0 {
+		fmt.Printf("Signature verification skipped - installer not signed\n")
+		fmt.Printf("%sWARNING: This installer has not been digitally signed%s\n", colorYellow, colorReset)
+		fmt.Println()
+		time.Sleep(1 * time.Second)
+		return
+	}
+	
 	fmt.Print("Verifying installer authenticity... ")
 	
 	// Create hash of embedded release data
@@ -232,8 +241,8 @@ func (i *Installer) verifyGPGSignature(dataHash []byte) error {
 		return fmt.Errorf("failed to decode signature: %v", err)
 	}
 	
-	// Verify the signature against our hash
-	dataReader := bytes.NewReader(dataHash)
+	// Verify the signature directly against the embedded tar.gz data
+	dataReader := bytes.NewReader(releaseDataTarGz)
 	_, err = openpgp.CheckDetachedSignature(keyring, dataReader, sigBlock.Body)
 	if err != nil {
 		return fmt.Errorf("signature verification failed: %v", err)

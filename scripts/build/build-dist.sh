@@ -313,7 +313,8 @@ EOF
     # Create signature for the archive
     sha256sum release-data.tar.gz > release-data.tar.gz.sha256
     if [ "$SIGN_RELEASES" = "true" ] && [ -n "$GPG_KEY_ID" ]; then
-        sign_file "release-data.tar.gz.sha256"
+        # Sign the actual tar.gz file, not the SHA256 hash
+        sign_file "release-data.tar.gz"
     fi
     
     # Copy files to installer directory for Go embed
@@ -331,9 +332,9 @@ EOF
         touch "${INSTALLER_DIR}/vision3-signing-key.asc"
     fi
     
-    # Copy signature if it exists
-    if [ -f "release-data.tar.gz.sha256.asc" ]; then
-        cp release-data.tar.gz.sha256.asc "${INSTALLER_DIR}/"
+    # Copy signature if it exists (for the tar.gz file itself)
+    if [ -f "release-data.tar.gz.asc" ]; then
+        cp release-data.tar.gz.asc "${INSTALLER_DIR}/release-data.tar.gz.sha256.asc"
     else
         # Create empty signature file if no signature exists
         touch "${INSTALLER_DIR}/release-data.tar.gz.sha256.asc"
