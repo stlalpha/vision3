@@ -20,6 +20,13 @@ import (
 	"golang.org/x/crypto/openpgp/armor"
 )
 
+// Build-time variables (set by build script)
+var (
+	version   = "dev"
+	buildDate = "unknown"
+	gitCommit = "unknown"
+)
+
 // Embed the release data tar.gz file (created by build script)
 //go:embed release-data.tar.gz
 var releaseDataTarGz []byte
@@ -71,11 +78,9 @@ func main() {
 func (i *Installer) showBanner() {
 	fmt.Print(colorCyan + colorBold)
 	fmt.Println("╔══════════════════════════════════════════════════════════════════╗")
-	fmt.Println("║                       ViSiON/3 BBS INSTALLER                     ║")
+	fmt.Printf("║                    ViSiON/3 BBS INSTALLER v%-21s ║\n", version)
 	fmt.Println("║                                                                  ║")
-	fmt.Println("║             Modern Recreation of Classic BBS Software            ║")
-	fmt.Println("║                                                                  ║")
-	fmt.Println("║                      Version 1.0 - September 2025                ║")
+	fmt.Println("║                    (c) 2025 Ruthless Enterprises                ║")
 	fmt.Println("╚══════════════════════════════════════════════════════════════════╝")
 	fmt.Print(colorReset)
 	fmt.Println()
