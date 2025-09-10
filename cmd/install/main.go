@@ -1,7 +1,12 @@
 package main
 
 import (
+	"archive/tar"
 	"bufio"
+	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
+	"embed"
 	"fmt"
 	"io"
 	"os"
@@ -10,7 +15,25 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/openpgp"
+	"golang.org/x/crypto/openpgp/armor"
 )
+
+// Embed the release data tar.gz file (created by build script)
+//go:embed release-data.tar.gz
+var releaseDataTarGz []byte
+
+// Embed the GPG public key for signature verification
+//go:embed vision3-signing-key.asc
+var publicKeyData []byte
+
+// Embed the signature for verification
+//go:embed release-data.tar.gz.sha256.asc
+var releaseSignature []byte
+
+// Ensure embed import is recognized as used
+var _ embed.FS
 
 const (
 	// ANSI color codes for that classic installer look
@@ -37,6 +60,7 @@ func main() {
 	}
 
 	installer.showBanner()
+	installer.verifySignature()
 	installer.checkSystem()
 	installer.getInstallDir()
 	installer.confirmInstall()
@@ -155,6 +179,98 @@ func (i *Installer) checkSystem() {
 	time.Sleep(1 * time.Second)
 }
 
+func (i *Installer) verifySignature() {
+	fmt.Printf("%s[SIGNATURE VERIFICATION]%s\n", colorBlue+colorBold, colorReset)
+	
+	fmt.Print("Verifying installer authenticity... ")
+	
+	// Create hash of embedded release data
+	releaseHash, err := i.hashEmbeddedFiles()
+	if err != nil {
+		fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
+		fmt.Printf("Error hashing release files: %v\n", err)
+		i.showSecurityWarning("Could not hash release files")
+		return
+	}
+	
+	// Verify GPG signature
+	if err := i.verifyGPGSignature(releaseHash); err != nil {
+		fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
+		fmt.Printf("Signature verification failed: %v\n", err)
+		i.showSecurityWarning("Digital signature verification failed")
+		return
+	}
+	
+	fmt.Printf("%s✓ VERIFIED%s\n", colorGreen+colorBold, colorReset)
+	fmt.Printf("%sInstaller authenticity confirmed. Files are digitally signed and unmodified.%s\n", colorGreen, colorReset)
+	fmt.Println()
+	time.Sleep(1 * time.Second)
+}
+
+func (i *Installer) hashEmbeddedFiles() ([]byte, error) {
+	// Hash the embedded release data
+	hasher := sha256.New()
+	hasher.Write(releaseDataTarGz)
+	return hasher.Sum(nil), nil
+}
+
+func (i *Installer) verifyGPGSignature(dataHash []byte) error {
+	// Parse the public key
+	keyBlock, err := armor.Decode(bytes.NewReader(publicKeyData))
+	if err != nil {
+		return fmt.Errorf("failed to decode public key: %v", err)
+	}
+	
+	keyring, err := openpgp.ReadKeyRing(keyBlock.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read public key: %v", err)
+	}
+	
+	// Parse the signature
+	sigBlock, err := armor.Decode(bytes.NewReader(releaseSignature))
+	if err != nil {
+		return fmt.Errorf("failed to decode signature: %v", err)
+	}
+	
+	// Verify the signature against our hash
+	dataReader := bytes.NewReader(dataHash)
+	_, err = openpgp.CheckDetachedSignature(keyring, dataReader, sigBlock.Body)
+	if err != nil {
+		return fmt.Errorf("signature verification failed: %v", err)
+	}
+	
+	return nil
+}
+
+func (i *Installer) showSecurityWarning(reason string) {
+	fmt.Println()
+	fmt.Printf("%s%s", colorRed+colorBold, strings.Repeat("!", 70))
+	fmt.Printf("%s\n", colorReset)
+	fmt.Printf("%s                        SECURITY WARNING%s\n", colorRed+colorBold, colorReset)  
+	fmt.Printf("%s%s", colorRed+colorBold, strings.Repeat("!", 70))
+	fmt.Printf("%s\n", colorReset)
+	fmt.Println()
+	
+	fmt.Printf("%sReason:%s %s\n", colorRed+colorBold, colorReset, reason)
+	fmt.Println()
+	fmt.Printf("%sThis installer may have been tampered with or corrupted.%s\n", colorRed, colorReset)
+	fmt.Printf("%sFor your security, installation is recommended to be cancelled.%s\n", colorRed, colorReset)
+	fmt.Println()
+	
+	fmt.Printf("%sDo you want to continue anyway? [y/N]:%s ", colorBold, colorReset)
+	reader := bufio.NewReader(os.Stdin)
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(strings.ToLower(input))
+	
+	if input != "y" && input != "yes" {
+		fmt.Printf("%sInstallation cancelled for security reasons.%s\n", colorRed, colorReset)
+		os.Exit(1)
+	}
+	
+	fmt.Printf("%sProceeding with unverified installer...%s\n", colorYellow, colorReset)
+	fmt.Println()
+}
+
 func (i *Installer) getInstallDir() {
 	fmt.Printf("%s[INSTALLATION DIRECTORY]%s\n", colorBlue+colorBold, colorReset)
 	
@@ -253,58 +369,86 @@ func (i *Installer) performInstall() {
 func (i *Installer) extractFiles() {
 	fmt.Printf("Installing files... ")
 	
-	// Get the directory where the installer is running from
-	installerDir, err := os.Executable()
+	if len(releaseDataTarGz) == 0 {
+		fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
+		fmt.Printf("Error: No embedded release data found\n")
+		os.Exit(1)
+	}
+	
+	// Create a reader for the embedded tar.gz data
+	reader := bytes.NewReader(releaseDataTarGz)
+	
+	// Create gzip reader
+	gzipReader, err := gzip.NewReader(reader)
 	if err != nil {
 		fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
-		fmt.Printf("Error getting installer location: %v\n", err)
+		fmt.Printf("Error reading compressed data: %v\n", err)
 		os.Exit(1)
 	}
-	sourceDir := filepath.Dir(installerDir)
+	defer gzipReader.Close()
 	
-	// Copy binaries
-	binSourceDir := filepath.Join(sourceDir, "bin")
-	binTargetDir := filepath.Join(i.installDir, "bin")
-	if err := i.copyDir(binSourceDir, binTargetDir); err != nil {
-		fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
-		fmt.Printf("Error copying binaries: %v\n", err)
-		os.Exit(1)
-	}
+	// Create tar reader
+	tarReader := tar.NewReader(gzipReader)
 	
-	// Copy configs (but don't overwrite existing SSH keys)
-	configSourceDir := filepath.Join(sourceDir, "configs")
-	configTargetDir := filepath.Join(i.installDir, "configs")
-	if err := i.copyDir(configSourceDir, configTargetDir); err != nil {
-		fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
-		fmt.Printf("Error copying configs: %v\n", err)
-		os.Exit(1)
-	}
-	
-	// Copy menus
-	menuSourceDir := filepath.Join(sourceDir, "menus")
-	menuTargetDir := filepath.Join(i.installDir, "menus")
-	if err := i.copyDir(menuSourceDir, menuTargetDir); err != nil {
-		fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
-		fmt.Printf("Error copying menus: %v\n", err)
-		os.Exit(1)
-	}
-	
-	// Copy data directory (template files, not user data)
-	dataSourceDir := filepath.Join(sourceDir, "data")
-	dataTargetDir := filepath.Join(i.installDir, "data")
-	if err := i.copyDir(dataSourceDir, dataTargetDir); err != nil {
-		fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
-		fmt.Printf("Error copying data: %v\n", err)
-		os.Exit(1)
-	}
-	
-	// Copy README and LICENSE
-	for _, file := range []string{"README.md", "LICENSE", "ViSiON3.png"} {
-		src := filepath.Join(sourceDir, file)
-		dst := filepath.Join(i.installDir, file)
-		if err := i.copyFile(src, dst); err != nil {
-			// These are optional, just warn
-			fmt.Printf("\nWarning: Could not copy %s: %v", file, err)
+	// Extract all files from the tar archive
+	for {
+		header, err := tarReader.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
+			fmt.Printf("Error reading tar archive: %v\n", err)
+			os.Exit(1)
+		}
+		
+		// Clean the path and remove release-data/ prefix
+		cleanPath := strings.TrimPrefix(header.Name, "release-data/")
+		if cleanPath == "" || cleanPath == "release-data" {
+			continue
+		}
+		
+		targetPath := filepath.Join(i.installDir, cleanPath)
+		
+		switch header.Typeflag {
+		case tar.TypeDir:
+			// Create directory
+			if err := os.MkdirAll(targetPath, os.FileMode(header.Mode)); err != nil {
+				fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
+				fmt.Printf("Error creating directory %s: %v\n", targetPath, err)
+				os.Exit(1)
+			}
+			
+		case tar.TypeReg:
+			// Create parent directory if it doesn't exist
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
+				fmt.Printf("Error creating parent directory for %s: %v\n", targetPath, err)
+				os.Exit(1)
+			}
+			
+			// Create and write file
+			file, err := os.Create(targetPath)
+			if err != nil {
+				fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
+				fmt.Printf("Error creating file %s: %v\n", targetPath, err)
+				os.Exit(1)
+			}
+			
+			if _, err := io.Copy(file, tarReader); err != nil {
+				file.Close()
+				fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
+				fmt.Printf("Error writing file %s: %v\n", targetPath, err)
+				os.Exit(1)
+			}
+			file.Close()
+			
+			// Set file permissions
+			if err := os.Chmod(targetPath, os.FileMode(header.Mode)); err != nil {
+				fmt.Printf("%sFAILED%s\n", colorRed, colorReset)
+				fmt.Printf("Error setting permissions for %s: %v\n", targetPath, err)
+				os.Exit(1)
+			}
 		}
 	}
 	

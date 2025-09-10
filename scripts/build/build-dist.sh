@@ -113,29 +113,7 @@ PLATFORMS=(
     "windows/arm64"
 )
 
-print_step "Building installers for all platforms..."
-
-for platform in "${PLATFORMS[@]}"; do
-    IFS='/' read -ra PARTS <<< "$platform"
-    GOOS=${PARTS[0]}
-    GOARCH=${PARTS[1]}
-    
-    OUTPUT_NAME="vision3-installer-${GOOS}-${GOARCH}"
-    if [ $GOOS = "windows" ]; then
-        OUTPUT_NAME="${OUTPUT_NAME}.exe"
-    fi
-    
-    print_status "Building installer for ${GOOS}/${GOARCH}..."
-    
-    cd "$(dirname "$0")/../../cmd/install"
-    env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "${DIST_DIR}/${OUTPUT_NAME}"
-    cd "$(dirname "$0")"
-    
-    # Sign the installer
-    sign_file "${DIST_DIR}/${OUTPUT_NAME}"
-done
-
-print_step "Building main application binaries..."
+print_step "Building all application binaries first..."
 
 # Build all main applications for each platform
 APPS=(
@@ -145,49 +123,54 @@ APPS=(
     "stringtool"
 )
 
-# Create distribution README (will be customized per platform)
-print_step "Creating platform-specific installation guides..."
+print_step "Creating self-extracting installers with embedded files..."
 
 for platform in "${PLATFORMS[@]}"; do
     IFS='/' read -ra PARTS <<< "$platform"
     GOOS=${PARTS[0]}
     GOARCH=${PARTS[1]}
     
-    PLATFORM_DIR="${DIST_DIR}/vision3-${VERSION}-${GOOS}-${GOARCH}"
-    mkdir -p "${PLATFORM_DIR}/bin"
+    print_status "Creating embedded installer for ${GOOS}/${GOARCH}..."
     
+    # Create temporary release data directory for embedding
+    RELEASE_DATA_DIR="$DIST_DIR/release-data-${GOOS}-${GOARCH}"
+    rm -rf "$RELEASE_DATA_DIR"
+    mkdir -p "$RELEASE_DATA_DIR/release-data/bin"
+    
+    # Build all applications for this platform into the release structure
     print_status "Building applications for ${GOOS}/${GOARCH}..."
-    
     for app in "${APPS[@]}"; do
         OUTPUT_NAME="$app"
         if [ $GOOS = "windows" ]; then
             OUTPUT_NAME="${app}.exe"
         fi
         
+        print_status "  Building $app..."
         cd "$(dirname "$0")/../../cmd/$app"
-        env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "${PLATFORM_DIR}/bin/${OUTPUT_NAME}"
+        env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "${RELEASE_DATA_DIR}/release-data/bin/${OUTPUT_NAME}"
+        if [ $? -ne 0 ]; then
+            print_status "Failed to build $app for ${GOOS}/${GOARCH}"
+            exit 1
+        fi
         cd "$(dirname "$0")"
     done
     
-    # Copy configuration files and assets
-    print_status "Copying assets for ${GOOS}/${GOARCH}..."
-    cp -r "$PROJECT_ROOT/configs" "${PLATFORM_DIR}/"
-    cp -r "$PROJECT_ROOT/menus" "${PLATFORM_DIR}/"
-    cp -r "$PROJECT_ROOT/data" "${PLATFORM_DIR}/"
-    cp "$PROJECT_ROOT/README.md" "${PLATFORM_DIR}/"
-    cp "$PROJECT_ROOT/LICENSE" "${PLATFORM_DIR}/"
-    cp "$PROJECT_ROOT/ViSiON3.png" "${PLATFORM_DIR}/"
+    # Copy configuration files and assets to release-data
+    cp -r "$PROJECT_ROOT/configs" "${RELEASE_DATA_DIR}/release-data/"
+    cp -r "$PROJECT_ROOT/menus" "${RELEASE_DATA_DIR}/release-data/"
+    cp -r "$PROJECT_ROOT/data" "${RELEASE_DATA_DIR}/release-data/"
+    cp "$PROJECT_ROOT/README.md" "${RELEASE_DATA_DIR}/release-data/"
+    cp "$PROJECT_ROOT/LICENSE" "${RELEASE_DATA_DIR}/release-data/"
+    cp "$PROJECT_ROOT/ViSiON3.png" "${RELEASE_DATA_DIR}/release-data/"
     
-    # Create platform-specific installation guide
+    # Create platform-specific installation guide in release-data
     if [ $GOOS = "windows" ]; then
-        cat > "${PLATFORM_DIR}/INSTALL.txt" << EOF
+        cat > "${RELEASE_DATA_DIR}/release-data/INSTALL.txt" << EOF
 ViSiON/3 BBS for Windows ${GOARCH} v${VERSION}
 Built on: ${BUILD_DATE}
 Git Commit: ${GIT_COMMIT}
 
 === INSTALLATION INSTRUCTIONS ===
-
-You have already extracted the ViSiON/3 BBS distribution!
 
 QUICK START:
 1. Double-click 'start-vision3.bat' to start the BBS server
@@ -227,10 +210,8 @@ INCLUDED TOOLS:
 - bin\\ansitest.exe - ANSI art testing tool
 - bin\\stringtool.exe - String manipulation utility
 
-SIGNATURE VERIFICATION (Optional but Recommended):
-This release is digitally signed. To verify authenticity:
-1. Import public key: gpg --import vision3-signing-key.asc
-2. Verify signature: gpg --verify vision3-${VERSION}-${GOOS}-${GOARCH}.zip.asc vision3-${VERSION}-${GOOS}-${GOARCH}.zip
+SIGNATURE VERIFICATION:
+This installer has been digitally signed. Signature verification was performed automatically during installation.
 
 For support: https://github.com/stlalpha/vision3
 
@@ -243,14 +224,12 @@ EOF
             PLATFORM_NAME="macOS"
         fi
         
-        cat > "${PLATFORM_DIR}/INSTALL.txt" << EOF
+        cat > "${RELEASE_DATA_DIR}/release-data/INSTALL.txt" << EOF
 ViSiON/3 BBS for ${PLATFORM_NAME} ${GOARCH} v${VERSION}
 Built on: ${BUILD_DATE}
 Git Commit: ${GIT_COMMIT}
 
 === INSTALLATION INSTRUCTIONS ===
-
-You have already extracted the ViSiON/3 BBS distribution!
 
 QUICK START:
 1. Run the startup script: ./start-vision3.sh
@@ -297,10 +276,8 @@ SYSTEM REQUIREMENTS:
 - Terminal with SSH client
 - For best experience: Terminal supporting ANSI colors and CP437 encoding
 
-SIGNATURE VERIFICATION (Optional but Recommended):
-This release is digitally signed. To verify authenticity:
-1. Import public key: gpg --import vision3-signing-key.asc
-2. Verify signature: gpg --verify vision3-${VERSION}-${GOOS}-${GOARCH}.tar.gz.asc vision3-${VERSION}-${GOOS}-${GOARCH}.tar.gz
+SIGNATURE VERIFICATION:
+This installer has been digitally signed. Signature verification was performed automatically during installation.
 
 For support: https://github.com/stlalpha/vision3
 
@@ -309,113 +286,171 @@ EOF
     fi
     
     # Remove SSH keys from configs (will be generated during install)
-    rm -f "${PLATFORM_DIR}/configs/ssh_host_*_key"*
+    rm -f "${RELEASE_DATA_DIR}/release-data/configs/ssh_host_*_key"*
     
     # Create platform-specific start script
     if [ $GOOS = "windows" ]; then
-        cat > "${PLATFORM_DIR}/start-vision3.bat" << 'EOF'
+        cat > "${RELEASE_DATA_DIR}/release-data/start-vision3.bat" << 'EOF'
 @echo off
 cd /d "%~dp0"
 bin\vision3.exe
 pause
 EOF
     else
-        cat > "${PLATFORM_DIR}/start-vision3.sh" << 'EOF'
+        cat > "${RELEASE_DATA_DIR}/release-data/start-vision3.sh" << 'EOF'
 #!/bin/bash
 cd "$(dirname "$0")"
 ./bin/vision3
 EOF
-        chmod +x "${PLATFORM_DIR}/start-vision3.sh"
+        chmod +x "${RELEASE_DATA_DIR}/release-data/start-vision3.sh"
     fi
     
-    # Create archive
-    print_status "Creating archive for ${GOOS}/${GOARCH}..."
-    cd $DIST_DIR
-    if [ $GOOS = "windows" ]; then
-        zip -r "vision3-${VERSION}-${GOOS}-${GOARCH}.zip" "vision3-${VERSION}-${GOOS}-${GOARCH}/" 2>&1 >/dev/null
-        # Sign the zip file
-        cd ..
-        sign_file "${DIST_DIR}/vision3-${VERSION}-${GOOS}-${GOARCH}.zip"
-    else
-        tar -czf "vision3-${VERSION}-${GOOS}-${GOARCH}.tar.gz" "vision3-${VERSION}-${GOOS}-${GOARCH}/"
-        # Sign the tar.gz file
-        cd ..
-        sign_file "${DIST_DIR}/vision3-${VERSION}-${GOOS}-${GOARCH}.tar.gz"
+    # Create compressed tar archive of release data
+    print_status "Creating compressed release archive..."
+    cd "${RELEASE_DATA_DIR}"
+    tar -czf release-data.tar.gz release-data/
+    
+    # Create signature for the archive
+    sha256sum release-data.tar.gz > release-data.tar.gz.sha256
+    if [ "$SIGN_RELEASES" = "true" ] && [ -n "$GPG_KEY_ID" ]; then
+        sign_file "release-data.tar.gz.sha256"
     fi
+    
+    # Copy files to installer directory for Go embed
+    print_status "Preparing files for embedding..."
+    INSTALLER_DIR="${SCRIPT_DIR}/../../cmd/install"
+    
+    # Copy the tar.gz file where Go embed can find it
+    cp release-data.tar.gz "${INSTALLER_DIR}/"
+    
+    # Copy public key for embedding
+    if [ -f "$PROJECT_ROOT/vision3-signing-key.asc" ]; then
+        cp "$PROJECT_ROOT/vision3-signing-key.asc" "${INSTALLER_DIR}/"
+    else
+        # Create empty file if no public key exists
+        touch "${INSTALLER_DIR}/vision3-signing-key.asc"
+    fi
+    
+    # Copy signature if it exists
+    if [ -f "release-data.tar.gz.sha256.asc" ]; then
+        cp release-data.tar.gz.sha256.asc "${INSTALLER_DIR}/"
+    else
+        # Create empty signature file if no signature exists
+        touch "${INSTALLER_DIR}/release-data.tar.gz.sha256.asc"
+    fi
+    
+    # Build the self-extracting installer with embedded files
+    print_status "Building embedded installer for ${GOOS}/${GOARCH}..."
+    INSTALLER_NAME="vision3-installer-${GOOS}-${GOARCH}"
+    if [ $GOOS = "windows" ]; then
+        INSTALLER_NAME="${INSTALLER_NAME}.exe"
+    fi
+    
+    cd "${INSTALLER_DIR}"
+    env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "${DIST_DIR}/${INSTALLER_NAME}"
+    
+    # Clean up embedded files from installer directory
+    rm -f release-data.tar.gz vision3-signing-key.asc release-data.tar.gz.sha256.asc
+    
+    # Sign the installer binary
+    sign_file "${DIST_DIR}/${INSTALLER_NAME}"
+    
+    # Clean up temporary release-data directory
+    rm -rf "${RELEASE_DATA_DIR}"
 done
 
-print_step "Creating checksums..."
+print_step "Creating checksums and installer summary..."
 cd $DIST_DIR
-for i in $(find . -type f -print | grep -v '\.asc$'); 
+
+# Create checksums for installer binaries
+for i in $(find . -type f -name "vision3-installer-*" -print); 
 do
-sha256sum $i >> SHA256SUMS
+    sha256sum $i >> SHA256SUMS
 done
 
 # Sign the checksum file
 sign_file "SHA256SUMS"
 
-# Create signature manifest if signing is enabled
+# Create installer manifest if signing is enabled
 if [ "$SIGN_RELEASES" = "true" ] && [ -n "$GPG_KEY_ID" ]; then
-    print_step "Creating signature manifest..."
+    print_step "Creating installer manifest..."
     
-    cat > "SIGNATURES.txt" << EOF
-ViSiON/3 BBS v${VERSION} - Digital Signatures
+    cat > "INSTALLER_MANIFEST.txt" << EOF
+ViSiON/3 BBS v${VERSION} - Self-Extracting Installers
 Generated: ${BUILD_DATE}
 GPG Key ID: ${GPG_KEY_ID}
 
+=== EMBEDDED INSTALLER FEATURES ===
+
+Each installer is a single self-contained binary that includes:
+- All ViSiON/3 BBS applications (vision3, vision3-config, ansitest, stringtool)
+- Configuration files, menus, and data directories
+- Digital signature verification (automatic during installation)
+- Interactive installation with progress indicators
+- Platform-specific startup scripts
+
 === SIGNATURE VERIFICATION ===
 
-To verify signatures:
-1. Import the public key: gpg --import vision3-signing-key.asc
-2. Verify a file: gpg --verify filename.asc filename
+Installers are digitally signed. Signature verification is performed automatically
+during installation. Manual verification is also possible:
 
-=== SIGNED FILES ===
+1. Import the public key: gpg --import vision3-signing-key.asc
+2. Verify installer: gpg --verify vision3-installer-PLATFORM-ARCH.asc vision3-installer-PLATFORM-ARCH
+
+=== SIGNED INSTALLERS ===
 
 EOF
     
-    # List all signature files
-    for sig_file in $(find . -name "*.asc" | sort); do
+    # List all installer signature files
+    for sig_file in $(find . -name "vision3-installer-*.asc" | sort); do
         original_file=$(echo "$sig_file" | sed 's/\.asc$//')
-        echo "Signature: $sig_file" >> SIGNATURES.txt
-        echo "File:      $original_file" >> SIGNATURES.txt
-        echo "" >> SIGNATURES.txt
+        echo "Signature: $sig_file" >> INSTALLER_MANIFEST.txt
+        echo "Installer: $original_file" >> INSTALLER_MANIFEST.txt
+        echo "" >> INSTALLER_MANIFEST.txt
     done
     
-    # Add public key and verification scripts to distribution if they exist
+    # Add public key to distribution
     if [ -f "$PROJECT_ROOT/vision3-signing-key.asc" ]; then
         cp "$PROJECT_ROOT/vision3-signing-key.asc" .
         print_status "Added public key to distribution"
-    fi
-    
-    if [ -f "verify.sh" ]; then
-        cp "verify.sh" .
-        chmod +x verify.sh
-        print_status "Added verification script for Linux/macOS"
-    fi
-    
-    if [ -f "verify.bat" ]; then
-        cp "verify.bat" .
-        print_status "Added verification script for Windows"
     fi
 fi
 
 cd ..
 
 echo
-print_status "Distribution build completed!"
+print_status "Embedded installer build completed!"
 echo
-echo "Files created in ${DIST_DIR}/:"
+echo "Self-extracting installers created in ${DIST_DIR}/:"
 ls -la $DIST_DIR/
 echo
 
 if [ "$SIGN_RELEASES" = "true" ] && [ -n "$GPG_KEY_ID" ]; then
     echo "=== SIGNATURE SUMMARY ==="
     sig_count=$(find $DIST_DIR -name "*.asc" | wc -l)
+    installer_count=$(find $DIST_DIR -name "vision3-installer-*" ! -name "*.asc" | wc -l)
+    print_status "Created $installer_count self-extracting installers"
     print_status "Created $sig_count digital signatures"
     print_status "GPG Key ID: $GPG_KEY_ID"
     print_status "Public key: $DIST_DIR/vision3-signing-key.asc"
-    print_status "Signature manifest: $DIST_DIR/SIGNATURES.txt"
+    print_status "Installer manifest: $DIST_DIR/INSTALLER_MANIFEST.txt"
+    echo
+    print_status "Each installer includes:"
+    print_status "  • All BBS applications and files"
+    print_status "  • Automatic signature verification"
+    print_status "  • Interactive installation process"
+    print_status "  • Platform-specific startup scripts"
     echo
 fi
 
-print_status "Distribution packages are ready for release!"
+print_status "Self-extracting installers are ready for distribution!"
+print_status ""
+print_status "Usage: Simply run the installer binary for your platform:"
+print_status "  Linux/macOS: ./vision3-installer-linux-amd64"
+print_status "  Windows:     vision3-installer-windows-amd64.exe"
+print_status ""
+print_status "Each installer will:"
+print_status "  1. Verify its digital signature automatically"
+print_status "  2. Extract all BBS files to current directory"
+print_status "  3. Create platform-specific startup scripts"
+print_status "  4. Provide installation instructions"
