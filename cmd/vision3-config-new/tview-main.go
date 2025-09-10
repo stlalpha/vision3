@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -23,6 +24,8 @@ type ConfigTool struct {
 	pages         *tview.Pages
 	configPath    string
 	stringsConfig config.StringsConfig
+	screenWidth   int
+	screenHeight  int
 }
 
 func main() {
@@ -48,16 +51,33 @@ func main() {
 	// Create TVI application
 	app := tview.NewApplication()
 	
+	// Get initial screen size (default to reasonable values)
+	screenWidth, screenHeight := 120, 30
+	
 	// Create config tool
 	tool := &ConfigTool{
 		app:           app,
 		pages:         tview.NewPages(),
 		configPath:    *configPath,
 		stringsConfig: stringsConfig,
+		screenWidth:   screenWidth,
+		screenHeight:  screenHeight,
 	}
 
 	// Build UI
 	tool.buildMainMenu()
+	
+	// Set up resize handler to update screen dimensions
+	app.SetBeforeDrawFunc(func(screen tcell.Screen) bool {
+		if screen != nil {
+			w, h := screen.Size()
+			if w != tool.screenWidth || h != tool.screenHeight {
+				tool.screenWidth = w
+				tool.screenHeight = h
+			}
+		}
+		return false
+	})
 	
 	// Set root and run
 	app.SetRoot(tool.pages, true)
@@ -199,8 +219,8 @@ func (ct *ConfigTool) editSystemName() {
 	form.SetTitle(" Edit System Name ")
 	form.SetTitleAlign(tview.AlignCenter)
 
-	// Add input field
-	form.AddInputField("System Name", currentName, 50, nil, nil)
+	// Add input field with responsive width
+	form.AddInputField("System Name", currentName, ct.getFieldWidth(), nil, nil)
 	
 	// Add buttons
 	form.AddButton("Save", func() {
@@ -248,6 +268,68 @@ func (ct *ConfigTool) editSystemName() {
 	ct.pages.SwitchToPage("systemname")
 }
 
+// PipeCodeInputField creates a custom input field that shows rendered text when not focused
+type PipeCodeInputField struct {
+	*tview.InputField
+	rawText      string
+	renderFunc   func(string) string
+	isMultiline  bool
+}
+
+func (ct *ConfigTool) newPipeCodeInputField(label, text string, width int, renderFunc func(string) string) *PipeCodeInputField {
+	field := &PipeCodeInputField{
+		InputField: tview.NewInputField(),
+		rawText:    text,
+		renderFunc: renderFunc,
+	}
+	
+	field.SetLabel(label).SetFieldWidth(width).SetText(text)
+	
+	// Show rendered text initially
+	field.showRendered()
+	
+	// Set up focus handlers
+	field.SetFocusFunc(func() {
+		field.showRaw()
+	})
+	
+	field.SetBlurFunc(func() {
+		field.rawText = field.GetText()
+		field.showRendered()
+	})
+	
+	field.SetChangedFunc(func(text string) {
+		field.rawText = text
+	})
+	
+	return field
+}
+
+func (pcif *PipeCodeInputField) showRendered() {
+	if pcif.renderFunc != nil {
+		rendered := pcif.renderFunc(pcif.rawText)
+		// Temporarily disable change handler to avoid loops
+		pcif.SetChangedFunc(nil)
+		pcif.SetText(rendered)
+		pcif.SetChangedFunc(func(text string) {
+			pcif.rawText = text
+		})
+	}
+}
+
+func (pcif *PipeCodeInputField) showRaw() {
+	// Temporarily disable change handler to avoid loops
+	pcif.SetChangedFunc(nil)
+	pcif.SetText(pcif.rawText)
+	pcif.SetChangedFunc(func(text string) {
+		pcif.rawText = text
+	})
+}
+
+func (pcif *PipeCodeInputField) GetRawText() string {
+	return pcif.rawText
+}
+
 func (ct *ConfigTool) editWelcomeMessages() {
 	// Create form for welcome messages
 	form := tview.NewForm()
@@ -255,17 +337,30 @@ func (ct *ConfigTool) editWelcomeMessages() {
 	form.SetTitle(" Edit Welcome Messages ")
 	form.SetTitleAlign(tview.AlignCenter)
 
-	// Add text areas for different welcome messages using actual StringsConfig fields
-	form.AddTextArea("Welcome New User", ct.stringsConfig.WelcomeNewUser, 60, 5, 0, nil)
-	form.AddTextArea("Login Now", ct.stringsConfig.LoginNow, 60, 5, 0, nil)
-	form.AddTextArea("Connection String", ct.stringsConfig.ConnectionStr, 60, 3, 0, nil)
+	// Create pipe code input fields with responsive widths
+	fieldWidth := ct.getFieldWidth()
+	welcomeField := ct.newPipeCodeInputField("Welcome New User", ct.stringsConfig.WelcomeNewUser, fieldWidth, ct.renderPipeCodes)
+	loginField := ct.newPipeCodeInputField("Login Now", ct.stringsConfig.LoginNow, fieldWidth, ct.renderPipeCodes)
+	connField := ct.newPipeCodeInputField("Connection String", ct.stringsConfig.ConnectionStr, fieldWidth, ct.renderPipeCodes)
+	
+	// Add fields to form
+	form.AddFormItem(welcomeField)
+	form.AddFormItem(loginField)
+	form.AddFormItem(connField)
+	
+	// Create help area
+	helpText := tview.NewTextView()
+	helpText.SetBorder(true)
+	helpText.SetTitle(" Pipe Code Help ")
+	helpText.SetDynamicColors(true)
+	helpText.SetText("Foreground colors (Dark/Bright intensity):\n[white]|00[white:-] [#000000]Black[white:-]      [white]|08[white:-] [#555555]Dark Gray[white:-]\n[white]|01[white:-] [#AA0000]Red (Dark)[white:-]  [white]|09[white:-] [#FF5555]Bright Red[white:-]\n[white]|02[white:-] [#00AA00]Green (Dark)[white:-] [white]|10[white:-] [#55FF55]Bright Green[white:-]\n[white]|03[white:-] [#AA5500]Brown[white:-]      [white]|11[white:-] [#FFFF55]Yellow[white:-]\n[white]|04[white:-] [#0000AA]Blue (Dark)[white:-] [white]|12[white:-] [#5555FF]Bright Blue[white:-]\n[white]|05[white:-] [#AA00AA]Magenta[white:-]    [white]|13[white:-] [#FF55FF]Bright Magenta[white:-]\n[white]|06[white:-] [#00AAAA]Cyan (Dark)[white:-] [white]|14[white:-] [#55FFFF]Bright Cyan[white:-]\n[white]|07[white:-] [#AAAAAA]Gray[white:-]       [white]|15[white:-] [#FFFFFF]White[white:-]\n\nBackground colors:\n[white]|B0[white:-] [#FFFFFF:#000000]Black BG[white:-]  [white]|B1[white:-] [#FFFFFF:#AA0000]Red BG[white:-]   [white]|B2[white:-] [#000000:#00AA00]Green BG[white:-]  [white]|B3[white:-] [#000000:#AA5500]Brown BG[white:-]\n[white]|B4[white:-] [#FFFFFF:#0000AA]Blue BG[white:-]  [white]|B5[white:-] [#FFFFFF:#AA00AA]Magenta BG[white:-] [white]|B6[white:-] [#000000:#00AAAA]Cyan BG[white:-]  [white]|B7[white:-] [#000000:#AAAAAA]Gray BG[white:-]\n\nTip: Click in field to edit raw pipe codes, click out to see rendered preview")
 	
 	// Add buttons
 	form.AddButton("Save", func() {
-		// Get the new values
-		ct.stringsConfig.WelcomeNewUser = form.GetFormItemByLabel("Welcome New User").(*tview.TextArea).GetText()
-		ct.stringsConfig.LoginNow = form.GetFormItemByLabel("Login Now").(*tview.TextArea).GetText() 
-		ct.stringsConfig.ConnectionStr = form.GetFormItemByLabel("Connection String").(*tview.TextArea).GetText()
+		// Get the raw values
+		ct.stringsConfig.WelcomeNewUser = welcomeField.GetRawText()
+		ct.stringsConfig.LoginNow = loginField.GetRawText() 
+		ct.stringsConfig.ConnectionStr = connField.GetRawText()
 		
 		// Save to file
 		if err := ct.saveStringsConfig(); err != nil {
@@ -281,8 +376,26 @@ func (ct *ConfigTool) editWelcomeMessages() {
 		ct.pages.SwitchToPage("strings")
 	})
 
+	// Create responsive flex layout
+	flex := tview.NewFlex()
+	
+	// On narrow screens, stack vertically; on wide screens, side by side
+	if ct.screenWidth < 120 {
+		// Vertical layout for narrow screens
+		flex.SetDirection(tview.FlexRow)
+		flex.AddItem(form, 0, 2, true)
+		flex.AddItem(helpText, 0, 1, false)
+	} else {
+		// Horizontal layout for wide screens
+		flex.SetDirection(tview.FlexColumn)
+		formWidth := ct.getFieldWidth() + 10 // Form padding
+		helpWidth := ct.getHelpWidth()
+		flex.AddItem(form, formWidth, 0, true)
+		flex.AddItem(helpText, helpWidth, 0, false)
+	}
+
 	// Add escape key handling
-	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			ct.pages.SwitchToPage("strings")
 			return nil
@@ -290,7 +403,7 @@ func (ct *ConfigTool) editWelcomeMessages() {
 		return event
 	})
 
-	ct.pages.AddPage("welcomemsgs", form, true, false)
+	ct.pages.AddPage("welcomemsgs", flex, true, false)
 	ct.pages.SwitchToPage("welcomemsgs")
 }
 
@@ -301,19 +414,33 @@ func (ct *ConfigTool) editMenuPrompts() {
 	form.SetTitle(" Edit Menu Prompts ")
 	form.SetTitleAlign(tview.AlignCenter)
 
-	// Add input fields for menu prompts using actual StringsConfig fields
-	form.AddInputField("Default Prompt", ct.stringsConfig.DefPrompt, 50, nil, nil)
-	form.AddInputField("Message Menu Prompt", ct.stringsConfig.MessageMenuPrompt, 50, nil, nil)
-	form.AddInputField("Continue String", ct.stringsConfig.ContinueStr, 50, nil, nil)
-	form.AddInputField("Pause String", ct.stringsConfig.PauseString, 50, nil, nil)
+	// Create pipe code input fields with responsive widths
+	fieldWidth := ct.getFieldWidth()
+	defPromptField := ct.newPipeCodeInputField("Default Prompt", ct.stringsConfig.DefPrompt, fieldWidth, ct.renderPipeCodes)
+	msgPromptField := ct.newPipeCodeInputField("Message Menu Prompt", ct.stringsConfig.MessageMenuPrompt, fieldWidth, ct.renderPipeCodes)
+	contStrField := ct.newPipeCodeInputField("Continue String", ct.stringsConfig.ContinueStr, fieldWidth, ct.renderPipeCodes)
+	pauseStrField := ct.newPipeCodeInputField("Pause String", ct.stringsConfig.PauseString, fieldWidth, ct.renderPipeCodes)
+	
+	// Add fields to form
+	form.AddFormItem(defPromptField)
+	form.AddFormItem(msgPromptField)
+	form.AddFormItem(contStrField)
+	form.AddFormItem(pauseStrField)
+	
+	// Create help area
+	helpText := tview.NewTextView()
+	helpText.SetBorder(true)
+	helpText.SetTitle(" Pipe Code Help ")
+	helpText.SetDynamicColors(true)
+	helpText.SetText("Foreground colors (Dark/Bright intensity):\n[white]|00[white:-] [#000000]Black[white:-]      [white]|08[white:-] [#555555]Dark Gray[white:-]\n[white]|01[white:-] [#AA0000]Red (Dark)[white:-]  [white]|09[white:-] [#FF5555]Bright Red[white:-]\n[white]|02[white:-] [#00AA00]Green (Dark)[white:-] [white]|10[white:-] [#55FF55]Bright Green[white:-]\n[white]|03[white:-] [#AA5500]Brown[white:-]      [white]|11[white:-] [#FFFF55]Yellow[white:-]\n[white]|04[white:-] [#0000AA]Blue (Dark)[white:-] [white]|12[white:-] [#5555FF]Bright Blue[white:-]\n[white]|05[white:-] [#AA00AA]Magenta[white:-]    [white]|13[white:-] [#FF55FF]Bright Magenta[white:-]\n[white]|06[white:-] [#00AAAA]Cyan (Dark)[white:-] [white]|14[white:-] [#55FFFF]Bright Cyan[white:-]\n[white]|07[white:-] [#AAAAAA]Gray[white:-]       [white]|15[white:-] [#FFFFFF]White[white:-]\n\nBackground colors:\n[white]|B0[white:-] [#FFFFFF:#000000]Black BG[white:-]  [white]|B1[white:-] [#FFFFFF:#AA0000]Red BG[white:-]   [white]|B2[white:-] [#000000:#00AA00]Green BG[white:-]  [white]|B3[white:-] [#000000:#AA5500]Brown BG[white:-]\n[white]|B4[white:-] [#FFFFFF:#0000AA]Blue BG[white:-]  [white]|B5[white:-] [#FFFFFF:#AA00AA]Magenta BG[white:-] [white]|B6[white:-] [#000000:#00AAAA]Cyan BG[white:-]  [white]|B7[white:-] [#000000:#AAAAAA]Gray BG[white:-]\n\nTip: Click in field to edit raw pipe codes, click out to see rendered preview")
 	
 	// Add buttons
 	form.AddButton("Save", func() {
-		// Get the new values
-		ct.stringsConfig.DefPrompt = form.GetFormItemByLabel("Default Prompt").(*tview.InputField).GetText()
-		ct.stringsConfig.MessageMenuPrompt = form.GetFormItemByLabel("Message Menu Prompt").(*tview.InputField).GetText()
-		ct.stringsConfig.ContinueStr = form.GetFormItemByLabel("Continue String").(*tview.InputField).GetText()
-		ct.stringsConfig.PauseString = form.GetFormItemByLabel("Pause String").(*tview.InputField).GetText()
+		// Get the raw values
+		ct.stringsConfig.DefPrompt = defPromptField.GetRawText()
+		ct.stringsConfig.MessageMenuPrompt = msgPromptField.GetRawText()
+		ct.stringsConfig.ContinueStr = contStrField.GetRawText()
+		ct.stringsConfig.PauseString = pauseStrField.GetRawText()
 		
 		// Save to file
 		if err := ct.saveStringsConfig(); err != nil {
@@ -329,8 +456,26 @@ func (ct *ConfigTool) editMenuPrompts() {
 		ct.pages.SwitchToPage("strings")
 	})
 
+	// Create responsive flex layout
+	flex := tview.NewFlex()
+	
+	// On narrow screens, stack vertically; on wide screens, side by side
+	if ct.screenWidth < 120 {
+		// Vertical layout for narrow screens
+		flex.SetDirection(tview.FlexRow)
+		flex.AddItem(form, 0, 2, true)
+		flex.AddItem(helpText, 0, 1, false)
+	} else {
+		// Horizontal layout for wide screens
+		flex.SetDirection(tview.FlexColumn)
+		formWidth := ct.getFieldWidth() + 10 // Form padding
+		helpWidth := ct.getHelpWidth()
+		flex.AddItem(form, formWidth, 0, true)
+		flex.AddItem(helpText, helpWidth, 0, false)
+	}
+
 	// Add escape key handling
-	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			ct.pages.SwitchToPage("strings")
 			return nil
@@ -338,7 +483,7 @@ func (ct *ConfigTool) editMenuPrompts() {
 		return event
 	})
 
-	ct.pages.AddPage("menuprompts", form, true, false)
+	ct.pages.AddPage("menuprompts", flex, true, false)
 	ct.pages.SwitchToPage("menuprompts")
 }
 
@@ -349,21 +494,36 @@ func (ct *ConfigTool) editErrorMessages() {
 	form.SetTitle(" Edit Error Messages ")
 	form.SetTitleAlign(tview.AlignCenter)
 
-	// Add input fields for error messages using actual StringsConfig fields
-	form.AddInputField("User Not Found", ct.stringsConfig.UserNotFound, 50, nil, nil)
-	form.AddInputField("Wrong Password", ct.stringsConfig.WrongPassword, 50, nil, nil)
-	form.AddInputField("Invalid Username", ct.stringsConfig.InvalidUserName, 50, nil, nil)
-	form.AddInputField("Not Validated", ct.stringsConfig.NotValidated, 50, nil, nil)
-	form.AddInputField("Wrong File Password", ct.stringsConfig.WrongFilePW, 50, nil, nil)
+	// Create pipe code input fields with responsive widths
+	fieldWidth := ct.getFieldWidth()
+	userNotFoundField := ct.newPipeCodeInputField("User Not Found", ct.stringsConfig.UserNotFound, fieldWidth, ct.renderPipeCodes)
+	wrongPWField := ct.newPipeCodeInputField("Wrong Password", ct.stringsConfig.WrongPassword, fieldWidth, ct.renderPipeCodes)
+	invalidUserField := ct.newPipeCodeInputField("Invalid Username", ct.stringsConfig.InvalidUserName, fieldWidth, ct.renderPipeCodes)
+	notValidField := ct.newPipeCodeInputField("Not Validated", ct.stringsConfig.NotValidated, fieldWidth, ct.renderPipeCodes)
+	wrongFilePWField := ct.newPipeCodeInputField("Wrong File Password", ct.stringsConfig.WrongFilePW, fieldWidth, ct.renderPipeCodes)
+	
+	// Add fields to form
+	form.AddFormItem(userNotFoundField)
+	form.AddFormItem(wrongPWField)
+	form.AddFormItem(invalidUserField)
+	form.AddFormItem(notValidField)
+	form.AddFormItem(wrongFilePWField)
+	
+	// Create help area
+	helpText := tview.NewTextView()
+	helpText.SetBorder(true)
+	helpText.SetTitle(" Pipe Code Help ")
+	helpText.SetDynamicColors(true)
+	helpText.SetText("Foreground colors (Dark/Bright intensity):\n[white]|00[white:-] [#000000]Black[white:-]      [white]|08[white:-] [#555555]Dark Gray[white:-]\n[white]|01[white:-] [#AA0000]Red (Dark)[white:-]  [white]|09[white:-] [#FF5555]Bright Red[white:-]\n[white]|02[white:-] [#00AA00]Green (Dark)[white:-] [white]|10[white:-] [#55FF55]Bright Green[white:-]\n[white]|03[white:-] [#AA5500]Brown[white:-]      [white]|11[white:-] [#FFFF55]Yellow[white:-]\n[white]|04[white:-] [#0000AA]Blue (Dark)[white:-] [white]|12[white:-] [#5555FF]Bright Blue[white:-]\n[white]|05[white:-] [#AA00AA]Magenta[white:-]    [white]|13[white:-] [#FF55FF]Bright Magenta[white:-]\n[white]|06[white:-] [#00AAAA]Cyan (Dark)[white:-] [white]|14[white:-] [#55FFFF]Bright Cyan[white:-]\n[white]|07[white:-] [#AAAAAA]Gray[white:-]       [white]|15[white:-] [#FFFFFF]White[white:-]\n\nBackground colors:\n[white]|B0[white:-] [#FFFFFF:#000000]Black BG[white:-]  [white]|B1[white:-] [#FFFFFF:#AA0000]Red BG[white:-]   [white]|B2[white:-] [#000000:#00AA00]Green BG[white:-]  [white]|B3[white:-] [#000000:#AA5500]Brown BG[white:-]\n[white]|B4[white:-] [#FFFFFF:#0000AA]Blue BG[white:-]  [white]|B5[white:-] [#FFFFFF:#AA00AA]Magenta BG[white:-] [white]|B6[white:-] [#000000:#00AAAA]Cyan BG[white:-]  [white]|B7[white:-] [#000000:#AAAAAA]Gray BG[white:-]\n\nTip: Click in field to edit raw pipe codes, click out to see rendered preview")
 	
 	// Add buttons
 	form.AddButton("Save", func() {
-		// Get the new values
-		ct.stringsConfig.UserNotFound = form.GetFormItemByLabel("User Not Found").(*tview.InputField).GetText()
-		ct.stringsConfig.WrongPassword = form.GetFormItemByLabel("Wrong Password").(*tview.InputField).GetText()
-		ct.stringsConfig.InvalidUserName = form.GetFormItemByLabel("Invalid Username").(*tview.InputField).GetText()
-		ct.stringsConfig.NotValidated = form.GetFormItemByLabel("Not Validated").(*tview.InputField).GetText()
-		ct.stringsConfig.WrongFilePW = form.GetFormItemByLabel("Wrong File Password").(*tview.InputField).GetText()
+		// Get the raw values
+		ct.stringsConfig.UserNotFound = userNotFoundField.GetRawText()
+		ct.stringsConfig.WrongPassword = wrongPWField.GetRawText()
+		ct.stringsConfig.InvalidUserName = invalidUserField.GetRawText()
+		ct.stringsConfig.NotValidated = notValidField.GetRawText()
+		ct.stringsConfig.WrongFilePW = wrongFilePWField.GetRawText()
 		
 		// Save to file
 		if err := ct.saveStringsConfig(); err != nil {
@@ -379,8 +539,26 @@ func (ct *ConfigTool) editErrorMessages() {
 		ct.pages.SwitchToPage("strings")
 	})
 
+	// Create responsive flex layout
+	flex := tview.NewFlex()
+	
+	// On narrow screens, stack vertically; on wide screens, side by side
+	if ct.screenWidth < 120 {
+		// Vertical layout for narrow screens
+		flex.SetDirection(tview.FlexRow)
+		flex.AddItem(form, 0, 2, true)
+		flex.AddItem(helpText, 0, 1, false)
+	} else {
+		// Horizontal layout for wide screens
+		flex.SetDirection(tview.FlexColumn)
+		formWidth := ct.getFieldWidth() + 10 // Form padding
+		helpWidth := ct.getHelpWidth()
+		flex.AddItem(form, formWidth, 0, true)
+		flex.AddItem(helpText, helpWidth, 0, false)
+	}
+
 	// Add escape key handling
-	form.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+	flex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyEscape {
 			ct.pages.SwitchToPage("strings")
 			return nil
@@ -388,7 +566,7 @@ func (ct *ConfigTool) editErrorMessages() {
 		return event
 	})
 
-	ct.pages.AddPage("errormsgs", form, true, false)
+	ct.pages.AddPage("errormsgs", flex, true, false)
 	ct.pages.SwitchToPage("errormsgs")
 }
 
@@ -413,9 +591,10 @@ func (ct *ConfigTool) editColorDefinitions() {
 	form.AddInputField("Default Color 6", fmt.Sprintf("%d", ct.stringsConfig.DefColor6), 5, nil, nil)
 	form.AddInputField("Default Color 7", fmt.Sprintf("%d", ct.stringsConfig.DefColor7), 5, nil, nil)
 	
-	// Add help text
+	// Add help text with color examples
 	help := tview.NewTextView()
-	help.SetText("Color values: 0-255 (DOS color codes)\nExamples: 7 (white), 12 (bright red), 14 (yellow)\nThese map to |C1-|C7 pipe codes in menus")
+	help.SetDynamicColors(true)
+	help.SetText("Color values: 0-255 (DOS color codes)\n\nForeground Colors (Dark/Bright):\n[white]|01[white:-]/[white]|09[white:-] [red]Red (Dark)[white:-]/[lightred]Bright Red[white:-]   [white]|04[white:-]/[white]|12[white:-] [blue]Blue (Dark)[white:-]/[lightblue]Bright Blue[white:-]\n[white]|02[white:-]/[white]|10[white:-] [green]Green (Dark)[white:-]/[lightgreen]Bright Green[white:-] [white]|03[white:-]/[white]|11[white:-] [yellow]Brown[white:-]/[yellow]Yellow[white:-]\n[white]|05[white:-]/[white]|13[white:-] [magenta]Magenta[white:-]/[lightmagenta]Bright Magenta[white:-] [white]|06[white:-]/[white]|14[white:-] [cyan]Cyan (Dark)[white:-]/[lightcyan]Bright Cyan[white:-]\n[white]|00[white:-] [black]Black[white:-]  [white]|07[white:-] [white]Gray[white:-]  [white]|08[white:-] [gray]Dark Gray[white:-]  [white]|15[white:-] [white]White[white:-]\n\nBackground Colors:\n[white]|B0[white:-] Black BG [white]|B1[white:-] [black:red]Red BG[white:-] [white]|B2[white:-] [white:green]Green BG[white:-] [white]|B3[white:-] [black:yellow]Brown BG[white:-]\n[white]|B4[white:-] [white:blue]Blue BG[white:-] [white]|B5[white:-] [white:magenta]Magenta BG[white:-] [white]|B6[white:-] [black:cyan]Cyan BG[white:-] [white]|B7[white:-] [black:white]White BG[white:-]\n\nThese map to |C1-|C7 pipe codes in menus")
 	help.SetBorder(true)
 	help.SetTitle(" Color Help ")
 	
@@ -507,6 +686,72 @@ func (ct *ConfigTool) saveStringsConfig() error {
 	return os.WriteFile(stringsFile, data, 0644)
 }
 
+// renderPipeCodes converts ViSiON/3 pipe codes to tview color markup for preview
+func (ct *ConfigTool) renderPipeCodes(text string) string {
+	// ViSiON/3 pipe code mapping - using accurate tview color representations
+	// Low intensity colors (|00-|07) - Dark variants  
+	colorMap := map[string]string{
+		"|00": "[#000000]",      // Black (Dark) - pure black
+		"|01": "[#AA0000]",      // Red (Dark) - dark red
+		"|02": "[#00AA00]",      // Green (Dark) - dark green
+		"|03": "[#AA5500]",      // Brown/Yellow (Dark) - brownish
+		"|04": "[#0000AA]",      // Blue (Dark) - dark blue  
+		"|05": "[#AA00AA]",      // Magenta (Dark) - dark magenta
+		"|06": "[#00AAAA]",      // Cyan (Dark) - dark cyan
+		"|07": "[#AAAAAA]",      // Gray (Light Gray) - medium gray
+		
+		// High intensity colors (|08-|15) - Bright variants
+		"|08": "[#555555]",      // Dark Gray (Bright Black) - darker gray
+		"|09": "[#FF5555]",      // Bright Red - bright red
+		"|10": "[#55FF55]",      // Bright Green - bright green
+		"|11": "[#FFFF55]",      // Yellow (Bright) - bright yellow
+		"|12": "[#5555FF]",      // Bright Blue - bright blue
+		"|13": "[#FF55FF]",      // Bright Magenta - bright magenta
+		"|14": "[#55FFFF]",      // Bright Cyan - bright cyan
+		"|15": "[#FFFFFF]",      // White (Bright White) - pure white
+		
+		// Hex variants (same mapping as decimal)
+		"|0A": "[#55FF55]",      // |0A = 10 decimal - Bright Green
+		"|0B": "[#FFFF55]",      // |0B = 11 decimal - Yellow
+		"|0C": "[#5555FF]",      // |0C = 12 decimal - Bright Blue  
+		"|0D": "[#FF55FF]",      // |0D = 13 decimal - Bright Magenta
+		"|0E": "[#55FFFF]",      // |0E = 14 decimal - Bright Cyan
+		"|0F": "[#FFFFFF]",      // |0F = 15 decimal - White
+	}
+	
+	// Background color mapping (|B0 - |B7) - using contrasting foreground colors
+	backgroundMap := map[string]string{
+		"|B0": "[#FFFFFF:#000000]", // White text on Black background
+		"|B1": "[#FFFFFF:#AA0000]", // White text on Red background  
+		"|B2": "[#000000:#00AA00]", // Black text on Green background
+		"|B3": "[#000000:#AA5500]", // Black text on Brown background
+		"|B4": "[#FFFFFF:#0000AA]", // White text on Blue background
+		"|B5": "[#FFFFFF:#AA00AA]", // White text on Magenta background
+		"|B6": "[#000000:#00AAAA]", // Black text on Cyan background
+		"|B7": "[#000000:#AAAAAA]", // Black text on White/Gray background
+	}
+	
+	// Apply background colors first (they set both fg and bg)
+	for bgCode, bgColor := range backgroundMap {
+		text = strings.ReplaceAll(text, bgCode, bgColor)
+	}
+	
+	// Convert hex codes to decimal for easier parsing
+	for hex, color := range colorMap {
+		text = strings.ReplaceAll(text, hex, color)
+	}
+	
+	// Handle decimal pipe codes |00 through |15
+	for i := 0; i < 16; i++ {
+		pipeCode := fmt.Sprintf("|%02d", i)
+		if colorName, exists := colorMap[fmt.Sprintf("|%02X", i)]; exists {
+			text = strings.ReplaceAll(text, pipeCode, colorName)
+		}
+	}
+	
+	return text + "[white:-]" // Reset to white with default background at end
+}
+
 func (ct *ConfigTool) showAreaManagementMenu() {
 	ct.showInfo("Area Management - Coming soon!")
 }
@@ -521,6 +766,29 @@ func (ct *ConfigTool) showNodeMonitoringMenu() {
 
 func (ct *ConfigTool) showSystemSettingsMenu() {
 	ct.showInfo("System Settings - Coming soon!")
+}
+
+// getFieldWidth calculates responsive field width based on screen size
+func (ct *ConfigTool) getFieldWidth() int {
+	// Use 60% of screen width, with min 30 and max 80
+	fieldWidth := ct.screenWidth * 60 / 100
+	if fieldWidth < 30 {
+		fieldWidth = 30
+	}
+	if fieldWidth > 80 {
+		fieldWidth = 80
+	}
+	return fieldWidth
+}
+
+// getHelpWidth calculates help panel width
+func (ct *ConfigTool) getHelpWidth() int {
+	// Use remaining space, minimum 40 characters
+	remaining := ct.screenWidth - ct.getFieldWidth()
+	if remaining < 40 {
+		return 40
+	}
+	return remaining
 }
 
 func (ct *ConfigTool) showError(message string) {
