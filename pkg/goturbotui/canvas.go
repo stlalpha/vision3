@@ -41,10 +41,11 @@ type Cell struct {
 
 // MemoryCanvas is an in-memory implementation of Canvas
 type MemoryCanvas struct {
-	width  int
-	height int
-	cells  [][]Cell
-	dirty  bool
+	width       int
+	height      int
+	cells       [][]Cell
+	dirty       bool
+	firstRender bool
 }
 
 // NewMemoryCanvas creates a new memory-based canvas
@@ -61,10 +62,11 @@ func NewMemoryCanvas(width, height int) *MemoryCanvas {
 	}
 	
 	return &MemoryCanvas{
-		width:  width,
-		height: height,
-		cells:  cells,
-		dirty:  true,
+		width:       width,
+		height:      height,
+		cells:       cells,
+		dirty:       true,
+		firstRender: true,
 	}
 }
 
@@ -186,8 +188,13 @@ func (c *MemoryCanvas) Render() error {
 	var output strings.Builder
 	var lastStyle *Style
 	
-	// Clear screen and move cursor to top-left
-	output.WriteString("\033[2J\033[H")
+	// Clear screen only on first render to eliminate flash
+	if c.firstRender {
+		output.WriteString("\033[2J\033[H")
+		c.firstRender = false
+	} else {
+		output.WriteString("\033[H")
+	}
 	
 	for y := 0; y < c.height; y++ {
 		// Position cursor at start of each row
@@ -209,7 +216,7 @@ func (c *MemoryCanvas) Render() error {
 	// Reset style at the end
 	output.WriteString(Reset())
 	
-	// Output to stdout
+	// Output to stdout in one atomic operation
 	print(output.String())
 	
 	c.dirty = false
