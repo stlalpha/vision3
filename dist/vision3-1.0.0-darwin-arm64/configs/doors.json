@@ -1,0 +1,38 @@
+[
+  {
+    "name": "LORD",
+    "command": "lord.exe",
+    "args": ["/N{NODE}", "/P{PORT}", "/T{TIMELEFT}"],
+    "working_directory": "C:/BBS/DOORS/LORD",
+    "dropfile_type": "DOOR.SYS",
+    "io_mode": "STDIO",
+    "requires_raw_terminal": true
+  },
+  {
+    "name": "TW2002",
+    "command": "/bbs/doors/tw/twsrv.sh",
+    "args": ["{NODE}", "{USERHANDLE}"],
+    "working_directory": "/bbs/doors/tw",
+    "dropfile_type": "CHAIN.TXT",
+    "io_mode": "STDIO",
+    "environment_variables": {
+      "TERM": "ansi",
+      "BBS_NAME": "My Vision3 BBS"
+    }
+  },
+  {
+    "name": "MESSAGE_EDITOR",
+    "command": "internal_editor",
+    "args": [],
+    "dropfile_type": "NONE",
+    "io_mode": "STDIO"
+  },
+  {
+    "name": "SYSOP_UTIL",
+    "command": "cmd",
+    "args": ["/c", "sysop_tool.bat", "{USERID}"],
+    "working_directory": "C:/BBS/SYSOP",
+    "dropfile_type": "NONE",
+    "io_mode": "STDIO"
+  }
+] 

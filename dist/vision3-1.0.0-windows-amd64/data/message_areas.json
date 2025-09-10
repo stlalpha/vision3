@@ -1,0 +1,22 @@
+[
+  {
+    "id": 1,
+    "tag": "GENERAL",
+    "name": "General Chat",
+    "description": "General discussion area for all users.",
+    "acs_read": "",
+    "acs_write": "",
+    "is_networked": false,
+    "origin_node_id": ""
+  },
+  {
+    "id": 2,
+    "tag": "UNREST",
+    "name": "Social Unrest",
+    "description": "Discussions about current social issues.",
+    "acs_read": "",
+    "acs_write": "",
+    "is_networked": false,
+    "origin_node_id": ""
+  }
+] 

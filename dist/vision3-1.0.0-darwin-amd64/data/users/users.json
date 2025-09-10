@@ -1,0 +1,57 @@
+[
+  {
+    "id": 2,
+    "username": "spaceman",
+    "passwordHash": "$2a$10$TkVJQFlun0EZPx6UbYnk3erIXRi6vBGVbspH.VA0YyV3HP74PuKcS",
+    "handle": "spaceman",
+    "accessLevel": 10,
+    "flags": "",
+    "lastLogin": "2025-04-30T11:09:30.588498-05:00",
+    "timesCalled": 12,
+    "lastBulletinRead": "0001-01-01T00:00:00Z",
+    "realName": "",
+    "phoneNumber": "",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "validated": true,
+    "filePoints": 0,
+    "numUploads": 0,
+    "timeLimit": 0,
+    "privateNote": "",
+    "current_message_area_id": 1,
+    "current_message_area_tag": "GENERAL",
+    "last_read_message_ids": {
+      "1": "3a2f2f9f-9689-451c-a63a-a4ab5a5fc565",
+      "2": "363e9c44-5cfc-4764-b567-03a9f0ebe264"
+    },
+    "current_file_area_id": 1,
+    "current_file_area_tag": "GENERAL"
+  },
+  {
+    "id": 1,
+    "username": "felonius",
+    "passwordHash": "$2a$10$TkVJQFlun0EZPx6UbYnk3erIXRi6vBGVbspH.VA0YyV3HP74PuKcS",
+    "handle": "Felonius",
+    "accessLevel": 10,
+    "flags": "",
+    "lastLogin": "2025-05-01T15:13:20.453785-05:00",
+    "timesCalled": 220,
+    "lastBulletinRead": "0001-01-01T00:00:00Z",
+    "realName": "Felonius",
+    "phoneNumber": "",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "validated": true,
+    "filePoints": 0,
+    "numUploads": 0,
+    "timeLimit": 60,
+    "privateNote": "",
+    "group_location": "FAiRLiGHT/PC",
+    "current_message_area_id": 1,
+    "current_message_area_tag": "GENERAL",
+    "last_read_message_ids": {
+      "1": "6ae43f1a-cc1c-447c-9b9c-3cdeebd3fbfb",
+      "2": "363e9c44-5cfc-4764-b567-03a9f0ebe264"
+    },
+    "current_file_area_id": 1,
+    "current_file_area_tag": "GENERAL"
+  }
+]
