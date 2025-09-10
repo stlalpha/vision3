@@ -1,6 +1,7 @@
 package user
 
 import (
+	"encoding/gob"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -23,7 +24,7 @@ var (
 )
 
 const (
-	userFile         = "users.json"
+	userFile         = "users.dat"
 	callHistoryFile  = "callhistory.json" // Filename for call history
 	callNumberFile   = "callnumber.json"  // Filename for the next call number
 	callHistoryLimit = 20                 // Max number of call records to keep
@@ -70,7 +71,7 @@ func NewUserManager(dataPath string) (*UserMgr, error) { // Return renamed type
 	if err := um.loadUsers(); err != nil {
 		// If loading fails (e.g., file not found), create default felonius user
 		if os.IsNotExist(err) {
-			log.Println("INFO: users.json not found, creating default felonius user.")
+			log.Println("INFO: users.dat not found, creating default felonius user.")
 			// AddUser will handle ID assignment and initialization
 			// Using "password" as default password
 			defaultUser, addErr := um.AddUser("felonius", "password", "Felonius", "Felonius", "", "FAiRLiGHT/PC")
@@ -103,18 +104,19 @@ func NewUserManager(dataPath string) (*UserMgr, error) { // Return renamed type
 	return um, nil
 }
 
-// loadUsers loads user data from the JSON file.
+// loadUsers loads user data from the binary file.
 func (um *UserMgr) loadUsers() error { // Receiver uses renamed type
-	data, err := os.ReadFile(um.path)
+	file, err := os.Open(um.path)
 	if err != nil {
 		return err // Return error to NewUserManager to handle
 	}
+	defer file.Close()
 
-	// Temporary slice to hold users from JSON array
-	// We load into a slice because the JSON is an array.
-	var usersList []*User // Load into a slice of pointers to handle omitempty correctly
-	if err := json.Unmarshal(data, &usersList); err != nil {
-		return fmt.Errorf("failed to unmarshal users array: %w", err)
+	// Temporary slice to hold users from binary data
+	var usersList []*User
+	decoder := gob.NewDecoder(file)
+	if err := decoder.Decode(&usersList); err != nil {
+		return fmt.Errorf("failed to decode users binary data: %w", err)
 	}
 
 	um.mu.Lock()
@@ -136,11 +138,11 @@ func (um *UserMgr) loadUsers() error { // Receiver uses renamed type
 		}
 		lowerUsername := strings.ToLower(user.Username)
 		if _, exists := um.users[lowerUsername]; exists {
-			log.Printf("WARN: Duplicate username found in users.json: %s. Skipping subsequent entry.", user.Username)
+			log.Printf("WARN: Duplicate username found in users.dat: %s. Skipping subsequent entry.", user.Username)
 			continue
 		}
 		um.users[lowerUsername] = user
-		log.Printf("TRACE: Loaded user %s (Handle: %s, Group: %s) from JSON.", user.Username, user.Handle, user.GroupLocation)
+		log.Printf("TRACE: Loaded user %s (Handle: %s, Group: %s) from binary file.", user.Username, user.Handle, user.GroupLocation)
 	}
 
 	// Note: determineNextUserID should be called *after* successful load
@@ -274,18 +276,12 @@ func (um *UserMgr) saveNextCallNumberLocked() error {
 }
 
 // saveUsersLocked performs the actual saving without acquiring locks.
-// Uses um.path (which should point to data/users.json)
+// Uses um.path (which should point to data/users.dat)
 func (um *UserMgr) saveUsersLocked() error { // Receiver uses renamed type
-	// Convert map back to slice for saving as JSON array
-	// We now store pointers in the map, so create a slice of pointers
+	// Convert map back to slice for saving as binary data
 	usersList := make([]*User, 0, len(um.users))
 	for _, user := range um.users {
 		usersList = append(usersList, user) // Append pointers directly
-	}
-
-	data, err := json.MarshalIndent(usersList, "", "  ")
-	if err != nil {
-		return fmt.Errorf("failed to marshal users slice: %w", err)
 	}
 
 	// Ensure the directory exists before writing the file
@@ -294,14 +290,26 @@ func (um *UserMgr) saveUsersLocked() error { // Receiver uses renamed type
 		return fmt.Errorf("failed to create directory %s: %w", dir, err)
 	}
 
-	// WriteFile ensures atomic write (usually via temp file)
-	if err = os.WriteFile(um.path, data, 0600); err != nil {
-		return fmt.Errorf("failed to write users file %s: %w", um.path, err) // Include path in error
+	// Create and write to binary file
+	file, err := os.Create(um.path)
+	if err != nil {
+		return fmt.Errorf("failed to create users file %s: %w", um.path, err)
+	}
+	defer file.Close()
+
+	// Set permissions
+	if err := file.Chmod(0600); err != nil {
+		return fmt.Errorf("failed to set permissions on users file %s: %w", um.path, err)
+	}
+
+	encoder := gob.NewEncoder(file)
+	if err := encoder.Encode(usersList); err != nil {
+		return fmt.Errorf("failed to encode users binary data: %w", err)
 	}
 	return nil
 }
 
-// SaveUsers saves the current user data to the JSON file (acquires lock).
+// SaveUsers saves the current user data to the binary file (acquires lock).
 func (um *UserMgr) SaveUsers() error { // Receiver uses renamed type
 	um.mu.Lock()
 	defer um.mu.Unlock()

@@ -465,10 +465,6 @@ func main() {
 		"hmac-sha1-96", // Legacy added
 	}
 	*/
-	legacyKexAlgos := []string{
-		"diffie-hellman-group14-sha1", // Legacy added
-		// "diffie-hellman-group1-sha1",  // Removed - Very weak
-	}
 
 	server := &ssh.Server{
 		Addr:            fmt.Sprintf("%s:%d", sshHost, sshPort),
@@ -479,26 +475,48 @@ func main() {
 
 	// Set the custom crypto config callback
 	server.ServerConfigCallback = func(ctx ssh.Context) *gossh.ServerConfig {
-		// Get a default config to start with
-		defaultConfig := &gossh.Config{}
-
-		// Create the ServerConfig, ensuring the inner Config is initialized
+		// Create the ServerConfig with supported algorithms
 		cfg := &gossh.ServerConfig{
 			Config: gossh.Config{
-				// Start with default algorithms from the base library
-				Ciphers:      defaultConfig.Ciphers,
-				KeyExchanges: defaultConfig.KeyExchanges,
-				MACs:         defaultConfig.MACs,
+				// Maximum compatibility - include legacy algorithms for old BBS clients
+				KeyExchanges: []string{
+					// Modern algorithms first
+					"ecdh-sha2-nistp256",
+					"ecdh-sha2-nistp384", 
+					"ecdh-sha2-nistp521",
+					"diffie-hellman-group16-sha512",
+					"diffie-hellman-group14-sha256",
+					// Legacy algorithms for old clients
+					"diffie-hellman-group14-sha1",
+					"diffie-hellman-group1-sha1", // Very old but needed for ancient clients
+				},
+				Ciphers: []string{
+					// Modern algorithms first
+					"chacha20-poly1305@openssh.com",
+					"aes256-gcm@openssh.com",
+					"aes128-gcm@openssh.com",
+					"aes256-ctr",
+					"aes192-ctr", 
+					"aes128-ctr",
+					// Legacy algorithms for old clients
+					"aes256-cbc",
+					"aes192-cbc",
+					"aes128-cbc",
+					"3des-cbc", // Very old but sometimes needed
+				},
+				MACs: []string{
+					// Modern algorithms first
+					"hmac-sha2-256-etm@openssh.com",
+					"hmac-sha2-256",
+					"hmac-sha1",
+					// Legacy algorithms for old clients
+					"hmac-sha1-96",
+					"hmac-md5",
+				},
 			},
 		}
 
-		// Append legacy algorithms to the defaults
-		// cfg.Config.Ciphers = append(cfg.Config.Ciphers, legacyCiphers...) // <-- Keep legacy ciphers commented out
-		cfg.Config.KeyExchanges = append(cfg.Config.KeyExchanges, legacyKexAlgos...)
-		// cfg.Config.MACs = append(cfg.Config.MACs, legacyMACs...) // <-- Keep legacy MACs commented out
-
-		log.Printf("DEBUG: ServerConfigCallback invoked, returning config with defaults + appended legacy KEX algorithms ONLY")
-		// The underlying library still needs to add host keys etc.
+		log.Printf("DEBUG: ServerConfigCallback invoked, returning config with modern + legacy KEX algorithms")
 		return cfg
 	}
 

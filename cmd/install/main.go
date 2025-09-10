@@ -208,10 +208,55 @@ func (i *Installer) verifySignature() {
 		return
 	}
 	
-	fmt.Printf("%s✓ VERIFIED%s\n", colorGreen+colorBold, colorReset)
-	fmt.Printf("%sInstaller authenticity confirmed. Files are digitally signed and unmodified.%s\n", colorGreen, colorReset)
+	fmt.Printf("%s✓ VERIFIED - OFFICIAL VALIDATED RELEASE%s\n", colorGreen+colorBold, colorReset)
+	
+	// Extract and display signing key details
+	keyDetails, err := i.getSigningKeyDetails()
+	if err == nil && keyDetails != "" {
+		fmt.Printf("%sAuthenticated by: %s%s\n", colorGreen, keyDetails, colorReset)
+	} else {
+		fmt.Printf("%sAuthenticated by: Ruthless Enterprises%s\n", colorGreen, colorReset)
+	}
+	
+	fmt.Printf("%sThis is a genuine signed release with verified digital signature.%s\n", colorGreen, colorReset)
 	fmt.Println()
 	time.Sleep(1 * time.Second)
+}
+
+func (i *Installer) getSigningKeyDetails() (string, error) {
+	// Parse the public key to extract details
+	keyBlock, err := armor.Decode(bytes.NewReader(publicKeyData))
+	if err != nil {
+		return "", err
+	}
+	
+	keyring, err := openpgp.ReadKeyRing(keyBlock.Body)
+	if err != nil {
+		return "", err
+	}
+	
+	if len(keyring) == 0 {
+		return "", fmt.Errorf("no keys found")
+	}
+	
+	entity := keyring[0]
+	if entity.PrimaryKey != nil {
+		keyID := fmt.Sprintf("%X", entity.PrimaryKey.KeyId)
+		
+		// Get primary identity
+		var identity string
+		for _, ident := range entity.Identities {
+			identity = ident.Name
+			break
+		}
+		
+		if identity != "" {
+			return fmt.Sprintf("%s (Key ID: %s)", identity, keyID), nil
+		}
+		return fmt.Sprintf("Key ID: %s", keyID), nil
+	}
+	
+	return "", fmt.Errorf("invalid key structure")
 }
 
 func (i *Installer) hashEmbeddedFiles() ([]byte, error) {
