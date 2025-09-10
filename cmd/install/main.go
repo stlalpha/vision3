@@ -101,13 +101,6 @@ func (i *Installer) checkSystem() {
 		criticalMissing = append(criticalMissing, "ssh-keygen")
 	}
 	
-	// Check for Go (optional, we include binaries)
-	fmt.Print("Checking for Go... ")
-	if _, err := exec.LookPath("go"); err == nil {
-		fmt.Printf("%s✓ Go found%s\n", colorGreen, colorReset)
-	} else {
-		fmt.Printf("%s✗ Go not found (using precompiled binaries)%s\n", colorYellow, colorReset)
-	}
 	
 	// Check for ZMODEM tools (optional but recommended)
 	fmt.Print("Checking for ZMODEM tools... ")
