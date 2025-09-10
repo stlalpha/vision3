@@ -1,8 +1,6 @@
 package msgbase
 
-import (
-	"time"
-)
+// No imports needed
 
 // Binary message header structure - fixed length for classic BBS feel
 // Similar to PCBoard, TriBBS, and other classic BBS message formats

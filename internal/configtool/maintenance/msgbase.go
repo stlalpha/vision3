@@ -627,7 +627,7 @@ func (mbm *MessageBaseMaintenance) purgeAreaMessages(areaNum uint16, cutoffDate 
 			if msgDate, err := time.Parse("01-02-06", dateStr); err == nil {
 				if msgDate.Before(cutoffDate) {
 					// Mark as deleted
-					header.Status &= ^msgbase.MsgStatusActive
+					header.Status &= ^uint8(msgbase.MsgStatusActive)
 					
 					if _, err := headerFile.Seek(currentOffset, 0); err != nil {
 						return purgedCount, err

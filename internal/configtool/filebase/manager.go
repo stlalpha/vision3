@@ -484,7 +484,7 @@ func (fbm *FileBaseManager) DeleteFile(areaNum uint16, fileName string) error {
 			strings.ToUpper(strings.TrimSpace(string(record.FileName[:]))) == fileNameUpper {
 
 			// Mark as deleted
-			record.Flags &= ^FileFlagActive
+			record.Flags &= ^uint8(FileFlagActive)
 			file.Seek(offset, 0)
 			binary.Write(file, binary.LittleEndian, record)
 

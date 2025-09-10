@@ -1,8 +1,6 @@
 package filebase
 
-import (
-	"time"
-)
+// No imports needed
 
 // Binary file record structure - classic .DIR format style
 // Similar to PCBoard DIR files, TriBBS, and other classic BBS file databases

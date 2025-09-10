@@ -50,7 +50,7 @@ const (
 	SortByHandle
 	SortByLocation
 	SortByOnlineTime
-	SortByActivity
+	SortByWhoActivity
 	SortByIdleTime
 )
 
@@ -181,8 +181,8 @@ func (wod *WhoOnlineDisplay) cycleSortMode() {
 	case SortByLocation:
 		wod.sortMode = SortByOnlineTime
 	case SortByOnlineTime:
-		wod.sortMode = SortByActivity
-	case SortByActivity:
+		wod.sortMode = SortByWhoActivity
+	case SortByWhoActivity:
 		wod.sortMode = SortByIdleTime
 	case SortByIdleTime:
 		wod.sortMode = SortByNode
@@ -337,7 +337,7 @@ func (wod *WhoOnlineDisplay) sortEntries(entries []WhoOnlineEntry) {
 			return strings.ToLower(entries[i].UserLocation) < strings.ToLower(entries[j].UserLocation)
 		case SortByOnlineTime:
 			return entries[i].OnlineTime > entries[j].OnlineTime // Descending
-		case SortByActivity:
+		case SortByWhoActivity:
 			return strings.ToLower(entries[i].Activity) < strings.ToLower(entries[j].Activity)
 		case SortByIdleTime:
 			return entries[i].IdleTime > entries[j].IdleTime // Descending
@@ -710,7 +710,7 @@ func (wod *WhoOnlineDisplay) renderStatusBar() string {
 		sort = "Location"
 	case SortByOnlineTime:
 		sort = "Time"
-	case SortByActivity:
+	case SortByWhoActivity:
 		sort = "Activity"
 	case SortByIdleTime:
 		sort = "Idle"

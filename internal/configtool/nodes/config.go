@@ -819,10 +819,11 @@ func (ncs *NodeConfigScreen) renderStatusMessages() string {
 
 // renderHelpLine renders the help line
 func (ncs *NodeConfigScreen) renderHelpLine() string {
+	var help string
 	if ncs.editMode {
-		help := "ENTER:Confirm ESC:Cancel TAB:Next Field"
+		help = "ENTER:Confirm ESC:Cancel TAB:Next Field"
 	} else {
-		help := "E:Edit N:New D:Delete C:Copy S:Save R:Reset H:Help ESC:Exit"
+		help = "E:Edit N:New D:Delete C:Copy S:Save R:Reset H:Help ESC:Exit"
 	}
 	
 	helpStyle := lipgloss.NewStyle().

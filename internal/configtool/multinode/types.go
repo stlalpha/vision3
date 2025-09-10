@@ -1,8 +1,6 @@
 package multinode
 
-import (
-	"time"
-)
+// No imports needed
 
 // Node status and activity tracking structures
 type NodeStatus struct {

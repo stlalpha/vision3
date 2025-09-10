@@ -9,7 +9,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
 )
 
 var (

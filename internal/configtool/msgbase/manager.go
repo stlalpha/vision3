@@ -7,7 +7,6 @@ import (
 	"hash/crc32"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -721,7 +720,7 @@ func (mbm *MessageBaseManager) DeleteMessage(areaNum uint16, msgNum uint32) erro
 		if index.MsgNum == msgNum {
 			headerOffset = int64(index.Offset)
 			// Mark as deleted in index
-			index.Status &= ^MsgStatusActive
+			index.Status &= ^uint8(MsgStatusActive)
 			indexFile.Seek(currentOffset, 0)
 			binary.Write(indexFile, binary.LittleEndian, index)
 			break
@@ -747,7 +746,7 @@ func (mbm *MessageBaseManager) DeleteMessage(areaNum uint16, msgNum uint32) erro
 		return err
 	}
 
-	header.Status &= ^MsgStatusActive
+	header.Status &= ^uint8(MsgStatusActive)
 	headerFile.Seek(headerOffset, 0)
 	return binary.Write(headerFile, binary.LittleEndian, header)
 }
