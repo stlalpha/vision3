@@ -79,8 +79,19 @@ func main() {
 		return false
 	})
 	
+	// Create persistent footer
+	footer := tview.NewTextView()
+	footer.SetText("ViSiON/3 © 2025 Ruthless Enterprises")
+	footer.SetTextAlign(tview.AlignCenter)
+	footer.SetBorder(true)
+	
+	// Create main layout with persistent footer
+	mainLayout := tview.NewFlex().SetDirection(tview.FlexRow)
+	mainLayout.AddItem(tool.pages, 0, 1, true)
+	mainLayout.AddItem(footer, 3, 0, false)
+	
 	// Set root and run
-	app.SetRoot(tool.pages, true)
+	app.SetRoot(mainLayout, true)
 	if err := app.Run(); err != nil {
 		log.Fatalf("Error running application: %v", err)
 	}
