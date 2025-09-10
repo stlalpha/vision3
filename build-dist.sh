@@ -96,8 +96,8 @@ LDFLAGS="-s -w -X main.version=${VERSION} -X main.buildDate=${BUILD_DATE} -X mai
 # Check GPG setup
 check_gpg_setup
 
-# Create dist directory
-DIST_DIR="dist"
+# Create version-specific dist directory
+DIST_DIR="dist/${VERSION}"
 rm -rf $DIST_DIR
 mkdir -p $DIST_DIR
 
