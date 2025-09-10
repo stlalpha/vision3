@@ -24,13 +24,77 @@ print_step() {
     echo -e "${BLUE}[STEP]${NC} $1"
 }
 
+print_warning() {
+    echo -e "${YELLOW}[WARN]${NC} $1"
+}
+
+# GPG signing functions
+sign_file() {
+    local file="$1"
+    if [ "$SIGN_RELEASES" = "true" ] && [ -n "$GPG_KEY_ID" ]; then
+        print_status "Signing $file..."
+        gpg --armor --detach-sign --default-key "$GPG_KEY_ID" "$file"
+        if [ $? -eq 0 ]; then
+            print_status "✓ Created signature: ${file}.asc"
+        else
+            print_warning "Failed to sign $file"
+        fi
+    fi
+}
+
+check_gpg_setup() {
+    if [ "$SIGN_RELEASES" = "true" ]; then
+        if [ -z "$GPG_KEY_ID" ]; then
+            print_warning "GPG_KEY_ID not set. Set it with: export GPG_KEY_ID=your_key_id"
+            print_warning "Signatures will be skipped."
+            SIGN_RELEASES="false"
+            return 1
+        fi
+        
+        if ! command -v gpg >/dev/null 2>&1; then
+            print_warning "GPG not found. Install gpg to enable signing."
+            SIGN_RELEASES="false"
+            return 1
+        fi
+        
+        if ! gpg --list-secret-keys "$GPG_KEY_ID" >/dev/null 2>&1; then
+            print_warning "GPG key $GPG_KEY_ID not found in keyring."
+            SIGN_RELEASES="false"
+            return 1
+        fi
+        
+        print_status "GPG signing enabled with key: $GPG_KEY_ID"
+        return 0
+    fi
+}
+
 # Version and build info
-VERSION="1.0.0"
+# Production builds require git tags, non-production builds use branch name
+if git describe --exact-match --tags HEAD >/dev/null 2>&1; then
+    # We're on a tagged commit - use the tag
+    VERSION=$(git describe --exact-match --tags HEAD)
+    print_status "Building PRODUCTION release: $VERSION"
+    RELEASE_TYPE="production"
+else
+    # Not on a tag - use branch name for non-production build
+    BRANCH_NAME=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    SHORT_HASH=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    VERSION="${BRANCH_NAME}-${SHORT_HASH}"
+    print_status "Building NON-PRODUCTION release: $VERSION"
+    RELEASE_TYPE="non-production"
+fi
 BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 GIT_COMMIT=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
+# GPG signing configuration
+GPG_KEY_ID="${GPG_KEY_ID:-}"  # Set via environment variable
+SIGN_RELEASES="${SIGN_RELEASES:-true}"  # Set to false to disable signing
+
 # Build flags
 LDFLAGS="-s -w -X main.version=${VERSION} -X main.buildDate=${BUILD_DATE} -X main.gitCommit=${GIT_COMMIT}"
+
+# Check GPG setup
+check_gpg_setup
 
 # Create dist directory
 DIST_DIR="dist"
@@ -64,6 +128,9 @@ for platform in "${PLATFORMS[@]}"; do
     cd cmd/install
     env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "../../${DIST_DIR}/${OUTPUT_NAME}"
     cd ../..
+    
+    # Sign the installer
+    sign_file "${DIST_DIR}/${OUTPUT_NAME}"
 done
 
 print_step "Building main application binaries..."
@@ -75,6 +142,9 @@ APPS=(
     "ansitest"
     "stringtool"
 )
+
+# Create distribution README (will be customized per platform)
+print_step "Creating platform-specific installation guides..."
 
 for platform in "${PLATFORMS[@]}"; do
     IFS='/' read -ra PARTS <<< "$platform"
@@ -106,6 +176,136 @@ for platform in "${PLATFORMS[@]}"; do
     cp LICENSE "${PLATFORM_DIR}/"
     cp ViSiON3.png "${PLATFORM_DIR}/"
     
+    # Create platform-specific installation guide
+    if [ $GOOS = "windows" ]; then
+        cat > "${PLATFORM_DIR}/INSTALL.txt" << EOF
+ViSiON/3 BBS for Windows ${GOARCH} v${VERSION}
+Built on: ${BUILD_DATE}
+Git Commit: ${GIT_COMMIT}
+
+=== INSTALLATION INSTRUCTIONS ===
+
+You have already extracted the ViSiON/3 BBS distribution!
+
+QUICK START:
+1. Double-click 'start-vision3.bat' to start the BBS server
+   (or run 'bin\\vision3.exe' from command prompt)
+
+2. Connect via SSH:
+   - Host: localhost
+   - Port: 2222
+   - Username: felonius
+   - Password: password
+
+DETAILED SETUP:
+1. Generate SSH host keys (required for first run):
+   - Open Command Prompt in this directory
+   - Run: bin\\vision3.exe --generate-keys
+
+2. Optional - Configure your BBS:
+   - Run: bin\\vision3-config.exe
+   - Use arrow keys to navigate menus
+   - Edit system name, welcome messages, etc.
+
+3. Start the BBS server:
+   - Double-click: start-vision3.bat
+   - Or from command line: bin\\vision3.exe
+
+4. Connect with any SSH client:
+   - PuTTY, Windows Terminal, or built-in ssh client
+   - ssh felonius@localhost -p 2222
+
+IMPORTANT SECURITY:
+- Change the default password immediately after first login!
+- The default user 'felonius' has sysop privileges
+
+INCLUDED TOOLS:
+- bin\\vision3.exe - Main BBS server
+- bin\\vision3-config.exe - Configuration utility with arrow navigation
+- bin\\ansitest.exe - ANSI art testing tool
+- bin\\stringtool.exe - String manipulation utility
+
+SIGNATURE VERIFICATION (Optional but Recommended):
+This release is digitally signed. To verify authenticity:
+1. Import public key: gpg --import vision3-signing-key.asc
+2. Verify signature: gpg --verify vision3-${VERSION}-${GOOS}-${GOARCH}.zip.asc vision3-${VERSION}-${GOOS}-${GOARCH}.zip
+
+For support: https://github.com/stlalpha/vision3
+
+Welcome to the ViSiON/3 BBS experience!
+EOF
+    else
+        # Linux/macOS
+        PLATFORM_NAME="Linux"
+        if [ $GOOS = "darwin" ]; then
+            PLATFORM_NAME="macOS"
+        fi
+        
+        cat > "${PLATFORM_DIR}/INSTALL.txt" << EOF
+ViSiON/3 BBS for ${PLATFORM_NAME} ${GOARCH} v${VERSION}
+Built on: ${BUILD_DATE}
+Git Commit: ${GIT_COMMIT}
+
+=== INSTALLATION INSTRUCTIONS ===
+
+You have already extracted the ViSiON/3 BBS distribution!
+
+QUICK START:
+1. Run the startup script: ./start-vision3.sh
+   (or directly: ./bin/vision3)
+
+2. Connect via SSH:
+   - Host: localhost
+   - Port: 2222
+   - Username: felonius
+   - Password: password
+
+DETAILED SETUP:
+1. Make scripts executable (if needed):
+   chmod +x start-vision3.sh
+   chmod +x bin/*
+
+2. Generate SSH host keys (required for first run):
+   ./bin/vision3 --generate-keys
+
+3. Optional - Configure your BBS:
+   ./bin/vision3-config
+   Use arrow keys to navigate menus and Tab to navigate forms
+   Edit system name, welcome messages, pipe codes, etc.
+
+4. Start the BBS server:
+   ./start-vision3.sh
+   # Or directly:
+   ./bin/vision3
+
+5. Connect with SSH:
+   ssh felonius@localhost -p 2222
+
+IMPORTANT SECURITY:
+- Change the default password immediately after first login!
+- The default user 'felonius' has sysop privileges
+
+INCLUDED TOOLS:
+- bin/vision3 - Main BBS server
+- bin/vision3-config - Configuration utility with full arrow navigation
+- bin/ansitest - ANSI art testing tool  
+- bin/stringtool - String manipulation utility
+
+SYSTEM REQUIREMENTS:
+- Terminal with SSH client
+- For best experience: Terminal supporting ANSI colors and CP437 encoding
+
+SIGNATURE VERIFICATION (Optional but Recommended):
+This release is digitally signed. To verify authenticity:
+1. Import public key: gpg --import vision3-signing-key.asc
+2. Verify signature: gpg --verify vision3-${VERSION}-${GOOS}-${GOARCH}.tar.gz.asc vision3-${VERSION}-${GOOS}-${GOARCH}.tar.gz
+
+For support: https://github.com/stlalpha/vision3
+
+Welcome to the ViSiON/3 BBS experience!
+EOF
+    fi
+    
     # Remove SSH keys from configs (will be generated during install)
     rm -f "${PLATFORM_DIR}/configs/ssh_host_*_key"*
     
@@ -130,57 +330,74 @@ EOF
     print_status "Creating archive for ${GOOS}/${GOARCH}..."
     cd $DIST_DIR
     if [ $GOOS = "windows" ]; then
-        zip -r "vision3-${VERSION}-${GOOS}-${GOARCH}.zip" "vision3-${VERSION}-${GOOS}-${GOARCH}/"
+        zip -r "vision3-${VERSION}-${GOOS}-${GOARCH}.zip" "vision3-${VERSION}-${GOOS}-${GOARCH}/" 2>&1 >/dev/null
+        # Sign the zip file
+        cd ..
+        sign_file "${DIST_DIR}/vision3-${VERSION}-${GOOS}-${GOARCH}.zip"
     else
         tar -czf "vision3-${VERSION}-${GOOS}-${GOARCH}.tar.gz" "vision3-${VERSION}-${GOOS}-${GOARCH}/"
+        # Sign the tar.gz file
+        cd ..
+        sign_file "${DIST_DIR}/vision3-${VERSION}-${GOOS}-${GOARCH}.tar.gz"
     fi
-    cd ..
 done
 
 print_step "Creating checksums..."
 cd $DIST_DIR
-sha256sum * > SHA256SUMS
-cd ..
+for i in $(find . -type f -print | grep -v '\.asc$'); 
+do
+sha256sum $i >> SHA256SUMS
+done
 
-print_step "Creating distribution README..."
-cat > "${DIST_DIR}/README.txt" << EOF
-ViSiON/3 BBS Distribution v${VERSION}
-Built on: ${BUILD_DATE}
-Git Commit: ${GIT_COMMIT}
+# Sign the checksum file
+sign_file "SHA256SUMS"
 
-INSTALLATION:
+# Create signature manifest if signing is enabled
+if [ "$SIGN_RELEASES" = "true" ] && [ -n "$GPG_KEY_ID" ]; then
+    print_step "Creating signature manifest..."
+    
+    cat > "SIGNATURES.txt" << EOF
+ViSiON/3 BBS v${VERSION} - Digital Signatures
+Generated: ${BUILD_DATE}
+GPG Key ID: ${GPG_KEY_ID}
 
-Method 1 - Use the installer (recommended):
-1. Download the appropriate installer for your platform:
-   - Linux x64: vision3-installer-linux-amd64
-   - Linux ARM64: vision3-installer-linux-arm64  
-   - macOS Intel: vision3-installer-darwin-amd64
-   - macOS Apple Silicon: vision3-installer-darwin-arm64
-   - Windows x64: vision3-installer-windows-amd64.exe
-   - Windows ARM64: vision3-installer-windows-arm64.exe
+=== SIGNATURE VERIFICATION ===
 
-2. Run the installer:
-   Linux/macOS: chmod +x vision3-installer-* && ./vision3-installer-*
-   Windows: double-click vision3-installer-*.exe
+To verify signatures:
+1. Import the public key: gpg --import vision3-signing-key.asc
+2. Verify a file: gpg --verify filename.asc filename
 
-Method 2 - Manual installation:
-1. Download and extract the appropriate archive for your platform
-2. Copy the contents to your desired installation directory
-3. Generate SSH host keys (see README.md in the archive)
-4. Run ./bin/vision3 (or bin\vision3.exe on Windows)
+=== SIGNED FILES ===
 
-Default login:
-Username: felonius
-Password: password
-SSH Port: 2222
-
-IMPORTANT: Change the default password after first login!
-
-For support and source code:
-https://github.com/stlalpha/vision3
-
-Enjoy your ViSiON/3 BBS!
 EOF
+    
+    # List all signature files
+    for sig_file in $(find . -name "*.asc" | sort); do
+        original_file=$(echo "$sig_file" | sed 's/\.asc$//')
+        echo "Signature: $sig_file" >> SIGNATURES.txt
+        echo "File:      $original_file" >> SIGNATURES.txt
+        echo "" >> SIGNATURES.txt
+    done
+    
+    # Add public key and verification scripts to distribution if they exist
+    if [ -f "../vision3-signing-key.asc" ]; then
+        cp "../vision3-signing-key.asc" .
+        print_status "Added public key to distribution"
+    fi
+    
+    if [ -f "../verify.sh" ]; then
+        cp "../verify.sh" .
+        chmod +x verify.sh
+        print_status "Added verification script for Linux/macOS"
+    fi
+    
+    if [ -f "../verify.bat" ]; then
+        cp "../verify.bat" .
+        print_status "Added verification script for Windows"
+    fi
+fi
+
+cd ..
 
 echo
 print_status "Distribution build completed!"
@@ -188,4 +405,15 @@ echo
 echo "Files created in ${DIST_DIR}/:"
 ls -la $DIST_DIR/
 echo
+
+if [ "$SIGN_RELEASES" = "true" ] && [ -n "$GPG_KEY_ID" ]; then
+    echo "=== SIGNATURE SUMMARY ==="
+    sig_count=$(find $DIST_DIR -name "*.asc" | wc -l)
+    print_status "Created $sig_count digital signatures"
+    print_status "GPG Key ID: $GPG_KEY_ID"
+    print_status "Public key: $DIST_DIR/vision3-signing-key.asc"
+    print_status "Signature manifest: $DIST_DIR/SIGNATURES.txt"
+    echo
+fi
+
 print_status "Distribution packages are ready for release!"

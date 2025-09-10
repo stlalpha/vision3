@@ -40,6 +40,13 @@ go.work.sum
 configs/ssh_host_*
 !configs/ssh_host_keys.example
 
+# GPG keys and signatures (never commit private keys)
+*.asc
+*.sig
+*.gpg
+!vision3-signing-key.asc
+SIGNATURES.txt
+
 # Logs and debug files
 *.log
 log/
