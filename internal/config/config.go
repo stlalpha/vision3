@@ -344,4 +344,57 @@ func LoadThemeConfig(menuSetPath string) (ThemeConfig, error) {
 	return theme, nil
 }
 
+// SystemConfig holds the main BBS configuration from config.json.
+type SystemConfig struct {
+	BoardName         string `json:"boardName"`
+	BoardPhoneNumber  string `json:"boardPhoneNumber"`
+	SysOpLevel        int    `json:"sysOpLevel"`
+	CoSysLevel        int    `json:"coSysLevel"`
+	LogonLevel        int    `json:"logonLevel"`
+}
+
+// LoadSystemConfig loads the main system configuration from config.json.
+func LoadSystemConfig(configPath string) (SystemConfig, error) {
+	filePath := filepath.Join(configPath, "config.json")
+	log.Printf("INFO: Loading system configuration from %s", filePath)
+	
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		log.Printf("ERROR: Failed to read config file %s: %v", filePath, err)
+		return SystemConfig{}, fmt.Errorf("failed to read config file %s: %w", filePath, err)
+	}
+
+	var config SystemConfig
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		log.Printf("ERROR: Failed to parse config JSON from %s: %v", filePath, err)
+		return SystemConfig{}, fmt.Errorf("failed to parse config JSON from %s: %w", filePath, err)
+	}
+
+	log.Printf("INFO: Successfully loaded system configuration from %s", filePath)
+	return config, nil
+}
+
+// SaveSystemConfig saves the main system configuration to config.json.
+func SaveSystemConfig(configPath string, config SystemConfig) error {
+	filePath := filepath.Join(configPath, "config.json")
+	log.Printf("INFO: Saving system configuration to %s", filePath)
+	
+	// Marshal with indentation for readability
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		log.Printf("ERROR: Failed to marshal config to JSON: %v", err)
+		return fmt.Errorf("failed to marshal config to JSON: %w", err)
+	}
+	
+	err = os.WriteFile(filePath, data, 0644)
+	if err != nil {
+		log.Printf("ERROR: Failed to write config file %s: %v", filePath, err)
+		return fmt.Errorf("failed to write config file %s: %w", filePath, err)
+	}
+
+	log.Printf("INFO: Successfully saved system configuration to %s", filePath)
+	return nil
+}
+
 // Add other shared config structs here later if needed.

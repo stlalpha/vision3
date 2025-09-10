@@ -1,0 +1,25 @@
+ViSiON/3 BBS Installation Instructions
+
+QUICK START:
+1. Run the installer to set up in your preferred location:
+   install.exe
+
+2. Or manually copy this entire directory to your desired location
+
+3. Generate SSH host keys:
+   ssh-keygen -t rsa -f configs/ssh_host_rsa_key -N ""
+   ssh-keygen -t ed25519 -f configs/ssh_host_ed25519_key -N ""
+
+4. Start the configuration tool:
+   configure.bat
+
+5. Start the BBS:
+   start-bbs.bat
+
+6. Connect to your BBS:
+   ssh felonius@localhost -p 2222
+   Default password: password
+
+IMPORTANT: Change the default password after first login!
+
+For file transfers, install lrzsz package on your system.

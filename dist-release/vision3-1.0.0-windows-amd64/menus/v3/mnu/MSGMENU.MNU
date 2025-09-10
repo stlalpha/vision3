@@ -1,0 +1,13 @@
+{
+    "NAME": "MSGMENU",
+    "PROMPT1": "",
+    "PROMPT2": "",
+    "PASSWORD": "",
+    "ACS": "*",
+    "MENUTYPE": "standard",
+    "USEPROMPT": true,
+    "CLRSCRA": false,
+    "CLRSCRB": true,
+    "USERDAT": "",
+    "SYSOPDAT": ""
+} 

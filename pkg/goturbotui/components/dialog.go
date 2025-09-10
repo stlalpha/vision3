@@ -1,6 +1,7 @@
 package components
 
 import (
+	"fmt"
 	"github.com/stlalpha/vision3/pkg/goturbotui"
 )
 
@@ -124,12 +125,15 @@ func (d *Dialog) HandleEvent(event goturbotui.Event) bool {
 		return false
 	}
 	
-	// Handle escape to close
-	if event.Type == goturbotui.EventKey && event.Key.Code == goturbotui.KeyEscape {
-		// Close dialog (implementation depends on application)
-		return true
-	}
+	fmt.Printf("DEBUG: Dialog.HandleEvent: event.Key.Code=%d, focused=%v\n", event.Key.Code, d.GetFocused() != nil)
+	
+	// Don't handle escape here - let parent handle dialog closing
+	// if event.Type == goturbotui.EventKey && event.Key.Code == goturbotui.KeyEscape {
+	//     return true  
+	// }
 	
 	// Pass to children
-	return d.BaseContainer.HandleEvent(event)
+	result := d.BaseContainer.HandleEvent(event)
+	fmt.Printf("DEBUG: Dialog.BaseContainer.HandleEvent returned %v\n", result)
+	return result
 }

@@ -235,6 +235,7 @@ func (s *TerminalScreen) parseInput(data []byte) {
 	switch data[0] {
 	case 13: // Enter
 		s.sendKeyEvent(KeyEnter, ModNone, '\r')
+		fmt.Printf("DEBUG: Sent KeyEnter event (code=%d)\n", KeyEnter)
 	case 9: // Tab
 		s.sendKeyEvent(KeyTab, ModNone, '\t')
 	case 127, 8: // Backspace
@@ -245,6 +246,9 @@ func (s *TerminalScreen) parseInput(data []byte) {
 		// Regular character
 		if data[0] >= 32 && data[0] < 127 {
 			s.sendKeyEvent(KeyUnknown, ModNone, rune(data[0]))
+			fmt.Printf("DEBUG: Regular char data[0]=%d, rune=%c\n", data[0], rune(data[0]))
+		} else {
+			fmt.Printf("DEBUG: Unhandled key data[0]=%d\n", data[0])
 		}
 	}
 }

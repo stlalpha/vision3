@@ -1,6 +1,7 @@
 package components
 
 import (
+	"fmt"
 	"unicode/utf8"
 	
 	"github.com/stlalpha/vision3/pkg/goturbotui"
@@ -144,6 +145,9 @@ func (lb *ListBox) Draw(canvas goturbotui.Canvas) {
 		theme = goturbotui.DefaultTurboTheme()
 	}
 	
+	fmt.Printf("DEBUG: ListBox.Draw() bounds=(%d,%d,%d,%d), selectedIndex=%d, itemCount=%d\n",
+		bounds.X, bounds.Y, bounds.W, bounds.H, lb.selectedIndex, len(lb.items))
+	
 	// Clear background
 	canvas.Fill(bounds, ' ', theme.ListBox)
 	
@@ -192,16 +196,21 @@ func (lb *ListBox) Draw(canvas goturbotui.Canvas) {
 // HandleEvent handles list box events
 func (lb *ListBox) HandleEvent(event goturbotui.Event) bool {
 	if !lb.IsVisible() || !lb.CanFocus() {
+		fmt.Printf("DEBUG: ListBox.HandleEvent: not visible or can't focus\n")
 		return false
 	}
+	
+	fmt.Printf("DEBUG: ListBox.HandleEvent: event.Key.Code=%d, focused=%v\n", event.Key.Code, lb.IsFocused())
 	
 	if event.Type == goturbotui.EventKey {
 		switch event.Key.Code {
 		case goturbotui.KeyUp:
+			fmt.Printf("DEBUG: ListBox handling KeyUp\n")
 			lb.selectPrevious()
 			return true
 			
 		case goturbotui.KeyDown:
+			fmt.Printf("DEBUG: ListBox handling KeyDown\n")
 			lb.selectNext()
 			return true
 			
@@ -234,13 +243,16 @@ func (lb *ListBox) HandleEvent(event goturbotui.Event) bool {
 			return true
 			
 		case goturbotui.KeyEnter:
+			fmt.Printf("DEBUG: ListBox handling KeyEnter, onSelect=%v, selectedIndex=%d\n", lb.onSelect != nil, lb.selectedIndex)
 			if lb.onSelect != nil && lb.selectedIndex >= 0 {
+				fmt.Printf("DEBUG: ListBox calling onSelect callback\n")
 				lb.onSelect(lb.selectedIndex, lb.GetSelectedItem())
 			}
 			return true
 		}
 	}
 	
+	fmt.Printf("DEBUG: ListBox: event not handled\n")
 	return false
 }
 
@@ -250,10 +262,14 @@ func (lb *ListBox) selectNext() {
 		return
 	}
 	
+	oldIndex := lb.selectedIndex
 	if lb.selectedIndex < len(lb.items)-1 {
 		lb.selectedIndex++
 		lb.ensureVisible()
 	}
+	fmt.Printf("DEBUG: selectNext() %d -> %d, bounds=(%d,%d,%d,%d)\n", 
+		oldIndex, lb.selectedIndex, 
+		lb.GetBounds().X, lb.GetBounds().Y, lb.GetBounds().W, lb.GetBounds().H)
 }
 
 // selectPrevious moves selection to the previous item
@@ -262,8 +278,12 @@ func (lb *ListBox) selectPrevious() {
 		return
 	}
 	
+	oldIndex := lb.selectedIndex
 	if lb.selectedIndex > 0 {
 		lb.selectedIndex--
 		lb.ensureVisible()
 	}
+	fmt.Printf("DEBUG: selectPrevious() %d -> %d, bounds=(%d,%d,%d,%d)\n", 
+		oldIndex, lb.selectedIndex, 
+		lb.GetBounds().X, lb.GetBounds().Y, lb.GetBounds().W, lb.GetBounds().H)
 }

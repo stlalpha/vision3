@@ -15,6 +15,7 @@ type Application struct {
 	theme      *Theme
 	ctx        context.Context
 	cancel     context.CancelFunc
+	needsRedraw bool
 }
 
 // NewApplication creates a new TUI application
@@ -96,7 +97,8 @@ func (a *Application) Run() error {
 	defer func() { a.running = false }()
 	
 	// Initial draw
-	a.draw()
+	a.needsRedraw = true
+	a.drawIfNeeded()
 	
 	// Main event loop
 	events := a.screen.PollEvents()
@@ -107,8 +109,12 @@ func (a *Application) Run() error {
 			return nil
 			
 		case event := <-events:
-			a.handleEvent(event)
-			a.draw()
+			handled := a.handleEvent(event)
+			// Only redraw if the event was actually handled (caused a change)
+			if handled {
+				a.needsRedraw = true
+			}
+			a.drawIfNeeded()
 		}
 	}
 	
@@ -119,6 +125,15 @@ func (a *Application) Run() error {
 func (a *Application) Stop() {
 	a.running = false
 	a.cancel()
+}
+
+// drawIfNeeded renders the application only if a redraw is needed
+func (a *Application) drawIfNeeded() {
+	if !a.needsRedraw {
+		return
+	}
+	a.draw()
+	a.needsRedraw = false
 }
 
 // draw renders the entire application
@@ -146,8 +161,8 @@ func (a *Application) draw() {
 	a.canvas.Render()
 }
 
-// handleEvent processes input events
-func (a *Application) handleEvent(event Event) {
+// handleEvent processes input events and returns true if the event caused a visual change
+func (a *Application) handleEvent(event Event) bool {
 	// Handle global keys first
 	if event.Type == EventKey {
 		// Handle resize
@@ -172,7 +187,7 @@ func (a *Application) handleEvent(event Event) {
 					resizeHandler.Resize(width, height)
 				}
 			}
-			return
+			return true // Resize always needs redraw
 		}
 		
 		// Global shortcuts
@@ -180,28 +195,35 @@ func (a *Application) handleEvent(event Event) {
 		case KeyF10:
 			if event.Key.Modifiers == ModNone {
 				a.Stop()
-				return
+				return false // No redraw needed for exit
 			}
 		}
 		
 		// Handle Ctrl+C
 		if event.Key.Modifiers == ModCtrl && event.Rune == 'c' {
 			a.Stop()
-			return
+			return false // No redraw needed for exit
 		}
 	}
 	
 	// Try topmost modal first
 	if topModal := a.GetTopModal(); topModal != nil {
 		if topModal.HandleEvent(event) {
-			return
+			return true // Modal handled it, needs redraw
 		}
 	}
 	
 	// Then try desktop
 	if a.desktop != nil {
-		a.desktop.HandleEvent(event)
+		return a.desktop.HandleEvent(event)
 	}
+	
+	return false // Event not handled
+}
+
+// RequestRedraw marks that a redraw is needed (for components that change state)
+func (a *Application) RequestRedraw() {
+	a.needsRedraw = true
 }
 
 // Quit is a convenience method to stop the application

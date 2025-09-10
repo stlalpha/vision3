@@ -1,0 +1,32 @@
+[
+  {
+    "id": "11111111-1111-1111-1111-111111111111",
+    "area_id": 1,
+    "filename": "TEST1.TXT",
+    "description": "A simple test text file.",
+    "size": 21,
+    "uploaded_at": "2024-01-01T10:00:00Z",
+    "uploaded_by": "System",
+    "download_count": 1
+  },
+  {
+    "id": "22222222-2222-2222-2222-222222222222",
+    "area_id": 1,
+    "filename": "README.DOC",
+    "description": "Basic readme document.",
+    "size": 23,
+    "uploaded_at": "2024-01-01T10:01:00Z",
+    "uploaded_by": "System",
+    "download_count": 1
+  },
+  {
+    "id": "33333333-3333-3333-3333-333333333333",
+    "area_id": 1,
+    "filename": "visx_097.zip",
+    "description": "ViSiON-X v0.97 Archive",
+    "size": 701247,
+    "uploaded_at": "2025-05-01T14:40:00Z",
+    "uploaded_by": "Felonius",
+    "download_count": 0
+  }
+]

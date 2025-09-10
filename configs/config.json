@@ -1,7 +1,7 @@
 {
   "boardName": "PiRATE MiND STATiON",
   "boardPhoneNumber": "314-567-3833",
-  "sysOpLevel": 255,
   "coSysLevel": 250,
-  "logonLevel": 100
-} 
+  "logonLevel": 100,
+  "sysOpLevel": 255
+}
