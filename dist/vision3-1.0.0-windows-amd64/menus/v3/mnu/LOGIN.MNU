@@ -1,9 +1,0 @@
-{
-    "CLR": true,
-    "PROMPT": false,
-    "PROMPT1": "",
-    "PROMPT2": "",
-    "FALLBACK": "LOGIN",
-    "ACS": "",
-    "PASS": ""
-} 

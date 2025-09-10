@@ -30,11 +30,22 @@ go.work.sum
 /data/*
 !.gitkeep
 
-# Compiled executable
+# Distribution directory - exclude all build artifacts
+/dist/
+/dist/*
+!.gitkeep
+
+# Compiled executables and build artifacts
 /vision3
+/vision3-config
 /cmd/vision3/vision3
 /cmd/ansitest/ansitest
 /cmd/strings-decoder/strings-decoder
+/cmd/vision3-config/vision3-config
+
+# Build directories
+/dist-release/
+/dist-release/*
 
 # SSH host keys (all of them, including public keys)
 configs/ssh_host_*
@@ -52,6 +63,11 @@ SIGNATURES.txt
 log/
 logs/
 tea_debug.log
+config-debug.log
+debug.log
+full-debug.log
+urmom.log
+wut.log
 
 # Backup files
 *.bak
