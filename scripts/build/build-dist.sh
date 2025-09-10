@@ -128,7 +128,7 @@ for platform in "${PLATFORMS[@]}"; do
     print_status "Building installer for ${GOOS}/${GOARCH}..."
     
     cd "$(dirname "$0")/../../cmd/install"
-    env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "../../${DIST_DIR}/${OUTPUT_NAME}"
+    env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "${DIST_DIR}/${OUTPUT_NAME}"
     cd "$(dirname "$0")"
     
     # Sign the installer
@@ -165,7 +165,7 @@ for platform in "${PLATFORMS[@]}"; do
         fi
         
         cd "$(dirname "$0")/../../cmd/$app"
-        env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "../../${PLATFORM_DIR}/bin/${OUTPUT_NAME}"
+        env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "${PLATFORM_DIR}/bin/${OUTPUT_NAME}"
         cd "$(dirname "$0")"
     done
     
