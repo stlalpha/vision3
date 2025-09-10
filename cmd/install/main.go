@@ -78,7 +78,7 @@ func main() {
 func (i *Installer) showBanner() {
 	fmt.Print(colorCyan + colorBold)
 	fmt.Println("╔══════════════════════════════════════════════════════════════════╗")
-	fmt.Printf("║                    ViSiON/3 BBS INSTALLER v%-21s ║\n", version)
+	fmt.Printf("║                    ViSiON/3 BBS INSTALLER v%-20s ║\n", version)
 	fmt.Println("║                                                                  ║")
 	fmt.Println("║                    (c) 2025 Ruthless Enterprises                ║")
 	fmt.Println("╚══════════════════════════════════════════════════════════════════╝")
