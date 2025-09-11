@@ -97,3 +97,5 @@ worktrees/
 # Verification scripts (should only be in dist packages)
 /verify.sh
 /verify.bat
+cmd/vision3-config/vision3-config
+cmd/stringtool/stringtool
