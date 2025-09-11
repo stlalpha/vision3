@@ -9,6 +9,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/gliderlabs/ssh"
+	"golang.org/x/crypto/ssh/terminal"
 	"golang.org/x/text/encoding/charmap"
 )
 
@@ -25,6 +26,8 @@ const (
 type BBS struct {
 	writer     io.Writer
 	outputMode OutputMode
+	session    ssh.Session
+	inputTerm  *terminal.Terminal
 }
 
 // NewBBS creates a new BBS terminal system from SSH session
@@ -33,9 +36,14 @@ func NewBBS(session ssh.Session) *BBS {
 	termType := getTermValue(session.Environ())
 	outputMode := DetectOutputMode(termType)
 	
+	// Create input terminal for reading user input
+	inputTerm := terminal.NewTerminal(session, "")
+	
 	return &BBS{
 		writer:     session,
 		outputMode: outputMode,
+		session:    session,
+		inputTerm:  inputTerm,
 	}
 }
 
@@ -44,6 +52,8 @@ func NewBBSFromWriter(writer io.Writer, outputMode OutputMode) *BBS {
 	return &BBS{
 		writer:     writer,
 		outputMode: outputMode,
+		session:    nil,
+		inputTerm:  nil,
 	}
 }
 
@@ -99,8 +109,10 @@ func (b *BBS) ProcessPipeCodes(data []byte) []byte {
 
 // ReadLine reads a line of input from the terminal
 func (b *BBS) ReadLine() (string, error) {
-	// Implementation needed - for now return error
-	return "", errors.New("ReadLine not implemented in new BBS interface")
+	if b.inputTerm == nil {
+		return "", errors.New("no input terminal available - BBS not created with SSH session")
+	}
+	return b.inputTerm.ReadLine()
 }
 
 // SaveCursor saves the current cursor position (ANSI escape sequence)
@@ -155,13 +167,73 @@ func ProcessAnsiAndExtractCoords(data []byte, outputMode OutputMode) (ProcessAns
 		return ProcessAnsiResult{}, err
 	}
 	
-	// Process ViSiON/2 pipe codes to ANSI
+	// Extract coordinates BEFORE processing pipe codes
+	coords := extractCoordinates(string(processedData))
+	
+	// Process ViSiON/2 pipe codes to ANSI (this will remove the coordinate markers)
 	finalData := tempBBS.processPipeCodes(processedData)
 	
 	return ProcessAnsiResult{
 		ProcessedContent:  finalData,
-		PlaceholderCoords: make(map[string]struct{ X, Y int }),
+		PlaceholderCoords: coords,
 	}, nil
+}
+
+// extractCoordinates parses ANSI content to find coordinate markers like |P, |O
+func extractCoordinates(content string) map[string]struct{ X, Y int } {
+	coords := make(map[string]struct{ X, Y int })
+	
+	// Parse line by line to find coordinate markers
+	
+	lines := strings.Split(content, "\n")
+	for lineNum, line := range lines {
+		currentX := 1
+		i := 0
+		
+		for i < len(line) {
+			char := line[i]
+			
+			// Handle ANSI escape sequences
+			if char == '\x1b' && i+1 < len(line) && line[i+1] == '[' {
+				// Find the end of the escape sequence
+				j := i + 2
+				for j < len(line) && (line[j] >= '0' && line[j] <= '9' || line[j] == ';') {
+					j++
+				}
+				if j < len(line) {
+					j++ // Include the command letter
+				}
+				i = j
+				continue
+			}
+			
+			// Handle carriage return
+			if char == '\r' {
+				currentX = 1
+				i++
+				continue
+			}
+			
+			// Look for coordinate markers like |P, |O
+			if char == '|' && i+1 < len(line) {
+				marker := line[i+1]
+				if marker == 'P' || marker == 'O' {
+					coords[string(marker)] = struct{ X, Y int }{
+						X: currentX,
+						Y: lineNum + 1, // Convert to 1-based
+					}
+					i += 2 // Skip the marker
+					continue
+				}
+			}
+			
+			// Regular character - advance cursor
+			currentX++
+			i++
+		}
+	}
+	
+	return coords
 }
 
 // UnicodeToCP437Table is a placeholder for character conversion

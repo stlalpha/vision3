@@ -882,15 +882,19 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 				continue
 			}
 
-			// Display LOGIN.ANS using the same pipeline as test server
-			err := terminal.DisplayFile(fullAnsPath)
-			if err != nil {
-				log.Printf("ERROR: Failed to display LOGIN.ANS: %v", err)
-				return "", nil, fmt.Errorf("failed to display LOGIN.ANS: %w", err)
+			// Process LOGIN.ANS to extract coordinates and display
+			terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear screen first
+			_, wErr := terminal.Write(ansiProcessResult.ProcessedContent)
+			if wErr != nil {
+				log.Printf("ERROR: Failed to write processed LOGIN.ANS bytes to terminal: %v", wErr)
+				return "", nil, fmt.Errorf("failed to display LOGIN.ANS: %w", wErr)
 			}
 
-			// Use empty coordinates since coordinate extraction isn't implemented yet
+			// Convert coordinates format for handleLoginPrompt
 			coords := make(map[string]struct{ X, Y int })
+			for rune, pos := range ansiProcessResult.PlaceholderCoords {
+				coords[string(rune)] = struct{ X, Y int }{X: pos.X, Y: pos.Y}
+			}
 			
 			// Handle the interactive login prompt using extracted coordinates
 			authenticatedUserResult, loginErr := e.handleLoginPrompt(s, terminal, userManager, nodeNumber, coords, outputMode)

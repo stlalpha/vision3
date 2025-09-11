@@ -479,38 +479,40 @@ func main() {
 			Config: gossh.Config{
 				// Maximum compatibility - include legacy algorithms for old BBS clients like SyncTERM
 				KeyExchanges: []string{
-					// Legacy algorithms first for SyncTERM compatibility
-					"diffie-hellman-group1-sha1", // Ancient but needed for SyncTERM
-					"diffie-hellman-group14-sha1",
-					"diffie-hellman-group14-sha256",
-					// Modern algorithms after
-					"diffie-hellman-group16-sha512",
+					// Enigma-BBS proven configuration for SyncTerm compatibility
+					"curve25519-sha256",
+					"curve25519-sha256@libssh.org",
 					"ecdh-sha2-nistp256",
-					"ecdh-sha2-nistp384", 
+					"ecdh-sha2-nistp384",
 					"ecdh-sha2-nistp521",
+					"diffie-hellman-group14-sha1", // Essential for SyncTerm
+					"diffie-hellman-group1-sha1",  // Ancient but needed
 				},
 				Ciphers: []string{
-					// Legacy algorithms first for maximum compatibility
-					"aes128-cbc",
-					"aes192-cbc", 
-					"aes256-cbc",
-					"3des-cbc", // Very old but sometimes needed for BBS terminals
+					// Enigma-BBS proven configuration for legacy BBS client compatibility
 					"aes128-ctr",
 					"aes192-ctr",
 					"aes256-ctr",
-					// Modern algorithms after
-					"chacha20-poly1305@openssh.com",
-					"aes256-gcm@openssh.com",
+					"aes128-gcm",
 					"aes128-gcm@openssh.com",
+					"aes256-gcm",
+					"aes256-gcm@openssh.com",
+					"aes256-cbc",
+					"aes192-cbc",
+					"aes128-cbc",
+					"3des-cbc", // Essential for SyncTerm and legacy terminals
 				},
 				MACs: []string{
-					// Legacy algorithms first for maximum compatibility
-					"hmac-sha1",
-					"hmac-sha1-96",
-					"hmac-md5", // Weak but needed for very old clients
-					// Modern algorithms after
+					// Enigma-BBS proven configuration for legacy BBS client compatibility
 					"hmac-sha2-256",
-					"hmac-sha2-256-etm@openssh.com",
+					"hmac-sha2-512",
+					"hmac-sha1",
+					"hmac-md5",
+					"hmac-sha2-256-96",
+					"hmac-sha2-512-96",
+					"hmac-ripemd160",
+					"hmac-sha1-96",
+					"hmac-md5-96",
 				},
 			},
 		}
