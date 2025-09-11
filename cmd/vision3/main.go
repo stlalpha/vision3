@@ -158,7 +158,7 @@ func sessionHandler(s ssh.Session) {
 
 	// --- Create Terminal ---
 	log.Printf("Node %d: Creating terminal for session", nodeID)
-	terminalInstance := terminal.New(s, effectiveMode) // Use new terminal API
+	terminalInstance := terminal.NewBBS(s) // Use new simplified terminal API
 
 	// --- Simple Test Output ---
 	testMsg := "\r\n\x1b[31mSimple Test: RED\x1b[0m | \x1b[32mGREEN\x1b[0m | ASCII: Hello! 123?.,;\r\n"
