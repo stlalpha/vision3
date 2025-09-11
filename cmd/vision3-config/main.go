@@ -211,8 +211,8 @@ func (ct *ConfigTool) showStringConfigMenu() {
 	list.AddItem("System Name", "Configure BBS system name", '1', func() {
 		ct.editSystemName()
 	})
-	list.AddItem("All Strings Editor", "Edit all configurable text strings in one scrollable form", '2', func() {
-		ct.editAllStrings()
+	list.AddItem("All Strings Editor", "Edit all configurable text strings in classic ViSiON/2 style", '2', func() {
+		ct.editAllStringsClassic()
 	})
 	list.AddItem("Welcome Messages", "Edit login and welcome text", '3', func() {
 		ct.editWelcomeMessages()
@@ -1017,15 +1017,21 @@ func (ct *ConfigTool) editAllStrings() {
 	
 	// Create input fields for all strings in alphabetical order
 	fieldWidth := ct.getFieldWidth()
-	for _, fieldName := range sortedNames {
+	for i, fieldName := range sortedNames {
 		currentValue := stringFields[fieldName]
 		label := ct.formatFieldLabel(fieldName)
 		
+		// Add index number and highlight indicator to label
+		numberedLabel := fmt.Sprintf("[%3d] %s", i+1, label)
+		
 		// Create pipe code input field
-		field := ct.newPipeCodeInputField(label, currentValue, fieldWidth, ct.renderPipeCodes)
+		field := ct.newPipeCodeInputField(numberedLabel, currentValue, fieldWidth, ct.renderPipeCodes)
 		allFields[fieldName] = field
 		form.AddFormItem(field)
 	}
+	
+	// Start with first field highlighted
+	currentFieldIndex := 0
 	
 	// Add action buttons at the bottom
 	form.AddButton("S. Save All Changes", func() {
@@ -1042,7 +1048,7 @@ func (ct *ConfigTool) editAllStrings() {
 	helpText.SetTitle(" Pipe Code Help ")
 	helpText.SetDynamicColors(true)
 	helpText.SetWrap(true)
-	helpText.SetText("All 200+ BBS text strings are listed here in alphabetical order. Scroll up/down to navigate through all fields.\n\nPipe Codes for Colors:\n[white]|00-|07[white:-] Dark colors  [white]|08-|15[white:-] Bright colors\n[white]|B0-|B7[white:-] Background colors\n\nExamples:\n[white]|09[white:-] [#FF5555]Bright Red[white:-]  [white]|14[white:-] [#55FFFF]Bright Cyan[white:-]\n[white]|B1[white:-] [#FFFFFF:#AA0000]Red Background[white:-]\n\nNavigation:\n• Scroll up/down through all fields\n• Click in fields to edit pipe codes\n• Click out to see color preview\n• S = Save All, C = Cancel, Esc = Cancel")
+	helpText.SetText("All 200+ BBS text strings are listed here in alphabetical order with field numbers [001] - [200+].\n\nNavigation:\n• [yellow:blue:b]► Current field[white:-] highlighted with arrow\n• ↑/↓ Arrow keys to navigate\n• Click in fields to edit pipe codes\n• Click out to see color preview\n• S = Save All, C = Cancel, Esc = Cancel\n\nPipe Codes for Colors:\n[white]|00-|07[white:-] Dark colors  [white]|08-|15[white:-] Bright colors\n[white]|B0-|B7[white:-] Background colors\n\nExamples:\n[white]|09[white:-] [#FF5555]Bright Red[white:-]  [white]|14[white:-] [#55FFFF]Bright Cyan[white:-]\n[white]|B1[white:-] [#FFFFFF:#AA0000]Red Background[white:-]")
 	
 	// Create layout
 	mainFlex := tview.NewFlex()
@@ -1058,7 +1064,7 @@ func (ct *ConfigTool) editAllStrings() {
 		mainFlex.AddItem(helpText, 12, 0, false)
 	}
 	
-	// Set up keyboard shortcuts
+	// Set up keyboard shortcuts including arrow key navigation
 	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		switch event.Key() {
 		case tcell.KeyEscape:
@@ -1066,6 +1072,26 @@ func (ct *ConfigTool) editAllStrings() {
 			return nil
 		case tcell.KeyCtrlS:
 			ct.saveAllStringChanges(allFields)
+			return nil
+		case tcell.KeyUp:
+			// Navigate up through form fields
+			if currentFieldIndex <= 0 {
+				// Wrap to last field
+				currentFieldIndex = len(sortedNames) - 1
+			} else {
+				currentFieldIndex--
+			}
+			ct.app.SetFocus(form.GetFormItem(currentFieldIndex))
+			return nil
+		case tcell.KeyDown:
+			// Navigate down through form fields
+			if currentFieldIndex >= len(sortedNames)-1 {
+				// Wrap to first field
+				currentFieldIndex = 0
+			} else {
+				currentFieldIndex++
+			}
+			ct.app.SetFocus(form.GetFormItem(currentFieldIndex))
 			return nil
 		}
 		
@@ -1087,6 +1113,236 @@ func (ct *ConfigTool) editAllStrings() {
 	
 	// Focus the form for immediate scrolling
 	ct.app.SetFocus(form)
+}
+
+func (ct *ConfigTool) editAllStringsClassic() {
+	// Get all string fields and sort them
+	stringFields := ct.getAllStringFields()
+	var sortedNames []string
+	for fieldName := range stringFields {
+		if strings.HasPrefix(fieldName, "DefColor") {
+			continue
+		}
+		sortedNames = append(sortedNames, fieldName)
+	}
+	
+	// Sort alphabetically 
+	for i := 0; i < len(sortedNames); i++ {
+		for j := i + 1; j < len(sortedNames); j++ {
+			if sortedNames[i] > sortedNames[j] {
+				sortedNames[i], sortedNames[j] = sortedNames[j], sortedNames[i]
+			}
+		}
+	}
+	
+	// State variables for paged display (20 items per page like original)
+	totalItems := len(sortedNames)
+	itemsPerPage := 20
+	totalPages := (totalItems + itemsPerPage - 1) / itemsPerPage
+	currentPage := 1
+	currentItem := 1 // 1-based index like original
+	
+	// Create the main container
+	container := tview.NewFlex()
+	container.SetDirection(tview.FlexRow)
+	
+	// Header area
+	headerText := tview.NewTextView()
+	headerText.SetDynamicColors(true)
+	headerText.SetTextAlign(tview.AlignCenter)
+	
+	// Main content area (will be rebuilt each page)
+	contentArea := tview.NewTextView()
+	contentArea.SetDynamicColors(true)
+	contentArea.SetScrollable(false)
+	
+	// Footer area  
+	footerText := tview.NewTextView()
+	footerText.SetDynamicColors(true)
+	footerText.SetTextAlign(tview.AlignCenter)
+	footerText.SetWrap(true)
+	
+	// Function to get field description (like original)
+	getFieldDescription := func(fieldName string) string {
+		switch fieldName {
+		case "DefPrompt":
+			return "This is the Default prompt for new users"
+		case "PauseString":
+			return "This is displayed anytime the screen pauses awaiting a key to be pressed"
+		case "SystemPasswordStr":
+			return "This is displayed when asking the login password (if no SYSPASS.ANS)"
+		case "WhatsYourAlias":
+			return "This is displayed when asking a user's alias (if ALIAS.ANS isn't in use)"
+		case "WhatsYourPw":
+			return "This is displayed when asking a user's password (if PASSWORD.ANS isn't used)"
+		case "ConnectionStr":
+			return "This is the modem connect string displayed to user (|BR = Baud Rate)"
+		case "LoginNow":
+			return "Displayed after user checks (and gets) the system password"
+		case "WelcomeNewUser":
+			return "Displayed to New Users before User Number"
+		case "UserNotFound":
+			return "Asks unknown users if they wish to apply"
+		case "WrongPassword":
+			return "Displayed when user enters wrong password"
+		default:
+			return "Configure this BBS text string with pipe codes for colors"
+		}
+	}
+	
+	// Function to update the display
+	updateDisplay := func() {
+		// Build header (recreating original style)
+		startItem := (currentPage-1)*itemsPerPage + 1
+		headerText.Clear()
+		headerText.SetText(fmt.Sprintf("[blue:white:b] Current Topic Number: [red:white:b]%d [blue:white:b]│ ViSiON/3 BBS String Configuration [blue:white:b]│ Current Page: [red:white:b]%d ", startItem, currentPage))
+		
+		// Build content area (20 items per page)
+		contentArea.Clear()
+		content := ""
+		
+		pageStart := (currentPage - 1) * itemsPerPage
+		pageEnd := pageStart + itemsPerPage
+		if pageEnd > totalItems {
+			pageEnd = totalItems
+		}
+		
+		// Add each item for this page
+		for i := pageStart; i < pageEnd; i++ {
+			fieldName := sortedNames[i]
+			fieldValue := stringFields[fieldName]
+			label := ct.formatFieldLabel(fieldName)
+			lineNum := i + 1
+			
+			// Highlight current item (like original)
+			if lineNum == currentItem {
+				content += fmt.Sprintf("[black:white:b][[%3d]] %-25s [red:white:b]%s[-:-:-]\n", 
+					lineNum, label, fieldValue)
+			} else {
+				content += fmt.Sprintf("[gray][[%3d]] [white]%-25s [yellow]%s[-:-:-]\n", 
+					lineNum, label, fieldValue)
+			}
+		}
+		
+		contentArea.SetText(content)
+		
+		// Update footer with current field description
+		if currentItem >= 1 && currentItem <= totalItems {
+			fieldName := sortedNames[currentItem-1]
+			desc := getFieldDescription(fieldName)
+			footerText.SetText(fmt.Sprintf("[white:blue] %s ", desc))
+		}
+	}
+	
+	// Function to edit current field
+	editCurrentField := func() {
+		if currentItem < 1 || currentItem > totalItems {
+			return
+		}
+		
+		fieldName := sortedNames[currentItem-1]
+		currentValue := stringFields[fieldName]
+		
+		// Create simple input modal
+		form := tview.NewForm()
+		form.SetTitle(fmt.Sprintf(" Edit Field %d: %s ", currentItem, ct.formatFieldLabel(fieldName)))
+		form.SetBorder(true)
+		
+		inputField := tview.NewInputField()
+		inputField.SetLabel("Value: ")
+		inputField.SetText(currentValue)
+		inputField.SetFieldWidth(60)
+		
+		form.AddFormItem(inputField)
+		form.AddButton("Save", func() {
+			newValue := inputField.GetText()
+			ct.updateStringConfigField(fieldName, newValue)
+			stringFields[fieldName] = newValue // Update local copy
+			ct.pages.RemovePage("editform")
+			updateDisplay()
+		})
+		form.AddButton("Cancel", func() {
+			ct.pages.RemovePage("editform")
+		})
+		
+		ct.pages.AddPage("editform", form, true, true)
+		ct.app.SetFocus(inputField)
+	}
+	
+	// Navigation handler (recreating original key bindings)
+	container.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyF4: // F4 = Save and Exit (like original)
+			ct.saveStringsConfig()
+			ct.showInfo(fmt.Sprintf("Saved %d string configurations!", totalItems))
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case tcell.KeyEscape: // ESC = Abort without saving
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case tcell.KeyEnter: // Enter = Edit current field
+			editCurrentField()
+			return nil
+		case tcell.KeyPgDn: // Page Down
+			if currentPage < totalPages {
+				currentPage++
+				currentItem = (currentPage-1)*itemsPerPage + 1
+				updateDisplay()
+			}
+			return nil
+		case tcell.KeyPgUp: // Page Up  
+			if currentPage > 1 {
+				currentPage--
+				currentItem = (currentPage-1)*itemsPerPage + 1
+				updateDisplay()
+			}
+			return nil
+		case tcell.KeyUp: // Up arrow
+			if currentItem > 1 {
+				currentItem--
+				// Check if we need to change pages
+				newPage := ((currentItem-1) / itemsPerPage) + 1
+				if newPage != currentPage {
+					currentPage = newPage
+				}
+				updateDisplay()
+			}
+			return nil
+		case tcell.KeyDown: // Down arrow
+			if currentItem < totalItems {
+				currentItem++
+				// Check if we need to change pages
+				newPage := ((currentItem-1) / itemsPerPage) + 1
+				if newPage != currentPage {
+					currentPage = newPage
+				}
+				updateDisplay()
+			}
+			return nil
+		}
+		
+		// Direct field access by typing letters/numbers (like original)
+		if (event.Rune() >= '0' && event.Rune() <= '9') || 
+		   (event.Rune() >= 'a' && event.Rune() <= 'z') ||
+		   (event.Rune() >= 'A' && event.Rune() <= 'Z') {
+			editCurrentField()
+			return nil
+		}
+		
+		return event
+	})
+	
+	// Build the layout
+	container.AddItem(headerText, 1, 0, false)    // Header
+	container.AddItem(contentArea, 0, 1, true)   // Main content  
+	container.AddItem(footerText, 2, 0, false)   // Footer
+	
+	// Initial display
+	updateDisplay()
+	
+	ct.pages.AddPage("allstrings", container, true, false)
+	ct.pages.SwitchToPage("allstrings")
+	ct.app.SetFocus(container)
 }
 
 func (ct *ConfigTool) saveStringsConfig() error {
