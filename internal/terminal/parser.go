@@ -31,6 +31,7 @@ type GraphicsState struct {
 	Reverse         bool // Reverse video
 	Strikethrough   bool // Strikethrough text
 	DoubleUnderline bool // Double underline
+	Reset           bool // True if this state represents a reset to defaults
 }
 
 // CursorState tracks cursor position and visibility
@@ -71,6 +72,9 @@ type ANSIParser struct {
 	// Parsing state
 	collectingParams bool
 	private          bool // CSI sequence started with ? or similar
+	
+	// Text buffering for efficient output
+	textBuffer      []byte
 	
 	// Callbacks for handling parsed sequences
 	onText          func([]byte)
@@ -130,6 +134,8 @@ func (p *ANSIParser) ParseBytes(data []byte) error {
 			return err
 		}
 	}
+	// Flush any remaining buffered text at end of parsing
+	p.flushTextBuffer()
 	return nil
 }
 
@@ -156,6 +162,7 @@ func (p *ANSIParser) parseByte(b byte) error {
 func (p *ANSIParser) parseGround(b byte) error {
 	switch b {
 	case 0x1B: // ESC
+		p.flushTextBuffer() // Flush any buffered text before escape sequence
 		p.state = StateEscape
 		p.resetParser()
 	case 0x08: // Backspace
@@ -178,15 +185,13 @@ func (p *ANSIParser) parseGround(b byte) error {
 		// Handle bell (could trigger callback for audio/visual bell)
 	default:
 		if b >= 0x20 && b <= 0x7E { // Printable ASCII
-			if p.onText != nil {
-				p.onText([]byte{b})
-			}
-			p.advanceCursor()
+			// Buffer the character instead of sending immediately
+			p.textBuffer = append(p.textBuffer, b)
+			p.advanceCursorSilent() // Don't trigger cursor callback yet
 		} else if b >= 0x80 { // Extended ASCII/UTF-8
-			if p.onText != nil {
-				p.onText([]byte{b})
-			}
-			p.advanceCursor()
+			// Buffer the character instead of sending immediately
+			p.textBuffer = append(p.textBuffer, b)
+			p.advanceCursorSilent() // Don't trigger cursor callback yet
 		}
 	}
 	return nil
@@ -433,9 +438,11 @@ func (p *ANSIParser) handleSGR() {
 			p.graphics = GraphicsState{
 				ForegroundColor: 7, // Default white
 				BackgroundColor: 0, // Default black
+				Reset:           true, // Mark as reset state
 			}
 		case 1: // Bold/bright
 			p.graphics.Bold = true
+			p.graphics.Reset = false // Clear reset state
 		case 2: // Dim
 			p.graphics.Dim = true
 		case 3: // Italic
@@ -466,6 +473,7 @@ func (p *ANSIParser) handleSGR() {
 			p.graphics.Strikethrough = false
 		case 30, 31, 32, 33, 34, 35, 36, 37: // Foreground colors
 			p.graphics.ForegroundColor = param - 30
+			p.graphics.Reset = false // Clear reset state
 		case 38: // Extended foreground color
 			if i+1 < len(p.params) && p.params[i+1] == 5 && i+2 < len(p.params) {
 				// 256-color mode: ESC[38;5;n
@@ -491,13 +499,24 @@ func (p *ANSIParser) handleSGR() {
 		}
 	}
 	
+	// Flush any buffered text before graphics state change
+	p.flushTextBuffer()
 	if p.onGraphics != nil {
 		p.onGraphics(p.graphics)
 	}
 }
 
 // Helper functions
-func (p *ANSIParser) advanceCursor() {
+// flushTextBuffer sends any buffered text to the onText callback and clears the buffer
+func (p *ANSIParser) flushTextBuffer() {
+	if len(p.textBuffer) > 0 && p.onText != nil {
+		p.onText(p.textBuffer)
+		p.textBuffer = p.textBuffer[:0] // Clear buffer
+	}
+}
+
+// advanceCursorSilent advances cursor position without triggering callbacks
+func (p *ANSIParser) advanceCursorSilent() {
 	p.cursor.X++
 	if p.cursor.X >= p.screen.Width {
 		if p.cursor.WrapMode {
@@ -507,6 +526,10 @@ func (p *ANSIParser) advanceCursor() {
 			p.cursor.X = p.screen.Width - 1
 		}
 	}
+}
+
+func (p *ANSIParser) advanceCursor() {
+	p.advanceCursorSilent()
 	if p.onCursor != nil {
 		p.onCursor(p.cursor.X, p.cursor.Y)
 	}

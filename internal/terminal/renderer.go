@@ -407,25 +407,43 @@ func (r *ArtRenderer) onCursor(x, y int) {
 }
 
 func (r *ArtRenderer) onGraphics(state GraphicsState) {
+	// If this is a reset state, output reset sequence
+	if state.Reset {
+		r.writer.Write([]byte("\x1b[0m"))
+		return
+	}
+	
 	// Build SGR sequence based on graphics state
 	var params []string
 	
 	// Handle foreground color
 	if state.ForegroundColor >= 0 && state.ForegroundColor <= 15 {
 		if state.ForegroundColor < 8 {
-			params = append(params, strconv.Itoa(30+state.ForegroundColor))
+			// For normal colors (0-7), check if bold is set to make it bright
+			if state.Bold {
+				// Bold + normal color = bright color format
+				params = append(params, "1", strconv.Itoa(30+state.ForegroundColor))
+			} else {
+				params = append(params, strconv.Itoa(30+state.ForegroundColor))
+			}
 		} else {
+			// For bright colors (8-15), use the standard bright color format: bold + base color
 			params = append(params, "1", strconv.Itoa(30+(state.ForegroundColor-8)))
 		}
 	}
 	
-	// Handle background color
-	if state.BackgroundColor >= 0 && state.BackgroundColor <= 7 {
+	// Handle background color - only include if it was explicitly set (not default)
+	// For BBS accuracy, don't include background color unless it was explicitly changed
+	// from default black background (0)
+	if state.BackgroundColor >= 0 && state.BackgroundColor <= 7 && state.BackgroundColor != 0 {
 		params = append(params, strconv.Itoa(40+state.BackgroundColor))
 	}
 	
 	// Handle text attributes
-	if state.Bold {
+	// Don't add bold if we already added it for bright foreground colors or bold+normal color
+	addedBoldForBrightColor := state.ForegroundColor >= 8 && state.ForegroundColor <= 15
+	addedBoldForNormalColor := state.ForegroundColor >= 0 && state.ForegroundColor <= 7 && state.Bold
+	if state.Bold && !addedBoldForBrightColor && !addedBoldForNormalColor {
 		params = append(params, "1")
 	}
 	if state.Dim {
