@@ -2210,23 +2210,90 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 	return options, nil
 }
 
+// calculateANSIOffset analyzes ANSI content to determine coordinate offset
+// caused by leading blank lines, reset sequences, etc.
+func calculateANSIOffset(ansiContent []byte) int {
+	content := string(ansiContent)
+	lines := strings.Split(content, "\n")
+	
+	offset := 0
+	for _, line := range lines {
+		// Remove ANSI escape sequences to check if line has actual content
+		cleanLine := removeANSIEscapes(line)
+		cleanLine = strings.TrimSpace(cleanLine)
+		
+		// If line is empty or only whitespace after removing ANSI codes, it's an offset
+		if cleanLine == "" {
+			offset++
+		} else {
+			// Found first line with actual content, stop counting
+			break
+		}
+	}
+	
+	return offset
+}
+
+// removeANSIEscapes removes ANSI escape sequences from a string
+func removeANSIEscapes(s string) string {
+	// Simple ANSI escape sequence removal
+	// Matches \x1b[...m patterns (color codes, etc.)
+	result := ""
+	i := 0
+	for i < len(s) {
+		if i < len(s)-1 && s[i] == '\x1b' && s[i+1] == '[' {
+			// Find end of escape sequence (letter after digits/semicolons)
+			j := i + 2
+			for j < len(s) {
+				c := s[j]
+				if (c >= '0' && c <= '9') || c == ';' || c == '?' {
+					j++
+				} else {
+					// Found the command letter, skip it too
+					j++
+					break
+				}
+			}
+			i = j
+		} else {
+			result += string(s[i])
+			i++
+		}
+	}
+	return result
+}
+
 // drawLightbarMenu draws the lightbar menu with the specified option selected
 func drawLightbarMenu(terminal *terminalPkg.BBS, backgroundBytes []byte, options []LightbarOption, selectedIndex int, outputMode terminalPkg.OutputMode) error {
+	// Clear screen and reset cursor to ensure clean redraw and prevent layering
+	_, err := terminal.Write([]byte("\x1b[2J\x1b[H"))
+	if err != nil {
+		return fmt.Errorf("failed clearing screen for lightbar: %w", err)
+	}
+	
+	// Calculate offset caused by leading lines in ANSI content
+	offset := calculateANSIOffset(backgroundBytes)
+	log.Printf("DEBUG: Calculated ANSI offset: %d lines", offset)
+	
 	// Draw static background
 	// We might need to clear attributes before drawing background if it has colors
 	// _, err := terminal.Write([]byte(attrReset))
 	// if err != nil {
 	// 	return fmt.Errorf("failed resetting attributes before background: %w", err)
 	// }
-	_, err := terminal.Write(backgroundBytes)
+	_, err = terminal.Write(backgroundBytes)
 	if err != nil {
 		return fmt.Errorf("failed writing lightbar background: %w", err)
 	}
 
 	// Draw each option, highlighting the selected one
 	for i, opt := range options {
-		// Position cursor
-		posCmd := fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X)
+		// Adjust Y coordinate by adding the calculated offset
+		adjustedY := opt.Y + offset
+		log.Printf("DEBUG: Positioning option %d (%s): original Y=%d, adjusted Y=%d", i, opt.Text, opt.Y, adjustedY)
+		
+		// Position cursor using adjusted coordinates
+		posCmd := fmt.Sprintf("\x1b[%d;%dH", adjustedY, opt.X)
 		_, err := terminal.Write([]byte(posCmd))
 		if err != nil {
 			return fmt.Errorf("failed positioning cursor for lightbar option: %w", err)
