@@ -492,29 +492,9 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... " // Fallback
 	}
 
-	// Prepare bytes for the specific mode
-	var pauseBytesToWrite []byte
-	processedPausePrompt := terminal.DisplayContent([]byte(pausePrompt))
-	if outputMode == terminalPkg.OutputModeCP437 {
-		var cp437Buf bytes.Buffer
-		for _, r := range string(processedPausePrompt) {
-			if r < 128 {
-				cp437Buf.WriteByte(byte(r))
-			} else if cp437Byte, ok := terminalPkg.UnicodeToCP437Table[r]; ok {
-				cp437Buf.WriteByte(cp437Byte)
-			} else {
-				cp437Buf.WriteByte('?')
-			}
-		}
-		pauseBytesToWrite = cp437Buf.Bytes()
-	} else {
-		pauseBytesToWrite = processedPausePrompt
-	}
-
-	log.Printf("DEBUG: Node %d: Writing SHOWSTATS pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
-	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing SHOWSTATS pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
-	_, wErr = terminal.Write(pauseBytesToWrite)
+	// Display pause prompt directly - DisplayContent handles encoding and pipe codes
+	log.Printf("DEBUG: Node %d: Displaying SHOWSTATS pause prompt: %q", nodeNumber, pausePrompt)
+	wErr = terminal.DisplayContent([]byte(pausePrompt))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing SHOWSTATS pause prompt: %v", nodeNumber, wErr)
 	}
@@ -589,10 +569,10 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		return nil, "", fmt.Errorf("failed loading ONELINER templates")
 	}
 
-	// --- Build Display Output ---
-	processedTopTemplate := terminal.DisplayContent(topTemplate)
-	processedMidTemplate := string(terminal.DisplayContent(midTemplateBytes))
-	processedBotTemplate := terminal.DisplayContent(botTemplate)
+	// --- Process Templates ---
+	processedTopTemplate := string(terminal.ProcessPipeCodes(topTemplate))
+	processedMidTemplate := string(terminal.ProcessPipeCodes(midTemplateBytes))
+	processedBotTemplate := string(terminal.ProcessPipeCodes(botTemplate))
 
 	// Use WriteProcessedBytes for ClearScreen
 	wErr := terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
@@ -601,8 +581,8 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		// Continue if possible
 	}
 	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing ONELINER top template bytes (hex): %x", nodeNumber, processedTopTemplate)
-	_, wErr = terminal.Write(processedTopTemplate)
+	log.Printf("DEBUG: Node %d: Writing ONELINER top template bytes (hex): %x", nodeNumber, []byte(processedTopTemplate))
+	_, wErr = terminal.Write([]byte(processedTopTemplate))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing ONELINER top template: %v", nodeNumber, wErr)
 		return nil, "", wErr
@@ -632,14 +612,14 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		}
 	}
 
-	_, wErr = terminal.Write(processedBotTemplate)
+	_, wErr = terminal.Write([]byte(processedBotTemplate))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing ONELINER bottom template: %v", nodeNumber, wErr)
 		return nil, "", wErr
 	}
 	// Log hex bytes before writing
 	log.Printf("DEBUG: Node %d: Writing ONELINER bot template bytes (hex): %x", nodeNumber, processedBotTemplate)
-	_, wErr = terminal.Write(processedBotTemplate)
+	_, wErr = terminal.Write([]byte(processedBotTemplate))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing ONELINER bottom template: %v", nodeNumber, wErr)
 		return nil, "", wErr
@@ -677,7 +657,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		}
 
 		// Log hex bytes before writing
-		enterPromptBytes := terminal.DisplayContent([]byte(enterPrompt))
+		enterPromptBytes := terminal.ProcessPipeCodes([]byte(enterPrompt))
 		log.Printf("DEBUG: Node %d: Writing ONELINER enter prompt bytes (hex): %x", nodeNumber, enterPromptBytes)
 		_, wErr = terminal.Write(enterPromptBytes)
 		if wErr != nil {
@@ -703,23 +683,23 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			if err != nil {
 				log.Printf("ERROR: Node %d: Failed to marshal updated oneliners list to JSON: %v", nodeNumber, err)
 				msg := "\r\n|01Error preparing oneliner data for saving.|07\r\n"
-				terminal.Write(terminal.DisplayContent([]byte(msg)))
+				terminal.DisplayContent([]byte(msg))
 			} else {
 				err = os.WriteFile(onelinerPath, updatedJsonData, 0644)
 				if err != nil {
 					log.Printf("ERROR: Node %d: Failed to write updated oneliners JSON to %s: %v", nodeNumber, onelinerPath, err)
 					msg := "\r\n|01Error writing oneliner to disk.|07\r\n"
-					terminal.Write(terminal.DisplayContent([]byte(msg)))
+					terminal.DisplayContent([]byte(msg))
 				} else {
 					log.Printf("INFO: Node %d: Successfully saved updated oneliners to %s", nodeNumber, onelinerPath)
 					msg := "\r\n|10Oneliner added!|07\r\n"
-					terminal.Write(terminal.DisplayContent([]byte(msg)))
+					terminal.DisplayContent([]byte(msg))
 					time.Sleep(500 * time.Millisecond)
 				}
 			}
 		} else {
 			msg := "\r\n|01Empty oneliner not added.|07\r\n"
-			terminal.Write(terminal.DisplayContent([]byte(msg)))
+			terminal.DisplayContent([]byte(msg))
 			time.Sleep(500 * time.Millisecond)
 		}
 	} // end if addYes
@@ -752,8 +732,8 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 	terminal.Write([]byte(terminalPkg.MoveCursor(userRow, userCol)))
 	usernamePrompt := "|07Username/Handle: |15" // Original prompt text was in ANSI
 	// Use WriteProcessedBytes for prompt
-	processedPrompt := terminal.DisplayContent([]byte(usernamePrompt))
-	_, wErr := terminal.Write(processedPrompt)
+	// Use DisplayContent to handle pipe codes and display
+	wErr := terminal.DisplayContent([]byte(usernamePrompt))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing username prompt: %v", nodeNumber, wErr)
 		// Continue anyway?
@@ -776,7 +756,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 	// Move to Password position, display prompt, and read input securely
 	terminal.Write([]byte(terminalPkg.MoveCursor(passRow, passCol)))
 	passwordPrompt := "|07Password: |15" // Original prompt text was in ANSI
-	terminal.Write(terminal.DisplayContent([]byte(passwordPrompt)))
+	terminal.DisplayContent([]byte(passwordPrompt))
 	password, err := readPasswordSecurely(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -788,7 +768,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 			// Treat interrupt like a failed attempt?
 			terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
 			msg := "\r\n|01Login cancelled.|07\r\n"
-			terminal.Write(terminal.DisplayContent([]byte(msg)))
+			terminal.DisplayContent([]byte(msg))
 			time.Sleep(500 * time.Millisecond)
 			return nil, "", nil // No user change, no critical error
 		}
@@ -805,7 +785,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 		terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
 		errMsg := "\r\n|01Login incorrect.|07\r\n"
 		// Use WriteProcessedBytes
-		_, wErr := terminal.Write(terminal.DisplayContent([]byte(errMsg)))
+		wErr := terminal.DisplayContent([]byte(errMsg))
 		if wErr != nil {
 			log.Printf("ERROR: Failed writing login incorrect message: %v", wErr)
 		}
@@ -820,7 +800,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 		terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
 		errMsg := "\r\n|01Account requires validation by SysOp.|07\r\n"
 		// Use WriteProcessedBytes
-		_, wErr := terminal.Write(terminal.DisplayContent([]byte(errMsg)))
+		wErr := terminal.DisplayContent([]byte(errMsg))
 		if wErr != nil {
 			log.Printf("ERROR: Failed writing validation required message: %v", wErr)
 		}
@@ -875,7 +855,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 			log.Printf("ERROR: Failed to read ANSI file %s: %v", ansFilename, readErr)
 			// Display error message to user (using new helper)
 			errMsg := fmt.Sprintf("\r\n|01Error reading screen file: %s|07\r\n", ansFilename)
-			_, wErr := terminal.Write(terminal.DisplayContent([]byte(errMsg)))
+			wErr := terminal.DisplayContent([]byte(errMsg))
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing screen read error: %v", wErr)
 			}
@@ -902,20 +882,15 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 				continue
 			}
 
-			// Display the processed LOGIN screen (display logic moved to regular menu processing)
-			terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear first
-			// Write the processed bytes (encoding determined by outputMode) directly
-			_, wErr := terminal.Write(ansiProcessResult.ProcessedContent)
-			if wErr != nil {
-				log.Printf("ERROR: Failed to write processed LOGIN.ANS bytes to terminal: %v", wErr)
-				return "", nil, fmt.Errorf("failed to display LOGIN.ANS: %w", wErr)
+			// Display LOGIN.ANS using the same pipeline as test server
+			err := terminal.DisplayFile(fullAnsPath)
+			if err != nil {
+				log.Printf("ERROR: Failed to display LOGIN.ANS: %v", err)
+				return "", nil, fmt.Errorf("failed to display LOGIN.ANS: %w", err)
 			}
 
-			// Convert coordinates format for handleLoginPrompt
+			// Use empty coordinates since coordinate extraction isn't implemented yet
 			coords := make(map[string]struct{ X, Y int })
-			for rune, pos := range ansiProcessResult.PlaceholderCoords {
-				coords[string(rune)] = struct{ X, Y int }{X: pos.X, Y: pos.Y}
-			}
 			
 			// Handle the interactive login prompt using extracted coordinates
 			authenticatedUserResult, loginErr := e.handleLoginPrompt(s, terminal, userManager, nodeNumber, coords, outputMode)
@@ -1035,9 +1010,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 		menuRec, err := LoadMenu(currentMenuName, menuMnuPath)
 		if err != nil {
 			errMsg := fmt.Sprintf("|01Error loading menu %s: %v|07", currentMenuName, err)
-			processedErrMsg := terminal.DisplayContent([]byte(errMsg))
-			// Use new helper for error message
-			_, wErr := terminal.Write(processedErrMsg)
+			// Use DisplayContent to handle pipe codes and display
+			wErr := terminal.DisplayContent([]byte(errMsg))
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing menu load error message: %v", wErr)
 			}
@@ -1060,8 +1034,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 			passwordOk := false
 			for i := 0; i < 3; i++ { // Allow 3 attempts
 				prompt := fmt.Sprintf("\r\n|07Password for %s (|15Attempt %d/3|07): ", currentMenuName, i+1)
-				processedPrompt := terminal.DisplayContent([]byte(prompt))
-				terminal.Write(processedPrompt) // Use terminal.Write
+				terminal.DisplayContent([]byte(prompt))
 
 				// Use our helper for secure input reading (using ssh.Session 's')
 				inputPassword, err := readPasswordSecurely(s, terminal)
@@ -1080,14 +1053,14 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 				if inputPassword == menuPassword {
 					passwordOk = true
 					// Use new helper for feedback message
-					_, wErr := terminal.Write(terminal.DisplayContent([]byte("\r\n|07Password accepted.|07\r\n")))
+					wErr := terminal.DisplayContent([]byte("\r\n|07Password accepted.|07\r\n"))
 					if wErr != nil {
 						log.Printf("ERROR: Failed writing password accepted message: %v", wErr)
 					}
 					break
 				} else {
 					// Use new helper for feedback message
-					_, wErr := terminal.Write(terminal.DisplayContent([]byte("\r\n|01Incorrect Password.|07\r\n")))
+					wErr := terminal.DisplayContent([]byte("\r\n|01Incorrect Password.|07\r\n"))
 					if wErr != nil {
 						log.Printf("ERROR: Failed writing incorrect password message: %v", wErr)
 					}
@@ -1096,7 +1069,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 			if !passwordOk {
 				log.Printf("WARN: User failed password entry for menu '%s' (User: %v)", currentMenuName, currentUser)
 				// Use new helper for feedback message
-				_, wErr := terminal.Write(terminal.DisplayContent([]byte("\r\n|01Too many incorrect attempts.|07\r\n")))
+				wErr := terminal.DisplayContent([]byte("\r\n|01Too many incorrect attempts.|07\r\n"))
 				if wErr != nil {
 					log.Printf("ERROR: Failed writing too many attempts message: %v", wErr)
 				}
@@ -1110,9 +1083,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 		if !checkACS(menuACS, currentUser, s, terminal, sessionStartTime) { // Use ssh.Session 's'
 			log.Printf("INFO: User denied access to menu '%s' due to ACS: %s (User: %v)", currentMenuName, menuACS, currentUser)
 			errMsg := "\r\n|01Access Denied.|07\r\n"
-			processedErrMsg := terminal.DisplayContent([]byte(errMsg))
-			// Use new helper for error message
-			_, wErr := terminal.Write(processedErrMsg)
+			// Use DisplayContent to handle pipe codes and display
+			wErr := terminal.DisplayContent([]byte(errMsg))
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing ACS denied message: %v", wErr)
 			}
@@ -1475,8 +1447,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 				continue
 			}
 			errMsg := "\r\n|01Unknown command!|07\r\n"
-			processedErrMsg := terminal.DisplayContent([]byte(errMsg))
-			terminal.Write(processedErrMsg)
+			terminal.DisplayContent([]byte(errMsg))
 			time.Sleep(1 * time.Second) // Brief pause on error
 			continue                    // Redisplay current menu
 		}
@@ -1494,7 +1465,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *terminalPkg.BB
 
 	if !userOk || !passOk {
 		log.Printf("CRITICAL: LOGIN.ANS is missing required coordinate codes P or O.")
-		terminal.Write(terminal.DisplayContent([]byte("\r\n|01CRITICAL ERROR: Login screen configuration invalid (Missing P/O).|07\r\n")))
+		terminal.DisplayContent([]byte("\r\n|01CRITICAL ERROR: Login screen configuration invalid (Missing P/O).|07\r\n"))
 		time.Sleep(2 * time.Second)
 		return nil, fmt.Errorf("missing login coordinates P/O in LOGIN.ANS")
 	}
@@ -1532,7 +1503,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *terminalPkg.BB
 		if err.Error() == "password entry interrupted" { // Check for Ctrl+C
 			log.Printf("INFO: Node %d: User interrupted password entry.", nodeNumber)
 			terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1)))
-			terminal.Write(terminal.DisplayContent([]byte("\r\n|01Login cancelled.|07\r\n")))
+			terminal.DisplayContent([]byte("\r\n|01Login cancelled.|07\r\n"))
 			time.Sleep(500 * time.Millisecond)
 			return nil, nil // Signal retry LOGIN
 		}
@@ -1548,7 +1519,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *terminalPkg.BB
 		terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
 		errMsg := "\r\n|01Login incorrect.|07\r\n"
 		// Use WriteProcessedBytes with the passed outputMode
-		_, wErr := terminal.Write(terminal.DisplayContent([]byte(errMsg)))
+		wErr := terminal.DisplayContent([]byte(errMsg))
 		if wErr != nil {
 			log.Printf("ERROR: Failed writing login incorrect message: %v", wErr)
 		}
@@ -1561,7 +1532,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *terminalPkg.BB
 		terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
 		errMsg := "\r\n|01Account requires validation by SysOp.|07\r\n"
 		// Use WriteProcessedBytes with the passed outputMode
-		_, wErr := terminal.Write(terminal.DisplayContent([]byte(errMsg)))
+		wErr := terminal.DisplayContent([]byte(errMsg))
 		if wErr != nil {
 			log.Printf("ERROR: Failed writing validation required message: %v", wErr)
 		}
@@ -1646,7 +1617,7 @@ func (e *MenuExecutor) executeCommandAction(action string, s ssh.Session, termin
 				}
 				log.Printf("ERROR: RUN:%s function failed: %v", runTarget, runErr)
 				errMsg := fmt.Sprintf("\r\n|01Error running command '%s': %v|07\r\n", runTarget, runErr)
-				terminal.Write(terminal.DisplayContent([]byte(errMsg)))
+				terminal.DisplayContent([]byte(errMsg))
 				time.Sleep(1 * time.Second)
 				// Assign the potentially updated user before returning
 				userResult = authUser                     // Capture potential user changes (like from AUTHENTICATE)
@@ -1669,7 +1640,7 @@ func (e *MenuExecutor) executeCommandAction(action string, s ssh.Session, termin
 		} else {
 			log.Printf("WARN: No internal function registered for RUN:%s", runTarget)
 			msg := fmt.Sprintf("\r\n|01Internal command '%s' not found.|07\r\n", runTarget)
-			terminal.Write(terminal.DisplayContent([]byte(msg)))
+			terminal.DisplayContent([]byte(msg))
 			time.Sleep(1 * time.Second)
 			return "CONTINUE", "", currentUser, nil
 		}
@@ -1686,7 +1657,7 @@ func (e *MenuExecutor) executeCommandAction(action string, s ssh.Session, termin
 				}
 				log.Printf("ERROR: DOOR:%s execution failed: %v", doorTarget, doorErr)
 				errMsg := fmt.Sprintf("\r\n|01Error running door '%s': %v|07\r\n", doorTarget, doorErr)
-				terminal.Write(terminal.DisplayContent([]byte(errMsg)))
+				terminal.DisplayContent([]byte(errMsg))
 				time.Sleep(1 * time.Second)
 				// Assign potential user result before returning
 				userResult = userResultDoor
@@ -1733,9 +1704,9 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 	}
 
 	// --- Process Pipe Codes in Templates FIRST ---
-	processedTopTemplate := terminal.DisplayContent(topTemplateBytes)
-	processedMidTemplate := string(terminal.DisplayContent(midTemplateBytes)) // Process MID template
-	processedBotTemplate := terminal.DisplayContent(botTemplateBytes)
+	processedTopTemplate := string(terminal.ProcessPipeCodes(topTemplateBytes))
+	processedMidTemplate := string(terminal.ProcessPipeCodes(midTemplateBytes)) // Process MID template
+	processedBotTemplate := string(terminal.ProcessPipeCodes(botTemplateBytes))
 	// --- END Template Processing ---
 
 	// 2. Get last callers data from UserManager
@@ -1743,7 +1714,7 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 
 	// 3. Build the output string using processed templates and processed data
 	var outputBuffer bytes.Buffer
-	outputBuffer.Write(processedTopTemplate) // Write processed top template
+	outputBuffer.Write([]byte(processedTopTemplate)) // Write processed top template
 
 	if len(lastCallers) == 0 {
 		// Optional: Handle empty state. The template might handle this.
@@ -1788,7 +1759,7 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 		}
 	}
 
-	outputBuffer.Write(processedBotTemplate) // Write processed bottom template
+	outputBuffer.Write([]byte(processedBotTemplate)) // Write processed bottom template
 
 	// 4. Clear screen and display the assembled content
 	writeErr := terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
@@ -1812,7 +1783,7 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 	}
 
 	var pauseBytesToWrite []byte
-	processedPausePrompt := terminal.DisplayContent([]byte(pausePrompt))
+	processedPausePrompt := string(terminal.ProcessPipeCodes([]byte(pausePrompt)))
 	if outputMode == terminalPkg.OutputModeCP437 {
 		var cp437Buf bytes.Buffer
 		for _, r := range string(processedPausePrompt) {
@@ -1826,7 +1797,7 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 		}
 		pauseBytesToWrite = cp437Buf.Bytes()
 	} else {
-		pauseBytesToWrite = processedPausePrompt
+		pauseBytesToWrite = []byte(processedPausePrompt)
 	}
 
 	log.Printf("DEBUG: Node %d: Writing LASTCALLERS pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
@@ -1868,7 +1839,7 @@ func (e *MenuExecutor) displayFile(terminal *terminalPkg.BBS, filename string, o
 		errMsg := fmt.Sprintf("\r\n|01Error loading file: %s|07\r\n", filename)
 		// Use new helper, need outputMode... Pass it into displayFile?
 		// Use the passed outputMode for the error message
-		_, writeErr := terminal.Write(terminal.DisplayContent([]byte(errMsg))) // Use passed outputMode
+		writeErr := terminal.DisplayContent([]byte(errMsg)) // Use passed outputMode
 		if writeErr != nil {
 			log.Printf("ERROR: Failed writing displayFile error message: %v", writeErr)
 		}
@@ -1981,7 +1952,7 @@ func (e *MenuExecutor) displayPrompt(terminal *terminalPkg.BBS, menu *MenuRecord
 	}
 
 	// 3. Process pipe codes in the final string (includes/placeholders already processed)
-	rawPromptBytes := terminal.DisplayContent([]byte(processedPrompt))
+	rawPromptBytes := terminal.ProcessPipeCodes([]byte(processedPrompt))
 
 	// 4. Process character encoding based on outputMode (Reverted to manual loop)
 	var finalBuf bytes.Buffer
@@ -2419,7 +2390,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 			log.Printf("WARN: Failed positioning for prompt: %v", wErr)
 		}
 
-		promptDisplayBytes := terminal.DisplayContent([]byte(promptText))
+		promptDisplayBytes := terminal.ProcessPipeCodes([]byte(promptText))
 		log.Printf("DEBUG: Node %d: Writing prompt text bytes (hex): %x", nodeNumber, promptDisplayBytes) // Use nodeNumber
 		_, err := terminal.Write(promptDisplayBytes)
 		if err != nil {
@@ -2600,7 +2571,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 			log.Printf("WARN: Failed writing CRLF: %v", wErr)
 		}
 
-		processedPromptBytes := terminal.DisplayContent([]byte(fullPrompt))
+		processedPromptBytes := terminal.ProcessPipeCodes([]byte(fullPrompt))
 		_, err := terminal.Write(processedPromptBytes)
 		if err != nil {
 			log.Printf("ERROR: Node %d: Failed writing Yes/No prompt text (fallback mode): %v", nodeNumber, err) // Use nodeNumber
@@ -2655,9 +2626,9 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	}
 
 	// --- Process Pipe Codes in Templates FIRST ---
-	processedTopTemplate := terminal.DisplayContent(topTemplateBytes)
-	processedMidTemplate := string(terminal.DisplayContent(midTemplateBytes)) // Process MID template
-	processedBotTemplate := terminal.DisplayContent(botTemplateBytes)
+	processedTopTemplate := string(terminal.ProcessPipeCodes(topTemplateBytes))
+	processedMidTemplate := string(terminal.ProcessPipeCodes(midTemplateBytes)) // Process MID template
+	processedBotTemplate := string(terminal.ProcessPipeCodes(botTemplateBytes))
 	// --- END Template Processing ---
 
 	// 2. Get user list data from UserManager
@@ -2665,7 +2636,7 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 	// 3. Build the output string using processed templates and processed data
 	var outputBuffer bytes.Buffer
-	outputBuffer.Write(processedTopTemplate) // Write processed top template
+	outputBuffer.Write([]byte(processedTopTemplate)) // Write processed top template
 
 	if len(users) == 0 {
 		// Optional: Handle empty state. The template might handle this.
@@ -2695,11 +2666,11 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	}
 
 	log.Printf("DEBUG: Finished user loop. Total buffer size before BOT: %d", outputBuffer.Len())
-	outputBuffer.Write(processedBotTemplate) // Write processed bottom template
+	outputBuffer.Write([]byte(processedBotTemplate)) // Write processed bottom template
 	log.Printf("DEBUG: Added BOT template. Final buffer size: %d", outputBuffer.Len())
 
 	// 4. Clear screen and display the assembled content
-	_, writeErr := terminal.Write([]byte(terminalPkg.ClearScreen()))
+	writeErr := terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
 	if writeErr != nil {
 		log.Printf("ERROR: Node %d: Failed clearing screen for USERLIST: %v", nodeNumber, writeErr)
 		return nil, "", writeErr
@@ -2720,7 +2691,7 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	}
 
 	var pauseBytesToWrite []byte
-	processedPausePrompt := terminal.DisplayContent([]byte(pausePrompt))
+	processedPausePrompt := string(terminal.ProcessPipeCodes([]byte(pausePrompt)))
 	if outputMode == terminalPkg.OutputModeCP437 {
 		var cp437Buf bytes.Buffer
 		for _, r := range string(processedPausePrompt) {
@@ -2734,7 +2705,7 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		}
 		pauseBytesToWrite = cp437Buf.Bytes()
 	} else {
-		pauseBytesToWrite = processedPausePrompt
+		pauseBytesToWrite = []byte(processedPausePrompt)
 	}
 
 	log.Printf("DEBUG: Node %d: Writing USERLIST pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
@@ -2772,9 +2743,9 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 	versionString := "|15ViSiON/3 Go Edition - v0.1.0 (Pre-Alpha)|07"
 
 	// Display the version
-	terminal.Write([]byte(terminalPkg.ClearScreen())) // Optional: Clear screen
+	terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Optional: Clear screen
 	terminal.Write([]byte("\r\n\r\n"))         // Add some spacing
-	_, wErr := terminal.Write(terminal.DisplayContent([]byte(versionString)))
+	wErr := terminal.DisplayContent([]byte(versionString))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing SHOWVERSION output: %v", nodeNumber, wErr)
 		// Don't return error, just log it
@@ -2788,7 +2759,7 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 	} else {
 		terminal.Write([]byte("\r\n")) // Add newline before pause only if prompt exists
 		var pauseBytesToWrite []byte
-		processedPausePrompt := terminal.DisplayContent([]byte(pausePrompt))
+		processedPausePrompt := string(terminal.ProcessPipeCodes([]byte(pausePrompt)))
 		if outputMode == terminalPkg.OutputModeCP437 {
 			var cp437Buf bytes.Buffer
 			for _, r := range string(processedPausePrompt) {
@@ -2802,7 +2773,7 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 			}
 			pauseBytesToWrite = cp437Buf.Bytes()
 		} else {
-			pauseBytesToWrite = processedPausePrompt
+			pauseBytesToWrite = []byte(processedPausePrompt)
 		}
 		_, wErr = terminal.Write(pauseBytesToWrite)
 		if wErr != nil {
@@ -2859,9 +2830,9 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 	}
 
 	// 3. Process Pipe Codes in Templates FIRST
-	processedTopTemplate := terminal.DisplayContent(topTemplateBytes)
-	processedMidTemplate := string(terminal.DisplayContent(midTemplateBytes))
-	processedBotTemplate := terminal.DisplayContent(botTemplateBytes)
+	processedTopTemplate := string(terminal.ProcessPipeCodes(topTemplateBytes))
+	processedMidTemplate := string(terminal.ProcessPipeCodes(midTemplateBytes))
+	processedBotTemplate := string(terminal.ProcessPipeCodes(botTemplateBytes))
 
 	// 4. Get message area list data from MessageManager
 	// TODO: Apply ACS filtering here based on currentUser
@@ -2869,7 +2840,7 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 
 	// 5. Build the output string using processed templates and data
 	var outputBuffer bytes.Buffer
-	outputBuffer.Write(processedTopTemplate) // Write processed top template
+	outputBuffer.Write([]byte(processedTopTemplate)) // Write processed top template
 
 	if len(areas) == 0 {
 		log.Printf("DEBUG: Node %d: No message areas to display.", nodeNumber)
@@ -2880,10 +2851,10 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 			line := processedMidTemplate // Start with the pipe-code-processed mid template
 
 			// Process pipe codes in area data
-			name := terminal.DisplayContent([]byte(area.Name)))
-			desc := terminal.DisplayContent([]byte(area.Description)))
+			name := string(terminal.ProcessPipeCodes([]byte(area.Name)))
+			desc := string(terminal.ProcessPipeCodes([]byte(area.Description)))
 			idStr := strconv.Itoa(area.ID)
-			tag := terminal.DisplayContent([]byte(area.Tag))) // Tag might have codes?
+			tag := string(terminal.ProcessPipeCodes([]byte(area.Tag))) // Tag might have codes?
 
 			// Replace placeholders in the MID template
 			// Expected placeholders: ^ID, ^TAG, ^NA, ^DS (adjust if different)
@@ -2896,10 +2867,10 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 		}
 	}
 
-	outputBuffer.Write(processedBotTemplate) // Write processed bottom template
+	outputBuffer.Write([]byte(processedBotTemplate)) // Write processed bottom template
 
 	// 6. Clear screen and display the assembled content
-	_, writeErr := terminal.Write([]byte(terminalPkg.ClearScreen()))
+	writeErr := terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
 	if writeErr != nil {
 		log.Printf("ERROR: Node %d: Failed clearing screen for LISTMSGAR: %v", nodeNumber, writeErr)
 		return nil, "", writeErr
@@ -2920,7 +2891,7 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 	}
 
 	var pauseBytesToWrite []byte
-	processedPausePrompt := terminal.DisplayContent([]byte(pausePrompt))
+	processedPausePrompt := string(terminal.ProcessPipeCodes([]byte(pausePrompt)))
 	if outputMode == terminalPkg.OutputModeCP437 {
 		var cp437Buf bytes.Buffer
 		for _, r := range string(processedPausePrompt) {
@@ -2934,7 +2905,7 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 		}
 		pauseBytesToWrite = cp437Buf.Bytes()
 	} else {
-		pauseBytesToWrite = processedPausePrompt
+		pauseBytesToWrite = []byte(processedPausePrompt)
 	}
 
 	log.Printf("DEBUG: Node %d: Writing LISTMSGAR pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
@@ -3042,7 +3013,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	}
 	// Add newline for spacing before prompt
 	terminal.Write([]byte("\r\n"))
-	_, wErr := terminal.Write(terminal.DisplayContent([]byte(prompt)))
+	wErr := terminal.DisplayContent([]byte(prompt))
 	if wErr != nil {
 		log.Printf("WARN: Node %d: Failed to write subject prompt: %v", nodeNumber, wErr)
 	}
@@ -3077,7 +3048,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	// Reverted to logic from commit 32f3c59...
 
 	log.Printf("DEBUG: Node %d: Clearing screen before calling editor.RunEditor", nodeNumber)
-	terminal.Write([]byte(terminalPkg.ClearScreen())) // Clear screen before editor (as per 32f3c59)
+	terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear screen before editor (as per 32f3c59)
 	log.Printf("DEBUG: Node %d: Calling editor.RunEditor for area %s", nodeNumber, area.Tag)
 
 	// Get TERM env var
@@ -3105,7 +3076,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	// IMPORTANT: Need to redraw the current menu screen after editor exits!
 	// This needs to be handled by the main menu loop after this function returns (CONTINUE).
 	// Clear screen *after* editor exits (as per 32f3c59 placeholder logic)
-	terminal.Write([]byte(terminalPkg.ClearScreen()))
+	terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
 	// terminal.Write([]byte("\\r\\nEditor exited. Processing message...\\r\\n")) // Removed placeholder
 
 	if !saved {
@@ -3198,22 +3169,22 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 	if errTop != nil || errMid != nil || errBot != nil { // Check BOT error too
 		log.Printf("ERROR: Node %d: Failed to load one or more MSGAREA template files for prompt: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := "\r\n|01Error loading Message Area screen templates.|07\r\n"
-		terminal.Write(terminal.DisplayContent([]byte(msg)))
+		terminal.DisplayContent([]byte(msg))
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading MSGAREA templates for prompt")
 	}
 
-	processedTopTemplate := terminal.DisplayContent(topTemplateBytes)
-	processedMidTemplate := string(terminal.DisplayContent(midTemplateBytes))
-	processedBotTemplate := terminal.DisplayContent(botTemplateBytes) // Process BOT template
+	processedTopTemplate := string(terminal.ProcessPipeCodes(topTemplateBytes))
+	processedMidTemplate := string(terminal.ProcessPipeCodes(midTemplateBytes))
+	processedBotTemplate := string(terminal.ProcessPipeCodes(botTemplateBytes)) // Process BOT template
 
 	areas := e.MessageMgr.ListAreas() // Get all areas
 	// Filter areas based on read access (for listing)
 	// For now, list all areas, permission check happens later on selection.
 	// TODO: Implement ACSRead filtering here if needed for the list display.
 
-	terminal.Write([]byte(terminalPkg.ClearScreen())) // Clear before displaying list
-	terminal.Write(processedTopTemplate)       // Write TOP
+	terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear before displaying list
+	terminal.Write([]byte(processedTopTemplate))       // Write TOP
 
 	if len(areas) == 0 {
 		log.Printf("DEBUG: Node %d: No message areas available to post in.", nodeNumber)
@@ -3224,10 +3195,10 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 
 	for _, area := range areas {
 		line := processedMidTemplate
-		name := terminal.DisplayContent([]byte(area.Name)))
-		desc := terminal.DisplayContent([]byte(area.Description)))
+		name := string(terminal.ProcessPipeCodes([]byte(area.Name)))
+		desc := string(terminal.ProcessPipeCodes([]byte(area.Description)))
 		idStr := strconv.Itoa(area.ID)
-		tag := terminal.DisplayContent([]byte(area.Tag)))
+		tag := string(terminal.ProcessPipeCodes([]byte(area.Tag)))
 
 		line = strings.ReplaceAll(line, "^ID", idStr)
 		line = strings.ReplaceAll(line, "^TAG", tag)
@@ -3237,13 +3208,13 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 		terminal.Write([]byte(line)) // Write MID for each area
 	}
 
-	terminal.Write(processedBotTemplate) // Write BOT
+	terminal.Write([]byte(processedBotTemplate)) // Write BOT
 
 	// 2. Prompt for Area Selection
 	// TODO: Use a configurable string for this prompt
 	prompt := "\r\n|07Enter Area ID or Tag to Post In (or Enter to cancel): |15"
-	log.Printf("DEBUG: Node %d: Writing prompt for message area selection bytes (hex): %x", nodeNumber, terminal.DisplayContent([]byte(prompt)))
-	_, wErr := terminal.Write(terminal.DisplayContent([]byte(prompt)))
+	log.Printf("DEBUG: Node %d: Writing prompt for message area selection bytes (hex): %x", nodeNumber, terminal.ProcessPipeCodes([]byte(prompt)))
+	wErr := terminal.DisplayContent([]byte(prompt))
 	if wErr != nil {
 		log.Printf("WARN: Node %d: Failed to write area selection prompt: %v", nodeNumber, wErr)
 	}
@@ -3285,7 +3256,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 		log.Printf("WARN: Node %d: Invalid area selection '%s' by user %s.", nodeNumber, selectedAreaStr, currentUser.Handle)
 		// TODO: Use configurable string
 		msg := fmt.Sprintf("\r\n|01Invalid area: %s|07\r\n", selectedAreaStr)
-		terminal.Write(terminal.DisplayContent([]byte(msg)))
+		terminal.DisplayContent([]byte(msg))
 		time.Sleep(1 * time.Second)
 		// TODO: Need to redraw menu
 		return nil, "", nil // Return to menu
@@ -3296,7 +3267,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 		log.Printf("WARN: Node %d: User %s denied post access to selected area %s (%s)", nodeNumber, currentUser.Handle, selectedArea.Tag, selectedArea.ACSWrite)
 		// TODO: Use configurable string for access denied
 		msg := fmt.Sprintf("\r\n|01Access denied to post in area: %s|07\r\n", selectedArea.Name)
-		terminal.Write(terminal.DisplayContent([]byte(msg)))
+		terminal.DisplayContent([]byte(msg))
 		time.Sleep(1 * time.Second)
 		// TODO: Need to redraw menu
 		return nil, "", nil // Return to menu
@@ -3409,8 +3380,8 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 		totalMsg := fmt.Sprintf(" |07Total messages: |15%d|07.", totalMessageCount)
 		promptMsg := fmt.Sprintf("\r\n|07Read message # (|151-%d|07, |15Enter|07=Cancel): |15", totalMessageCount)
 
-		terminal.Write(terminal.DisplayContent([]byte(noNewMsg+totalMsg)))
-		terminal.Write(terminal.DisplayContent([]byte(promptMsg)))
+		terminal.DisplayContent([]byte(noNewMsg+totalMsg))
+		terminal.DisplayContent([]byte(promptMsg))
 
 		input, readErr := terminal.ReadLine()
 		if readErr != nil {
@@ -3432,7 +3403,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 		if parseErr != nil || selectedNum < 1 || selectedNum > totalMessageCount {
 			log.Printf("WARN: Node %d: Invalid message number input: '%s'", nodeNumber, selectedNumStr)
 			msg := fmt.Sprintf("\r\n|01Invalid message number: %s|07\r\n", selectedNumStr)
-			terminal.Write(terminal.DisplayContent([]byte(msg)))
+			terminal.DisplayContent([]byte(msg))
 			time.Sleep(1 * time.Second)
 			return nil, "", nil // Return to menu
 		}
@@ -3473,8 +3444,8 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading message templates")
 	}
-	processedHeadTemplate := string(terminal.DisplayContent(headTemplateBytes))
-	processedPromptTemplate := string(terminal.DisplayContent(promptTemplateBytes))
+	processedHeadTemplate := string(terminal.ProcessPipeCodes(headTemplateBytes))
+	processedPromptTemplate := string(terminal.ProcessPipeCodes(promptTemplateBytes))
 
 	// 5. Main Reader Loop
 readerLoop:
@@ -3524,9 +3495,9 @@ readerLoop:
 			"|CA":     currentAreaTag,
 			"|MNUM":   strconv.Itoa(absoluteMessageNumber), // Use absolute number
 			"|MTOTAL": strconv.Itoa(totalMessageCount),     // Use total count for the area
-			"|MFROM":  terminal.DisplayContent([]byte(currentMsg.FromUserName))),
-			"|MTO":    terminal.DisplayContent([]byte(currentMsg.ToUserName))),
-			"|MSUBJ":  terminal.DisplayContent([]byte(currentMsg.Subject))),
+			"|MFROM":  string(terminal.ProcessPipeCodes([]byte(currentMsg.FromUserName))),
+			"|MTO":    string(terminal.ProcessPipeCodes([]byte(currentMsg.ToUserName))),
+			"|MSUBJ":  string(terminal.ProcessPipeCodes([]byte(currentMsg.Subject))),
 			"|MDATE":  currentMsg.PostedAt.Format(time.RFC822), // Use a standard format like RFC822
 			// Add more placeholders from message struct if needed by templates
 		}
@@ -3560,7 +3531,7 @@ readerLoop:
 		// +++ END DEBUG LOGGING +++
 
 		// 5.4 Process Message Body Pipe Codes
-		processedBodyString := terminal.DisplayContent([]byte(currentMsg.Body)))
+		processedBodyString := string(terminal.ProcessPipeCodes([]byte(currentMsg.Body)))
 		// 5.4.1 Word Wrap the Processed Body
 		wrappedBodyLines := wrapAnsiString(processedBodyString, termWidth)
 
@@ -3606,13 +3577,13 @@ readerLoop:
 				}
 
 				// Process pipe codes first
-				processedPausePrompt := terminal.DisplayContent([]byte(pausePrompt))
+				processedPausePrompt := string(terminal.ProcessPipeCodes([]byte(pausePrompt)))
 				// +++ DEBUG LOGGING +++
 				log.Printf("DEBUG: [runReadMsgs Pagination] OutputMode: %d (CP437=%d, UTF8=%d)", outputMode, terminalPkg.OutputModeCP437, terminalPkg.OutputModeUTF8)
 				log.Printf("DEBUG: [runReadMsgs Pagination] Processed Pause Prompt Bytes (hex): %x", processedPausePrompt)
 				// +++ END DEBUG LOGGING +++
 				// Use the new helper function for writing the prompt
-				wErr = writeProcessedStringWithManualEncoding(terminal, processedPausePrompt, outputMode)
+				wErr = writeProcessedStringWithManualEncoding(terminal, []byte(processedPausePrompt), outputMode)
 				if wErr != nil {
 					log.Printf("ERROR: Node %d: Failed writing pause prompt with manual encoding: %v", nodeNumber, wErr)
 				}
@@ -3763,7 +3734,7 @@ readerLoop:
 				subjectPromptStr = "|08[|15Title|08] : " // Default if empty
 			}
 			// Process pipe codes using correct function (assuming ReplacePipeCodes)
-			subjectPromptBytes := terminal.DisplayContent([]byte(subjectPromptStr)) // Use ReplacePipeCodes
+			subjectPromptBytes := terminal.ProcessPipeCodes([]byte(subjectPromptStr)) // Use ReplacePipeCodes
 
 			// Display the prompt (clear line first?)
 			// TODO: Consider clearing a specific line if layout is fixed
@@ -4066,7 +4037,7 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userM
 		log.Printf("INFO: Node %d: Newscan completed, no new messages found.", nodeNumber)
 
 		// Write the result message
-		_, wErr := terminal.Write(terminal.DisplayContent(outputBuffer.Bytes()))
+		wErr := terminal.DisplayContent(outputBuffer.Bytes())
 		if wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing NEWSCAN (no new) results: %v", nodeNumber, wErr)
 		}
@@ -4083,7 +4054,7 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userM
 		log.Printf("INFO: Node %d: Newscan completed, new messages found: %s", nodeNumber, summary)
 
 		// Write the summary message first
-		_, wErr := terminal.Write(terminal.DisplayContent(outputBuffer.Bytes()))
+		wErr := terminal.DisplayContent(outputBuffer.Bytes())
 		if wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing NEWSCAN summary results: %v", nodeNumber, wErr)
 			// Fall through to pause anyway?
@@ -4141,7 +4112,7 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userM
 	}
 
 	var pauseBytesToWrite []byte
-	processedPausePrompt := terminal.DisplayContent([]byte(pausePrompt))
+	processedPausePrompt := string(terminal.ProcessPipeCodes([]byte(pausePrompt)))
 	if outputMode == terminalPkg.OutputModeCP437 {
 		var cp437Buf bytes.Buffer
 		for _, r := range string(processedPausePrompt) {
@@ -4155,7 +4126,7 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userM
 		}
 		pauseBytesToWrite = cp437Buf.Bytes()
 	} else {
-		pauseBytesToWrite = processedPausePrompt
+		pauseBytesToWrite = []byte(processedPausePrompt)
 	}
 
 	_, wErr := terminal.Write(pauseBytesToWrite)
@@ -4273,9 +4244,9 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		return nil, "", fmt.Errorf("failed loading FILELIST templates")
 	}
 
-	processedTopTemplate := terminal.DisplayContent(topTemplateBytes)
-	processedMidTemplate := string(terminal.DisplayContent(midTemplateBytes))
-	processedBotTemplate := terminal.DisplayContent(botTemplateBytes)
+	processedTopTemplate := string(terminal.ProcessPipeCodes(topTemplateBytes))
+	processedMidTemplate := string(terminal.ProcessPipeCodes(midTemplateBytes))
+	processedBotTemplate := string(terminal.ProcessPipeCodes(botTemplateBytes))
 
 	// 3. Fetch Files and Pagination Logic
 	// --- Determine lines available per page ---
@@ -4290,8 +4261,8 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	}
 
 	// Estimate lines used by header, footer, prompt
-	headerLines := bytes.Count(processedTopTemplate, []byte("\n")) + 1
-	footerLines := bytes.Count(processedBotTemplate, []byte("\n")) + 1
+	headerLines := bytes.Count([]byte(processedTopTemplate), []byte("\n")) + 1
+	footerLines := bytes.Count([]byte(processedBotTemplate), []byte("\n")) + 1
 	// TODO: Make prompt configurable and count its lines accurately
 	promptLines := 2 // Estimate 2 lines for prompt + input line
 	fixedLines := headerLines + footerLines + promptLines
@@ -4345,14 +4316,14 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	// 4. Display Loop
 	for {
 		// 4.1 Clear Screen
-		_, writeErr := terminal.Write([]byte(terminalPkg.ClearScreen()))
+		writeErr := terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
 		if writeErr != nil {
 			log.Printf("ERROR: Node %d: Failed clearing screen for LISTFILES: %v", nodeNumber, writeErr)
 			// Potentially return error or try to continue
 		}
 
 		// 4.2 Display Top Template
-		_, wErr := terminal.Write(processedTopTemplate)
+		_, wErr := terminal.Write([]byte(processedTopTemplate))
 		if wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing LISTFILES top template: %v", nodeNumber, wErr)
 			// Handle error
@@ -4369,7 +4340,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			// Display "No files in this area" message
 			// TODO: Use a configurable string?
 			noFilesMsg := "\r\n|07   No files in this area.   \r\n"
-			_, wErr = terminal.Write(terminal.DisplayContent([]byte(noFilesMsg)))
+			wErr = terminal.DisplayContent([]byte(noFilesMsg))
 			if wErr != nil { /* Log? */
 			}
 		} else {
@@ -4433,7 +4404,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		// 4.5 Display Prompt (Use a standard file list prompt or configure one)
 		// TODO: Use configurable prompt string
 		prompt := "\r\n|07File Cmd (|15N|07=Next, |15P|07=Prev, |15#|07=Mark, |15D|07=Download, |15Q|07=Quit): |15"
-		_, wErr = terminal.Write(terminal.DisplayContent([]byte(prompt)))
+		wErr = terminal.DisplayContent([]byte(prompt))
 		if wErr != nil {
 			// Handle error
 		}
@@ -4522,7 +4493,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 				}
 				log.Printf("ERROR: Node %d: Error getting download confirmation: %v", nodeNumber, err)
 				msg := "\\r\\n|01Error during confirmation.|07\\r\\n"
-				terminal.Write(terminal.DisplayContent([]byte(msg)))
+				terminal.DisplayContent([]byte(msg))
 				time.Sleep(1 * time.Second)
 				continue // Back to file list
 			}
@@ -4608,7 +4579,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			} else {
 				log.Printf("WARN: Node %d: No valid file paths found for tagged files.", nodeNumber)
 				msg := "\\r\\n|01Could not find any of the marked files on the server.|07\\r\\n"
-				terminal.Write(terminal.DisplayContent([]byte(msg)))
+				terminal.DisplayContent([]byte(msg))
 				failCount = len(currentUser.TaggedFileIDs) // Mark all as failed if none were found
 			}
 
@@ -4728,16 +4699,16 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 	}
 
 	// 3. Process Pipe Codes in Templates FIRST
-	processedTopTemplate := terminal.DisplayContent(topTemplateBytes)
-	processedMidTemplate := string(terminal.DisplayContent(midTemplateBytes))
-	processedBotTemplate := terminal.DisplayContent(botTemplateBytes)
+	processedTopTemplate := string(terminal.ProcessPipeCodes(topTemplateBytes))
+	processedMidTemplate := string(terminal.ProcessPipeCodes(midTemplateBytes))
+	processedBotTemplate := string(terminal.ProcessPipeCodes(botTemplateBytes))
 
 	// 4. Get file area list data from FileManager
 	areas := e.FileMgr.ListAreas()
 
 	// 5. Build the output string using processed templates and data
 	var outputBuffer bytes.Buffer
-	outputBuffer.Write(processedTopTemplate) // Write processed top template
+	outputBuffer.Write([]byte(processedTopTemplate)) // Write processed top template
 
 	areasDisplayed := 0
 	if len(areas) > 0 {
@@ -4748,10 +4719,10 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 			}
 
 			line := processedMidTemplate
-			name := terminal.DisplayContent([]byte(area.Name)))
-			desc := terminal.DisplayContent([]byte(area.Description)))
+			name := string(terminal.ProcessPipeCodes([]byte(area.Name)))
+			desc := string(terminal.ProcessPipeCodes([]byte(area.Description)))
 			idStr := strconv.Itoa(area.ID)
-			tag := terminal.DisplayContent([]byte(area.Tag)))
+			tag := string(terminal.ProcessPipeCodes([]byte(area.Tag)))
 			fileCount, countErr := e.FileMgr.GetFileCountForArea(area.ID)
 			if countErr != nil {
 				log.Printf("WARN: Node %d: Failed getting file count for area %d (%s): %v", nodeNumber, area.ID, area.Tag, countErr)
@@ -4775,10 +4746,10 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 		outputBuffer.WriteString("\r\n|07   No accessible file areas found.   \r\n")
 	}
 
-	outputBuffer.Write(processedBotTemplate)
+	outputBuffer.Write([]byte(processedBotTemplate))
 
 	// 6. Clear screen and display the assembled content
-	_, writeErr := terminal.Write([]byte(terminalPkg.ClearScreen()))
+	writeErr := terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
 	if writeErr != nil {
 		log.Printf("ERROR: Node %d: Failed clearing screen for file area list: %v", nodeNumber, writeErr)
 		// Try to continue anyway?
@@ -4824,7 +4795,7 @@ func runListFileAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS,
 	}
 
 	var pauseBytesToWrite []byte
-	processedPausePrompt := terminal.DisplayContent([]byte(pausePrompt))
+	processedPausePrompt := string(terminal.ProcessPipeCodes([]byte(pausePrompt)))
 	if outputMode == terminalPkg.OutputModeCP437 {
 		var cp437Buf bytes.Buffer
 		for _, r := range string(processedPausePrompt) {
@@ -4838,7 +4809,7 @@ func runListFileAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS,
 		}
 		pauseBytesToWrite = cp437Buf.Bytes()
 	} else {
-		pauseBytesToWrite = processedPausePrompt
+		pauseBytesToWrite = []byte(processedPausePrompt)
 	}
 
 	_, wErr := terminal.Write(pauseBytesToWrite)
@@ -4894,7 +4865,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	if prompt == "" {
 		prompt = "|07File Area Tag (?=List, Q=Quit): |15" // Updated prompt slightly
 	}
-	_, wErr := terminal.Write(terminal.DisplayContent([]byte(prompt)))
+	wErr := terminal.DisplayContent([]byte(prompt))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing SELECTFILEAREA prompt: %v", nodeNumber, wErr)
 		// Return to menu, maybe signal error?
@@ -4994,7 +4965,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 
 	log.Printf("INFO: Node %d: User %s changed file area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)
 	msg := fmt.Sprintf("\r\n|07Current file area set to: |15%s|07\r\n", area.Name)                  // Use area name for confirmation
-	_, wErr = terminal.Write(terminal.DisplayContent([]byte(msg))) // <-- Use = instead of :=
+	wErr = terminal.DisplayContent([]byte(msg)) // <-- Use = instead of :=
 	if wErr != nil {                                                                                /* Log? */
 	}
 	time.Sleep(1 * time.Second)
