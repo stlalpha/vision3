@@ -477,40 +477,40 @@ func main() {
 		// Create the ServerConfig with supported algorithms
 		cfg := &gossh.ServerConfig{
 			Config: gossh.Config{
-				// Maximum compatibility - include legacy algorithms for old BBS clients
+				// Maximum compatibility - include legacy algorithms for old BBS clients like SyncTERM
 				KeyExchanges: []string{
-					// Modern algorithms first
+					// Legacy algorithms first for SyncTERM compatibility
+					"diffie-hellman-group1-sha1", // Ancient but needed for SyncTERM
+					"diffie-hellman-group14-sha1",
+					"diffie-hellman-group14-sha256",
+					// Modern algorithms after
+					"diffie-hellman-group16-sha512",
 					"ecdh-sha2-nistp256",
 					"ecdh-sha2-nistp384", 
 					"ecdh-sha2-nistp521",
-					"diffie-hellman-group16-sha512",
-					"diffie-hellman-group14-sha256",
-					// Legacy algorithms for old clients
-					"diffie-hellman-group14-sha1",
-					"diffie-hellman-group1-sha1", // Very old but needed for ancient clients
 				},
 				Ciphers: []string{
-					// Modern algorithms first
+					// Legacy algorithms first for maximum compatibility
+					"aes128-cbc",
+					"aes192-cbc", 
+					"aes256-cbc",
+					"3des-cbc", // Very old but sometimes needed for BBS terminals
+					"aes128-ctr",
+					"aes192-ctr",
+					"aes256-ctr",
+					// Modern algorithms after
 					"chacha20-poly1305@openssh.com",
 					"aes256-gcm@openssh.com",
 					"aes128-gcm@openssh.com",
-					"aes256-ctr",
-					"aes192-ctr", 
-					"aes128-ctr",
-					// Legacy algorithms for old clients
-					"aes256-cbc",
-					"aes192-cbc",
-					"aes128-cbc",
-					"3des-cbc", // Very old but sometimes needed
 				},
 				MACs: []string{
-					// Modern algorithms first
-					"hmac-sha2-256-etm@openssh.com",
-					"hmac-sha2-256",
+					// Legacy algorithms first for maximum compatibility
 					"hmac-sha1",
-					// Legacy algorithms for old clients
 					"hmac-sha1-96",
-					"hmac-md5",
+					"hmac-md5", // Weak but needed for very old clients
+					// Modern algorithms after
+					"hmac-sha2-256",
+					"hmac-sha2-256-etm@openssh.com",
 				},
 			},
 		}
