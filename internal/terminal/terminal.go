@@ -170,8 +170,11 @@ func ProcessAnsiAndExtractCoords(data []byte, outputMode OutputMode) (ProcessAns
 	// Extract coordinates BEFORE processing pipe codes
 	coords := extractCoordinates(string(processedData))
 	
-	// Process ViSiON/2 pipe codes to ANSI (this will remove the coordinate markers)
-	finalData := tempBBS.processPipeCodes(processedData)
+	// Remove coordinate markers before processing pipe codes
+	cleanedData := removeCoordinateMarkers(string(processedData))
+	
+	// Process ViSiON/2 pipe codes to ANSI
+	finalData := tempBBS.processPipeCodes([]byte(cleanedData))
 	
 	return ProcessAnsiResult{
 		ProcessedContent:  finalData,
@@ -183,8 +186,6 @@ func ProcessAnsiAndExtractCoords(data []byte, outputMode OutputMode) (ProcessAns
 func extractCoordinates(content string) map[string]struct{ X, Y int } {
 	coords := make(map[string]struct{ X, Y int })
 	
-	// Parse line by line to find coordinate markers
-	
 	lines := strings.Split(content, "\n")
 	for lineNum, line := range lines {
 		currentX := 1
@@ -193,16 +194,58 @@ func extractCoordinates(content string) map[string]struct{ X, Y int } {
 		for i < len(line) {
 			char := line[i]
 			
-			// Handle ANSI escape sequences
+			// Handle ANSI escape sequences properly
 			if char == '\x1b' && i+1 < len(line) && line[i+1] == '[' {
 				// Find the end of the escape sequence
 				j := i + 2
-				for j < len(line) && (line[j] >= '0' && line[j] <= '9' || line[j] == ';') {
-					j++
+				for j < len(line) {
+					c := line[j]
+					if c >= '0' && c <= '9' || c == ';' || c == '?' {
+						j++
+					} else {
+						// This is the command letter - include it and stop
+						j++
+						break
+					}
 				}
-				if j < len(line) {
-					j++ // Include the command letter
+				
+				// Check if this is a cursor movement command that affects X position
+				escapeSeq := line[i:j]
+				if strings.Contains(escapeSeq, "C") { // Cursor forward
+					// Extract number before C
+					numStr := strings.TrimPrefix(escapeSeq, "\x1b[")
+					numStr = strings.TrimSuffix(numStr, "C")
+					if num := parseInt(numStr); num > 0 {
+						currentX += num
+					} else {
+						currentX += 1 // Default to 1 if no number
+					}
+				} else if strings.Contains(escapeSeq, "D") { // Cursor backward
+					numStr := strings.TrimPrefix(escapeSeq, "\x1b[")
+					numStr = strings.TrimSuffix(numStr, "D")
+					if num := parseInt(numStr); num > 0 {
+						currentX -= num
+					} else {
+						currentX -= 1
+					}
+					if currentX < 1 {
+						currentX = 1
+					}
+				} else if strings.Contains(escapeSeq, "H") || strings.Contains(escapeSeq, "f") {
+					// Absolute cursor positioning - parse row;col
+					params := strings.TrimPrefix(escapeSeq, "\x1b[")
+					params = strings.TrimSuffix(params, "H")
+					params = strings.TrimSuffix(params, "f")
+					if strings.Contains(params, ";") {
+						parts := strings.Split(params, ";")
+						if len(parts) >= 2 {
+							if col := parseInt(parts[1]); col > 0 {
+								currentX = col
+							}
+						}
+					}
 				}
+				
 				i = j
 				continue
 			}
@@ -234,6 +277,30 @@ func extractCoordinates(content string) map[string]struct{ X, Y int } {
 	}
 	
 	return coords
+}
+
+// parseInt parses a string to int, returns 0 if invalid
+func parseInt(s string) int {
+	if s == "" {
+		return 0
+	}
+	result := 0
+	for _, c := range s {
+		if c >= '0' && c <= '9' {
+			result = result*10 + int(c-'0')
+		} else {
+			return 0
+		}
+	}
+	return result
+}
+
+// removeCoordinateMarkers removes coordinate markers like |P, |O from content
+func removeCoordinateMarkers(content string) string {
+	// Remove |P and |O markers
+	content = strings.ReplaceAll(content, "|P", "")
+	content = strings.ReplaceAll(content, "|O", "")
+	return content
 }
 
 // UnicodeToCP437Table is a placeholder for character conversion

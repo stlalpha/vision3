@@ -1479,9 +1479,8 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *terminalPkg.BB
 		errorRow = userCoord.Y + 2 // Adjust if overlapping
 	}
 
-	// Move to Username position (using original X) and read input
-	// Subtract 1 from Y coordinate to move cursor up one line
-	terminal.Write([]byte(terminalPkg.MoveCursor(userCoord.Y-1, userCoord.X)))
+	// Move to Username position for user input
+	terminal.Write([]byte(terminalPkg.MoveCursor(userCoord.Y, userCoord.X)))
 	usernameInput, err := terminal.ReadLine()
 	if err != nil {
 		if err == io.EOF {
@@ -1497,8 +1496,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *terminalPkg.BB
 	}
 
 	// Move to Password position and read input securely
-	// Subtract 1 from Y coordinate to move cursor up one line
-	terminal.Write([]byte(terminalPkg.MoveCursor(passCoord.Y-1, passCoord.X)))
+	terminal.Write([]byte(terminalPkg.MoveCursor(passCoord.Y, passCoord.X)))
 	password, err := readPasswordSecurely(s, terminal) // Use ssh.Session 's'
 	if err != nil {
 		if errors.Is(err, io.EOF) {
