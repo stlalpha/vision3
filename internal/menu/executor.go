@@ -477,10 +477,9 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		log.Printf("ERROR: Node %d: Failed clearing screen for SHOWSTATS: %v", nodeNumber, wErr)
 	}
 
-	// Log hex bytes before writing
+	// Display content with proper pipe code processing
 	statsDisplayBytes := []byte(substitutedContent)
-	// log.Printf("DEBUG: Node %d: Writing SHOWSTATS content bytes (hex): %x", nodeNumber, statsDisplayBytes)
-	_, wErr = terminal.Write(statsDisplayBytes)
+	wErr = terminal.DisplayContent(statsDisplayBytes)
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing processed YOURSTAT.ANS: %v", nodeNumber, wErr)
 		return nil, "", wErr // Updated return
@@ -2288,12 +2287,11 @@ func drawLightbarMenu(terminal *terminalPkg.BBS, backgroundBytes []byte, options
 
 	// Draw each option, highlighting the selected one
 	for i, opt := range options {
-		// Adjust Y coordinate by adding the calculated offset
-		adjustedY := opt.Y + offset
-		log.Printf("DEBUG: Positioning option %d (%s): original Y=%d, adjusted Y=%d", i, opt.Text, opt.Y, adjustedY)
+		log.Printf("DEBUG: Drawing option %d (%s) at Y=%d, X=%d, selected=%t", i, opt.Text, opt.Y, opt.X, i == selectedIndex)
 		
-		// Position cursor using adjusted coordinates
-		posCmd := fmt.Sprintf("\x1b[%d;%dH", adjustedY, opt.X)
+		// Position cursor
+		posCmd := fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X)
+		log.Printf("DEBUG: Positioning cursor with command: %q", posCmd)
 		_, err := terminal.Write([]byte(posCmd))
 		if err != nil {
 			return fmt.Errorf("failed positioning cursor for lightbar option: %w", err)
@@ -2307,25 +2305,41 @@ func drawLightbarMenu(terminal *terminalPkg.BBS, backgroundBytes []byte, options
 			colorCode = opt.RegularColor
 		}
 		ansiColorSequence := colorCodeToAnsi(colorCode)
+		log.Printf("DEBUG: Applying color code %d -> %q", colorCode, ansiColorSequence)
 		_, err = terminal.Write([]byte(ansiColorSequence))
 
 		if err != nil {
 			return fmt.Errorf("failed setting color for lightbar option: %w", err)
 		}
 
+		// Save cursor position before writing text
+		log.Printf("DEBUG: Saving cursor position")
+		_, err = terminal.Write([]byte("\x1b[s"))
+		if err != nil {
+			return fmt.Errorf("failed saving cursor position: %w", err)
+		}
+
 		// Write the option text
-		// Ensure text fits, potentially pad/truncate based on some assumed width?
-		// For now, just write the text.
+		log.Printf("DEBUG: Writing text %q (length: %d)", opt.Text, len(opt.Text))
 		_, err = terminal.Write([]byte(opt.Text))
 		if err != nil {
 			return fmt.Errorf("failed writing lightbar option text: %w", err)
 		}
 
 		// Always reset attributes after each option to ensure clean display
+		log.Printf("DEBUG: Resetting attributes with %q", attrReset)
 		_, err = terminal.Write([]byte(attrReset))
 		if err != nil {
 			return fmt.Errorf("failed resetting attributes after lightbar option: %w", err)
 		}
+
+		// Restore cursor position to avoid leaving cursor in middle of ANSI art
+		log.Printf("DEBUG: Restoring cursor position")
+		_, err = terminal.Write([]byte("\x1b[u"))
+		if err != nil {
+			return fmt.Errorf("failed restoring cursor position: %w", err)
+		}
+		log.Printf("DEBUG: Completed drawing option %d", i)
 	}
 
 	return nil
