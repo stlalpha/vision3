@@ -1214,13 +1214,16 @@ func (ct *ConfigTool) editAllStringsClassic() {
 			label := ct.formatFieldLabel(fieldName)
 			lineNum := i + 1
 			
+			// Render pipe codes to show what it looks like in BBS
+			renderedValue := ct.renderPipeCodes(fieldValue)
+			
 			// Highlight current item (like original)
 			if lineNum == currentItem {
 				content += fmt.Sprintf("[black:white:b][[%3d]] %-25s [red:white:b]%s[-:-:-]\n", 
-					lineNum, label, fieldValue)
+					lineNum, label, renderedValue)
 			} else {
-				content += fmt.Sprintf("[gray][[%3d]] [white]%-25s [yellow]%s[-:-:-]\n", 
-					lineNum, label, fieldValue)
+				content += fmt.Sprintf("[gray][[%3d]] [white]%-25s %s\n", 
+					lineNum, label, renderedValue)
 			}
 		}
 		
@@ -1243,7 +1246,7 @@ func (ct *ConfigTool) editAllStringsClassic() {
 		fieldName := sortedNames[currentItem-1]
 		currentValue := stringFields[fieldName]
 		
-		// Create simple input modal
+		// Create simple input modal with live preview
 		form := tview.NewForm()
 		form.SetTitle(fmt.Sprintf(" Edit Field %d: %s ", currentItem, ct.formatFieldLabel(fieldName)))
 		form.SetBorder(true)
@@ -1253,7 +1256,30 @@ func (ct *ConfigTool) editAllStringsClassic() {
 		inputField.SetText(currentValue)
 		inputField.SetFieldWidth(60)
 		
+		// Create preview area
+		previewArea := tview.NewTextView()
+		previewArea.SetLabel("Preview: ")
+		previewArea.SetDynamicColors(true)
+		previewArea.SetText(ct.renderPipeCodes(currentValue))
+		previewArea.SetBorder(true)
+		previewArea.SetTitle(" Live BBS Preview ")
+		
+		// Update preview as user types
+		inputField.SetChangedFunc(func(text string) {
+			previewArea.SetText(ct.renderPipeCodes(text))
+		})
+		
+		// Add help text for pipe codes
+		helpText := tview.NewTextView()
+		helpText.SetDynamicColors(true)
+		helpText.SetWrap(true)
+		helpText.SetTitle(" Pipe Code Reference ")
+		helpText.SetBorder(true)
+		helpText.SetText("Colors: [white]|00[gray]=[gray]Black[-] [white]|01[blue]=[blue]Blue[-] [white]|02[green]=[green]Green[-] [white]|03[teal]=[teal]Cyan[-] [white]|04[red]=[red]Red[-] [white]|05[purple]=[purple]Magenta[-] [white]|06[yellow]=[yellow]Brown[-] [white]|07[white]=[white]Lt Gray[-]\n[white]|08[gray]=[gray]Dk Gray[-] [white]|09[blue:b]=[#5555FF]Lt Blue[-] [white]|10[green:b]=[#55FF55]Lt Green[-] [white]|11[teal:b]=[#55FFFF]Lt Cyan[-] [white]|12[red:b]=[#FF5555]Lt Red[-] [white]|13[purple:b]=[#FF55FF]Lt Magenta[-] [white]|14[yellow:b]=[#FFFF55]Yellow[-] [white]|15[white:b]=[white:b]Bright White[-]\nBackgrounds: [white]|B0-|B7[white] for background colors")
+		
 		form.AddFormItem(inputField)
+		form.AddFormItem(previewArea)
+		form.AddFormItem(helpText)
 		form.AddButton("Save", func() {
 			newValue := inputField.GetText()
 			ct.updateStringConfigField(fieldName, newValue)
