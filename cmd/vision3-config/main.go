@@ -196,7 +196,7 @@ func (ct *ConfigTool) showMainMenu() {
 // clearPages removes all pages except main
 func (ct *ConfigTool) clearPages() {
 	// Remove all pages except main
-	pageNames := []string{"area-management", "message-areas", "file-areas", "door-config", "node-monitoring", "system-settings", "strings", "welcomemsgs", "menuprompts", "errormsgs"}
+	pageNames := []string{"area-management", "message-areas", "file-areas", "door-config", "node-monitoring", "system-settings", "strings", "welcomemsgs", "menuprompts", "errormsgs", "allstrings"}
 	for _, pageName := range pageNames {
 		ct.pages.RemovePage(pageName)
 	}
@@ -211,19 +211,22 @@ func (ct *ConfigTool) showStringConfigMenu() {
 	list.AddItem("System Name", "Configure BBS system name", '1', func() {
 		ct.editSystemName()
 	})
-	list.AddItem("Welcome Messages", "Edit login and welcome text", '2', func() {
+	list.AddItem("All Strings Editor", "Edit all configurable text strings in classic ViSiON/2 style", '2', func() {
+		ct.editAllStringsClassic()
+	})
+	list.AddItem("Welcome Messages", "Edit login and welcome text", '3', func() {
 		ct.editWelcomeMessages()
 	})
-	list.AddItem("Menu Prompts", "Customize menu system prompts", '3', func() {
+	list.AddItem("Menu Prompts", "Customize menu system prompts", '4', func() {
 		ct.editMenuPrompts()
 	})
-	list.AddItem("Error Messages", "Configure system error messages", '4', func() {
+	list.AddItem("Error Messages", "Configure system error messages", '5', func() {
 		ct.editErrorMessages()
 	})
-	list.AddItem("Time/Date Formats", "Set display formatting options", '5', func() {
+	list.AddItem("Time/Date Formats", "Set display formatting options", '6', func() {
 		ct.editTimeDateFormats()
 	})
-	list.AddItem("Color Definitions", "Define system color schemes", '6', func() {
+	list.AddItem("Color Definitions", "Define system color schemes", '7', func() {
 		ct.editColorDefinitions()
 	})
 	list.AddItem("Back", "Return to main menu", 'b', func() {
@@ -232,7 +235,7 @@ func (ct *ConfigTool) showStringConfigMenu() {
 
 	// Add status and navigation
 	statusBar := tview.NewTextView()
-	statusBar.SetText("String Configuration - Use numbers 1-6 to select, B or Esc to go back")
+	statusBar.SetText("String Configuration - Use numbers 1-7 to select, B or Esc to go back")
 	statusBar.SetTextAlign(tview.AlignCenter)
 	statusBar.SetBorder(true)
 
@@ -980,6 +983,392 @@ func (ct *ConfigTool) editColorDefinitions() {
 
 	ct.pages.AddPage("colors", flex, true, false)
 	ct.pages.SwitchToPage("colors")
+}
+
+func (ct *ConfigTool) editAllStrings() {
+	// Create the form that will hold all string fields
+	form := tview.NewForm()
+	form.SetBorder(true)
+	form.SetTitle(" All Configurable Strings (200+ fields) ")
+	form.SetTitleAlign(tview.AlignCenter)
+	
+	// Get all string fields
+	stringFields := ct.getAllStringFields()
+	allFields := make(map[string]*PipeCodeInputField)
+	
+	// Sort field names alphabetically for consistent display
+	var sortedNames []string
+	for fieldName := range stringFields {
+		// Skip color fields - they're numbers, not strings
+		if strings.HasPrefix(fieldName, "DefColor") {
+			continue
+		}
+		sortedNames = append(sortedNames, fieldName)
+	}
+	
+	// Simple bubble sort for field names
+	for i := 0; i < len(sortedNames); i++ {
+		for j := i + 1; j < len(sortedNames); j++ {
+			if sortedNames[i] > sortedNames[j] {
+				sortedNames[i], sortedNames[j] = sortedNames[j], sortedNames[i]
+			}
+		}
+	}
+	
+	// Create input fields for all strings in alphabetical order
+	fieldWidth := ct.getFieldWidth()
+	for i, fieldName := range sortedNames {
+		currentValue := stringFields[fieldName]
+		label := ct.formatFieldLabel(fieldName)
+		
+		// Add index number and highlight indicator to label
+		numberedLabel := fmt.Sprintf("[%3d] %s", i+1, label)
+		
+		// Create pipe code input field
+		field := ct.newPipeCodeInputField(numberedLabel, currentValue, fieldWidth, ct.renderPipeCodes)
+		allFields[fieldName] = field
+		form.AddFormItem(field)
+	}
+	
+	// Start with first field highlighted
+	currentFieldIndex := 0
+	
+	// Add action buttons at the bottom
+	form.AddButton("S. Save All Changes", func() {
+		ct.saveAllStringChanges(allFields)
+	})
+	
+	form.AddButton("C. Cancel", func() {
+		ct.pages.SwitchToPage("strings")
+	})
+	
+	// Create help panel
+	helpText := tview.NewTextView()
+	helpText.SetBorder(true)
+	helpText.SetTitle(" Pipe Code Help ")
+	helpText.SetDynamicColors(true)
+	helpText.SetWrap(true)
+	helpText.SetText("All 200+ BBS text strings are listed here in alphabetical order with field numbers [001] - [200+].\n\nNavigation:\n• [yellow:blue:b]► Current field[white:-] highlighted with arrow\n• ↑/↓ Arrow keys to navigate\n• Click in fields to edit pipe codes\n• Click out to see color preview\n• S = Save All, C = Cancel, Esc = Cancel\n\nPipe Codes for Colors:\n[white]|00-|07[white:-] Dark colors  [white]|08-|15[white:-] Bright colors\n[white]|B0-|B7[white:-] Background colors\n\nExamples:\n[white]|09[white:-] [#FF5555]Bright Red[white:-]  [white]|14[white:-] [#55FFFF]Bright Cyan[white:-]\n[white]|B1[white:-] [#FFFFFF:#AA0000]Red Background[white:-]")
+	
+	// Create layout
+	mainFlex := tview.NewFlex()
+	if ct.screenWidth >= 120 {
+		// Wide screen: form on left, help on right
+		mainFlex.SetDirection(tview.FlexColumn)
+		mainFlex.AddItem(form, 0, 2, true)
+		mainFlex.AddItem(helpText, 45, 0, false)
+	} else {
+		// Narrow screen: form on top, help on bottom
+		mainFlex.SetDirection(tview.FlexRow)
+		mainFlex.AddItem(form, 0, 3, true)
+		mainFlex.AddItem(helpText, 12, 0, false)
+	}
+	
+	// Set up keyboard shortcuts including arrow key navigation
+	mainFlex.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyEscape:
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case tcell.KeyCtrlS:
+			ct.saveAllStringChanges(allFields)
+			return nil
+		case tcell.KeyUp:
+			// Navigate up through form fields
+			if currentFieldIndex <= 0 {
+				// Wrap to last field
+				currentFieldIndex = len(sortedNames) - 1
+			} else {
+				currentFieldIndex--
+			}
+			ct.app.SetFocus(form.GetFormItem(currentFieldIndex))
+			return nil
+		case tcell.KeyDown:
+			// Navigate down through form fields
+			if currentFieldIndex >= len(sortedNames)-1 {
+				// Wrap to first field
+				currentFieldIndex = 0
+			} else {
+				currentFieldIndex++
+			}
+			ct.app.SetFocus(form.GetFormItem(currentFieldIndex))
+			return nil
+		}
+		
+		switch event.Rune() {
+		case 's', 'S':
+			if event.Modifiers() == tcell.ModNone {
+				ct.saveAllStringChanges(allFields)
+				return nil
+			}
+		case 'c', 'C':
+			ct.pages.SwitchToPage("strings")
+			return nil
+		}
+		return event
+	})
+	
+	ct.pages.AddPage("allstrings", mainFlex, true, false)
+	ct.pages.SwitchToPage("allstrings")
+	
+	// Focus the form for immediate scrolling
+	ct.app.SetFocus(form)
+}
+
+func (ct *ConfigTool) editAllStringsClassic() {
+	// Get all string fields and sort them
+	stringFields := ct.getAllStringFields()
+	var sortedNames []string
+	for fieldName := range stringFields {
+		if strings.HasPrefix(fieldName, "DefColor") {
+			continue
+		}
+		sortedNames = append(sortedNames, fieldName)
+	}
+	
+	// Sort alphabetically 
+	for i := 0; i < len(sortedNames); i++ {
+		for j := i + 1; j < len(sortedNames); j++ {
+			if sortedNames[i] > sortedNames[j] {
+				sortedNames[i], sortedNames[j] = sortedNames[j], sortedNames[i]
+			}
+		}
+	}
+	
+	// State variables for paged display (20 items per page like original)
+	totalItems := len(sortedNames)
+	itemsPerPage := 20
+	totalPages := (totalItems + itemsPerPage - 1) / itemsPerPage
+	currentPage := 1
+	currentItem := 1 // 1-based index like original
+	
+	// Create the main container
+	container := tview.NewFlex()
+	container.SetDirection(tview.FlexRow)
+	
+	// Header area
+	headerText := tview.NewTextView()
+	headerText.SetDynamicColors(true)
+	headerText.SetTextAlign(tview.AlignCenter)
+	
+	// Main content area (will be rebuilt each page)
+	contentArea := tview.NewTextView()
+	contentArea.SetDynamicColors(true)
+	contentArea.SetScrollable(false)
+	
+	// Footer area  
+	footerText := tview.NewTextView()
+	footerText.SetDynamicColors(true)
+	footerText.SetTextAlign(tview.AlignCenter)
+	footerText.SetWrap(true)
+	
+	// Function to get field description (like original)
+	getFieldDescription := func(fieldName string) string {
+		switch fieldName {
+		case "DefPrompt":
+			return "This is the Default prompt for new users"
+		case "PauseString":
+			return "This is displayed anytime the screen pauses awaiting a key to be pressed"
+		case "SystemPasswordStr":
+			return "This is displayed when asking the login password (if no SYSPASS.ANS)"
+		case "WhatsYourAlias":
+			return "This is displayed when asking a user's alias (if ALIAS.ANS isn't in use)"
+		case "WhatsYourPw":
+			return "This is displayed when asking a user's password (if PASSWORD.ANS isn't used)"
+		case "ConnectionStr":
+			return "This is the modem connect string displayed to user (|BR = Baud Rate)"
+		case "LoginNow":
+			return "Displayed after user checks (and gets) the system password"
+		case "WelcomeNewUser":
+			return "Displayed to New Users before User Number"
+		case "UserNotFound":
+			return "Asks unknown users if they wish to apply"
+		case "WrongPassword":
+			return "Displayed when user enters wrong password"
+		default:
+			return "Configure this BBS text string with pipe codes for colors"
+		}
+	}
+	
+	// Function to update the display
+	updateDisplay := func() {
+		// Build header (recreating original style)
+		startItem := (currentPage-1)*itemsPerPage + 1
+		headerText.Clear()
+		headerText.SetText(fmt.Sprintf("[blue:white:b] Current Topic Number: [red:white:b]%d [blue:white:b]│ ViSiON/3 BBS String Configuration [blue:white:b]│ Current Page: [red:white:b]%d ", startItem, currentPage))
+		
+		// Build content area (20 items per page)
+		contentArea.Clear()
+		content := ""
+		
+		pageStart := (currentPage - 1) * itemsPerPage
+		pageEnd := pageStart + itemsPerPage
+		if pageEnd > totalItems {
+			pageEnd = totalItems
+		}
+		
+		// Add each item for this page
+		for i := pageStart; i < pageEnd; i++ {
+			fieldName := sortedNames[i]
+			fieldValue := stringFields[fieldName]
+			label := ct.formatFieldLabel(fieldName)
+			lineNum := i + 1
+			
+			// Render pipe codes to show what it looks like in BBS
+			renderedValue := ct.renderPipeCodes(fieldValue)
+			
+			// Highlight current item (like original)
+			if lineNum == currentItem {
+				content += fmt.Sprintf("[black:white:b][[%3d]] %-25s [red:white:b]%s[-:-:-]\n", 
+					lineNum, label, renderedValue)
+			} else {
+				content += fmt.Sprintf("[gray][[%3d]] [white]%-25s %s\n", 
+					lineNum, label, renderedValue)
+			}
+		}
+		
+		contentArea.SetText(content)
+		
+		// Update footer with current field description
+		if currentItem >= 1 && currentItem <= totalItems {
+			fieldName := sortedNames[currentItem-1]
+			desc := getFieldDescription(fieldName)
+			footerText.SetText(fmt.Sprintf("[white:blue] %s ", desc))
+		}
+	}
+	
+	// Function to edit current field
+	editCurrentField := func() {
+		if currentItem < 1 || currentItem > totalItems {
+			return
+		}
+		
+		fieldName := sortedNames[currentItem-1]
+		currentValue := stringFields[fieldName]
+		
+		// Create simple input modal with live preview
+		form := tview.NewForm()
+		form.SetTitle(fmt.Sprintf(" Edit Field %d: %s ", currentItem, ct.formatFieldLabel(fieldName)))
+		form.SetBorder(true)
+		
+		inputField := tview.NewInputField()
+		inputField.SetLabel("Value: ")
+		inputField.SetText(currentValue)
+		inputField.SetFieldWidth(60)
+		
+		// Create preview area
+		previewArea := tview.NewTextView()
+		previewArea.SetLabel("Preview: ")
+		previewArea.SetDynamicColors(true)
+		previewArea.SetText(ct.renderPipeCodes(currentValue))
+		previewArea.SetBorder(true)
+		previewArea.SetTitle(" Live BBS Preview ")
+		
+		// Update preview as user types
+		inputField.SetChangedFunc(func(text string) {
+			previewArea.SetText(ct.renderPipeCodes(text))
+		})
+		
+		// Add help text for pipe codes
+		helpText := tview.NewTextView()
+		helpText.SetDynamicColors(true)
+		helpText.SetWrap(true)
+		helpText.SetTitle(" Pipe Code Reference ")
+		helpText.SetBorder(true)
+		helpText.SetText("Colors: [white]|00[gray]=[gray]Black[-] [white]|01[blue]=[blue]Blue[-] [white]|02[green]=[green]Green[-] [white]|03[teal]=[teal]Cyan[-] [white]|04[red]=[red]Red[-] [white]|05[purple]=[purple]Magenta[-] [white]|06[yellow]=[yellow]Brown[-] [white]|07[white]=[white]Lt Gray[-]\n[white]|08[gray]=[gray]Dk Gray[-] [white]|09[blue:b]=[#5555FF]Lt Blue[-] [white]|10[green:b]=[#55FF55]Lt Green[-] [white]|11[teal:b]=[#55FFFF]Lt Cyan[-] [white]|12[red:b]=[#FF5555]Lt Red[-] [white]|13[purple:b]=[#FF55FF]Lt Magenta[-] [white]|14[yellow:b]=[#FFFF55]Yellow[-] [white]|15[white:b]=[white:b]Bright White[-]\nBackgrounds: [white]|B0-|B7[white] for background colors")
+		
+		form.AddFormItem(inputField)
+		form.AddFormItem(previewArea)
+		form.AddFormItem(helpText)
+		form.AddButton("Save", func() {
+			newValue := inputField.GetText()
+			ct.updateStringConfigField(fieldName, newValue)
+			stringFields[fieldName] = newValue // Update local copy
+			ct.pages.RemovePage("editform")
+			updateDisplay()
+		})
+		form.AddButton("Cancel", func() {
+			ct.pages.RemovePage("editform")
+		})
+		
+		ct.pages.AddPage("editform", form, true, true)
+		ct.app.SetFocus(inputField)
+	}
+	
+	// Navigation handler (recreating original key bindings)
+	container.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		switch event.Key() {
+		case tcell.KeyF4: // F4 = Save and Exit (like original)
+			ct.saveStringsConfig()
+			ct.showInfo(fmt.Sprintf("Saved %d string configurations!", totalItems))
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case tcell.KeyEscape: // ESC = Abort without saving
+			ct.pages.SwitchToPage("strings")
+			return nil
+		case tcell.KeyEnter: // Enter = Edit current field
+			editCurrentField()
+			return nil
+		case tcell.KeyPgDn: // Page Down
+			if currentPage < totalPages {
+				currentPage++
+				currentItem = (currentPage-1)*itemsPerPage + 1
+				updateDisplay()
+			}
+			return nil
+		case tcell.KeyPgUp: // Page Up  
+			if currentPage > 1 {
+				currentPage--
+				currentItem = (currentPage-1)*itemsPerPage + 1
+				updateDisplay()
+			}
+			return nil
+		case tcell.KeyUp: // Up arrow
+			if currentItem > 1 {
+				currentItem--
+				// Check if we need to change pages
+				newPage := ((currentItem-1) / itemsPerPage) + 1
+				if newPage != currentPage {
+					currentPage = newPage
+				}
+				updateDisplay()
+			}
+			return nil
+		case tcell.KeyDown: // Down arrow
+			if currentItem < totalItems {
+				currentItem++
+				// Check if we need to change pages
+				newPage := ((currentItem-1) / itemsPerPage) + 1
+				if newPage != currentPage {
+					currentPage = newPage
+				}
+				updateDisplay()
+			}
+			return nil
+		}
+		
+		// Direct field access by typing letters/numbers (like original)
+		if (event.Rune() >= '0' && event.Rune() <= '9') || 
+		   (event.Rune() >= 'a' && event.Rune() <= 'z') ||
+		   (event.Rune() >= 'A' && event.Rune() <= 'Z') {
+			editCurrentField()
+			return nil
+		}
+		
+		return event
+	})
+	
+	// Build the layout
+	container.AddItem(headerText, 1, 0, false)    // Header
+	container.AddItem(contentArea, 0, 1, true)   // Main content  
+	container.AddItem(footerText, 2, 0, false)   // Footer
+	
+	// Initial display
+	updateDisplay()
+	
+	ct.pages.AddPage("allstrings", container, true, false)
+	ct.pages.SwitchToPage("allstrings")
+	ct.app.SetFocus(container)
 }
 
 func (ct *ConfigTool) saveStringsConfig() error {
@@ -1874,6 +2263,579 @@ func (ct *ConfigTool) showInfo(message string) {
 		ct.pages.RemovePage("modal")
 	})
 	ct.pages.AddPage("modal", modal, true, true)
+}
+
+// getAllStringFields uses reflection to get all string fields from StringsConfig
+func (ct *ConfigTool) getAllStringFields() map[string]string {
+	// We'll use reflection to get all string fields from the StringsConfig struct
+	// For now, let's manually build this map since we know the structure
+	fields := make(map[string]string)
+	
+	// All the string fields from StringsConfig
+	fields["ConnectionStr"] = ct.stringsConfig.ConnectionStr
+	fields["LockedBaudStr"] = ct.stringsConfig.LockedBaudStr
+	fields["ApplyAsNewStr"] = ct.stringsConfig.ApplyAsNewStr
+	fields["GetNupStr"] = ct.stringsConfig.GetNupStr
+	fields["ChatRequestStr"] = ct.stringsConfig.ChatRequestStr
+	fields["LeaveFBStr"] = ct.stringsConfig.LeaveFBStr
+	fields["QuoteTitle"] = ct.stringsConfig.QuoteTitle
+	fields["QuoteMessageStr"] = ct.stringsConfig.QuoteMessageStr
+	fields["QuoteStartLine"] = ct.stringsConfig.QuoteStartLine
+	fields["QuoteEndLine"] = ct.stringsConfig.QuoteEndLine
+	fields["Erase5MsgsStr"] = ct.stringsConfig.Erase5MsgsStr
+	fields["ChangeBoardStr"] = ct.stringsConfig.ChangeBoardStr
+	fields["NewscanBoardStr"] = ct.stringsConfig.NewscanBoardStr
+	fields["PostOnBoardStr"] = ct.stringsConfig.PostOnBoardStr
+	fields["MsgTitleStr"] = ct.stringsConfig.MsgTitleStr
+	fields["MsgToStr"] = ct.stringsConfig.MsgToStr
+	fields["UploadMsgStr"] = ct.stringsConfig.UploadMsgStr
+	fields["MsgAnonStr"] = ct.stringsConfig.MsgAnonStr
+	fields["SlashStr"] = ct.stringsConfig.SlashStr
+	fields["NewScanningStr"] = ct.stringsConfig.NewScanningStr
+	fields["ChangeFileAreaStr"] = ct.stringsConfig.ChangeFileAreaStr
+	fields["LogOffStr"] = ct.stringsConfig.LogOffStr
+	fields["ChangeAutoMsgStr"] = ct.stringsConfig.ChangeAutoMsgStr
+	fields["NewUserNameStr"] = ct.stringsConfig.NewUserNameStr
+	fields["CreateAPassword"] = ct.stringsConfig.CreateAPassword
+	fields["PauseString"] = ct.stringsConfig.PauseString
+	fields["WhatsYourAlias"] = ct.stringsConfig.WhatsYourAlias
+	fields["WhatsYourPw"] = ct.stringsConfig.WhatsYourPw
+	fields["SysopWorkingStr"] = ct.stringsConfig.SysopWorkingStr
+	fields["SysopInDos"] = ct.stringsConfig.SysopInDos
+	fields["SystemPasswordStr"] = ct.stringsConfig.SystemPasswordStr
+	fields["DefPrompt"] = ct.stringsConfig.DefPrompt
+	fields["EnterChat"] = ct.stringsConfig.EnterChat
+	fields["ExitChat"] = ct.stringsConfig.ExitChat
+	fields["SysOpIsIn"] = ct.stringsConfig.SysOpIsIn
+	fields["SysOpIsOut"] = ct.stringsConfig.SysOpIsOut
+	fields["HeaderStr"] = ct.stringsConfig.HeaderStr
+	fields["InfoformPrompt"] = ct.stringsConfig.InfoformPrompt
+	fields["NewInfoFormPrompt"] = ct.stringsConfig.NewInfoFormPrompt
+	fields["UserNotFound"] = ct.stringsConfig.UserNotFound
+	fields["DesignNewPrompt"] = ct.stringsConfig.DesignNewPrompt
+	fields["YourCurrentPrompt"] = ct.stringsConfig.YourCurrentPrompt
+	fields["WantHotKeys"] = ct.stringsConfig.WantHotKeys
+	fields["WantRumors"] = ct.stringsConfig.WantRumors
+	fields["YourUserNum"] = ct.stringsConfig.YourUserNum
+	fields["WelcomeNewUser"] = ct.stringsConfig.WelcomeNewUser
+	fields["EnterNumberHeader"] = ct.stringsConfig.EnterNumberHeader
+	fields["EnterNumber"] = ct.stringsConfig.EnterNumber
+	fields["EnterUserNote"] = ct.stringsConfig.EnterUserNote
+	fields["CurFileArea"] = ct.stringsConfig.CurFileArea
+	fields["EnterRealName"] = ct.stringsConfig.EnterRealName
+	fields["ReEnterPassword"] = ct.stringsConfig.ReEnterPassword
+	fields["QuoteTop"] = ct.stringsConfig.QuoteTop
+	fields["QuoteBottom"] = ct.stringsConfig.QuoteBottom
+	fields["AskOneLiner"] = ct.stringsConfig.AskOneLiner
+	fields["EnterOneLiner"] = ct.stringsConfig.EnterOneLiner
+	fields["NewScanDateStr"] = ct.stringsConfig.NewScanDateStr
+	fields["AddBatchPrompt"] = ct.stringsConfig.AddBatchPrompt
+	fields["ListUsers"] = ct.stringsConfig.ListUsers
+	fields["ViewArchivePrompt"] = ct.stringsConfig.ViewArchivePrompt
+	fields["AreaMsgNewScan"] = ct.stringsConfig.AreaMsgNewScan
+	fields["GetInfoPrompt"] = ct.stringsConfig.GetInfoPrompt
+	fields["MsgNewScanPrompt"] = ct.stringsConfig.MsgNewScanPrompt
+	fields["TypeFilePrompt"] = ct.stringsConfig.TypeFilePrompt
+	fields["ConfPrompt"] = ct.stringsConfig.ConfPrompt
+	fields["FileListPrompt"] = ct.stringsConfig.FileListPrompt
+	fields["UploadFileStr"] = ct.stringsConfig.UploadFileStr
+	fields["DownloadStr"] = ct.stringsConfig.DownloadStr
+	fields["ListRange"] = ct.stringsConfig.ListRange
+	fields["ContinueStr"] = ct.stringsConfig.ContinueStr
+	fields["ViewWhichForm"] = ct.stringsConfig.ViewWhichForm
+	fields["CheckingPhoneNum"] = ct.stringsConfig.CheckingPhoneNum
+	fields["CheckingUserBase"] = ct.stringsConfig.CheckingUserBase
+	fields["NameAlreadyUsed"] = ct.stringsConfig.NameAlreadyUsed
+	fields["InvalidUserName"] = ct.stringsConfig.InvalidUserName
+	fields["SysPwIs"] = ct.stringsConfig.SysPwIs
+	fields["NotValidated"] = ct.stringsConfig.NotValidated
+	fields["HaveMail"] = ct.stringsConfig.HaveMail
+	fields["ReadMailNow"] = ct.stringsConfig.ReadMailNow
+	fields["DeleteNotice"] = ct.stringsConfig.DeleteNotice
+	fields["HaveFeedback"] = ct.stringsConfig.HaveFeedback
+	fields["ReadFeedback"] = ct.stringsConfig.ReadFeedback
+	fields["LoginNow"] = ct.stringsConfig.LoginNow
+	fields["NewUsersWaiting"] = ct.stringsConfig.NewUsersWaiting
+	fields["VoteOnNewUsers"] = ct.stringsConfig.VoteOnNewUsers
+	fields["WrongPassword"] = ct.stringsConfig.WrongPassword
+	fields["MessageMenuPrompt"] = ct.stringsConfig.MessageMenuPrompt
+	
+	// Continue with remaining fields...
+	fields["AddBBSName"] = ct.stringsConfig.AddBBSName
+	fields["AddBBSNumber"] = ct.stringsConfig.AddBBSNumber
+	fields["AddBBSBaud"] = ct.stringsConfig.AddBBSBaud
+	fields["AddBBSSoftware"] = ct.stringsConfig.AddBBSSoftware
+	fields["AddExtendedBBSDescr"] = ct.stringsConfig.AddExtendedBBSDescr
+	fields["BBSEntryAdded"] = ct.stringsConfig.BBSEntryAdded
+	fields["ViewNextDescrip"] = ct.stringsConfig.ViewNextDescrip
+	fields["JoinedMsgConf"] = ct.stringsConfig.JoinedMsgConf
+	fields["JoinedFileConf"] = ct.stringsConfig.JoinedFileConf
+	fields["WhosBeingVotedOn"] = ct.stringsConfig.WhosBeingVotedOn
+	fields["NumYesVotes"] = ct.stringsConfig.NumYesVotes
+	fields["NumNoVotes"] = ct.stringsConfig.NumNoVotes
+	fields["NUVCommentHeader"] = ct.stringsConfig.NUVCommentHeader
+	fields["EnterNUVCommentPrompt"] = ct.stringsConfig.EnterNUVCommentPrompt
+	fields["NUVVotePrompt"] = ct.stringsConfig.NUVVotePrompt
+	fields["YesVoteCast"] = ct.stringsConfig.YesVoteCast
+	fields["NoVoteCast"] = ct.stringsConfig.NoVoteCast
+	fields["NoNewUsersPending"] = ct.stringsConfig.NoNewUsersPending
+	fields["EnterRumorTitle"] = ct.stringsConfig.EnterRumorTitle
+	fields["AddRumorAnonymous"] = ct.stringsConfig.AddRumorAnonymous
+	fields["EnterRumorLevel"] = ct.stringsConfig.EnterRumorLevel
+	fields["EnterRumorPrompt"] = ct.stringsConfig.EnterRumorPrompt
+	fields["RumorAdded"] = ct.stringsConfig.RumorAdded
+	fields["ListRumorsPrompt"] = ct.stringsConfig.ListRumorsPrompt
+	fields["SendMailToWho"] = ct.stringsConfig.SendMailToWho
+	fields["CarbonCopyMail"] = ct.stringsConfig.CarbonCopyMail
+	fields["NotifyEMail"] = ct.stringsConfig.NotifyEMail
+	fields["EMailAnnouncement"] = ct.stringsConfig.EMailAnnouncement
+	fields["SysOpNotHere"] = ct.stringsConfig.SysOpNotHere
+	fields["ChatCostsHeader"] = ct.stringsConfig.ChatCostsHeader
+	fields["StillWantToTry"] = ct.stringsConfig.StillWantToTry
+	fields["NotEnoughFPPoints"] = ct.stringsConfig.NotEnoughFPPoints
+	fields["ChatCallOff"] = ct.stringsConfig.ChatCallOff
+	fields["ChatCallOn"] = ct.stringsConfig.ChatCallOn
+	fields["FeedbackSent"] = ct.stringsConfig.FeedbackSent
+	fields["YouHaveReadMail"] = ct.stringsConfig.YouHaveReadMail
+	fields["DeleteMailNow"] = ct.stringsConfig.DeleteMailNow
+	fields["CurrentMailNone"] = ct.stringsConfig.CurrentMailNone
+	fields["CurrentMailWaiting"] = ct.stringsConfig.CurrentMailWaiting
+	fields["PickMailHeader"] = ct.stringsConfig.PickMailHeader
+	fields["ListTitleType"] = ct.stringsConfig.ListTitleType
+	fields["NoMoreTitles"] = ct.stringsConfig.NoMoreTitles
+	fields["ListTitlesToYou"] = ct.stringsConfig.ListTitlesToYou
+	fields["SubDoesNotExist"] = ct.stringsConfig.SubDoesNotExist
+	fields["MsgNewScanAborted"] = ct.stringsConfig.MsgNewScanAborted
+	fields["MsgReadingPrompt"] = ct.stringsConfig.MsgReadingPrompt
+	fields["CurrentSubNewScan"] = ct.stringsConfig.CurrentSubNewScan
+	fields["JumpToMessageNum"] = ct.stringsConfig.JumpToMessageNum
+	fields["PostingQWKMsg"] = ct.stringsConfig.PostingQWKMsg
+	fields["TotalQWKAdded"] = ct.stringsConfig.TotalQWKAdded
+	fields["SendQWKPacketPrompt"] = ct.stringsConfig.SendQWKPacketPrompt
+	fields["ThreadWhichWay"] = ct.stringsConfig.ThreadWhichWay
+	fields["AutoValidatingFile"] = ct.stringsConfig.AutoValidatingFile
+	fields["FileIsWorth"] = ct.stringsConfig.FileIsWorth
+	fields["GrantingUserFP"] = ct.stringsConfig.GrantingUserFP
+	fields["FileIsOffline"] = ct.stringsConfig.FileIsOffline
+	fields["CrashedFile"] = ct.stringsConfig.CrashedFile
+	fields["BadBaudRate"] = ct.stringsConfig.BadBaudRate
+	fields["UnvalidatedFile"] = ct.stringsConfig.UnvalidatedFile
+	fields["SpecialFile"] = ct.stringsConfig.SpecialFile
+	fields["NoDownloadsHere"] = ct.stringsConfig.NoDownloadsHere
+	fields["PrivateFile"] = ct.stringsConfig.PrivateFile
+	fields["FilePassword"] = ct.stringsConfig.FilePassword
+	fields["WrongFilePW"] = ct.stringsConfig.WrongFilePW
+	fields["FileNewScanPrompt"] = ct.stringsConfig.FileNewScanPrompt
+	fields["InvalidArea"] = ct.stringsConfig.InvalidArea
+	fields["UntaggingBatchFile"] = ct.stringsConfig.UntaggingBatchFile
+	fields["FileExtractionPrompt"] = ct.stringsConfig.FileExtractionPrompt
+	fields["BadUDRatio"] = ct.stringsConfig.BadUDRatio
+	fields["BadUDKRatio"] = ct.stringsConfig.BadUDKRatio
+	fields["ExceededDailyKBLimit"] = ct.stringsConfig.ExceededDailyKBLimit
+	fields["FilePointCommision"] = ct.stringsConfig.FilePointCommision
+	fields["SuccessfulDownload"] = ct.stringsConfig.SuccessfulDownload
+	fields["FileCrashSave"] = ct.stringsConfig.FileCrashSave
+	fields["InvalidFilename"] = ct.stringsConfig.InvalidFilename
+	fields["AlreadyEnteredFilename"] = ct.stringsConfig.AlreadyEnteredFilename
+	fields["FileAlreadyExists"] = ct.stringsConfig.FileAlreadyExists
+	fields["EnterFileDescription"] = ct.stringsConfig.EnterFileDescription
+	fields["ExtendedUploadSetup"] = ct.stringsConfig.ExtendedUploadSetup
+	fields["ReEnterFileDescrip"] = ct.stringsConfig.ReEnterFileDescrip
+	fields["NotifyIfDownloaded"] = ct.stringsConfig.NotifyIfDownloaded
+	fields["FiftyFilesMaximum"] = ct.stringsConfig.FiftyFilesMaximum
+	fields["YouCantDownloadHere"] = ct.stringsConfig.YouCantDownloadHere
+	fields["FileAlreadyMarked"] = ct.stringsConfig.FileAlreadyMarked
+	fields["NotEnoughFP"] = ct.stringsConfig.NotEnoughFP
+	fields["FileAreaPassword"] = ct.stringsConfig.FileAreaPassword
+	fields["QuotePrefix"] = ct.stringsConfig.QuotePrefix
+	
+	return fields
+}
+
+// formatFieldLabel converts a field name like "WelcomeNewUser" to "Welcome New User"
+func (ct *ConfigTool) formatFieldLabel(fieldName string) string {
+	// Add spaces before capital letters
+	var result []rune
+	for i, r := range fieldName {
+		if i > 0 && r >= 'A' && r <= 'Z' {
+			result = append(result, ' ')
+		}
+		result = append(result, r)
+	}
+	return string(result)
+}
+
+// saveAllStringChanges saves all the modified string values back to the StringsConfig
+func (ct *ConfigTool) saveAllStringChanges(allFields map[string]*PipeCodeInputField) {
+	// Update the StringsConfig with all the new values
+	for fieldName, field := range allFields {
+		newValue := field.GetRawText()
+		ct.updateStringConfigField(fieldName, newValue)
+	}
+	
+	// Save to file
+	if err := ct.saveStringsConfig(); err != nil {
+		ct.showError("Failed to save strings config: " + err.Error())
+		return
+	}
+	
+	ct.showInfo(fmt.Sprintf("Successfully updated %d string values!", len(allFields)))
+	ct.pages.SwitchToPage("strings")
+}
+
+// updateStringConfigField updates a specific field in the StringsConfig struct
+func (ct *ConfigTool) updateStringConfigField(fieldName, value string) {
+	// This is a large switch statement to update each field
+	switch fieldName {
+	case "ConnectionStr":
+		ct.stringsConfig.ConnectionStr = value
+	case "LockedBaudStr":
+		ct.stringsConfig.LockedBaudStr = value
+	case "ApplyAsNewStr":
+		ct.stringsConfig.ApplyAsNewStr = value
+	case "GetNupStr":
+		ct.stringsConfig.GetNupStr = value
+	case "ChatRequestStr":
+		ct.stringsConfig.ChatRequestStr = value
+	case "LeaveFBStr":
+		ct.stringsConfig.LeaveFBStr = value
+	case "QuoteTitle":
+		ct.stringsConfig.QuoteTitle = value
+	case "QuoteMessageStr":
+		ct.stringsConfig.QuoteMessageStr = value
+	case "QuoteStartLine":
+		ct.stringsConfig.QuoteStartLine = value
+	case "QuoteEndLine":
+		ct.stringsConfig.QuoteEndLine = value
+	case "Erase5MsgsStr":
+		ct.stringsConfig.Erase5MsgsStr = value
+	case "ChangeBoardStr":
+		ct.stringsConfig.ChangeBoardStr = value
+	case "NewscanBoardStr":
+		ct.stringsConfig.NewscanBoardStr = value
+	case "PostOnBoardStr":
+		ct.stringsConfig.PostOnBoardStr = value
+	case "MsgTitleStr":
+		ct.stringsConfig.MsgTitleStr = value
+	case "MsgToStr":
+		ct.stringsConfig.MsgToStr = value
+	case "UploadMsgStr":
+		ct.stringsConfig.UploadMsgStr = value
+	case "MsgAnonStr":
+		ct.stringsConfig.MsgAnonStr = value
+	case "SlashStr":
+		ct.stringsConfig.SlashStr = value
+	case "NewScanningStr":
+		ct.stringsConfig.NewScanningStr = value
+	case "ChangeFileAreaStr":
+		ct.stringsConfig.ChangeFileAreaStr = value
+	case "LogOffStr":
+		ct.stringsConfig.LogOffStr = value
+	case "ChangeAutoMsgStr":
+		ct.stringsConfig.ChangeAutoMsgStr = value
+	case "NewUserNameStr":
+		ct.stringsConfig.NewUserNameStr = value
+	case "CreateAPassword":
+		ct.stringsConfig.CreateAPassword = value
+	case "PauseString":
+		ct.stringsConfig.PauseString = value
+	case "WhatsYourAlias":
+		ct.stringsConfig.WhatsYourAlias = value
+	case "WhatsYourPw":
+		ct.stringsConfig.WhatsYourPw = value
+	case "SysopWorkingStr":
+		ct.stringsConfig.SysopWorkingStr = value
+	case "SysopInDos":
+		ct.stringsConfig.SysopInDos = value
+	case "SystemPasswordStr":
+		ct.stringsConfig.SystemPasswordStr = value
+	case "DefPrompt":
+		ct.stringsConfig.DefPrompt = value
+	case "EnterChat":
+		ct.stringsConfig.EnterChat = value
+	case "ExitChat":
+		ct.stringsConfig.ExitChat = value
+	case "SysOpIsIn":
+		ct.stringsConfig.SysOpIsIn = value
+	case "SysOpIsOut":
+		ct.stringsConfig.SysOpIsOut = value
+	case "HeaderStr":
+		ct.stringsConfig.HeaderStr = value
+	case "InfoformPrompt":
+		ct.stringsConfig.InfoformPrompt = value
+	case "NewInfoFormPrompt":
+		ct.stringsConfig.NewInfoFormPrompt = value
+	case "UserNotFound":
+		ct.stringsConfig.UserNotFound = value
+	case "DesignNewPrompt":
+		ct.stringsConfig.DesignNewPrompt = value
+	case "YourCurrentPrompt":
+		ct.stringsConfig.YourCurrentPrompt = value
+	case "WantHotKeys":
+		ct.stringsConfig.WantHotKeys = value
+	case "WantRumors":
+		ct.stringsConfig.WantRumors = value
+	case "YourUserNum":
+		ct.stringsConfig.YourUserNum = value
+	case "WelcomeNewUser":
+		ct.stringsConfig.WelcomeNewUser = value
+	case "EnterNumberHeader":
+		ct.stringsConfig.EnterNumberHeader = value
+	case "EnterNumber":
+		ct.stringsConfig.EnterNumber = value
+	case "EnterUserNote":
+		ct.stringsConfig.EnterUserNote = value
+	case "CurFileArea":
+		ct.stringsConfig.CurFileArea = value
+	case "EnterRealName":
+		ct.stringsConfig.EnterRealName = value
+	case "ReEnterPassword":
+		ct.stringsConfig.ReEnterPassword = value
+	case "QuoteTop":
+		ct.stringsConfig.QuoteTop = value
+	case "QuoteBottom":
+		ct.stringsConfig.QuoteBottom = value
+	case "AskOneLiner":
+		ct.stringsConfig.AskOneLiner = value
+	case "EnterOneLiner":
+		ct.stringsConfig.EnterOneLiner = value
+	case "NewScanDateStr":
+		ct.stringsConfig.NewScanDateStr = value
+	case "AddBatchPrompt":
+		ct.stringsConfig.AddBatchPrompt = value
+	case "ListUsers":
+		ct.stringsConfig.ListUsers = value
+	case "ViewArchivePrompt":
+		ct.stringsConfig.ViewArchivePrompt = value
+	case "AreaMsgNewScan":
+		ct.stringsConfig.AreaMsgNewScan = value
+	case "GetInfoPrompt":
+		ct.stringsConfig.GetInfoPrompt = value
+	case "MsgNewScanPrompt":
+		ct.stringsConfig.MsgNewScanPrompt = value
+	case "TypeFilePrompt":
+		ct.stringsConfig.TypeFilePrompt = value
+	case "ConfPrompt":
+		ct.stringsConfig.ConfPrompt = value
+	case "FileListPrompt":
+		ct.stringsConfig.FileListPrompt = value
+	case "UploadFileStr":
+		ct.stringsConfig.UploadFileStr = value
+	case "DownloadStr":
+		ct.stringsConfig.DownloadStr = value
+	case "ListRange":
+		ct.stringsConfig.ListRange = value
+	case "ContinueStr":
+		ct.stringsConfig.ContinueStr = value
+	case "ViewWhichForm":
+		ct.stringsConfig.ViewWhichForm = value
+	case "CheckingPhoneNum":
+		ct.stringsConfig.CheckingPhoneNum = value
+	case "CheckingUserBase":
+		ct.stringsConfig.CheckingUserBase = value
+	case "NameAlreadyUsed":
+		ct.stringsConfig.NameAlreadyUsed = value
+	case "InvalidUserName":
+		ct.stringsConfig.InvalidUserName = value
+	case "SysPwIs":
+		ct.stringsConfig.SysPwIs = value
+	case "NotValidated":
+		ct.stringsConfig.NotValidated = value
+	case "HaveMail":
+		ct.stringsConfig.HaveMail = value
+	case "ReadMailNow":
+		ct.stringsConfig.ReadMailNow = value
+	case "DeleteNotice":
+		ct.stringsConfig.DeleteNotice = value
+	case "HaveFeedback":
+		ct.stringsConfig.HaveFeedback = value
+	case "ReadFeedback":
+		ct.stringsConfig.ReadFeedback = value
+	case "LoginNow":
+		ct.stringsConfig.LoginNow = value
+	case "NewUsersWaiting":
+		ct.stringsConfig.NewUsersWaiting = value
+	case "VoteOnNewUsers":
+		ct.stringsConfig.VoteOnNewUsers = value
+	case "WrongPassword":
+		ct.stringsConfig.WrongPassword = value
+	case "MessageMenuPrompt":
+		ct.stringsConfig.MessageMenuPrompt = value
+	case "AddBBSName":
+		ct.stringsConfig.AddBBSName = value
+	case "AddBBSNumber":
+		ct.stringsConfig.AddBBSNumber = value
+	case "AddBBSBaud":
+		ct.stringsConfig.AddBBSBaud = value
+	case "AddBBSSoftware":
+		ct.stringsConfig.AddBBSSoftware = value
+	case "AddExtendedBBSDescr":
+		ct.stringsConfig.AddExtendedBBSDescr = value
+	case "BBSEntryAdded":
+		ct.stringsConfig.BBSEntryAdded = value
+	case "ViewNextDescrip":
+		ct.stringsConfig.ViewNextDescrip = value
+	case "JoinedMsgConf":
+		ct.stringsConfig.JoinedMsgConf = value
+	case "JoinedFileConf":
+		ct.stringsConfig.JoinedFileConf = value
+	case "WhosBeingVotedOn":
+		ct.stringsConfig.WhosBeingVotedOn = value
+	case "NumYesVotes":
+		ct.stringsConfig.NumYesVotes = value
+	case "NumNoVotes":
+		ct.stringsConfig.NumNoVotes = value
+	case "NUVCommentHeader":
+		ct.stringsConfig.NUVCommentHeader = value
+	case "EnterNUVCommentPrompt":
+		ct.stringsConfig.EnterNUVCommentPrompt = value
+	case "NUVVotePrompt":
+		ct.stringsConfig.NUVVotePrompt = value
+	case "YesVoteCast":
+		ct.stringsConfig.YesVoteCast = value
+	case "NoVoteCast":
+		ct.stringsConfig.NoVoteCast = value
+	case "NoNewUsersPending":
+		ct.stringsConfig.NoNewUsersPending = value
+	case "EnterRumorTitle":
+		ct.stringsConfig.EnterRumorTitle = value
+	case "AddRumorAnonymous":
+		ct.stringsConfig.AddRumorAnonymous = value
+	case "EnterRumorLevel":
+		ct.stringsConfig.EnterRumorLevel = value
+	case "EnterRumorPrompt":
+		ct.stringsConfig.EnterRumorPrompt = value
+	case "RumorAdded":
+		ct.stringsConfig.RumorAdded = value
+	case "ListRumorsPrompt":
+		ct.stringsConfig.ListRumorsPrompt = value
+	case "SendMailToWho":
+		ct.stringsConfig.SendMailToWho = value
+	case "CarbonCopyMail":
+		ct.stringsConfig.CarbonCopyMail = value
+	case "NotifyEMail":
+		ct.stringsConfig.NotifyEMail = value
+	case "EMailAnnouncement":
+		ct.stringsConfig.EMailAnnouncement = value
+	case "SysOpNotHere":
+		ct.stringsConfig.SysOpNotHere = value
+	case "ChatCostsHeader":
+		ct.stringsConfig.ChatCostsHeader = value
+	case "StillWantToTry":
+		ct.stringsConfig.StillWantToTry = value
+	case "NotEnoughFPPoints":
+		ct.stringsConfig.NotEnoughFPPoints = value
+	case "ChatCallOff":
+		ct.stringsConfig.ChatCallOff = value
+	case "ChatCallOn":
+		ct.stringsConfig.ChatCallOn = value
+	case "FeedbackSent":
+		ct.stringsConfig.FeedbackSent = value
+	case "YouHaveReadMail":
+		ct.stringsConfig.YouHaveReadMail = value
+	case "DeleteMailNow":
+		ct.stringsConfig.DeleteMailNow = value
+	case "CurrentMailNone":
+		ct.stringsConfig.CurrentMailNone = value
+	case "CurrentMailWaiting":
+		ct.stringsConfig.CurrentMailWaiting = value
+	case "PickMailHeader":
+		ct.stringsConfig.PickMailHeader = value
+	case "ListTitleType":
+		ct.stringsConfig.ListTitleType = value
+	case "NoMoreTitles":
+		ct.stringsConfig.NoMoreTitles = value
+	case "ListTitlesToYou":
+		ct.stringsConfig.ListTitlesToYou = value
+	case "SubDoesNotExist":
+		ct.stringsConfig.SubDoesNotExist = value
+	case "MsgNewScanAborted":
+		ct.stringsConfig.MsgNewScanAborted = value
+	case "MsgReadingPrompt":
+		ct.stringsConfig.MsgReadingPrompt = value
+	case "CurrentSubNewScan":
+		ct.stringsConfig.CurrentSubNewScan = value
+	case "JumpToMessageNum":
+		ct.stringsConfig.JumpToMessageNum = value
+	case "PostingQWKMsg":
+		ct.stringsConfig.PostingQWKMsg = value
+	case "TotalQWKAdded":
+		ct.stringsConfig.TotalQWKAdded = value
+	case "SendQWKPacketPrompt":
+		ct.stringsConfig.SendQWKPacketPrompt = value
+	case "ThreadWhichWay":
+		ct.stringsConfig.ThreadWhichWay = value
+	case "AutoValidatingFile":
+		ct.stringsConfig.AutoValidatingFile = value
+	case "FileIsWorth":
+		ct.stringsConfig.FileIsWorth = value
+	case "GrantingUserFP":
+		ct.stringsConfig.GrantingUserFP = value
+	case "FileIsOffline":
+		ct.stringsConfig.FileIsOffline = value
+	case "CrashedFile":
+		ct.stringsConfig.CrashedFile = value
+	case "BadBaudRate":
+		ct.stringsConfig.BadBaudRate = value
+	case "UnvalidatedFile":
+		ct.stringsConfig.UnvalidatedFile = value
+	case "SpecialFile":
+		ct.stringsConfig.SpecialFile = value
+	case "NoDownloadsHere":
+		ct.stringsConfig.NoDownloadsHere = value
+	case "PrivateFile":
+		ct.stringsConfig.PrivateFile = value
+	case "FilePassword":
+		ct.stringsConfig.FilePassword = value
+	case "WrongFilePW":
+		ct.stringsConfig.WrongFilePW = value
+	case "FileNewScanPrompt":
+		ct.stringsConfig.FileNewScanPrompt = value
+	case "InvalidArea":
+		ct.stringsConfig.InvalidArea = value
+	case "UntaggingBatchFile":
+		ct.stringsConfig.UntaggingBatchFile = value
+	case "FileExtractionPrompt":
+		ct.stringsConfig.FileExtractionPrompt = value
+	case "BadUDRatio":
+		ct.stringsConfig.BadUDRatio = value
+	case "BadUDKRatio":
+		ct.stringsConfig.BadUDKRatio = value
+	case "ExceededDailyKBLimit":
+		ct.stringsConfig.ExceededDailyKBLimit = value
+	case "FilePointCommision":
+		ct.stringsConfig.FilePointCommision = value
+	case "SuccessfulDownload":
+		ct.stringsConfig.SuccessfulDownload = value
+	case "FileCrashSave":
+		ct.stringsConfig.FileCrashSave = value
+	case "InvalidFilename":
+		ct.stringsConfig.InvalidFilename = value
+	case "AlreadyEnteredFilename":
+		ct.stringsConfig.AlreadyEnteredFilename = value
+	case "FileAlreadyExists":
+		ct.stringsConfig.FileAlreadyExists = value
+	case "EnterFileDescription":
+		ct.stringsConfig.EnterFileDescription = value
+	case "ExtendedUploadSetup":
+		ct.stringsConfig.ExtendedUploadSetup = value
+	case "ReEnterFileDescrip":
+		ct.stringsConfig.ReEnterFileDescrip = value
+	case "NotifyIfDownloaded":
+		ct.stringsConfig.NotifyIfDownloaded = value
+	case "FiftyFilesMaximum":
+		ct.stringsConfig.FiftyFilesMaximum = value
+	case "YouCantDownloadHere":
+		ct.stringsConfig.YouCantDownloadHere = value
+	case "FileAlreadyMarked":
+		ct.stringsConfig.FileAlreadyMarked = value
+	case "NotEnoughFP":
+		ct.stringsConfig.NotEnoughFP = value
+	case "FileAreaPassword":
+		ct.stringsConfig.FileAreaPassword = value
+	case "QuotePrefix":
+		ct.stringsConfig.QuotePrefix = value
+	}
 }
 
 func showHelp() {
