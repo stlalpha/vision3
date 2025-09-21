@@ -37,7 +37,7 @@ for platform in "${PLATFORMS[@]}"; do
     
     echo "  Building installer for ${GOOS}/${GOARCH}..."
     cd cmd/install
-    env GOOS=$GOOS GOARCH=$GOARCH go build -o "../../dist-release/${OUTPUT_NAME}"
+    env GOOS=$GOOS GOARCH=$GOARCH go build -tags release -o "../../dist-release/${OUTPUT_NAME}"
     cd ../..
 done
 

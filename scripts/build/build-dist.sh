@@ -348,7 +348,7 @@ EOF
     fi
     
     cd "${INSTALLER_DIR}"
-    env GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="$LDFLAGS" -o "${DIST_DIR}/${INSTALLER_NAME}"
+    env GOOS=$GOOS GOARCH=$GOARCH go build -tags release -ldflags="$LDFLAGS" -o "${DIST_DIR}/${INSTALLER_NAME}"
     
     # Clean up embedded files from installer directory
     rm -f release-data.tar.gz vision3-signing-key.asc release-data.tar.gz.sha256.asc

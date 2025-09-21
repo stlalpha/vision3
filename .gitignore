@@ -35,6 +35,12 @@ go.work.sum
 /dist/*
 !.gitkeep
 
+# Local build output directories
+/bin/
+/Users/
+.gocache/
+.gomodcache/
+
 # Compiled executables and build artifacts
 /vision3
 /vision3-config
