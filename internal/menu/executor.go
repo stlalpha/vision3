@@ -22,15 +22,16 @@ import (
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
-	"golang.org/x/term"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
+	"github.com/stlalpha/vision3/internal/menu/renderer"
 	"github.com/stlalpha/vision3/internal/message"
 	terminalPkg "github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
+	"golang.org/x/term"
 )
 
 // Mutex for protecting access to the oneliners file
@@ -56,6 +57,7 @@ type MenuExecutor struct {
 	Theme          config.ThemeConfig           // Loaded theme configuration
 	MessageMgr     *message.MessageManager      // <-- ADDED FIELD
 	FileMgr        *file.FileManager            // <-- ADDED FIELD: File manager instance
+	Renderer       *renderer.Engine             // Programmatic menu renderer
 }
 
 // NewExecutor creates a new MenuExecutor.
@@ -69,6 +71,30 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 	registerPlaceholderRunnables(runRegistry)    // Add placeholder registrations
 	registerAppRunnables(runRegistry)            // Add application-specific runnables
 
+	rendererCfg, err := config.LoadMenuRendererConfig(rootConfigPath)
+	if err != nil {
+		log.Printf("WARN: Falling back to default menu renderer config: %v", err)
+	}
+
+	engineCfg := renderer.Config{
+		Enabled:           rendererCfg.Enable,
+		DefaultTheme:      strings.ToLower(rendererCfg.DefaultTheme),
+		Palette:           strings.ToLower(rendererCfg.Palette),
+		Codepage:          strings.ToLower(rendererCfg.Codepage),
+		AllowExternalAnsi: rendererCfg.AllowExternalAnsi,
+		MenuOverrides:     make(map[string]renderer.Override, len(rendererCfg.MenuOverrides)),
+	}
+	for key, override := range rendererCfg.MenuOverrides {
+		o := renderer.Override{
+			Mode:     strings.ToLower(override.Mode),
+			Theme:    strings.ToLower(override.Theme),
+			Palette:  strings.ToLower(override.Palette),
+			Codepage: strings.ToLower(override.Codepage),
+		}
+		engineCfg.MenuOverrides[key] = o
+	}
+	renderEngine := renderer.NewEngine(engineCfg)
+
 	return &MenuExecutor{
 		MenuSetPath:    menuSetPath,    // Store path to active menu set
 		RootConfigPath: rootConfigPath, // Store path to global configs
@@ -80,6 +106,7 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		Theme:          theme,         // Store loaded theme
 		MessageMgr:     msgMgr,        // <-- ASSIGN FIELD
 		FileMgr:        fileMgr,       // <-- ASSIGN FIELD
+		Renderer:       renderEngine,
 	}
 }
 
@@ -234,7 +261,7 @@ func registerPlaceholderRunnables(registry map[string]RunnableFunc) { // Use loc
 				log.Printf("ERROR: Failed to write dropfile %s: %v", dropfilePath, err)
 				errMsg := fmt.Sprintf("\r\n|12Error creating system file for door '%s'.\r\nPress Enter to continue...\r\n", doorName)
 				terminal.DisplayContent([]byte(errMsg))
-				return nil, "", nil                                                   // Abort door execution
+				return nil, "", nil // Abort door execution
 			}
 
 			// Ensure dropfile is cleaned up
@@ -414,6 +441,86 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTFILES"] = runListFiles                             // <-- ADDED: Register file list runnable
 	registry["LISTFILEAR"] = runListFileAreas                        // <-- ADDED: Register file area list runnable
 	registry["SELECTFILEAREA"] = runSelectFileArea                   // <-- ADDED: Register file area selection runnable
+}
+
+func (e *MenuExecutor) buildMenuContext(menuName string, currentUser *user.User, nodeNumber int) renderer.MenuContext {
+	ctx := renderer.MenuContext{
+		Name: strings.ToUpper(menuName),
+		User: renderer.UserInfo{
+			Handle: "Guest",
+			Node:   nodeNumber,
+		},
+		Stats: renderer.Stats{
+			UnreadMessages: e.totalMessageCount(),
+			NewFiles:       e.totalFileCount(),
+			ActiveDoors:    len(e.DoorRegistry),
+			OnlineCount:    1,
+			Ratio:          "100%",
+		},
+	}
+
+	if currentUser != nil {
+		if strings.TrimSpace(currentUser.Handle) != "" {
+			ctx.User.Handle = currentUser.Handle
+		}
+		ctx.Stats.Ratio = computeUserRatio(currentUser)
+	}
+
+	return ctx
+}
+
+func (e *MenuExecutor) totalMessageCount() int {
+	if e.MessageMgr == nil {
+		return 0
+	}
+	total := 0
+	for _, area := range e.MessageMgr.ListAreas() {
+		count, err := e.MessageMgr.GetMessageCountForArea(area.ID)
+		if err != nil {
+			log.Printf("WARN: Failed to retrieve message count for area %d: %v", area.ID, err)
+			continue
+		}
+		total += count
+	}
+	return total
+}
+
+func (e *MenuExecutor) totalFileCount() int {
+	if e.FileMgr == nil {
+		return 0
+	}
+	total := 0
+	for _, area := range e.FileMgr.ListAreas() {
+		count, err := e.FileMgr.GetFileCountForArea(area.ID)
+		if err != nil {
+			log.Printf("WARN: Failed to retrieve file count for area %d: %v", area.ID, err)
+			continue
+		}
+		total += count
+	}
+	return total
+}
+
+func computeUserRatio(u *user.User) string {
+	if u == nil {
+		return "100%"
+	}
+	uploads := u.NumUploads
+	logons := u.TimesCalled
+	if uploads <= 0 && logons <= 0 {
+		return "100%"
+	}
+	if logons <= 0 {
+		return "999%"
+	}
+	ratio := (uploads * 100) / logons
+	if ratio < 0 {
+		ratio = 0
+	}
+	if ratio > 999 {
+		ratio = 999
+	}
+	return fmt.Sprintf("%d%%", ratio)
 }
 
 // runShowStats displays the user statistics screen (YOURSTAT.ANS).
@@ -597,7 +704,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 	for i := startIdx; i < numLiners; i++ {
 		oneliner := currentOneLiners[i]
-		
+
 		line := processedMidTemplate
 		line = strings.ReplaceAll(line, "^OL", oneliner)
 
@@ -847,23 +954,39 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 		fullAnsPath := filepath.Join(e.MenuSetPath, "ansi", ansFilename)
 
 		// Process the associated ANSI file to get display bytes and coordinates
-		rawAnsiContent, readErr := terminalPkg.GetAnsiFileContent(fullAnsPath)
-		var ansiProcessResult terminalPkg.ProcessAnsiResult
-		var processErr error
-		if readErr != nil {
-			log.Printf("ERROR: Failed to read ANSI file %s: %v", ansFilename, readErr)
-			// Display error message to user (using new helper)
-			errMsg := fmt.Sprintf("\r\n|01Error reading screen file: %s|07\r\n", ansFilename)
-			wErr := terminal.DisplayContent([]byte(errMsg))
-			if wErr != nil {
-				log.Printf("ERROR: Failed writing screen read error: %v", wErr)
+		var rawAnsiContent []byte
+		var readErr error
+		var useRenderer bool
+
+		if e.Renderer != nil && currentMenuName != "LOGIN" {
+			renderCtx := e.buildMenuContext(currentMenuName, currentUser, nodeNumber)
+			if rendered, handled, renderErr := e.Renderer.Render(renderCtx); renderErr != nil {
+				log.Printf("WARN: Renderer fallback for %s due to error: %v", currentMenuName, renderErr)
+			} else if handled {
+				rawAnsiContent = rendered
+				useRenderer = true
 			}
-			// Reading the screen file is critical, return error
-			return "", nil, fmt.Errorf("failed to read screen file %s: %w", ansFilename, readErr)
+		}
+
+		if !useRenderer {
+			rawAnsiContent, readErr = terminalPkg.GetAnsiFileContent(fullAnsPath)
+			if readErr != nil {
+				log.Printf("ERROR: Failed to read ANSI file %s: %v", ansFilename, readErr)
+				// Display error message to user (using new helper)
+				errMsg := fmt.Sprintf("\r\n|01Error reading screen file: %s|07\r\n", ansFilename)
+				wErr := terminal.DisplayContent([]byte(errMsg))
+				if wErr != nil {
+					log.Printf("ERROR: Failed writing screen read error: %v", wErr)
+				}
+				// Reading the screen file is critical, return error
+				return "", nil, fmt.Errorf("failed to read screen file %s: %w", ansFilename, readErr)
+			}
 		}
 
 		// Successfully read, now process for coords and display bytes using the passed outputMode
-		ansiProcessResult, processErr = terminalPkg.ProcessAnsiAndExtractCoords(rawAnsiContent, outputMode)
+	var ansiProcessResult terminalPkg.ProcessAnsiResult
+	var processErr error
+	ansiProcessResult, processErr = terminalPkg.ProcessAnsiAndExtractCoords(rawAnsiContent, outputMode)
 		if processErr != nil {
 			log.Printf("ERROR: Failed to process ANSI file %s: %v. Display may be incorrect.", ansFilename, processErr)
 			// Processing error is also critical, return error
@@ -894,7 +1017,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 			for rune, pos := range ansiProcessResult.PlaceholderCoords {
 				coords[string(rune)] = struct{ X, Y int }{X: pos.X, Y: pos.Y}
 			}
-			
+
 			// Handle the interactive login prompt using extracted coordinates
 			authenticatedUserResult, loginErr := e.handleLoginPrompt(s, terminal, userManager, nodeNumber, coords, outputMode)
 
@@ -2214,13 +2337,13 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 func calculateANSIOffset(ansiContent []byte) int {
 	content := string(ansiContent)
 	lines := strings.Split(content, "\n")
-	
+
 	offset := 0
 	for _, line := range lines {
 		// Remove ANSI escape sequences to check if line has actual content
 		cleanLine := removeANSIEscapes(line)
 		cleanLine = strings.TrimSpace(cleanLine)
-		
+
 		// If line is empty or only whitespace after removing ANSI codes, it's an offset
 		if cleanLine == "" {
 			offset++
@@ -2229,7 +2352,7 @@ func calculateANSIOffset(ansiContent []byte) int {
 			break
 		}
 	}
-	
+
 	return offset
 }
 
@@ -2269,11 +2392,11 @@ func drawLightbarMenu(terminal *terminalPkg.BBS, backgroundBytes []byte, options
 	if err != nil {
 		return fmt.Errorf("failed clearing screen for lightbar: %w", err)
 	}
-	
+
 	// Calculate offset caused by leading lines in ANSI content
 	offset := calculateANSIOffset(backgroundBytes)
 	log.Printf("DEBUG: Calculated ANSI offset: %d lines", offset)
-	
+
 	// Draw static background
 	// We might need to clear attributes before drawing background if it has colors
 	// _, err := terminal.Write([]byte(attrReset))
@@ -2288,7 +2411,7 @@ func drawLightbarMenu(terminal *terminalPkg.BBS, backgroundBytes []byte, options
 	// Draw each option, highlighting the selected one
 	for i, opt := range options {
 		log.Printf("DEBUG: Drawing option %d (%s) at Y=%d, X=%d, selected=%t", i, opt.Text, opt.Y, opt.X, i == selectedIndex)
-		
+
 		// Position cursor
 		posCmd := fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X)
 		log.Printf("DEBUG: Positioning cursor with command: %q", posCmd)
@@ -2827,7 +2950,7 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 
 	// Display the version
 	terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Optional: Clear screen
-	terminal.Write([]byte("\r\n\r\n"))         // Add some spacing
+	terminal.Write([]byte("\r\n\r\n"))               // Add some spacing
 	wErr := terminal.DisplayContent([]byte(versionString))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing SHOWVERSION output: %v", nodeNumber, wErr)
@@ -3267,7 +3390,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 	// TODO: Implement ACSRead filtering here if needed for the list display.
 
 	terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear before displaying list
-	terminal.Write([]byte(processedTopTemplate))       // Write TOP
+	terminal.Write([]byte(processedTopTemplate))     // Write TOP
 
 	if len(areas) == 0 {
 		log.Printf("DEBUG: Node %d: No message areas available to post in.", nodeNumber)
@@ -3463,7 +3586,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 		totalMsg := fmt.Sprintf(" |07Total messages: |15%d|07.", totalMessageCount)
 		promptMsg := fmt.Sprintf("\r\n|07Read message # (|151-%d|07, |15Enter|07=Cancel): |15", totalMessageCount)
 
-		terminal.DisplayContent([]byte(noNewMsg+totalMsg))
+		terminal.DisplayContent([]byte(noNewMsg + totalMsg))
 		terminal.DisplayContent([]byte(promptMsg))
 
 		input, readErr := terminal.ReadLine()
@@ -5047,9 +5170,9 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	}
 
 	log.Printf("INFO: Node %d: User %s changed file area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)
-	msg := fmt.Sprintf("\r\n|07Current file area set to: |15%s|07\r\n", area.Name)                  // Use area name for confirmation
-	wErr = terminal.DisplayContent([]byte(msg)) // <-- Use = instead of :=
-	if wErr != nil {                                                                                /* Log? */
+	msg := fmt.Sprintf("\r\n|07Current file area set to: |15%s|07\r\n", area.Name) // Use area name for confirmation
+	wErr = terminal.DisplayContent([]byte(msg))                                    // <-- Use = instead of :=
+	if wErr != nil {                                                               /* Log? */
 	}
 	time.Sleep(1 * time.Second)
 

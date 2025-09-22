@@ -1,0 +1,10 @@
+{
+  "enable": true,
+  "defaultTheme": "visionx",
+  "palette": "amiga",
+  "codepage": "amiga_topaz",
+  "allowExternalAnsi": true,
+  "menuOverrides": {
+    "LOGIN": { "mode": "external" }
+  }
+}
