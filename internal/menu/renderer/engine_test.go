@@ -22,11 +22,18 @@ func TestRenderVisionXIncludesDynamicData(t *testing.T) {
 		Name: "MAIN",
 		User: UserInfo{Handle: "Felonius", Node: 1},
 		Stats: Stats{
-			UnreadMessages: 12,
-			NewFiles:       4,
-			ActiveDoors:    6,
-			OnlineCount:    3,
-			Ratio:          "110%",
+			UnreadMessages:       12,
+			TotalMessages:        42,
+			PrimaryMessageArea:   "Message Matrix",
+			PrimaryMessageUnread: 12,
+			TopMessageAreas:      []AreaSummary{{Name: "General", Unread: 12}},
+			NewFiles:             4,
+			TotalFiles:           20,
+			PrimaryFileArea:      "File Vault",
+			PrimaryFileNew:       4,
+			ActiveDoors:          6,
+			OnlineCount:          3,
+			Ratio:                "110%",
 		},
 	})
 
@@ -38,7 +45,7 @@ func TestRenderVisionXIncludesDynamicData(t *testing.T) {
 	}
 
 	rendered := collapseSpaces(stripANSI(string(output)))
-	checks := []string{"Felonius", "unread: 12", "new files: 4", "active: 6", "folks online: 3", "ratio 110%"}
+	checks := []string{"Felonius", "unread: 12", "new files: 4", "focus: 12", "folks online: 3", "ratio 110%"}
 	for _, check := range checks {
 		if !strings.Contains(rendered, check) {
 			t.Fatalf("expected rendered output to contain %q, got: %s", check, rendered)

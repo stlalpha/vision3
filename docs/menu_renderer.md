@@ -24,7 +24,9 @@ ViSiON/3 now includes a programmatic menu renderer that delivers stylised ANSI o
 - `allowExternalAnsi`: Retain compatibility with legacy `.ANS` assets. Menus marked `external` in overrides always use the ANSI loader.
 - `menuOverrides`: Per-menu adjustments. Set `mode` to `external` to force legacy behaviour or `built_in` to opt-in explicitly. `LOGIN` defaults to external because it depends on coordinate markers in the legacy art.
 
-## Theme “visionx”
+## Built-in Themes
+
+### visionx
 
 The default theme replicates the low/high intensity magenta + cyan aesthetic of /X on the Amiga:
 
@@ -32,12 +34,21 @@ The default theme replicates the low/high intensity magenta + cyan aesthetic of 
 - Programmatic header/footer flourishes (`.(0o).`) and menu bullets (`⟢`) with per-codepage fallbacks.
 - Dynamic content: unread message count, file totals, door counts, online nodes, and user ratio.
 
+### phosphor
+
+The phosphor theme delivers a green CRT feel reminiscent of late-80s terminals:
+
+- Narrower bar lines constructed with `=` for a phosphorescent glow.
+- Minimal layout highlighting active conference counts and uploads.
+- Uses the `phosphor` palette (amber/yellow fade) by default.
+
 ## Dynamic Data
 
 During menu execution the executor assembles a `renderer.MenuContext` containing:
 
 - User handle and current node ID.
-- Aggregated message and file counts (sums across accessible areas).
+- Aggregated message and file totals filtered by ACS, with per-area summaries for the user’s current conferences.
+- Accessible message area summaries (top three by unread volume).
 - Active door count and online node estimate (current session for now).
 - A basic ratio derived from uploads/logons (clamped to `0–999%`).
 
@@ -60,3 +71,13 @@ cat demos/visionx_demo.ans
 ```
 
 This is the same layout produced when the renderer drives `MAIN` with the default configuration.
+
+## Runtime Tuning
+
+Sysops (access level ≥200) can adjust the renderer without editing JSON by invoking the `SETRENDER` runnable:
+
+```
+RUN:SETRENDER theme=phosphor palette=phosphor codepage=utf8
+```
+
+Omit arguments to step through interactive prompts. Changes are saved back to `configs/menu_renderer.json` and the renderer is rebuilt immediately.

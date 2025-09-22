@@ -34,35 +34,55 @@ func renderVisionX(ctx MenuContext, palette Palette) string {
 
 	output.WriteString(buildContentLine("", lowEdge, fadeEdge, reset))
 
-	unread := strconv.Itoa(max(0, ctx.Stats.UnreadMessages))
 	newFiles := strconv.Itoa(max(0, ctx.Stats.NewFiles))
-	activeDoors := strconv.Itoa(max(0, ctx.Stats.ActiveDoors))
 	online := strconv.Itoa(max(1, ctx.Stats.OnlineCount))
 	ratio := ctx.Stats.Ratio
 	if strings.TrimSpace(ratio) == "" {
 		ratio = "100%"
 	}
 
+	primaryMsgLabel := ctx.Stats.PrimaryMessageArea
+	if strings.TrimSpace(primaryMsgLabel) == "" {
+		primaryMsgLabel = "Message Matrix"
+	}
+	primaryMsgUnread := strconv.Itoa(max(0, ctx.Stats.PrimaryMessageUnread))
+
+	secondaryLabel := "Total Messages"
+	secondaryValue := strconv.Itoa(max(0, ctx.Stats.TotalMessages))
+	if len(ctx.Stats.TopMessageAreas) > 0 {
+		secondaryLabel = ctx.Stats.TopMessageAreas[0].Name
+		secondaryValue = strconv.Itoa(max(0, ctx.Stats.TopMessageAreas[0].Unread))
+	}
+
+	primaryFileLabel := ctx.Stats.PrimaryFileArea
+	if strings.TrimSpace(primaryFileLabel) == "" {
+		primaryFileLabel = "File Vault"
+	}
+	primaryFileNew := strconv.Itoa(max(0, ctx.Stats.PrimaryFileNew))
+	if ctx.Stats.PrimaryFileNew == 0 {
+		primaryFileNew = newFiles
+	}
+
 	menuLines := []string{
-		fmt.Sprintf("  %s⟢%s 1 %sMessage Matrix     %s|%s unread: %s%-4s%s        %s⟢%s  ",
+		fmt.Sprintf("  %s⟢%s 1 %s%-18s%s|%s unread: %s%-4s%s        %s⟢%s  ",
 			accentHighlight, reset,
-			accentSecondary,
+			accentSecondary, padLabel(primaryMsgLabel, 18),
 			textSecondary, reset,
-			accentHighlight, unread, reset,
+			accentHighlight, primaryMsgUnread, reset,
 			accentHighlight, reset,
 		),
-		fmt.Sprintf("  %s⟢%s 2 %sFile Vault         %s|%s new files: %s%-4s%s     %s⟢%s  ",
+		fmt.Sprintf("  %s⟢%s 2 %s%-18s%s|%s focus: %s%-4s%s        %s⟢%s  ",
 			accentHighlight, reset,
-			accentSecondary,
+			accentSecondary, padLabel(secondaryLabel, 18),
 			textSecondary, reset,
-			accentHighlight, newFiles, reset,
+			accentHighlight, secondaryValue, reset,
 			accentHighlight, reset,
 		),
-		fmt.Sprintf("  %s⟢%s 3 %sDoor Galaxies      %s|%s active: %s%-4s%s          %s⟢%s  ",
+		fmt.Sprintf("  %s⟢%s 3 %s%-18s%s|%s new files: %s%-4s%s     %s⟢%s  ",
 			accentHighlight, reset,
-			accentSecondary,
+			accentSecondary, padLabel(primaryFileLabel, 18),
 			textSecondary, reset,
-			accentHighlight, activeDoors, reset,
+			accentHighlight, primaryFileNew, reset,
 			accentHighlight, reset,
 		),
 		fmt.Sprintf("  %s⟢%s 4 %sReal-Time Lounge   %s|%s folks online: %s%-3s%s    %s⟢%s  ",
@@ -140,4 +160,12 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func padLabel(value string, width int) string {
+	runes := []rune(strings.TrimSpace(value))
+	if len(runes) > width {
+		return string(runes[:width])
+	}
+	return string(runes) + strings.Repeat(" ", width-len(runes))
 }

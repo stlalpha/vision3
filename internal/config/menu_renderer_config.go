@@ -48,7 +48,7 @@ func LoadMenuRendererConfig(configDir string) (MenuRendererConfig, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			cfg := DefaultMenuRendererConfig()
-			cfg.normalise()
+			cfg.Normalise()
 			return cfg, nil
 		}
 		return MenuRendererConfig{}, fmt.Errorf("failed to read menu renderer config %s: %w", cfgPath, err)
@@ -59,12 +59,12 @@ func LoadMenuRendererConfig(configDir string) (MenuRendererConfig, error) {
 		return MenuRendererConfig{}, fmt.Errorf("failed to parse menu renderer config %s: %w", cfgPath, err)
 	}
 
-	cfg.normalise()
+	cfg.Normalise()
 	return cfg, nil
 }
 
-// normalise applies defaults for missing fields and normalises case.
-func (cfg *MenuRendererConfig) normalise() {
+// Normalise applies defaults for missing fields and normalises case.
+func (cfg *MenuRendererConfig) Normalise() {
 	if cfg.MenuOverrides == nil {
 		cfg.MenuOverrides = make(map[string]MenuRendererOverride)
 	}
@@ -85,4 +85,17 @@ func (cfg *MenuRendererConfig) normalise() {
 		normalised[strings.ToUpper(strings.TrimSpace(key))] = override
 	}
 	cfg.MenuOverrides = normalised
+}
+
+// SaveMenuRendererConfig persists the renderer configuration to disk.
+func SaveMenuRendererConfig(configDir string, cfg MenuRendererConfig) error {
+	cfgPath := filepath.Join(configDir, "menu_renderer.json")
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode menu renderer config: %w", err)
+	}
+	if err := os.WriteFile(cfgPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write menu renderer config %s: %w", cfgPath, err)
+	}
+	return nil
 }

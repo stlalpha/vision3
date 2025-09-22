@@ -39,11 +39,26 @@ type UserInfo struct {
 
 // Stats are lightweight computed values surfaced inside the menu.
 type Stats struct {
-	UnreadMessages int
-	NewFiles       int
-	ActiveDoors    int
-	OnlineCount    int
-	Ratio          string
+	UnreadMessages       int
+	NewFiles             int
+	ActiveDoors          int
+	OnlineCount          int
+	Ratio                string
+	TotalMessages        int
+	TotalFiles           int
+	PrimaryMessageArea   string
+	PrimaryMessageUnread int
+	PrimaryFileArea      string
+	PrimaryFileNew       int
+	MailWaiting          int
+	Uploads              int
+	TopMessageAreas      []AreaSummary
+}
+
+// AreaSummary captures a small metric for a single conference/area.
+type AreaSummary struct {
+	Name   string
+	Unread int
 }
 
 // Engine renders programmatic menus based on the supplied configuration.
@@ -95,6 +110,8 @@ func (e *Engine) Render(ctx MenuContext) ([]byte, bool, error) {
 	switch plan.theme {
 	case "visionx":
 		raw = renderVisionX(ctx, palette)
+	case "phosphor":
+		raw = renderPhosphor(ctx, palette)
 	default:
 		return nil, false, fmt.Errorf("unknown renderer theme: %s", plan.theme)
 	}
@@ -203,6 +220,17 @@ func buildPalettes() map[string]Palette {
 			TextPrimary:     253,
 			TextSecondary:   243,
 		},
+		"phosphor": {
+			FrameCorner:     229,
+			FrameHigh:       154,
+			FrameLow:        28,
+			FrameFade:       22,
+			AccentPrimary:   118,
+			AccentHighlight: 229,
+			AccentSecondary: 148,
+			TextPrimary:     194,
+			TextSecondary:   64,
+		},
 	}
 }
 
@@ -250,6 +278,7 @@ func buildGlyphMappers() map[string]glyphMapper {
 		"amiga_topaz": amigaMap,
 		"c64_petscii": c64Map,
 		"ibm_pc":      glyphMapper{replacements: map[rune]rune{}},
+		"phosphor":    utf8Map,
 	}
 }
 

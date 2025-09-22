@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,19 +46,21 @@ type RunnableFunc func(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 
 // MenuExecutor handles the loading and execution of ViSiON/2 menus.
 type MenuExecutor struct {
-	ConfigPath     string                       // DEPRECATED: Use MenuSetPath + "/cfg" or RootConfigPath
-	AssetsPath     string                       // DEPRECATED: Use MenuSetPath + "/ansi" or RootAssetsPath
-	MenuSetPath    string                       // NEW: Path to the active menu set (e.g., "menus/v3")
-	RootConfigPath string                       // NEW: Path to global configs (e.g., "configs")
-	RootAssetsPath string                       // NEW: Path to global assets (e.g., "assets")
-	RunRegistry    map[string]RunnableFunc      // Map RUN: targets to functions (Use local RunnableFunc)
-	DoorRegistry   map[string]config.DoorConfig // Map DOOR: targets to configurations
-	OneLiners      []string                     // Loaded oneliners (Consider if these should be menu-set specific)
-	LoadedStrings  config.StringsConfig         // Loaded global strings configuration
-	Theme          config.ThemeConfig           // Loaded theme configuration
-	MessageMgr     *message.MessageManager      // <-- ADDED FIELD
-	FileMgr        *file.FileManager            // <-- ADDED FIELD: File manager instance
-	Renderer       *renderer.Engine             // Programmatic menu renderer
+	ConfigPath       string                       // DEPRECATED: Use MenuSetPath + "/cfg" or RootConfigPath
+	AssetsPath       string                       // DEPRECATED: Use MenuSetPath + "/ansi" or RootAssetsPath
+	MenuSetPath      string                       // NEW: Path to the active menu set (e.g., "menus/v3")
+	RootConfigPath   string                       // NEW: Path to global configs (e.g., "configs")
+	RootAssetsPath   string                       // NEW: Path to global assets (e.g., "assets")
+	RunRegistry      map[string]RunnableFunc      // Map RUN: targets to functions (Use local RunnableFunc)
+	DoorRegistry     map[string]config.DoorConfig // Map DOOR: targets to configurations
+	OneLiners        []string                     // Loaded oneliners (Consider if these should be menu-set specific)
+	LoadedStrings    config.StringsConfig         // Loaded global strings configuration
+	Theme            config.ThemeConfig           // Loaded theme configuration
+	MessageMgr       *message.MessageManager      // <-- ADDED FIELD
+	FileMgr          *file.FileManager            // <-- ADDED FIELD: File manager instance
+	Renderer         *renderer.Engine             // Programmatic menu renderer
+	RendererConfig   renderer.Config              // Active renderer configuration
+	RendererSettings config.MenuRendererConfig    // Persisted renderer settings
 }
 
 // NewExecutor creates a new MenuExecutor.
@@ -71,42 +74,29 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 	registerPlaceholderRunnables(runRegistry)    // Add placeholder registrations
 	registerAppRunnables(runRegistry)            // Add application-specific runnables
 
-	rendererCfg, err := config.LoadMenuRendererConfig(rootConfigPath)
+	rendererSettings, err := config.LoadMenuRendererConfig(rootConfigPath)
 	if err != nil {
 		log.Printf("WARN: Falling back to default menu renderer config: %v", err)
+		rendererSettings = config.DefaultMenuRendererConfig()
 	}
-
-	engineCfg := renderer.Config{
-		Enabled:           rendererCfg.Enable,
-		DefaultTheme:      strings.ToLower(rendererCfg.DefaultTheme),
-		Palette:           strings.ToLower(rendererCfg.Palette),
-		Codepage:          strings.ToLower(rendererCfg.Codepage),
-		AllowExternalAnsi: rendererCfg.AllowExternalAnsi,
-		MenuOverrides:     make(map[string]renderer.Override, len(rendererCfg.MenuOverrides)),
-	}
-	for key, override := range rendererCfg.MenuOverrides {
-		o := renderer.Override{
-			Mode:     strings.ToLower(override.Mode),
-			Theme:    strings.ToLower(override.Theme),
-			Palette:  strings.ToLower(override.Palette),
-			Codepage: strings.ToLower(override.Codepage),
-		}
-		engineCfg.MenuOverrides[key] = o
-	}
-	renderEngine := renderer.NewEngine(engineCfg)
+	rendererSettings.Normalise()
+	renderEngineConfig := rendererConfigFromSettings(rendererSettings)
+	renderEngine := renderer.NewEngine(renderEngineConfig)
 
 	return &MenuExecutor{
-		MenuSetPath:    menuSetPath,    // Store path to active menu set
-		RootConfigPath: rootConfigPath, // Store path to global configs
-		RootAssetsPath: rootAssetsPath, // Store path to global assets
-		RunRegistry:    runRegistry,
-		DoorRegistry:   doorRegistry,
-		OneLiners:      oneLiners,     // Store loaded oneliners
-		LoadedStrings:  loadedStrings, // Store loaded strings
-		Theme:          theme,         // Store loaded theme
-		MessageMgr:     msgMgr,        // <-- ASSIGN FIELD
-		FileMgr:        fileMgr,       // <-- ASSIGN FIELD
-		Renderer:       renderEngine,
+		MenuSetPath:      menuSetPath,    // Store path to active menu set
+		RootConfigPath:   rootConfigPath, // Store path to global configs
+		RootAssetsPath:   rootAssetsPath, // Store path to global assets
+		RunRegistry:      runRegistry,
+		DoorRegistry:     doorRegistry,
+		OneLiners:        oneLiners,     // Store loaded oneliners
+		LoadedStrings:    loadedStrings, // Store loaded strings
+		Theme:            theme,         // Store loaded theme
+		MessageMgr:       msgMgr,        // <-- ASSIGN FIELD
+		FileMgr:          fileMgr,       // <-- ASSIGN FIELD
+		Renderer:         renderEngine,
+		RendererConfig:   renderEngineConfig,
+		RendererSettings: rendererSettings,
 	}
 }
 
@@ -441,9 +431,165 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTFILES"] = runListFiles                             // <-- ADDED: Register file list runnable
 	registry["LISTFILEAR"] = runListFileAreas                        // <-- ADDED: Register file area list runnable
 	registry["SELECTFILEAREA"] = runSelectFileArea                   // <-- ADDED: Register file area selection runnable
+	registry["SETRENDER"] = runSetRender                             // Register renderer configuration command
 }
 
-func (e *MenuExecutor) buildMenuContext(menuName string, currentUser *user.User, nodeNumber int) renderer.MenuContext {
+func rendererConfigFromSettings(settings config.MenuRendererConfig) renderer.Config {
+	cfg := renderer.Config{
+		Enabled:           settings.Enable,
+		DefaultTheme:      strings.ToLower(strings.TrimSpace(settings.DefaultTheme)),
+		Palette:           strings.ToLower(strings.TrimSpace(settings.Palette)),
+		Codepage:          strings.ToLower(strings.TrimSpace(settings.Codepage)),
+		AllowExternalAnsi: settings.AllowExternalAnsi,
+		MenuOverrides:     make(map[string]renderer.Override, len(settings.MenuOverrides)),
+	}
+	for key, override := range settings.MenuOverrides {
+		o := renderer.Override{
+			Mode:     strings.ToLower(strings.TrimSpace(override.Mode)),
+			Theme:    strings.ToLower(strings.TrimSpace(override.Theme)),
+			Palette:  strings.ToLower(strings.TrimSpace(override.Palette)),
+			Codepage: strings.ToLower(strings.TrimSpace(override.Codepage)),
+		}
+		cfg.MenuOverrides[key] = o
+	}
+	return cfg
+}
+
+func (e *MenuExecutor) refreshRendererEngine() {
+	e.RendererSettings.Normalise()
+	e.RendererConfig = rendererConfigFromSettings(e.RendererSettings)
+	e.Renderer = renderer.NewEngine(e.RendererConfig)
+}
+
+func runSetRender(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
+	if currentUser == nil || currentUser.AccessLevel < 200 {
+		msg := "\r\n|01Access denied. Sysop privileges required.|07\r\n"
+		terminal.DisplayContent([]byte(msg))
+		time.Sleep(time.Second)
+		return currentUser, "", nil
+	}
+
+	params := parseKeyValueArgs(args)
+	theme := params["theme"]
+	palette := params["palette"]
+	codepage := params["codepage"]
+
+	validThemes := []string{"visionx", "phosphor"}
+	validPalettes := []string{"amiga", "ibm_pc", "c64", "phosphor"}
+	validCodepages := []string{"utf8", "amiga_topaz", "ibm_pc", "c64_petscii"}
+
+	if theme == "" {
+		theme = promptRendererOption(terminal, "Theme", e.RendererSettings.DefaultTheme, validThemes)
+	}
+	if palette == "" {
+		palette = promptRendererOption(terminal, "Palette", e.RendererSettings.Palette, validPalettes)
+	}
+	if codepage == "" {
+		codepage = promptRendererOption(terminal, "Codepage", e.RendererSettings.Codepage, validCodepages)
+	}
+
+	if theme != "" && !containsInsensitive(validThemes, theme) {
+		msg := fmt.Sprintf("\r\n|01Unknown theme '%s'. Valid: %s|07\r\n", theme, strings.Join(validThemes, ", "))
+		terminal.DisplayContent([]byte(msg))
+		time.Sleep(time.Second)
+		return currentUser, "", nil
+	}
+	if palette != "" && !containsInsensitive(validPalettes, palette) {
+		msg := fmt.Sprintf("\r\n|01Unknown palette '%s'. Valid: %s|07\r\n", palette, strings.Join(validPalettes, ", "))
+		terminal.DisplayContent([]byte(msg))
+		time.Sleep(time.Second)
+		return currentUser, "", nil
+	}
+	if codepage != "" && !containsInsensitive(validCodepages, codepage) {
+		msg := fmt.Sprintf("\r\n|01Unknown codepage '%s'. Valid: %s|07\r\n", codepage, strings.Join(validCodepages, ", "))
+		terminal.DisplayContent([]byte(msg))
+		time.Sleep(time.Second)
+		return currentUser, "", nil
+	}
+
+	changed := false
+	if theme != "" {
+		theme = strings.ToLower(strings.TrimSpace(theme))
+		if theme != strings.ToLower(e.RendererSettings.DefaultTheme) {
+			e.RendererSettings.DefaultTheme = theme
+			changed = true
+		}
+	}
+	if palette != "" {
+		palette = strings.ToLower(strings.TrimSpace(palette))
+		if palette != strings.ToLower(e.RendererSettings.Palette) {
+			e.RendererSettings.Palette = palette
+			changed = true
+		}
+	}
+	if codepage != "" {
+		codepage = strings.ToLower(strings.TrimSpace(codepage))
+		if codepage != strings.ToLower(e.RendererSettings.Codepage) {
+			e.RendererSettings.Codepage = codepage
+			changed = true
+		}
+	}
+
+	if !changed {
+		terminal.DisplayContent([]byte("\r\n|07Renderer settings unchanged.|07\r\n"))
+		time.Sleep(500 * time.Millisecond)
+		return currentUser, "", nil
+	}
+
+	e.refreshRendererEngine()
+	if err := config.SaveMenuRendererConfig(e.RootConfigPath, e.RendererSettings); err != nil {
+		log.Printf("ERROR: Failed to save renderer configuration: %v", err)
+		terminal.DisplayContent([]byte("\r\n|01Error writing menu renderer configuration.|07\r\n"))
+		time.Sleep(time.Second)
+		return currentUser, "", err
+	}
+
+	msg := fmt.Sprintf("\r\n|10Renderer updated to theme=%s palette=%s codepage=%s|07\r\n", e.RendererSettings.DefaultTheme, e.RendererSettings.Palette, e.RendererSettings.Codepage)
+	terminal.DisplayContent([]byte(msg))
+	time.Sleep(750 * time.Millisecond)
+	return currentUser, "", nil
+}
+
+func promptRendererOption(terminal *terminalPkg.BBS, label, current string, options []string) string {
+	optionList := strings.Join(options, "/")
+	prompt := fmt.Sprintf("\r\n|07%s [%s] (%s): ", label, current, optionList)
+	terminal.DisplayContent([]byte(prompt))
+	input, err := terminal.ReadLine()
+	if err != nil {
+		return current
+	}
+	input = strings.TrimSpace(strings.ToLower(input))
+	if input == "" {
+		return current
+	}
+	return input
+}
+
+func parseKeyValueArgs(args string) map[string]string {
+	result := make(map[string]string)
+	fields := strings.Fields(strings.ToLower(args))
+	for _, field := range fields {
+		if strings.Contains(field, "=") {
+			parts := strings.SplitN(field, "=", 2)
+			if len(parts) == 2 {
+				result[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			}
+		}
+	}
+	return result
+}
+
+func containsInsensitive(collection []string, value string) bool {
+	val := strings.ToLower(strings.TrimSpace(value))
+	for _, item := range collection {
+		if strings.ToLower(item) == val {
+			return true
+		}
+	}
+	return false
+}
+
+func (e *MenuExecutor) buildMenuContext(menuName string, currentUser *user.User, nodeNumber int, terminal *terminalPkg.BBS, s ssh.Session, sessionStartTime time.Time) renderer.MenuContext {
 	ctx := renderer.MenuContext{
 		Name: strings.ToUpper(menuName),
 		User: renderer.UserInfo{
@@ -451,11 +597,9 @@ func (e *MenuExecutor) buildMenuContext(menuName string, currentUser *user.User,
 			Node:   nodeNumber,
 		},
 		Stats: renderer.Stats{
-			UnreadMessages: e.totalMessageCount(),
-			NewFiles:       e.totalFileCount(),
-			ActiveDoors:    len(e.DoorRegistry),
-			OnlineCount:    1,
-			Ratio:          "100%",
+			ActiveDoors: len(e.DoorRegistry),
+			OnlineCount: 1,
+			Ratio:       "100%",
 		},
 	}
 
@@ -464,41 +608,164 @@ func (e *MenuExecutor) buildMenuContext(menuName string, currentUser *user.User,
 			ctx.User.Handle = currentUser.Handle
 		}
 		ctx.Stats.Ratio = computeUserRatio(currentUser)
+		ctx.Stats.Uploads = currentUser.NumUploads
+	}
+
+	e.populateMessageStats(&ctx, currentUser, terminal, s, sessionStartTime)
+	e.populateFileStats(&ctx, currentUser, terminal, s, sessionStartTime)
+
+	if ctx.Stats.PrimaryMessageArea == "" && len(ctx.Stats.TopMessageAreas) > 0 {
+		ctx.Stats.PrimaryMessageArea = ctx.Stats.TopMessageAreas[0].Name
+		ctx.Stats.PrimaryMessageUnread = ctx.Stats.TopMessageAreas[0].Unread
+	}
+	if ctx.Stats.PrimaryMessageUnread == 0 && ctx.Stats.UnreadMessages > 0 {
+		ctx.Stats.PrimaryMessageUnread = ctx.Stats.UnreadMessages
+	}
+	if ctx.Stats.PrimaryMessageArea == "" && ctx.Stats.TotalMessages > 0 {
+		ctx.Stats.PrimaryMessageArea = "Message Matrix"
+	}
+	if ctx.Stats.PrimaryFileArea == "" && ctx.Stats.TotalFiles > 0 {
+		ctx.Stats.PrimaryFileArea = "File Vault"
+		ctx.Stats.PrimaryFileNew = ctx.Stats.TotalFiles
+	}
+	if ctx.Stats.NewFiles == 0 {
+		ctx.Stats.NewFiles = ctx.Stats.TotalFiles
 	}
 
 	return ctx
 }
 
-func (e *MenuExecutor) totalMessageCount() int {
+func (e *MenuExecutor) populateMessageStats(ctx *renderer.MenuContext, currentUser *user.User, terminal *terminalPkg.BBS, s ssh.Session, sessionStartTime time.Time) {
 	if e.MessageMgr == nil {
-		return 0
+		return
 	}
-	total := 0
-	for _, area := range e.MessageMgr.ListAreas() {
+
+	areas := e.MessageMgr.ListAreas()
+	if len(areas) == 0 {
+		return
+	}
+
+	primaryAreaID := 0
+	if currentUser != nil {
+		primaryAreaID = currentUser.CurrentMessageAreaID
+	}
+
+	var summaries []renderer.AreaSummary
+	totalMessages := 0
+	unreadTotal := 0
+	primaryName := ""
+	primaryUnread := 0
+
+	for _, area := range areas {
+		if currentUser != nil {
+			if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
+				continue
+			}
+		}
+
 		count, err := e.MessageMgr.GetMessageCountForArea(area.ID)
 		if err != nil {
 			log.Printf("WARN: Failed to retrieve message count for area %d: %v", area.ID, err)
 			continue
 		}
-		total += count
+		totalMessages += count
+
+		newCount := 0
+		if currentUser != nil {
+			lastRead := ""
+			if currentUser.LastReadMessageIDs != nil {
+				lastRead = currentUser.LastReadMessageIDs[area.ID]
+			}
+			newCount, err = e.MessageMgr.GetNewMessageCount(area.ID, lastRead)
+			if err != nil {
+				log.Printf("WARN: Failed to retrieve new message count for area %d: %v", area.ID, err)
+				newCount = 0
+			}
+			unreadTotal += newCount
+			if newCount > 0 {
+				summaries = append(summaries, renderer.AreaSummary{Name: area.Tag, Unread: newCount})
+			}
+			if primaryAreaID != 0 && area.ID == primaryAreaID {
+				primaryName = area.Tag
+				primaryUnread = newCount
+			}
+		}
 	}
-	return total
+
+	if currentUser == nil {
+		if len(areas) > 0 {
+			primaryName = areas[0].Tag
+			primaryUnread = totalMessages
+		}
+	} else if primaryName == "" && len(summaries) > 0 {
+		primaryName = summaries[0].Name
+		primaryUnread = summaries[0].Unread
+	}
+
+	sort.Slice(summaries, func(i, j int) bool {
+		if summaries[i].Unread == summaries[j].Unread {
+			return strings.ToUpper(summaries[i].Name) < strings.ToUpper(summaries[j].Name)
+		}
+		return summaries[i].Unread > summaries[j].Unread
+	})
+	if len(summaries) > 3 {
+		summaries = summaries[:3]
+	}
+
+	ctx.Stats.TotalMessages = totalMessages
+	ctx.Stats.UnreadMessages = unreadTotal
+	ctx.Stats.PrimaryMessageArea = primaryName
+	ctx.Stats.PrimaryMessageUnread = primaryUnread
+	ctx.Stats.TopMessageAreas = summaries
 }
 
-func (e *MenuExecutor) totalFileCount() int {
+func (e *MenuExecutor) populateFileStats(ctx *renderer.MenuContext, currentUser *user.User, terminal *terminalPkg.BBS, s ssh.Session, sessionStartTime time.Time) {
 	if e.FileMgr == nil {
-		return 0
+		return
 	}
-	total := 0
-	for _, area := range e.FileMgr.ListAreas() {
+
+	areas := e.FileMgr.ListAreas()
+	if len(areas) == 0 {
+		return
+	}
+
+	primaryAreaID := 0
+	if currentUser != nil {
+		primaryAreaID = currentUser.CurrentFileAreaID
+	}
+
+	totalFiles := 0
+	primaryName := ""
+	primaryCount := 0
+
+	for _, area := range areas {
+		if currentUser != nil {
+			if !checkACS(area.ACSList, currentUser, s, terminal, sessionStartTime) {
+				continue
+			}
+		}
+
 		count, err := e.FileMgr.GetFileCountForArea(area.ID)
 		if err != nil {
 			log.Printf("WARN: Failed to retrieve file count for area %d: %v", area.ID, err)
 			continue
 		}
-		total += count
+		totalFiles += count
+		if primaryAreaID != 0 && area.ID == primaryAreaID {
+			primaryName = area.Tag
+			primaryCount = count
+		}
 	}
-	return total
+
+	if primaryName == "" && len(areas) > 0 {
+		primaryName = areas[0].Tag
+		primaryCount = totalFiles
+	}
+
+	ctx.Stats.TotalFiles = totalFiles
+	ctx.Stats.NewFiles = totalFiles
+	ctx.Stats.PrimaryFileArea = primaryName
+	ctx.Stats.PrimaryFileNew = primaryCount
 }
 
 func computeUserRatio(u *user.User) string {
@@ -959,7 +1226,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 		var useRenderer bool
 
 		if e.Renderer != nil && currentMenuName != "LOGIN" {
-			renderCtx := e.buildMenuContext(currentMenuName, currentUser, nodeNumber)
+			renderCtx := e.buildMenuContext(currentMenuName, currentUser, nodeNumber, terminal, s, sessionStartTime)
 			if rendered, handled, renderErr := e.Renderer.Render(renderCtx); renderErr != nil {
 				log.Printf("WARN: Renderer fallback for %s due to error: %v", currentMenuName, renderErr)
 			} else if handled {
@@ -984,9 +1251,9 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 		}
 
 		// Successfully read, now process for coords and display bytes using the passed outputMode
-	var ansiProcessResult terminalPkg.ProcessAnsiResult
-	var processErr error
-	ansiProcessResult, processErr = terminalPkg.ProcessAnsiAndExtractCoords(rawAnsiContent, outputMode)
+		var ansiProcessResult terminalPkg.ProcessAnsiResult
+		var processErr error
+		ansiProcessResult, processErr = terminalPkg.ProcessAnsiAndExtractCoords(rawAnsiContent, outputMode)
 		if processErr != nil {
 			log.Printf("ERROR: Failed to process ANSI file %s: %v. Display may be incorrect.", ansFilename, processErr)
 			// Processing error is also critical, return error
