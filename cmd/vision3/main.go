@@ -21,6 +21,7 @@ import (
 	// Local packages (Update paths)
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/file"
+	"github.com/stlalpha/vision3/internal/logging"
 	"github.com/stlalpha/vision3/internal/menu"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/session"
@@ -75,7 +76,7 @@ func sessionHandler(s ssh.Session) {
 
 		// --- Record Call History ---
 		if authenticatedUser != nil {
-			log.Printf("DEBUG: Node %d: Adding call record for user %s (ID: %d)", nodeID, authenticatedUser.Handle, authenticatedUser.ID)
+			logging.Debug("Node %d: Adding call record for user %s (ID: %d)", nodeID, authenticatedUser.Handle, authenticatedUser.ID)
 			disconnectTime := time.Now()
 			duration := disconnectTime.Sub(startTime) // Use the captured startTime
 			callRec := user.CallRecord{
@@ -93,7 +94,7 @@ func sessionHandler(s ssh.Session) {
 			}
 			userMgr.AddCallRecord(callRec)
 		} else {
-			log.Printf("DEBUG: Node %d: No authenticated user found, skipping call record.", nodeID)
+			logging.Debug("Node %d: No authenticated user found, skipping call record.", nodeID)
 		}
 		// ------------------------
 		s.Close() // Ensure the session is closed
@@ -289,7 +290,7 @@ func sessionHandler(s ssh.Session) {
 		}
 	} // End Login Loop
 
-	log.Printf("DEBUG: *** Login Loop Completed ***")
+	logging.Debug("*** Login Loop Completed ***")
 
 	// --- Post-Authentication Main Loop ---
 	// Safety check still useful here in case break logic fails somehow
@@ -317,8 +318,7 @@ func sessionHandler(s ssh.Session) {
 			break // Exit the loop
 		}
 
-		// *** ADD LOGGING HERE ***
-		log.Printf("DEBUG: Node %d: Entering main loop iteration. CurrentMenu: %s, OutputMode: %d", nodeID, currentMenuName, effectiveMode)
+		logging.Debug("Node %d: Entering main loop iteration. CurrentMenu: %s, OutputMode: %d", nodeID, currentMenuName, effectiveMode)
 
 		// Execute the current menu (e.g., MAIN, READ_MSG, etc.)
 		// Pass nodeID directly as int, use sessionStartTime from context
@@ -348,7 +348,14 @@ func main() {
 	// flag.BoolVar(&colorTestMode, "colortest", false, "Run ANSI color test mode instead of BBS")
 	// Define output mode flag
 	flag.StringVar(&outputModeFlag, "output-mode", "auto", "Terminal output mode: auto (default), utf8, cp437")
+	debugFlag := flag.Bool("debug", false, "Enable debug logging")
 	flag.Parse()
+
+	// Enable debug logging if -debug flag is set or DEBUG=1 environment variable
+	logging.DebugEnabled = *debugFlag || os.Getenv("DEBUG") == "1"
+	if logging.DebugEnabled {
+		log.Println("INFO: Debug logging enabled")
+	}
 
 	// Validate output mode flag
 	outputModeFlag = strings.ToLower(outputModeFlag)
@@ -449,7 +456,7 @@ func main() {
 	log.Printf("INFO: Configuring BBS SSH server on %s:%d...", sshHost, sshPort)
 
 	passwordHandler := func(ctx ssh.Context, password string) bool {
-		log.Printf("DEBUG: Password handler called for user '%s'. Allowing connection attempt, auth deferred to session handler.", ctx.User())
+		logging.Debug("Password handler called for user '%s'. Allowing connection attempt, auth deferred to session handler.", ctx.User())
 		return true
 	}
 
@@ -517,7 +524,7 @@ func main() {
 			},
 		}
 
-		log.Printf("DEBUG: ServerConfigCallback invoked, returning config with modern + legacy KEX algorithms")
+		logging.Debug("ServerConfigCallback invoked, returning config with modern + legacy KEX algorithms")
 		return cfg
 	}
 

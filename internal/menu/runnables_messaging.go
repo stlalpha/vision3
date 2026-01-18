@@ -19,6 +19,7 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
 	"github.com/stlalpha/vision3/internal/editor"
+	"github.com/stlalpha/vision3/internal/logging"
 	"github.com/stlalpha/vision3/internal/message"
 	terminalPkg "github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/user"
@@ -26,7 +27,7 @@ import (
 
 // runListMessageAreas handles displaying the list of message areas.
 func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running LISTMSGAR", nodeNumber)
+	logging.Debug(" Node %d: Running LISTMSGAR", nodeNumber)
 
 	// 1. Define Template filenames and paths
 	topTemplateFilename := "MSGAREA.TOP"
@@ -66,7 +67,7 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 	outputBuffer.Write([]byte(processedTopTemplate)) // Write processed top template
 
 	if len(areas) == 0 {
-		log.Printf("DEBUG: Node %d: No message areas to display.", nodeNumber)
+		logging.Debug(" Node %d: No message areas to display.", nodeNumber)
 		// Optional: Add a message like "|07No message areas available.\r\n" if template doesn't handle it
 	} else {
 		// Iterate through areas and format using processed MSGAREA.MID
@@ -131,9 +132,9 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 		pauseBytesToWrite = []byte(processedPausePrompt)
 	}
 
-	log.Printf("DEBUG: Node %d: Writing LISTMSGAR pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
+	logging.Debug(" Node %d: Writing LISTMSGAR pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
 	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing LISTMSGAR pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
+	logging.Debug(" Node %d: Writing LISTMSGAR pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
 	_, wErr = terminal.Write(pauseBytesToWrite)
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing LISTMSGAR pause prompt: %v", nodeNumber, wErr)
@@ -160,7 +161,7 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 
 // runComposeMessage handles the process of composing and saving a new message.
 func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running COMPOSEMSG with args: %s", nodeNumber, args)
+	logging.Debug(" Node %d: Running COMPOSEMSG with args: %s", nodeNumber, args)
 
 	// 1. Determine Target Area
 	var areaTag string
@@ -270,9 +271,9 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	// The editor.RunEditor will take over the PTY.
 	// Reverted to logic from commit 32f3c59...
 
-	log.Printf("DEBUG: Node %d: Clearing screen before calling editor.RunEditor", nodeNumber)
+	logging.Debug(" Node %d: Clearing screen before calling editor.RunEditor", nodeNumber)
 	terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear screen before editor (as per 32f3c59)
-	log.Printf("DEBUG: Node %d: Calling editor.RunEditor for area %s", nodeNumber, area.Tag)
+	logging.Debug(" Node %d: Calling editor.RunEditor for area %s", nodeNumber, area.Tag)
 
 	// Get TERM env var
 	termType := "unknown"
@@ -282,10 +283,10 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 			break
 		}
 	}
-	log.Printf("DEBUG: Node %d: Passing TERM=%s to editor.RunEditor", nodeNumber, termType)
+	logging.Debug(" Node %d: Passing TERM=%s to editor.RunEditor", nodeNumber, termType)
 
 	body, saved, err := editor.RunEditor("", s, s, termType) // Pass session as input/output and termType
-	log.Printf("DEBUG: Node %d: editor.RunEditor returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
+	logging.Debug(" Node %d: editor.RunEditor returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
 
 	if err != nil {
 		log.Printf("ERROR: Node %d: Editor failed for user %s: %v", nodeNumber, currentUser.Handle, err)
@@ -362,7 +363,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 
 // runPromptAndComposeMessage lists areas, prompts for selection, checks permissions, and calls runComposeMessage.
 func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running runPromptAndComposeMessage", nodeNumber)
+	logging.Debug(" Node %d: Running runPromptAndComposeMessage", nodeNumber)
 
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: runPromptAndComposeMessage called without logged in user.", nodeNumber)
@@ -410,7 +411,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 	terminal.Write([]byte(processedTopTemplate))     // Write TOP
 
 	if len(areas) == 0 {
-		log.Printf("DEBUG: Node %d: No message areas available to post in.", nodeNumber)
+		logging.Debug(" Node %d: No message areas available to post in.", nodeNumber)
 		terminal.Write([]byte("\r\n|07No message areas available.|07\r\n"))
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
@@ -436,7 +437,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 	// 2. Prompt for Area Selection
 	// TODO: Use a configurable string for this prompt
 	prompt := "\r\n|07Enter Area ID or Tag to Post In (or Enter to cancel): |15"
-	log.Printf("DEBUG: Node %d: Writing prompt for message area selection bytes (hex): %x", nodeNumber, terminal.ProcessPipeCodes([]byte(prompt)))
+	logging.Debug(" Node %d: Writing prompt for message area selection bytes (hex): %x", nodeNumber, terminal.ProcessPipeCodes([]byte(prompt)))
 	wErr := terminal.DisplayContent([]byte(prompt))
 	if wErr != nil {
 		log.Printf("WARN: Node %d: Failed to write area selection prompt: %v", nodeNumber, wErr)
@@ -505,7 +506,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 
 // runReadMsgs handles reading messages from the user's current area.
 func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running READMSGS", nodeNumber)
+	logging.Debug(" Node %d: Running READMSGS", nodeNumber)
 
 	// 1. Check User and Area
 	if currentUser == nil {
@@ -632,7 +633,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 		}
 
 		// Load all messages for reading the specific one
-		log.Printf("DEBUG: Node %d: Loading all %d messages to read #%d", nodeNumber, totalMessageCount, selectedNum)
+		logging.Debug(" Node %d: Loading all %d messages to read #%d", nodeNumber, totalMessageCount, selectedNum)
 		allMessages, err := e.MessageMgr.GetMessagesForArea(currentAreaID, "") // Load all
 		if err != nil {
 			log.Printf("ERROR: Node %d: Failed to load all messages for area %d: %v", nodeNumber, currentAreaID, err)
@@ -680,7 +681,7 @@ readerLoop:
 		if isPty && ptyReq.Window.Width > 0 && ptyReq.Window.Height > 0 {
 			termWidth = ptyReq.Window.Width
 			termHeight = ptyReq.Window.Height
-			log.Printf("DEBUG: [runReadMsgs] Terminal dimensions: %d x %d", termWidth, termHeight)
+			logging.Debug(" [runReadMsgs] Terminal dimensions: %d x %d", termWidth, termHeight)
 		} else {
 			log.Printf("WARN: [runReadMsgs] Could not get PTY dimensions, using default %d x %d", termWidth, termHeight)
 		}
@@ -695,7 +696,7 @@ readerLoop:
 		if bodyAvailableHeight < 1 {
 			bodyAvailableHeight = 1 // Ensure at least one line is available
 		}
-		log.Printf("DEBUG: [runReadMsgs] HeaderLines: %d, PromptLines: %d, Available Body Height: %d", headerLines, promptLines, bodyAvailableHeight)
+		logging.Debug(" [runReadMsgs] HeaderLines: %d, PromptLines: %d, Available Body Height: %d", headerLines, promptLines, bodyAvailableHeight)
 
 		// 5.1 Get Current Message
 		currentMsg := messages[currentMessageIndex]
@@ -749,8 +750,8 @@ readerLoop:
 		// }
 
 		// +++ DEBUG LOGGING (Keep temporarily) +++
-		log.Printf("DEBUG: [runReadMsgs] Placeholders Map: %+v", placeholders)
-		log.Printf("DEBUG: [runReadMsgs] Final Display Prompt String: %q", displayPrompt)
+		logging.Debug(" [runReadMsgs] Placeholders Map: %+v", placeholders)
+		logging.Debug(" [runReadMsgs] Final Display Prompt String: %q", displayPrompt)
 		// +++ END DEBUG LOGGING +++
 
 		// 5.4 Process Message Body Pipe Codes
@@ -802,8 +803,8 @@ readerLoop:
 				// Process pipe codes first
 				processedPausePrompt := string(terminal.ProcessPipeCodes([]byte(pausePrompt)))
 				// +++ DEBUG LOGGING +++
-				log.Printf("DEBUG: [runReadMsgs Pagination] OutputMode: %d (CP437=%d, UTF8=%d)", outputMode, terminalPkg.OutputModeCP437, terminalPkg.OutputModeUTF8)
-				log.Printf("DEBUG: [runReadMsgs Pagination] Processed Pause Prompt Bytes (hex): %x", processedPausePrompt)
+				logging.Debug(" [runReadMsgs Pagination] OutputMode: %d (CP437=%d, UTF8=%d)", outputMode, terminalPkg.OutputModeCP437, terminalPkg.OutputModeUTF8)
+				logging.Debug(" [runReadMsgs Pagination] Processed Pause Prompt Bytes (hex): %x", processedPausePrompt)
 				// +++ END DEBUG LOGGING +++
 				// Use the new helper function for writing the prompt
 				wErr = writeProcessedStringWithManualEncoding(terminal, []byte(processedPausePrompt), outputMode)
@@ -834,11 +835,11 @@ readerLoop:
 				}
 
 				if unicode.ToUpper(pauseInputRune) == 'Q' {
-					log.Printf("DEBUG: Node %d: User quit message reader during pagination.", nodeNumber)
+					logging.Debug(" Node %d: User quit message reader during pagination.", nodeNumber)
 					// --- Update Last Read only if reading new ---
 					if readingNewMessages && len(messages) > 0 {
 						lastViewedID := messages[currentMessageIndex].ID.String()
-						log.Printf("DEBUG: Node %d: Updating last read ID (pagination quit) for user %s, area %d to %s", nodeNumber, currentUser.Handle, currentAreaID, lastViewedID)
+						logging.Debug(" Node %d: Updating last read ID (pagination quit) for user %s, area %d to %s", nodeNumber, currentUser.Handle, currentAreaID, lastViewedID)
 						if currentUser.LastReadMessageIDs == nil {
 							currentUser.LastReadMessageIDs = make(map[int]string)
 						}
@@ -899,7 +900,7 @@ readerLoop:
 			}
 		case "N": // Explicit 'N' - Do nothing now, or maybe show help?
 			// Currently does nothing, just loops back
-			log.Printf("DEBUG: Node %d: 'N' pressed, doing nothing.", nodeNumber)
+			logging.Debug(" Node %d: 'N' pressed, doing nothing.", nodeNumber)
 		case "P": // Previous message
 			if currentMessageIndex > 0 {
 				currentMessageIndex--
@@ -909,11 +910,11 @@ readerLoop:
 				time.Sleep(500 * time.Millisecond)
 			}
 		case "Q":
-			log.Printf("DEBUG: Node %d: User quit message reader ('Q' pressed).", nodeNumber)
+			logging.Debug(" Node %d: User quit message reader ('Q' pressed).", nodeNumber)
 			// --- Update Last Read only if reading new ---
 			if readingNewMessages && len(messages) > 0 {
 				lastViewedID := messages[currentMessageIndex].ID.String()
-				log.Printf("DEBUG: Node %d: Updating last read ID ('Q') for user %s, area %d to %s", nodeNumber, currentUser.Handle, currentAreaID, lastViewedID)
+				logging.Debug(" Node %d: Updating last read ID ('Q') for user %s, area %d to %s", nodeNumber, currentUser.Handle, currentAreaID, lastViewedID)
 				if currentUser.LastReadMessageIDs == nil {
 					currentUser.LastReadMessageIDs = make(map[int]string)
 				}
@@ -922,7 +923,7 @@ readerLoop:
 					log.Printf("ERROR: Node %d: Failed to save user data ('Q'): %v", nodeNumber, err)
 				}
 			} else {
-				log.Printf("DEBUG: Node %d: Skipping last read ID update because readingNewMessages is false or no messages.", nodeNumber)
+				logging.Debug(" Node %d: Skipping last read ID update because readingNewMessages is false or no messages.", nodeNumber)
 			}
 			// --- End Update ---
 			break readerLoop // Exit the labeled loop
@@ -947,7 +948,7 @@ readerLoop:
 					break
 				}
 			}
-			log.Printf("DEBUG: Node %d: Launching editor with TERM=%s", nodeNumber, termType)
+			logging.Debug(" Node %d: Launching editor with TERM=%s", nodeNumber, termType)
 
 			// === START: Moved Subject Logic ===
 			// 4. Get Subject
@@ -1046,7 +1047,7 @@ readerLoop:
 
 		default:
 			// Optional: Display invalid command message
-			log.Printf("DEBUG: Node %d: Invalid command '%s' in message reader.", nodeNumber, upperInput)
+			logging.Debug(" Node %d: Invalid command '%s' in message reader.", nodeNumber, upperInput)
 			terminal.Write([]byte("\r\n|01Invalid command.|07"))
 			time.Sleep(500 * time.Millisecond)
 		}
@@ -1054,13 +1055,13 @@ readerLoop:
 	}
 
 	// 7. Return (after loop breaks)
-	log.Printf("DEBUG: Node %d: Exiting message reader function.", nodeNumber)
+	logging.Debug(" Node %d: Exiting message reader function.", nodeNumber)
 	return nil, "", nil // Return to MSGMENU
 }
 
 // runNewscan checks all accessible message areas for new messages.
 func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running NEWSCAN for user %s", nodeNumber, currentUser.Handle)
+	logging.Debug(" Node %d: Running NEWSCAN for user %s", nodeNumber, currentUser.Handle)
 
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: NEWSCAN called without logged in user.", nodeNumber)
@@ -1080,7 +1081,7 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userM
 	}
 	var resultsWithNew []areaResult // Changed variable name
 
-	log.Printf("DEBUG: Node %d: Scanning %d total areas for new messages.", nodeNumber, len(allAreas))
+	logging.Debug(" Node %d: Scanning %d total areas for new messages.", nodeNumber, len(allAreas))
 
 	for _, area := range allAreas {
 		if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
@@ -1101,7 +1102,7 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userM
 		}
 
 		if newCount > 0 {
-			log.Printf("DEBUG: Node %d: Found %d new messages in area %d ('%s')", nodeNumber, newCount, area.ID, area.Tag)
+			logging.Debug(" Node %d: Found %d new messages in area %d ('%s')", nodeNumber, newCount, area.ID, area.Tag)
 			resultsWithNew = append(resultsWithNew, areaResult{Tag: area.Tag, Count: newCount}) // Correctly append
 		}
 	}
@@ -1155,7 +1156,7 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userM
 		if readNow {
 			// User wants to read - jump to the first area with new messages
 			firstAreaTag := resultsWithNew[0].Tag // Use corrected variable name
-			log.Printf("DEBUG: Node %d: User chose to read. Jumping to first area: %s", nodeNumber, firstAreaTag)
+			logging.Debug(" Node %d: User chose to read. Jumping to first area: %s", nodeNumber, firstAreaTag)
 
 			// Get the Area ID for the tag
 			firstArea, found := e.MessageMgr.GetAreaByTag(firstAreaTag)
@@ -1180,7 +1181,7 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userM
 			}
 		} else {
 			// User chose not to read now - fall through to standard pause
-			log.Printf("DEBUG: Node %d: User chose not to read new messages now.", nodeNumber)
+			logging.Debug(" Node %d: User chose not to read new messages now.", nodeNumber)
 		}
 	}
 

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
+	"github.com/stlalpha/vision3/internal/logging"
 	terminalPkg "github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -87,7 +88,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 	}
 
 	// Attempt Authentication via UserManager
-	log.Printf("DEBUG: Node %d: Attempting authentication for user: %s", nodeNumber, username)
+	logging.Debug(" Node %d: Attempting authentication for user: %s", nodeNumber, username)
 	authUser, authenticated := userManager.Authenticate(username, password)
 	if !authenticated {
 		log.Printf("WARN: Node %d: Failed authentication attempt for user: %s", nodeNumber, username)
@@ -173,13 +174,13 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.
 	}
 
 	// 4. Signal transition to MAIN menu
-	log.Printf("DEBUG: Node %d: FULL_LOGIN_SEQUENCE completed. Transitioning to MAIN.", nodeNumber)
+	logging.Debug(" Node %d: FULL_LOGIN_SEQUENCE completed. Transitioning to MAIN.", nodeNumber)
 	return currentUser, "GOTO:MAIN", nil
 }
 
 // runListUsers displays a list of users, sorted alphabetically.
 func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running LISTUSERS", nodeNumber)
+	logging.Debug(" Node %d: Running LISTUSERS", nodeNumber)
 
 	// 1. Load Templates (Corrected filenames)
 	topTemplatePath := filepath.Join(e.MenuSetPath, "templates", "USERLIST.TOP")
@@ -215,7 +216,7 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 	if len(users) == 0 {
 		// Optional: Handle empty state. The template might handle this.
-		log.Printf("DEBUG: Node %d: No users to display.", nodeNumber)
+		logging.Debug(" Node %d: No users to display.", nodeNumber)
 		// If templates don't handle empty, add a message here.
 	} else {
 		// Iterate through user records and format using processed USERLIST.MID
@@ -234,15 +235,15 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			line = strings.ReplaceAll(line, "|GL", groupLocation) // Use |GL for Group/Location (Replaces |UN)
 			line = strings.ReplaceAll(line, "|LV", level)         // Use |LV for Level
 
-			log.Printf("DEBUG: About to write line for user %s: %q", handle, line)
+			logging.Debug(" About to write line for user %s: %q", handle, line)
 			outputBuffer.WriteString(line) // Add the fully substituted and processed line
-			log.Printf("DEBUG: Wrote line. Buffer size now: %d", outputBuffer.Len())
+			logging.Debug(" Wrote line. Buffer size now: %d", outputBuffer.Len())
 		}
 	}
 
-	log.Printf("DEBUG: Finished user loop. Total buffer size before BOT: %d", outputBuffer.Len())
+	logging.Debug(" Finished user loop. Total buffer size before BOT: %d", outputBuffer.Len())
 	outputBuffer.Write([]byte(processedBotTemplate)) // Write processed bottom template
-	log.Printf("DEBUG: Added BOT template. Final buffer size: %d", outputBuffer.Len())
+	logging.Debug(" Added BOT template. Final buffer size: %d", outputBuffer.Len())
 
 	// 4. Clear screen and display the assembled content
 	writeErr := terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
@@ -283,9 +284,9 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		pauseBytesToWrite = []byte(processedPausePrompt)
 	}
 
-	log.Printf("DEBUG: Node %d: Writing USERLIST pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
+	logging.Debug(" Node %d: Writing USERLIST pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
 	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing USERLIST pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
+	logging.Debug(" Node %d: Writing USERLIST pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
 	_, wErr = terminal.Write(pauseBytesToWrite)
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing USERLIST pause prompt: %v", nodeNumber, wErr)
@@ -386,7 +387,7 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	}
 
 	// Display pause prompt directly - DisplayContent handles encoding and pipe codes
-	log.Printf("DEBUG: Node %d: Displaying SHOWSTATS pause prompt: %q", nodeNumber, pausePrompt)
+	logging.Debug(" Node %d: Displaying SHOWSTATS pause prompt: %q", nodeNumber, pausePrompt)
 	wErr = terminal.DisplayContent([]byte(pausePrompt))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing SHOWSTATS pause prompt: %v", nodeNumber, wErr)
@@ -411,7 +412,7 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 // runShowVersion displays static version information.
 func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running SHOWVERSION", nodeNumber)
+	logging.Debug(" Node %d: Running SHOWVERSION", nodeNumber)
 
 	// Define the version string (can be made dynamic later)
 	versionString := "|15ViSiON/3 Go Edition - v0.1.0 (Pre-Alpha)|07"
@@ -477,7 +478,7 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 
 // runLastCallers displays the last callers list using templates.
 func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running LASTCALLERS", nodeNumber)
+	logging.Debug(" Node %d: Running LASTCALLERS", nodeNumber)
 
 	// 1. Load Template Files from MenuSetPath/templates
 	topTemplatePath := filepath.Join(e.MenuSetPath, "templates", "LASTCALL.TOP")
@@ -513,7 +514,7 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 
 	if len(lastCallers) == 0 {
 		// Optional: Handle empty state. The template might handle this.
-		log.Printf("DEBUG: Node %d: No last callers to display.", nodeNumber)
+		logging.Debug(" Node %d: No last callers to display.", nodeNumber)
 		// If templates don't handle empty, add a message here.
 	} else {
 		// Iterate through call records and format using processed LASTCALL.MID
@@ -595,9 +596,9 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 		pauseBytesToWrite = []byte(processedPausePrompt)
 	}
 
-	log.Printf("DEBUG: Node %d: Writing LASTCALLERS pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
+	logging.Debug(" Node %d: Writing LASTCALLERS pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
 	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing LASTCALLERS pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
+	logging.Debug(" Node %d: Writing LASTCALLERS pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
 	_, wErr = terminal.Write(pauseBytesToWrite)
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing LASTCALLERS pause prompt: %v", nodeNumber, wErr)

@@ -17,6 +17,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/logging"
 	terminalPkg "github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/user"
 	"golang.org/x/term"
@@ -84,7 +85,7 @@ func runDoor(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS,
 	// Set working directory if specified
 	if doorConfig.WorkingDirectory != "" {
 		cmd.Dir = doorConfig.WorkingDirectory
-		log.Printf("DEBUG: Setting working directory for door '%s' to '%s'", doorName, cmd.Dir)
+		logging.Debug(" Setting working directory for door '%s' to '%s'", doorName, cmd.Dir)
 	}
 
 	// Set environment variables
@@ -219,7 +220,7 @@ func generateDropfile(doorConfig config.DoorConfig, currentUser *user.User, node
 
 	// Return cleanup function
 	cleanupFunc := func() {
-		log.Printf("DEBUG: Cleaning up dropfile: %s", dropfilePath)
+		logging.Debug(" Cleaning up dropfile: %s", dropfilePath)
 		if removeErr := os.Remove(dropfilePath); removeErr != nil {
 			log.Printf("WARN: Failed to remove dropfile %s: %v", dropfilePath, removeErr)
 		}
@@ -292,9 +293,9 @@ func executeDoorWithPTY(cmd *exec.Cmd, s ssh.Session, ptyReq ssh.Pty,
 	if err != nil {
 		log.Printf("WARN: Node %d: Failed to put PTY into raw mode for door '%s': %v.", nodeNumber, doorName, err)
 	} else {
-		log.Printf("DEBUG: Node %d: PTY set to raw mode for door '%s'.", nodeNumber, doorName)
+		logging.Debug(" Node %d: PTY set to raw mode for door '%s'.", nodeNumber, doorName)
 		restoreTerminal = func() {
-			log.Printf("DEBUG: Node %d: Restoring PTY mode after door '%s'.", nodeNumber, doorName)
+			logging.Debug(" Node %d: Restoring PTY mode after door '%s'.", nodeNumber, doorName)
 			if restoreErr := term.Restore(fd, originalState); restoreErr != nil {
 				log.Printf("ERROR: Node %d: Failed to restore PTY state after door '%s': %v", nodeNumber, doorName, restoreErr)
 			}
@@ -312,7 +313,7 @@ func executeDoorWithPTY(cmd *exec.Cmd, s ssh.Session, ptyReq ssh.Pty,
 		if copyErr != nil && copyErr != io.EOF && !errors.Is(copyErr, os.ErrClosed) {
 			log.Printf("WARN: Node %d: Error copying session stdin to PTY for door '%s': %v", nodeNumber, doorName, copyErr)
 		}
-		log.Printf("DEBUG: Node %d: Finished copying session stdin to PTY for door '%s'", nodeNumber, doorName)
+		logging.Debug(" Node %d: Finished copying session stdin to PTY for door '%s'", nodeNumber, doorName)
 	}()
 
 	go func() {
@@ -321,11 +322,11 @@ func executeDoorWithPTY(cmd *exec.Cmd, s ssh.Session, ptyReq ssh.Pty,
 		if copyErr != nil && copyErr != io.EOF && !errors.Is(copyErr, os.ErrClosed) {
 			log.Printf("WARN: Node %d: Error copying PTY stdout to session stdout for door '%s': %v", nodeNumber, doorName, copyErr)
 		}
-		log.Printf("DEBUG: Node %d: Finished copying PTY stdout to session stdout for door '%s'", nodeNumber, doorName)
+		logging.Debug(" Node %d: Finished copying PTY stdout to session stdout for door '%s'", nodeNumber, doorName)
 	}()
 
 	wg.Wait()
-	log.Printf("DEBUG: Node %d: I/O copying finished for door '%s'. Waiting for command completion.", nodeNumber, doorName)
+	logging.Debug(" Node %d: I/O copying finished for door '%s'. Waiting for command completion.", nodeNumber, doorName)
 
 	return cmd.Wait()
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/file"
+	"github.com/stlalpha/vision3/internal/logging"
 	"github.com/stlalpha/vision3/internal/menu/renderer"
 	"github.com/stlalpha/vision3/internal/message"
 	terminalPkg "github.com/stlalpha/vision3/internal/terminal"
@@ -326,9 +327,9 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 	// var authenticatedUserResult *user.User // Unused
 
 	if currentUser != nil {
-		log.Printf("DEBUG: Running menu for user %s (Level: %d)", currentUser.Handle, currentUser.AccessLevel)
+		logging.Debug("Running menu for user %s (Level: %d)", currentUser.Handle, currentUser.AccessLevel)
 	} else {
-		log.Printf("DEBUG: Running menu for potentially unauthenticated user (login phase)")
+		logging.Debug("Running menu for potentially unauthenticated user (login phase)")
 	}
 
 	for {
@@ -428,7 +429,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 				// --- BEGIN Set Default Message Area ---
 				if currentUser != nil && e.MessageMgr != nil {
 					allAreas := e.MessageMgr.ListAreas() // Already sorted by ID
-					log.Printf("DEBUG: Found %d message areas for user %s.", len(allAreas), currentUser.Handle)
+					logging.Debug("Found %d message areas for user %s.", len(allAreas), currentUser.Handle)
 					foundDefaultArea := false
 					for _, area := range allAreas {
 						// Check if user has read access to this area
@@ -455,7 +456,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 				// --- BEGIN Set Default File Area ---
 				if currentUser != nil && e.FileMgr != nil {
 					allFileAreas := e.FileMgr.ListAreas() // Assumes ListAreas is sorted by ID
-					log.Printf("DEBUG: Found %d file areas for user %s.", len(allFileAreas), currentUser.Handle)
+					logging.Debug("Found %d file areas for user %s.", len(allFileAreas), currentUser.Handle)
 					foundDefaultFileArea := false
 					for _, area := range allFileAreas {
 						// Check if user has list access to this area
@@ -500,7 +501,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 						if checkACS(cmd.ACS, currentUser, s, terminal, sessionStartTime) { // Use ssh.Session 's'
 							nextAction = cmd.Command
 							foundDefault = true
-							log.Printf("DEBUG: Found default command in LOGIN.CFG after auth: %s", nextAction)
+							logging.Debug("Found default command in LOGIN.CFG after auth: %s", nextAction)
 							break // Found the relevant default command (e.g., GOTO:MAIN)
 						} else {
 							log.Printf("WARN: User %s denied default command '%s' in LOGIN.CFG due to ACS '%s'", currentUser.Handle, cmd.Command, cmd.ACS)
@@ -546,7 +547,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 		// Check Menu Password if required
 		menuPassword := menuRec.Password
 		if menuPassword != "" {
-			log.Printf("DEBUG: Menu '%s' requires password.", currentMenuName)
+			logging.Debug("Menu '%s' requires password.", currentMenuName)
 			passwordOk := false
 			for i := 0; i < 3; i++ { // Allow 3 attempts
 				prompt := fmt.Sprintf("\r\n|07Password for %s (|15Attempt %d/3|07): ", currentMenuName, i+1)
@@ -615,7 +616,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 				autoRunKey := fmt.Sprintf("%s:%s", currentMenuName, cmd.Command) // Unique key per menu/command
 
 				if cmd.Keys == "//" && autoRunLog[autoRunKey] {
-					log.Printf("DEBUG: Skipping already executed run-once command: %s", autoRunKey)
+					logging.Debug("Skipping already executed run-once command: %s", autoRunKey)
 					continue // Skip if already run
 				}
 				if checkACS(cmd.ACS, currentUser, s, terminal, sessionStartTime) { // Use ssh.Session 's'
@@ -641,7 +642,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 						}
 					}
 				} else {
-					log.Printf("DEBUG: AutoRun command (%s) %s denied by ACS: %s", cmd.Keys, cmd.Command, cmd.ACS)
+					logging.Debug("AutoRun command (%s) %s denied by ACS: %s", cmd.Keys, cmd.Command, cmd.ACS)
 				}
 			}
 		}
@@ -690,7 +691,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 
 		// 4. Determine Input Mode / Method
 		if isLightbarMenu {
-			log.Printf("DEBUG: Entering Lightbar input mode for %s", currentMenuName)
+			logging.Debug("Entering Lightbar input mode for %s", currentMenuName)
 
 			// Load lightbar options from the config directory
 			// Pass 'e' (MenuExecutor) to the updated function
@@ -729,7 +730,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 							log.Printf("ERROR: Failed to read lightbar input for menu %s: %v", currentMenuName, err)
 							return "", nil, fmt.Errorf("failed reading lightbar input: %w", err)
 						}
-						log.Printf("DEBUG: Lightbar input rune: '%c' (%d)", r, r)
+						logging.Debug("Lightbar input rune: '%c' (%d)", r, r)
 
 						// Map specific keys for navigation and selection
 						switch r {
@@ -787,7 +788,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 							continue // Otherwise keep waiting for valid input
 						}
 					}
-					log.Printf("DEBUG: Processed Lightbar input as: '%s'", lightbarResult)
+					logging.Debug("Processed Lightbar input as: '%s'", lightbarResult)
 					// Set userInput to lightbar result if a selection was made
 					if lightbarResult != "" {
 						userInput = lightbarResult
@@ -805,7 +806,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 					}
 				} else {
 					// Log message remains the same, but the condition causing it is now just UsePrompt==false
-					log.Printf("DEBUG: Skipping prompt display for %s (UsePrompt: %t, Prompt1 empty: %t)", currentMenuName, menuRec.GetUsePrompt(), menuRec.Prompt1 == "")
+					logging.Debug("Skipping prompt display for %s (UsePrompt: %t, Prompt1 empty: %t)", currentMenuName, menuRec.GetUsePrompt(), menuRec.Prompt1 == "")
 				}
 
 				// Read User Input Line
@@ -819,22 +820,22 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 					return "", nil, fmt.Errorf("failed reading input: %w", err)
 				}
 				userInput = strings.ToUpper(strings.TrimSpace(input))
-				log.Printf("DEBUG: User input: '%s'", userInput)
+				logging.Debug("User input: '%s'", userInput)
 			}
 		} else {
 			// --- Standard Menu Input Handling ---
 			// Display Prompt (Skip if USEPROMPT is false)
-			log.Printf("DEBUG: Checking prompt display for menu: %s. UsePrompt=%t", currentMenuName, menuRec.GetUsePrompt())
+			logging.Debug("Checking prompt display for menu: %s. UsePrompt=%t", currentMenuName, menuRec.GetUsePrompt())
 			if menuRec.GetUsePrompt() { // Condition changed: Only check UsePrompt
-				log.Printf("DEBUG: Calling displayPrompt for menu: %s", currentMenuName)
+				logging.Debug("Calling displayPrompt for menu: %s", currentMenuName)
 				err = e.displayPrompt(terminal, menuRec, currentUser, nodeNumber, currentMenuName, sessionStartTime, outputMode, currentAreaName) // Pass currentAreaName
-				log.Printf("DEBUG: Returned from displayPrompt for menu: %s. Error: %v", currentMenuName, err)
+				logging.Debug("Returned from displayPrompt for menu: %s. Error: %v", currentMenuName, err)
 				if err != nil {
 					return "", nil, err // Propagate the error
 				}
 			} else {
 				// Log message remains the same, but the condition causing it is now just UsePrompt==false
-				log.Printf("DEBUG: Skipping prompt display for %s (UsePrompt: %t, Prompt1 empty: %t)", currentMenuName, menuRec.GetUsePrompt(), menuRec.Prompt1 == "")
+				logging.Debug("Skipping prompt display for %s (UsePrompt: %t, Prompt1 empty: %t)", currentMenuName, menuRec.GetUsePrompt(), menuRec.Prompt1 == "")
 			}
 
 			// Read User Input Line
@@ -848,25 +849,25 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 				return "", nil, fmt.Errorf("failed reading input: %w", err)
 			}
 			userInput = strings.ToUpper(strings.TrimSpace(input))
-			log.Printf("DEBUG: User input: '%s'", userInput)
+			logging.Debug("User input: '%s'", userInput)
 
 			// --- Special Input Handling (^P, ##) ---
 			if userInput == "\x10" || userInput == "^P" { // Ctrl+P is ASCII 16 (\x10)
 				if previousMenuName != "" {
-					log.Printf("DEBUG: User entered ^P, going back to previous menu: %s", previousMenuName)
+					logging.Debug("User entered ^P, going back to previous menu: %s", previousMenuName)
 					temp := currentMenuName
 					currentMenuName = previousMenuName
 					previousMenuName = temp // Update previous in case they go back again
 					continue                // Go directly to the previous menu loop iteration
 				} else {
-					log.Printf("DEBUG: User entered ^P, but no previous menu recorded.")
+					logging.Debug("User entered ^P, but no previous menu recorded.")
 					continue // Re-display current menu prompt
 				}
 			}
 
 			// var numericMatchAction string // Declaration moved outside
 			if numInput, err := strconv.Atoi(userInput); err == nil && numInput > 0 {
-				log.Printf("DEBUG: User entered numeric input: %d", numInput)
+				logging.Debug("User entered numeric input: %d", numInput)
 				visibleCmdIndex := 0
 				for _, cmdRec := range commands {
 					if cmdRec.GetHidden() {
@@ -879,7 +880,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 					visibleCmdIndex++ // Increment for each visible, accessible command
 					if visibleCmdIndex == numInput {
 						numericMatchAction = cmdRec.Command
-						log.Printf("DEBUG: Numeric input %d matched command index %d, action: '%s'", numInput, visibleCmdIndex, numericMatchAction)
+						logging.Debug("Numeric input %d matched command index %d, action: '%s'", numInput, visibleCmdIndex, numericMatchAction)
 						break // Found numeric match
 					}
 				}
@@ -903,9 +904,9 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 				cmdACS := cmdRec.ACS
 				if !checkACS(cmdACS, currentUser, s, terminal, sessionStartTime) { // Use ssh.Session 's'
 					if currentUser != nil {
-						log.Printf("DEBUG: User '%s' does not meet ACS '%s' for command key(s) '%s'", currentUser.Handle, cmdACS, cmdRec.Keys)
+						logging.Debug("User '%s' does not meet ACS '%s' for command key(s) '%s'", currentUser.Handle, cmdACS, cmdRec.Keys)
 					} else {
-						log.Printf("DEBUG: Unauthenticated user does not meet ACS '%s' for command key(s) '%s'", cmdACS, cmdRec.Keys)
+						logging.Debug("Unauthenticated user does not meet ACS '%s' for command key(s) '%s'", cmdACS, cmdRec.Keys)
 					}
 					continue // Skip this command if ACS check fails
 				}
@@ -915,7 +916,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 					// Handle empty userInput from lightbar mode if non-mapped key was pressed
 					if key != "" && userInput != "" && userInput == key {
 						nextAction = cmdRec.Command // Store the action string
-						log.Printf("DEBUG: Matched key '%s' to command action: '%s'", key, nextAction)
+						logging.Debug("Matched key '%s' to command action: '%s'", key, nextAction)
 						matched = true
 						break // Found match, break inner key loop
 					}
@@ -948,7 +949,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *terminalPkg.BBS, userManager
 			log.Printf("WARN: Unhandled action type '%s' after executing command '%s'", nextActionType, nextAction)
 			continue
 		} else {
-			log.Printf("DEBUG: Input '%s' did not match any commands in menu %s", userInput, currentMenuName)
+			logging.Debug("Input '%s' did not match any commands in menu %s", userInput, currentMenuName)
 
 			// If it was a lightbar menu and input was ignored (userInput == ""), just loop again
 			if isLightbarMenu {
@@ -977,7 +978,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *terminalPkg.BB
 	userCoord, userOk := coords["P"] // Use 'P' for Handle/Name field based on LOGIN.ANS
 	passCoord, passOk := coords["O"] // Use 'O' for Password field based on LOGIN.ANS
 
-	log.Printf("DEBUG: LOGIN Coords Received - P: %+v (Ok: %t), O: %+v (Ok: %t)", userCoord, userOk, passCoord, passOk)
+	logging.Debug("LOGIN Coords Received - P: %+v (Ok: %t), O: %+v (Ok: %t)", userCoord, userOk, passCoord, passOk)
 
 	if !userOk || !passOk {
 		log.Printf("CRITICAL: LOGIN.ANS is missing required coordinate codes P or O.")
@@ -1003,7 +1004,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *terminalPkg.BB
 	}
 	username := strings.TrimSpace(usernameInput)
 	if username == "" {
-		log.Printf("DEBUG: Node %d: Empty username entered.", nodeNumber)
+		logging.Debug("Node %d: Empty username entered.", nodeNumber)
 		return nil, nil // Return nil user, nil error to signal retry LOGIN
 	}
 
@@ -1026,7 +1027,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *terminalPkg.BB
 	}
 
 	// Attempt Authentication via UserManager
-	log.Printf("DEBUG: Node %d: Attempting authentication for user: %s", nodeNumber, username)
+	logging.Debug("Node %d: Attempting authentication for user: %s", nodeNumber, username)
 	authUser, authenticated := userManager.Authenticate(username, password)
 	if !authenticated {
 		log.Printf("WARN: Node %d: Failed authentication attempt for user: %s", nodeNumber, username)
@@ -1068,7 +1069,7 @@ func readPasswordSecurely(s ssh.Session, terminal *terminalPkg.BBS) (string, err
 		r, _, err := bufioReader.ReadRune()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				log.Println("DEBUG: EOF received during secure password read.")
+				logging.Debug("EOF received during secure password read.")
 			}
 			return "", err // Propagate errors
 		}
@@ -1143,7 +1144,7 @@ func (e *MenuExecutor) displayPrompt(terminal *terminalPkg.BBS, menu *MenuRecord
 	// Special handling for MSGMENU prompt (Corrected menu name)
 	if currentMenuName == "MSGMENU" && e.LoadedStrings.MessageMenuPrompt != "" {
 		promptString = e.LoadedStrings.MessageMenuPrompt
-		log.Printf("DEBUG: Using MessageMenuPrompt for MSGMENU")
+		logging.Debug("Using MessageMenuPrompt for MSGMENU")
 	} else if promptString == "" {
 		if e.LoadedStrings.DefPrompt != "" { // Use loaded strings
 			promptString = e.LoadedStrings.DefPrompt
@@ -1153,7 +1154,7 @@ func (e *MenuExecutor) displayPrompt(terminal *terminalPkg.BBS, menu *MenuRecord
 		}
 	}
 
-	log.Printf("DEBUG: Displaying menu prompt for: %s", currentMenuName)
+	logging.Debug("Displaying menu prompt for: %s", currentMenuName)
 
 	placeholders := map[string]string{
 		"|NODE":   strconv.Itoa(nodeNumber), // Node Number
@@ -1190,10 +1191,10 @@ func (e *MenuExecutor) displayPrompt(terminal *terminalPkg.BBS, menu *MenuRecord
 		// Set |CA based on user's current area tag if available
 		if currentUser.CurrentMessageAreaTag != "" {
 			placeholders["|CA"] = currentUser.CurrentMessageAreaTag
-			log.Printf("DEBUG: Using user's CurrentMessageAreaTag '%s' for |CA placeholder", currentUser.CurrentMessageAreaTag)
+			logging.Debug("Using user's CurrentMessageAreaTag '%s' for |CA placeholder", currentUser.CurrentMessageAreaTag)
 		} else {
 			// Keep default "None" if user tag is empty
-			log.Printf("DEBUG: User's CurrentMessageAreaTag is empty, using default 'None' for |CA placeholder")
+			logging.Debug("User's CurrentMessageAreaTag is empty, using default 'None' for |CA placeholder")
 		}
 
 		// Calculate Time Left |TL
@@ -1277,7 +1278,7 @@ func (e *MenuExecutor) processFileIncludes(prompt string, depth int) (string, er
 		// Look for included file in MenuSetPath/ansi
 		filePath := filepath.Join(e.MenuSetPath, "ansi", fileName)
 
-		log.Printf("DEBUG: Including file in prompt: %s (Depth: %d)", filePath, depth)
+		logging.Debug("Including file in prompt: %s (Depth: %d)", filePath, depth)
 		data, err := os.ReadFile(filePath)
 		if err != nil {
 			log.Printf("WARN: Failed to read included file '%s': %v. Skipping inclusion.", filePath, err)
@@ -1309,7 +1310,7 @@ func drawLightbarMenu(terminal *terminalPkg.BBS, backgroundBytes []byte, options
 
 	// Calculate offset caused by leading lines in ANSI content
 	offset := calculateANSIOffset(backgroundBytes)
-	log.Printf("DEBUG: Calculated ANSI offset: %d lines", offset)
+	logging.Debug("Calculated ANSI offset: %d lines", offset)
 
 	// Draw static background
 	// We might need to clear attributes before drawing background if it has colors
@@ -1324,11 +1325,11 @@ func drawLightbarMenu(terminal *terminalPkg.BBS, backgroundBytes []byte, options
 
 	// Draw each option, highlighting the selected one
 	for i, opt := range options {
-		log.Printf("DEBUG: Drawing option %d (%s) at Y=%d, X=%d, selected=%t", i, opt.Text, opt.Y, opt.X, i == selectedIndex)
+		logging.Debug("Drawing option %d (%s) at Y=%d, X=%d, selected=%t", i, opt.Text, opt.Y, opt.X, i == selectedIndex)
 
 		// Position cursor
 		posCmd := fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X)
-		log.Printf("DEBUG: Positioning cursor with command: %q", posCmd)
+		logging.Debug("Positioning cursor with command: %q", posCmd)
 		_, err := terminal.Write([]byte(posCmd))
 		if err != nil {
 			return fmt.Errorf("failed positioning cursor for lightbar option: %w", err)
@@ -1342,7 +1343,7 @@ func drawLightbarMenu(terminal *terminalPkg.BBS, backgroundBytes []byte, options
 			colorCode = opt.RegularColor
 		}
 		ansiColorSequence := colorCodeToAnsi(colorCode)
-		log.Printf("DEBUG: Applying color code %d -> %q", colorCode, ansiColorSequence)
+		logging.Debug("Applying color code %d -> %q", colorCode, ansiColorSequence)
 		_, err = terminal.Write([]byte(ansiColorSequence))
 
 		if err != nil {
@@ -1350,33 +1351,33 @@ func drawLightbarMenu(terminal *terminalPkg.BBS, backgroundBytes []byte, options
 		}
 
 		// Save cursor position before writing text
-		log.Printf("DEBUG: Saving cursor position")
+		logging.Debug("Saving cursor position")
 		_, err = terminal.Write([]byte("\x1b[s"))
 		if err != nil {
 			return fmt.Errorf("failed saving cursor position: %w", err)
 		}
 
 		// Write the option text
-		log.Printf("DEBUG: Writing text %q (length: %d)", opt.Text, len(opt.Text))
+		logging.Debug("Writing text %q (length: %d)", opt.Text, len(opt.Text))
 		_, err = terminal.Write([]byte(opt.Text))
 		if err != nil {
 			return fmt.Errorf("failed writing lightbar option text: %w", err)
 		}
 
 		// Always reset attributes after each option to ensure clean display
-		log.Printf("DEBUG: Resetting attributes with %q", attrReset)
+		logging.Debug("Resetting attributes with %q", attrReset)
 		_, err = terminal.Write([]byte(attrReset))
 		if err != nil {
 			return fmt.Errorf("failed resetting attributes after lightbar option: %w", err)
 		}
 
 		// Restore cursor position to avoid leaving cursor in middle of ANSI art
-		log.Printf("DEBUG: Restoring cursor position")
+		logging.Debug("Restoring cursor position")
 		_, err = terminal.Write([]byte("\x1b[u"))
 		if err != nil {
 			return fmt.Errorf("failed restoring cursor position: %w", err)
 		}
-		log.Printf("DEBUG: Completed drawing option %d", i)
+		logging.Debug("Completed drawing option %d", i)
 	}
 
 	return nil
@@ -1402,7 +1403,7 @@ func requestCursorPosition(s ssh.Session, terminal *terminalPkg.BBS) (int, int, 
 	reader := bufio.NewReader(s)                  // Use the session reader
 	timeout := time.After(500 * time.Millisecond) // Add a timeout
 
-	log.Printf("DEBUG: Waiting for cursor position report...")
+	logging.Debug("Waiting for cursor position report...")
 
 	for {
 		select {
@@ -1446,7 +1447,7 @@ func requestCursorPosition(s ssh.Session, terminal *terminalPkg.BBS) (int, int, 
 					log.Printf("WARN: Failed to parse row/col from cursor report %q: RowErr=%v, ColErr=%v", string(response), errRow, errCol)
 					return 0, 0, fmt.Errorf("failed to parse cursor position report %q", response)
 				}
-				log.Printf("DEBUG: Received cursor position: Row=%d, Col=%d", row, col)
+				logging.Debug("Received cursor position: Row=%d, Col=%d", row, col)
 				return row, col, nil // Success!
 			}
 
@@ -1468,7 +1469,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 
 	if hasPtyHeight {
 		// --- Dynamic Lightbar Logic (if terminal height is known) ---
-		log.Printf("DEBUG: Terminal height known (%d), using lightbar prompt.", ptyReq.Window.Height)
+		logging.Debug("Terminal height known (%d), using lightbar prompt.", ptyReq.Window.Height)
 		promptRow := ptyReq.Window.Height // Use last row
 		promptCol := 3
 		yesOptionText := " Yes "
@@ -1480,14 +1481,14 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 
 		// Use WriteProcessedBytes for ANSI codes
 		saveCursorBytes := []byte(terminalPkg.SaveCursor())
-		log.Printf("DEBUG: Node %d: Writing prompt save cursor bytes (hex): %x", nodeNumber, saveCursorBytes) // Use nodeNumber
+		logging.Debug("Node %d: Writing prompt save cursor bytes (hex): %x", nodeNumber, saveCursorBytes) // Use nodeNumber
 		_, wErr := terminal.Write(saveCursorBytes)
 		if wErr != nil {
 			log.Printf("WARN: Failed saving cursor: %v", wErr)
 		}
 		defer func() {
 			restoreCursorBytes := []byte(terminalPkg.RestoreCursor())
-			log.Printf("DEBUG: Node %d: Writing prompt restore cursor bytes (hex): %x", nodeNumber, restoreCursorBytes) // Use nodeNumber
+			logging.Debug("Node %d: Writing prompt restore cursor bytes (hex): %x", nodeNumber, restoreCursorBytes) // Use nodeNumber
 			_, wErr := terminal.Write(restoreCursorBytes)
 			if wErr != nil {
 				log.Printf("WARN: Failed restoring cursor: %v", wErr)
@@ -1495,8 +1496,8 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 		}()
 
 		// Clear the prompt line first
-		clearCmdBytes := []byte(fmt.Sprintf("\x1b[%d;1H\x1b[2K", promptRow))                               // Move + Clear line
-		log.Printf("DEBUG: Node %d: Writing prompt clear line bytes (hex): %x", nodeNumber, clearCmdBytes) // Use nodeNumber
+		clearCmdBytes := []byte(fmt.Sprintf("\x1b[%d;1H\x1b[2K", promptRow))                                 // Move + Clear line
+		logging.Debug("Node %d: Writing prompt clear line bytes (hex): %x", nodeNumber, clearCmdBytes) // Use nodeNumber
 		_, wErr = terminal.Write(clearCmdBytes)
 		if wErr != nil {
 			log.Printf("WARN: Failed clearing prompt line: %v", wErr)
@@ -1504,14 +1505,14 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 
 		// Move to prompt column and display prompt text
 		promptPosCmdBytes := []byte(fmt.Sprintf("\x1b[%d;%dH", promptRow, promptCol))
-		log.Printf("DEBUG: Node %d: Writing prompt position bytes (hex): %x", nodeNumber, promptPosCmdBytes) // Use nodeNumber
+		logging.Debug("Node %d: Writing prompt position bytes (hex): %x", nodeNumber, promptPosCmdBytes) // Use nodeNumber
 		_, wErr = terminal.Write(promptPosCmdBytes)
 		if wErr != nil {
 			log.Printf("WARN: Failed positioning for prompt: %v", wErr)
 		}
 
 		promptDisplayBytes := terminal.ProcessPipeCodes([]byte(promptText))
-		log.Printf("DEBUG: Node %d: Writing prompt text bytes (hex): %x", nodeNumber, promptDisplayBytes) // Use nodeNumber
+		logging.Debug("Node %d: Writing prompt text bytes (hex): %x", nodeNumber, promptDisplayBytes) // Use nodeNumber
 		_, err := terminal.Write(promptDisplayBytes)
 		if err != nil {
 			log.Printf("ERROR: Node %d: Failed writing Yes/No prompt text (lightbar mode): %v", nodeNumber, err) // Use nodeNumber
@@ -1545,14 +1546,14 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 		drawOptions := func(currentSelection int) {
 			// Use WriteProcessedBytes within drawOptions
 			saveCursorBytes := []byte(terminalPkg.SaveCursor())
-			log.Printf("DEBUG: Node %d: Writing prompt drawOpt save cursor bytes (hex): %x", nodeNumber, saveCursorBytes) // Use nodeNumber
+			logging.Debug("Node %d: Writing prompt drawOpt save cursor bytes (hex): %x", nodeNumber, saveCursorBytes) // Use nodeNumber
 			_, wErr := terminal.Write(saveCursorBytes)
 			if wErr != nil {
 				log.Printf("WARN: Failed saving cursor in drawOptions: %v", wErr)
 			}
 			defer func() {
 				restoreCursorBytes := []byte(terminalPkg.RestoreCursor())
-				log.Printf("DEBUG: Node %d: Writing prompt drawOpt restore cursor bytes (hex): %x", nodeNumber, restoreCursorBytes) // Use nodeNumber
+				logging.Debug("Node %d: Writing prompt drawOpt restore cursor bytes (hex): %x", nodeNumber, restoreCursorBytes) // Use nodeNumber
 				_, wErr := terminal.Write(restoreCursorBytes)
 				if wErr != nil {
 					log.Printf("WARN: Failed restoring cursor in drawOptions: %v", wErr)
@@ -1565,7 +1566,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 					continue
 				}
 				posCmdBytes := []byte(fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X))
-				log.Printf("DEBUG: Node %d: Writing prompt option %d position bytes (hex): %x", nodeNumber, i, posCmdBytes) // Use nodeNumber
+				logging.Debug("Node %d: Writing prompt option %d position bytes (hex): %x", nodeNumber, i, posCmdBytes) // Use nodeNumber
 				_, wErr = terminal.Write(posCmdBytes)
 				if wErr != nil {
 					log.Printf("WARN: Failed positioning cursor for option %d: %v", i, wErr)
@@ -1576,21 +1577,21 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 					colorCode = opt.HighlightColor
 				}
 				ansiColorSequenceBytes := []byte(colorCodeToAnsi(colorCode))
-				log.Printf("DEBUG: Node %d: Writing prompt option %d color bytes (hex): %x", nodeNumber, i, ansiColorSequenceBytes) // Use nodeNumber
+				logging.Debug("Node %d: Writing prompt option %d color bytes (hex): %x", nodeNumber, i, ansiColorSequenceBytes) // Use nodeNumber
 				_, wErr = terminal.Write(ansiColorSequenceBytes)
 				if wErr != nil {
 					log.Printf("WARN: Failed setting color for option %d: %v", i, wErr)
 				}
 
 				optionTextBytes := []byte(opt.Text)
-				log.Printf("DEBUG: Node %d: Writing prompt option %d text bytes (hex): %x", nodeNumber, i, optionTextBytes) // Use nodeNumber
+				logging.Debug("Node %d: Writing prompt option %d text bytes (hex): %x", nodeNumber, i, optionTextBytes) // Use nodeNumber
 				_, wErr = terminal.Write(optionTextBytes)
 				if wErr != nil {
 					log.Printf("WARN: Failed writing text for option %d: %v", i, wErr)
 				}
 
-				resetBytes := []byte("\x1b[0m")                                                                         // Reset attributes
-				log.Printf("DEBUG: Node %d: Writing prompt option %d reset bytes (hex): %x", nodeNumber, i, resetBytes) // Use nodeNumber
+				resetBytes := []byte("\x1b[0m")                                                                           // Reset attributes
+				logging.Debug("Node %d: Writing prompt option %d reset bytes (hex): %x", nodeNumber, i, resetBytes) // Use nodeNumber
 				_, wErr = terminal.Write(resetBytes)
 				if wErr != nil {
 					log.Printf("WARN: Failed resetting attributes for option %d: %v", i, wErr)
@@ -1604,7 +1605,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 		for {
 			// Move cursor back to where prompt ended for input visual
 			posCmd := fmt.Sprintf("\x1b[%d;%dH", promptRow, currentCursorCol)
-			log.Printf("DEBUG: Node %d: Repositioning cursor for input bytes (hex): %x", nodeNumber, []byte(posCmd)) // Use nodeNumber
+			logging.Debug("Node %d: Repositioning cursor for input bytes (hex): %x", nodeNumber, []byte(posCmd)) // Use nodeNumber
 			_, wErr := terminal.Write([]byte(posCmd))
 			if wErr != nil {
 				log.Printf("WARN: Failed positioning cursor for input: %v", wErr)
@@ -1614,7 +1615,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 			if err != nil {
 				// Clear line on error using WriteProcessedBytes
 				clearCmd := fmt.Sprintf("\x1b[%d;1H\x1b[2K", promptRow)
-				log.Printf("DEBUG: Node %d: Writing prompt clear on read error bytes (hex): %x", nodeNumber, []byte(clearCmd)) // Use nodeNumber
+				logging.Debug("Node %d: Writing prompt clear on read error bytes (hex): %x", nodeNumber, []byte(clearCmd)) // Use nodeNumber
 				_, wErr := terminal.Write([]byte(clearCmd))
 				if wErr != nil {
 					log.Printf("WARN: Failed clearing line on read error: %v", wErr)
@@ -1644,10 +1645,10 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 				escSeq := make([]byte, 2)
 				n, readErr := bufioReader.Read(escSeq)
 				if readErr != nil || n != 2 {
-					log.Printf("DEBUG: Read %d bytes after ESC, err: %v. Ignoring ESC.", n, readErr)
+					logging.Debug("Read %d bytes after ESC, err: %v. Ignoring ESC.", n, readErr)
 					continue
 				}
-				log.Printf("DEBUG: ESC sequence read: [%x %x]", escSeq[0], escSeq[1])
+				logging.Debug("ESC sequence read: [%x %x]", escSeq[0], escSeq[1])
 				if escSeq[0] == 91 {
 					switch escSeq[1] {
 					case 67: // Right arrow
@@ -1663,7 +1664,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 			if selectionMade {
 				// Clear line on selection using WriteProcessedBytes
 				clearCmdBytes := []byte(fmt.Sprintf("\x1b[%d;1H\x1b[2K", promptRow))
-				log.Printf("DEBUG: Node %d: Writing prompt final clear bytes (hex): %x", nodeNumber, clearCmdBytes) // Use nodeNumber
+				logging.Debug("Node %d: Writing prompt final clear bytes (hex): %x", nodeNumber, clearCmdBytes) // Use nodeNumber
 				_, wErr := terminal.Write(clearCmdBytes)
 				if wErr != nil {
 					log.Printf("WARN: Failed clearing line on selection: %v", wErr)
@@ -1680,7 +1681,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *terminalPkg.
 
 	} else {
 		// --- Text Input Fallback (if terminal height is unknown) ---
-		log.Printf("DEBUG: Terminal height unknown, using text fallback for Yes/No prompt.")
+		logging.Debug("Terminal height unknown, using text fallback for Yes/No prompt.")
 
 		// Construct the simple text prompt
 		fullPrompt := promptText + " [Y/N]? "

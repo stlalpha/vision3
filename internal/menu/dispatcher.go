@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
+	"github.com/stlalpha/vision3/internal/logging"
 	terminalPkg "github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -138,7 +139,7 @@ func (e *MenuExecutor) executeRunCommand(cmdArg string, s ssh.Session, terminal 
 		return ActionTypeContinue, "", currentUser, nil
 	}
 
-	log.Printf("DEBUG: Node %d: Calling registered function for RUN:%s", nodeNumber, runTarget)
+	logging.Debug("Node %d: Calling registered function for RUN:%s", nodeNumber, runTarget)
 	authUser, nextActionStr, runErr := runnableFunc(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, runArgs, outputMode)
 
 	if runErr != nil {
@@ -155,7 +156,7 @@ func (e *MenuExecutor) executeRunCommand(cmdArg string, s ssh.Session, terminal 
 		return ActionTypeContinue, "", userResult, runErr // Continue but report error
 	}
 
-	log.Printf("DEBUG: RUN:%s function completed.", runTarget)
+	logging.Debug("RUN:%s function completed.", runTarget)
 
 	// Check if the runnable function returned a specific next action
 	return e.handleRunnableResult(runTarget, authUser, nextActionStr)
@@ -191,11 +192,11 @@ func (e *MenuExecutor) executeDoorCommand(doorTarget string, s ssh.Session, term
 
 	// Handle potential LOGOFF request from DOOR runnable (though currently returns "")
 	if nextActionStrDoor == ActionTypeLogoff {
-		log.Printf("DEBUG: DOOR:%s requested LOGOFF", doorTarget)
+		logging.Debug("DOOR:%s requested LOGOFF", doorTarget)
 		return ActionTypeLogoff, "", userResultDoor, nil
 	}
 
-	log.Printf("DEBUG: DOOR:%s completed.", doorTarget)
+	logging.Debug("DOOR:%s completed.", doorTarget)
 	return ActionTypeContinue, "", userResultDoor, nil // Default CONTINUE after door
 }
 
@@ -204,12 +205,12 @@ func (e *MenuExecutor) executeDoorCommand(doorTarget string, s ssh.Session, term
 func (e *MenuExecutor) handleRunnableResult(runTarget string, authUser *user.User, nextActionStr string) (actionType string, nextMenu string, userResult *user.User, err error) {
 	if strings.HasPrefix(nextActionStr, "GOTO:") {
 		nextMenu = strings.ToUpper(strings.TrimPrefix(nextActionStr, "GOTO:"))
-		log.Printf("DEBUG: RUN:%s requested GOTO:%s", runTarget, nextMenu)
+		logging.Debug("RUN:%s requested GOTO:%s", runTarget, nextMenu)
 		return ActionTypeGoto, nextMenu, authUser, nil
 	}
 
 	if nextActionStr == ActionTypeLogoff {
-		log.Printf("DEBUG: RUN:%s requested LOGOFF", runTarget)
+		logging.Debug("RUN:%s requested LOGOFF", runTarget)
 		return ActionTypeLogoff, "", authUser, nil
 	}
 

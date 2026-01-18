@@ -10,6 +10,7 @@ import (
 	"github.com/gliderlabs/ssh"
 
 	// Update local imports
+	"github.com/stlalpha/vision3/internal/logging"
 	terminalPkg "github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -86,7 +87,7 @@ func tokenizeACS(acsString string) ([]token, error) {
 	}
 	flushCondition() // Add any trailing condition
 
-	log.Printf("DEBUG: Tokenized ACS '%s' -> %v", acsString, tokens) // Log tokens
+	logging.Debug("Tokenized ACS '%s' -> %v", acsString, tokens) // Log tokens
 	return tokens, nil
 }
 
@@ -149,7 +150,7 @@ func infixToRPN(tokens []token) ([]token, error) {
 		outputQueue = append(outputQueue, op)
 		operatorStack = operatorStack[:len(operatorStack)-1]
 	}
-	log.Printf("DEBUG: RPN Output Queue: %v", outputQueue) // Log RPN
+	logging.Debug("RPN Output Queue: %v", outputQueue) // Log RPN
 	return outputQueue, nil
 }
 
@@ -226,7 +227,7 @@ func checkACS(acsString string, u *user.User, s ssh.Session, terminal *terminalP
 		return false // Unauthenticated users cannot pass non-empty, non-wildcard ACS
 	}
 
-	log.Printf("DEBUG: Checking ACS: '%s' for user '%s' (Level: %d, Flags: '%s', ID: %d, Validated: %t)", acsString, u.Handle, u.AccessLevel, u.Flags, u.ID, u.Validated)
+	logging.Debug("Checking ACS: '%s' for user '%s' (Level: %d, Flags: '%s', ID: %d, Validated: %t)", acsString, u.Handle, u.AccessLevel, u.Flags, u.ID, u.Validated)
 
 	// 1. Tokenize
 	tokens, err := tokenizeACS(acsString)
@@ -249,7 +250,7 @@ func checkACS(acsString string, u *user.User, s ssh.Session, terminal *terminalP
 		return false // Fail on evaluation error
 	}
 
-	log.Printf("DEBUG: ACS Check Result for '%s': %t", acsString, result)
+	logging.Debug("ACS Check Result for '%s': %t", acsString, result)
 	return result
 }
 
@@ -285,11 +286,11 @@ func evaluateCondition(condition string, u *user.User, s ssh.Session, terminal *
 		addr := s.RemoteAddr().String()
 		isLoopback := strings.HasPrefix(addr, "127.") || strings.HasPrefix(addr, "[::1]")
 		result = (network == "pipe" || network == "unix" || isLoopback)
-		log.Printf("DEBUG: ACS 'L' check: Network='%s', Addr='%s', IsLoopback=%t -> %t", network, addr, isLoopback, result)
+		logging.Debug("ACS 'L' check: Network='%s', Addr='%s', IsLoopback=%t -> %t", network, addr, isLoopback, result)
 	case "A": // ANSI graphics supported
 		_, _, isPty := s.Pty()
 		result = isPty
-		log.Printf("DEBUG: ACS 'A' check: isPty=%t -> %t", isPty, result)
+		logging.Debug("ACS 'A' check: isPty=%t -> %t", isPty, result)
 	case "F": // Flag is set
 		if len(value) != 1 {
 			log.Printf("WARN: Invalid flag value in ACS condition '%s': Flag must be single character", condition)
@@ -328,7 +329,7 @@ func evaluateCondition(condition string, u *user.User, s ssh.Session, terminal *
 			} else {
 				userPCR := (float64(u.NumUploads) / float64(numLogons)) * 100
 				result = int(userPCR) >= pcrThreshold
-				log.Printf("DEBUG: ACS 'E' check: Uploads=%d, Calls=%d, PCR=%f, Threshold=%d -> %t", u.NumUploads, numLogons, userPCR, pcrThreshold, result)
+				logging.Debug("ACS 'E' check: Uploads=%d, Calls=%d, PCR=%f, Threshold=%d -> %t", u.NumUploads, numLogons, userPCR, pcrThreshold, result)
 			}
 		}
 	case "H": // Current Hour == value
@@ -354,14 +355,14 @@ func evaluateCondition(condition string, u *user.User, s ssh.Session, terminal *
 			result = false
 		} else {
 			if u.TimeLimit <= 0 {
-				log.Printf("DEBUG: ACS 'T' check: User has no time limit (TimeLimit=%d), passing.", u.TimeLimit)
+				logging.Debug("ACS 'T' check: User has no time limit (TimeLimit=%d), passing.", u.TimeLimit)
 				result = true
 			} else {
 				elapsedSeconds := time.Since(startTime).Seconds()
 				timeLeftSeconds := float64(u.TimeLimit*60) - elapsedSeconds
 				thresholdSeconds := float64(minutesLeftThreshold * 60)
 				result = timeLeftSeconds >= thresholdSeconds
-				log.Printf("DEBUG: ACS 'T' check: Limit=%dm, Elapsed=%.fs, Left=%.fs, Threshold=%ds -> %t", u.TimeLimit, elapsedSeconds, timeLeftSeconds, int(thresholdSeconds), result)
+				logging.Debug("ACS 'T' check: Limit=%dm, Elapsed=%.fs, Left=%.fs, Threshold=%ds -> %t", u.TimeLimit, elapsedSeconds, timeLeftSeconds, int(thresholdSeconds), result)
 			}
 		}
 	case "W": // Day of Week == value (0=Sun, 1=Mon, ... 6=Sat)
@@ -398,7 +399,7 @@ func evaluateCondition(condition string, u *user.User, s ssh.Session, terminal *
 				} else {
 					result = (now.After(startDateTime) || now.Equal(startDateTime)) && (now.Before(endDateTime) || now.Equal(endDateTime))
 				}
-				log.Printf("DEBUG: ACS 'Y' check: Range='%s' Start=%s End=%s Now=%s -> %t", value, startDateTime, endDateTime, now, result)
+				logging.Debug("ACS 'Y' check: Range='%s' Start=%s End=%s Now=%s -> %t", value, startDateTime, endDateTime, now, result)
 			}
 		}
 	case "B":

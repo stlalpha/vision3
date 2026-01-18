@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/stlalpha/vision3/internal/logging"
 )
 
 // TODO: Replace this with path from config
@@ -44,7 +46,7 @@ func LoadMenu(menuName string, configPath string) (*MenuRecord, error) {
 // LoadCommands reads a .CFG file (assumed JSON) for the given menu name.
 func LoadCommands(menuName string, configPath string) ([]CommandRecord, error) {
 	filePath := filepath.Join(configPath, menuName+".CFG")
-	log.Printf("DEBUG: Attempting to load command file: %s (menuName='%s', configPath='%s')", filePath, menuName, configPath)
+	logging.Debug("Attempting to load command file: %s (menuName='%s', configPath='%s')", filePath, menuName, configPath)
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -57,7 +59,7 @@ func LoadCommands(menuName string, configPath string) ([]CommandRecord, error) {
 
 	// Handle empty file case explicitly
 	if len(data) == 0 {
-		log.Printf("DEBUG: Command file %s is empty.", filePath)
+		logging.Debug("Command file %s is empty.", filePath)
 		return []CommandRecord{}, nil
 	}
 
@@ -124,8 +126,8 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 	cfgPath := filepath.Join(e.MenuSetPath, "cfg", cfgFilename)
 	barPath := filepath.Join(e.MenuSetPath, "bar", barFilename)
 
-	log.Printf("DEBUG: Loading CFG: %s", cfgPath)
-	log.Printf("DEBUG: Loading BAR: %s", barPath)
+	logging.Debug("Loading CFG: %s", cfgPath)
+	logging.Debug("Loading BAR: %s", barPath)
 
 	// Try to load commands from CFG file
 	commandsByHotkey := make(map[string]string)

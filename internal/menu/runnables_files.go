@@ -16,13 +16,14 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
 	"github.com/stlalpha/vision3/internal/file"
+	"github.com/stlalpha/vision3/internal/logging"
 	terminalPkg "github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/user"
 )
 
 func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running LISTFILES", nodeNumber)
+	logging.Debug("Node %d: Running LISTFILES", nodeNumber)
 
 	// 1. Check User and Current File Area
 	if currentUser == nil {
@@ -104,7 +105,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	if filesPerPage < 1 {
 		filesPerPage = 1 // Ensure at least 1 file can be shown
 	}
-	log.Printf("DEBUG: Node %d: TermHeight=%d, FixedLines=%d, FilesPerPage=%d", nodeNumber, termHeight, fixedLines, filesPerPage)
+	logging.Debug("Node %d: TermHeight=%d, FixedLines=%d, FilesPerPage=%d", nodeNumber, termHeight, fixedLines, filesPerPage)
 
 	// --- Get Total File Count ---
 	// TODO: Implement GetFileCountForArea in FileManager
@@ -294,10 +295,10 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			}
 			continue // Redraw loop
 		case "Q": // Quit
-			log.Printf("DEBUG: Node %d: User quit LISTFILES.", nodeNumber)
+			logging.Debug("Node %d: User quit LISTFILES.", nodeNumber)
 			return nil, "", nil // Return to FILEM menu
 		case "D": // Download marked files
-			log.Printf("DEBUG: Node %d: User %s initiated Download command in area %d.", nodeNumber, currentUser.Handle, currentAreaID)
+			logging.Debug("Node %d: User %s initiated Download command in area %d.", nodeNumber, currentUser.Handle, currentAreaID)
 
 			// 1. Check if any files are marked
 			if len(currentUser.TaggedFileIDs) == 0 {
@@ -333,7 +334,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			}
 
 			if !proceed {
-				log.Printf("DEBUG: Node %d: User cancelled download.", nodeNumber)
+				logging.Debug("Node %d: User cancelled download.", nodeNumber)
 				terminal.Write([]byte("\\r\\n|07Download cancelled.|07"))
 				time.Sleep(500 * time.Millisecond)
 				continue // Back to file list
@@ -401,7 +402,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 							if err := e.FileMgr.IncrementDownloadCount(fileID); err != nil {
 								log.Printf("WARN: Node %d: Failed to increment download count for file %s after successful transfer: %v", nodeNumber, fileID, err)
 							} else {
-								log.Printf("DEBUG: Node %d: Incremented download count for file %s after successful transfer.", nodeNumber, fileID)
+								logging.Debug("Node %d: Incremented download count for file %s after successful transfer.", nodeNumber, fileID)
 							}
 						}
 					}
@@ -418,7 +419,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			}
 
 			// 4. Clear tags and save user state
-			log.Printf("DEBUG: Node %d: Clearing %d tagged file IDs for user %s.", nodeNumber, len(currentUser.TaggedFileIDs), currentUser.Handle)
+			logging.Debug("Node %d: Clearing %d tagged file IDs for user %s.", nodeNumber, len(currentUser.TaggedFileIDs), currentUser.Handle)
 			currentUser.TaggedFileIDs = nil // Clear the list
 			if err := userManager.SaveUsers(); err != nil {
 				log.Printf("ERROR: Node %d: Failed to save user data after download attempt: %v", nodeNumber, err)
@@ -434,7 +435,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			// Go back to the file list (will redraw with cleared marks)
 			continue
 		case "U": // Upload (Placeholder)
-			log.Printf("DEBUG: Node %d: Upload command entered (Not Implemented)", nodeNumber)
+			logging.Debug("Node %d: Upload command entered (Not Implemented)", nodeNumber)
 			msg := "\r\n|01Upload function not yet implemented.|07\r\n"
 			wErr := terminal.DisplayContent([]byte(msg))
 			if wErr != nil { /* Log? */
@@ -442,7 +443,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			time.Sleep(1 * time.Second)
 			// Stay on the same page
 		case "V": // View (Placeholder)
-			log.Printf("DEBUG: Node %d: View command entered (Not Implemented)", nodeNumber)
+			logging.Debug("Node %d: View command entered (Not Implemented)", nodeNumber)
 			msg := "\r\n|01View function not yet implemented.|07\r\n"
 			wErr := terminal.DisplayContent([]byte(msg))
 			if wErr != nil { /* Log? */
@@ -450,7 +451,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			time.Sleep(1 * time.Second)
 			// Stay on the same page
 		case "A": // Area Change (Placeholder/Not implemented here, handled by menu?)
-			log.Printf("DEBUG: Node %d: Area Change command entered (Handled by menu)", nodeNumber)
+			logging.Debug("Node %d: Area Change command entered (Handled by menu)", nodeNumber)
 			msg := "\r\n|01Use menu options to change area.|07\r\n"
 			wErr := terminal.DisplayContent([]byte(msg))
 			if wErr != nil { /* Log? */
@@ -478,21 +479,21 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 					if !found {
 						// File was not tagged, so add it
 						newTaggedIDs = append(newTaggedIDs, fileToToggle.ID)
-						log.Printf("DEBUG: Node %d: User %s tagged file #%d (ID: %s)", nodeNumber, currentUser.Handle, fileNumToTag, fileToToggle.ID)
+						logging.Debug("Node %d: User %s tagged file #%d (ID: %s)", nodeNumber, currentUser.Handle, fileNumToTag, fileToToggle.ID)
 					} else {
 						// File was tagged, so we removed it (untagged)
-						log.Printf("DEBUG: Node %d: User %s untagged file #%d (ID: %s)", nodeNumber, currentUser.Handle, fileNumToTag, fileToToggle.ID)
+						logging.Debug("Node %d: User %s untagged file #%d (ID: %s)", nodeNumber, currentUser.Handle, fileNumToTag, fileToToggle.ID)
 					}
 					currentUser.TaggedFileIDs = newTaggedIDs
 					// No page change needed, loop will redraw with updated marks
 				} else {
 					// Invalid file number for current page
-					log.Printf("DEBUG: Node %d: Invalid file number entered: %d", nodeNumber, fileNumToTag)
+					logging.Debug("Node %d: Invalid file number entered: %d", nodeNumber, fileNumToTag)
 					// Optional: Add user feedback message
 				}
 			} else {
 				// Input was not N, P, Q, D, U, V, A, or a valid number - Invalid command
-				log.Printf("DEBUG: Node %d: Invalid command entered in LISTFILES: %s", nodeNumber, upperInput)
+				logging.Debug("Node %d: Invalid command entered in LISTFILES: %s", nodeNumber, upperInput)
 				// Optional: Add user feedback message
 			}
 		} // end switch
@@ -505,7 +506,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 // displayFileAreaList is an internal helper to display the list of accessible file areas.
 // It does not include a pause prompt.
 func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, currentUser *user.User, outputMode terminalPkg.OutputMode, nodeNumber int, sessionStartTime time.Time) error {
-	log.Printf("DEBUG: Node %d: Displaying file area list (helper)", nodeNumber)
+	logging.Debug("Node %d: Displaying file area list (helper)", nodeNumber)
 
 	// 1. Define Template filenames and paths
 	topTemplateFilename := "FILEAREA.TOP"
@@ -576,7 +577,7 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 	}
 
 	if areasDisplayed == 0 {
-		log.Printf("DEBUG: Node %d: No accessible file areas to display for user %s.", nodeNumber, currentUser.Handle)
+		logging.Debug("Node %d: No accessible file areas to display for user %s.", nodeNumber, currentUser.Handle)
 		outputBuffer.WriteString("\r\n|07   No accessible file areas found.   \r\n")
 	}
 
@@ -601,7 +602,7 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 
 // runListFileAreas displays a list of file areas using templates.
 func runListFileAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running LISTFILEAR", nodeNumber)
+	logging.Debug("Node %d: Running LISTFILEAR", nodeNumber)
 
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: LISTFILEAR called without logged in user.", nodeNumber)
@@ -673,7 +674,7 @@ func runListFileAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS,
 // runSelectFileArea prompts the user for a file area tag and changes the current user's
 // active file area if valid and accessible.
 func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running SELECTFILEAREA", nodeNumber)
+	logging.Debug("Node %d: Running SELECTFILEAREA", nodeNumber)
 
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: SELECTFILEAREA called without logged in user.", nodeNumber)
@@ -720,13 +721,13 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	upperInput := strings.ToUpper(inputClean)
 
 	if upperInput == "" || upperInput == "Q" { // Allow Q to quit
-		log.Printf("DEBUG: Node %d: SELECTFILEAREA aborted by user.", nodeNumber)
+		logging.Debug("Node %d: SELECTFILEAREA aborted by user.", nodeNumber)
 		terminal.Write([]byte("\r\n")) // Newline after abort
 		return currentUser, "", nil    // Return to previous menu
 	}
 
 	if upperInput == "?" { // Handle request for list (? loops back here after display)
-		log.Printf("DEBUG: Node %d: User requested file area list again from SELECTFILEAREA.", nodeNumber)
+		logging.Debug("Node %d: User requested file area list again from SELECTFILEAREA.", nodeNumber)
 		// Simply loop back by returning nil, which will re-run this function
 		// which now starts by displaying the list again.
 		return currentUser, "", nil
@@ -738,7 +739,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 
 	// Try parsing as ID
 	if inputID, err := strconv.Atoi(inputClean); err == nil {
-		log.Printf("DEBUG: Node %d: User input '%s' parsed as ID %d. Looking up by ID.", nodeNumber, inputClean, inputID)
+		logging.Debug("Node %d: User input '%s' parsed as ID %d. Looking up by ID.", nodeNumber, inputClean, inputID)
 		area, exists = e.FileMgr.GetAreaByID(inputID)
 		if !exists {
 			log.Printf("WARN: Node %d: User %s entered non-existent file area ID: %d", nodeNumber, currentUser.Handle, inputID)
@@ -751,7 +752,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 		}
 	} else {
 		// Not a valid ID, treat as Tag (use uppercase)
-		log.Printf("DEBUG: Node %d: User input '%s' not an ID. Looking up by Tag '%s'.", nodeNumber, inputClean, upperInput)
+		logging.Debug("Node %d: User input '%s' not an ID. Looking up by Tag '%s'.", nodeNumber, inputClean, upperInput)
 		area, exists = e.FileMgr.GetAreaByTag(upperInput)
 		if !exists {
 			log.Printf("WARN: Node %d: User %s entered non-existent file area tag: %s", nodeNumber, currentUser.Handle, upperInput)

@@ -14,6 +14,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/logging"
 	terminalPkg "github.com/stlalpha/vision3/internal/terminal"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -155,7 +156,7 @@ func containsInsensitive(collection []string, value string) bool {
 
 // runOneliners displays the oneliners using templates.
 func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running ONELINER", nodeNumber)
+	logging.Debug(" Node %d: Running ONELINER", nodeNumber)
 
 	// --- Load current oneliners dynamically ---
 	onelinerPath := filepath.Join("data", "oneliners.json")
@@ -163,10 +164,10 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 	// --- BEGIN MUTEX PROTECTED SECTION ---
 	onelinerMutex.Lock()
-	log.Printf("DEBUG: Node %d: Acquired oneliner mutex.", nodeNumber)
+	logging.Debug(" Node %d: Acquired oneliner mutex.", nodeNumber)
 	defer func() {
 		onelinerMutex.Unlock()
-		log.Printf("DEBUG: Node %d: Released oneliner mutex.", nodeNumber)
+		logging.Debug(" Node %d: Released oneliner mutex.", nodeNumber)
 	}()
 
 	jsonData, readErr := os.ReadFile(onelinerPath)
@@ -185,7 +186,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			currentOneLiners = []string{}
 		}
 	}
-	log.Printf("DEBUG: Loaded %d oneliners from %s", len(currentOneLiners), onelinerPath)
+	logging.Debug(" Loaded %d oneliners from %s", len(currentOneLiners), onelinerPath)
 
 	// --- Load Templates ---
 	topTemplatePath := filepath.Join(e.MenuSetPath, "templates", "ONELINER.TOP")
@@ -218,7 +219,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		// Continue if possible
 	}
 	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing ONELINER top template bytes (hex): %x", nodeNumber, []byte(processedTopTemplate))
+	logging.Debug(" Node %d: Writing ONELINER top template bytes (hex): %x", nodeNumber, []byte(processedTopTemplate))
 	_, wErr = terminal.Write([]byte(processedTopTemplate))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing ONELINER top template: %v", nodeNumber, wErr)
@@ -241,7 +242,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 		// Log hex bytes before writing
 		lineBytes := []byte(line)
-		log.Printf("DEBUG: Node %d: Writing ONELINER mid line %d bytes (hex): %x", nodeNumber, i, lineBytes)
+		logging.Debug(" Node %d: Writing ONELINER mid line %d bytes (hex): %x", nodeNumber, i, lineBytes)
 		_, wErr = terminal.Write(lineBytes)
 		if wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing oneliner line %d: %v", nodeNumber, i, wErr)
@@ -250,7 +251,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	}
 
 	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing ONELINER bot template bytes (hex): %x", nodeNumber, processedBotTemplate)
+	logging.Debug(" Node %d: Writing ONELINER bot template bytes (hex): %x", nodeNumber, processedBotTemplate)
 	_, wErr = terminal.Write([]byte(processedBotTemplate))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing ONELINER bottom template: %v", nodeNumber, wErr)
@@ -264,7 +265,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		return nil, "", fmt.Errorf("required string 'AskOneLiner' is missing or empty")
 	}
 
-	log.Printf("DEBUG: Node %d: Calling promptYesNoLightbar for ONELINER add prompt", nodeNumber)
+	logging.Debug(" Node %d: Calling promptYesNoLightbar for ONELINER add prompt", nodeNumber)
 	addYes, err := e.promptYesNoLightbar(s, terminal, askPrompt, outputMode, nodeNumber) // Pass nodeNumber
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -292,7 +293,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 		// Log hex bytes before writing
 		enterPromptBytes := terminal.ProcessPipeCodes([]byte(enterPrompt))
-		log.Printf("DEBUG: Node %d: Writing ONELINER enter prompt bytes (hex): %x", nodeNumber, enterPromptBytes)
+		logging.Debug(" Node %d: Writing ONELINER enter prompt bytes (hex): %x", nodeNumber, enterPromptBytes)
 		_, wErr = terminal.Write(enterPromptBytes)
 		if wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing EnterOneLiner prompt: %v", nodeNumber, wErr)
@@ -311,7 +312,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 		if newOneliner != "" {
 			currentOneLiners = append(currentOneLiners, newOneliner)
-			log.Printf("DEBUG: Node %d: Appended oneliner to local list: '%s'", nodeNumber, newOneliner)
+			logging.Debug(" Node %d: Appended oneliner to local list: '%s'", nodeNumber, newOneliner)
 
 			updatedJsonData, err := json.MarshalIndent(currentOneLiners, "", "  ")
 			if err != nil {
