@@ -214,10 +214,19 @@ func (rm *ResourceManager) GetResourceStatus(resourceID string) (*DoorResource, 
 	}
 	
 	// Return a copy to prevent external modifications
-	resourceCopy := *resource
-	resourceCopy.Locks = make([]ResourceLock, len(resource.Locks))
+	// Note: We manually copy fields to avoid copying the embedded sync.RWMutex
+	resourceCopy := DoorResource{
+		ID:           resource.ID,
+		Type:         resource.Type,
+		Path:         resource.Path,
+		Description:  resource.Description,
+		MaxLocks:     resource.MaxLocks,
+		CurrentLocks: resource.CurrentLocks,
+		LockMode:     resource.LockMode,
+		Locks:        make([]ResourceLock, len(resource.Locks)),
+	}
 	copy(resourceCopy.Locks, resource.Locks)
-	
+
 	return &resourceCopy, nil
 }
 
@@ -228,12 +237,21 @@ func (rm *ResourceManager) GetAllResources() map[string]*DoorResource {
 	
 	result := make(map[string]*DoorResource)
 	for id, resource := range rm.resources {
-		resourceCopy := *resource
-		resourceCopy.Locks = make([]ResourceLock, len(resource.Locks))
+		// Manually copy fields to avoid copying the embedded sync.RWMutex
+		resourceCopy := DoorResource{
+			ID:           resource.ID,
+			Type:         resource.Type,
+			Path:         resource.Path,
+			Description:  resource.Description,
+			MaxLocks:     resource.MaxLocks,
+			CurrentLocks: resource.CurrentLocks,
+			LockMode:     resource.LockMode,
+			Locks:        make([]ResourceLock, len(resource.Locks)),
+		}
 		copy(resourceCopy.Locks, resource.Locks)
 		result[id] = &resourceCopy
 	}
-	
+
 	return result
 }
 
