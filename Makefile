@@ -68,8 +68,8 @@ release: clean build-release
 	@# Copy default data files
 	@echo "[]" > $(DIST_DIR)/data/oneliners.json
 	@cp data/message_areas.json $(DIST_DIR)/data/ 2>/dev/null || echo '[]' > $(DIST_DIR)/data/message_areas.json
-	@# Copy setup script
-	@cp setup.sh $(DIST_DIR)/
+	@# Copy setup script (release version)
+	@cp scripts/setup-release.sh $(DIST_DIR)/setup.sh
 	@chmod +x $(DIST_DIR)/setup.sh
 	@# Create archive
 	@cd dist && tar -czf $(DIST_NAME).tar.gz $(DIST_NAME)
