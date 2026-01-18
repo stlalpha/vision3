@@ -134,7 +134,7 @@ func (e *MenuExecutor) executeRunCommand(cmdArg string, s ssh.Session, terminal 
 	if !exists {
 		log.Printf("WARN: No internal function registered for RUN:%s", runTarget)
 		msg := fmt.Sprintf("\r\n|01Internal command '%s' not found.|07\r\n", runTarget)
-		terminal.DisplayContent([]byte(msg))
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return ActionTypeContinue, "", currentUser, nil
 	}
@@ -149,7 +149,7 @@ func (e *MenuExecutor) executeRunCommand(cmdArg string, s ssh.Session, terminal 
 		}
 		log.Printf("ERROR: RUN:%s function failed: %v", runTarget, runErr)
 		errMsg := fmt.Sprintf("\r\n|01Error running command '%s': %v|07\r\n", runTarget, runErr)
-		terminal.DisplayContent([]byte(errMsg))
+		_ = terminal.DisplayContent([]byte(errMsg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		// Assign the potentially updated user before returning
 		userResult = authUser                            // Capture potential user changes (like from AUTHENTICATE)
@@ -183,7 +183,7 @@ func (e *MenuExecutor) executeDoorCommand(doorTarget string, s ssh.Session, term
 		}
 		log.Printf("ERROR: DOOR:%s execution failed: %v", doorTarget, doorErr)
 		errMsg := fmt.Sprintf("\r\n|01Error running door '%s': %v|07\r\n", doorTarget, doorErr)
-		terminal.DisplayContent([]byte(errMsg))
+		_ = terminal.DisplayContent([]byte(errMsg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		// Assign potential user result before returning
 		userResult = userResultDoor

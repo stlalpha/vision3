@@ -40,7 +40,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 	errorRow := passRow + 2 // Row for error messages
 
 	// Move to Username position, display prompt, and read input
-	terminal.Write([]byte(terminalPkg.MoveCursor(userRow, userCol)))
+	_, _ = terminal.Write([]byte(terminalPkg.MoveCursor(userRow, userCol)))
 	usernamePrompt := "|07Username/Handle: |15" // Original prompt text was in ANSI
 	// Use WriteProcessedBytes for prompt
 	// Use DisplayContent to handle pipe codes and display
@@ -65,9 +65,9 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 	}
 
 	// Move to Password position, display prompt, and read input securely
-	terminal.Write([]byte(terminalPkg.MoveCursor(passRow, passCol)))
+	_, _ = terminal.Write([]byte(terminalPkg.MoveCursor(passRow, passCol)))
 	passwordPrompt := "|07Password: |15" // Original prompt text was in ANSI
-	terminal.DisplayContent([]byte(passwordPrompt))
+	_ = terminal.DisplayContent([]byte(passwordPrompt))
 	password, err := readPasswordSecurely(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
@@ -77,9 +77,9 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 		if err.Error() == "password entry interrupted" { // Check for Ctrl+C
 			log.Printf("INFO: Node %d: User interrupted password entry.", nodeNumber)
 			// Treat interrupt like a failed attempt?
-			terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
+			_, _ = terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
 			msg := "\r\n|01Login cancelled.|07\r\n"
-			terminal.DisplayContent([]byte(msg))
+			_ = terminal.DisplayContent([]byte(msg))
 			time.Sleep(500 * time.Millisecond)
 			return nil, "", nil // No user change, no critical error
 		}
@@ -93,7 +93,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 	if !authenticated {
 		log.Printf("WARN: Node %d: Failed authentication attempt for user: %s", nodeNumber, username)
 		// Display error message to user
-		terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
+		_, _ = terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
 		errMsg := "\r\n|01Login incorrect.|07\r\n"
 		// Use WriteProcessedBytes
 		wErr := terminal.DisplayContent([]byte(errMsg))
@@ -108,7 +108,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 	if !authUser.Validated {
 		log.Printf("INFO: Node %d: Login denied for user '%s' - account not validated", nodeNumber, username)
 		// Display specific message for validation issue
-		terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
+		_, _ = terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1))) // Move cursor for message
 		errMsg := "\r\n|01Account requires validation by SysOp.|07\r\n"
 		// Use WriteProcessedBytes
 		wErr := terminal.DisplayContent([]byte(errMsg))
@@ -122,7 +122,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, 
 	// Authentication Successful!
 	log.Printf("INFO: Node %d: User '%s' (Handle: %s) authenticated successfully via RUN:AUTHENTICATE", nodeNumber, authUser.Username, authUser.Handle)
 	// Display success message (optional) - Move cursor first
-	terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1)))
+	_, _ = terminal.Write([]byte(terminalPkg.MoveCursor(errorRow, 1)))
 	// successMsg := "\r\n|10Login successful!|07\r\n"
 	// terminal.Write(terminal.DisplayContent([]byte(successMsg)))
 	// time.Sleep(500 * time.Millisecond)
@@ -194,9 +194,7 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more USERLIST template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := "\r\n|01Error loading User List screen templates.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading USERLIST templates")
 	}
@@ -418,8 +416,8 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 	versionString := "|15ViSiON/3 Go Edition - v0.1.0 (Pre-Alpha)|07"
 
 	// Display the version
-	terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Optional: Clear screen
-	terminal.Write([]byte("\r\n\r\n"))               // Add some spacing
+	_ = terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Optional: Clear screen
+	_, _ = terminal.Write([]byte("\r\n\r\n"))            // Add some spacing
 	wErr := terminal.DisplayContent([]byte(versionString))
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing SHOWVERSION output: %v", nodeNumber, wErr)
@@ -432,7 +430,7 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 		log.Printf("WARN: Node %d: PauseString is empty in config/strings.json. No pause prompt will be shown for SHOWVERSION.", nodeNumber)
 		// Don't use a hardcoded fallback. If it's empty, it's empty.
 	} else {
-		terminal.Write([]byte("\r\n")) // Add newline before pause only if prompt exists
+		_, _ = terminal.Write([]byte("\r\n")) // Add newline before pause only if prompt exists
 		var pauseBytesToWrite []byte
 		processedPausePrompt := string(terminal.ProcessPipeCodes([]byte(pausePrompt)))
 		if outputMode == terminalPkg.OutputModeCP437 {
@@ -492,9 +490,7 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, u
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more LASTCALL template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := "\r\n|01Error loading Last Callers screen templates.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading LASTCALL templates")
 	}

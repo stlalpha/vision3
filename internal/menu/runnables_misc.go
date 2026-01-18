@@ -26,7 +26,7 @@ var onelinerMutex sync.Mutex
 func runSetRender(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
 	if currentUser == nil || currentUser.AccessLevel < 200 {
 		msg := "\r\n|01Access denied. Sysop privileges required.|07\r\n"
-		terminal.DisplayContent([]byte(msg))
+		_ = terminal.DisplayContent([]byte(msg))
 		time.Sleep(time.Second)
 		return currentUser, "", nil
 	}
@@ -52,19 +52,19 @@ func runSetRender(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 	if theme != "" && !containsInsensitive(validThemes, theme) {
 		msg := fmt.Sprintf("\r\n|01Unknown theme '%s'. Valid: %s|07\r\n", theme, strings.Join(validThemes, ", "))
-		terminal.DisplayContent([]byte(msg))
+		_ = terminal.DisplayContent([]byte(msg))
 		time.Sleep(time.Second)
 		return currentUser, "", nil
 	}
 	if palette != "" && !containsInsensitive(validPalettes, palette) {
 		msg := fmt.Sprintf("\r\n|01Unknown palette '%s'. Valid: %s|07\r\n", palette, strings.Join(validPalettes, ", "))
-		terminal.DisplayContent([]byte(msg))
+		_ = terminal.DisplayContent([]byte(msg))
 		time.Sleep(time.Second)
 		return currentUser, "", nil
 	}
 	if codepage != "" && !containsInsensitive(validCodepages, codepage) {
 		msg := fmt.Sprintf("\r\n|01Unknown codepage '%s'. Valid: %s|07\r\n", codepage, strings.Join(validCodepages, ", "))
-		terminal.DisplayContent([]byte(msg))
+		_ = terminal.DisplayContent([]byte(msg))
 		time.Sleep(time.Second)
 		return currentUser, "", nil
 	}
@@ -93,7 +93,7 @@ func runSetRender(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	}
 
 	if !changed {
-		terminal.DisplayContent([]byte("\r\n|07Renderer settings unchanged.|07\r\n"))
+		_ = terminal.DisplayContent([]byte("\r\n|07Renderer settings unchanged.|07\r\n"))
 		time.Sleep(500 * time.Millisecond)
 		return currentUser, "", nil
 	}
@@ -101,13 +101,13 @@ func runSetRender(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	e.refreshRendererEngine()
 	if err := config.SaveMenuRendererConfig(e.RootConfigPath, e.RendererSettings); err != nil {
 		log.Printf("ERROR: Failed to save renderer configuration: %v", err)
-		terminal.DisplayContent([]byte("\r\n|01Error writing menu renderer configuration.|07\r\n"))
+		_ = terminal.DisplayContent([]byte("\r\n|01Error writing menu renderer configuration.|07\r\n"))
 		time.Sleep(time.Second)
 		return currentUser, "", err
 	}
 
 	msg := fmt.Sprintf("\r\n|10Renderer updated to theme=%s palette=%s codepage=%s|07\r\n", e.RendererSettings.DefaultTheme, e.RendererSettings.Palette, e.RendererSettings.Codepage)
-	terminal.DisplayContent([]byte(msg))
+	_ = terminal.DisplayContent([]byte(msg))
 	time.Sleep(750 * time.Millisecond)
 	return currentUser, "", nil
 }
@@ -116,7 +116,7 @@ func runSetRender(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 func promptRendererOption(terminal *terminalPkg.BBS, label, current string, options []string) string {
 	optionList := strings.Join(options, "/")
 	prompt := fmt.Sprintf("\r\n|07%s [%s] (%s): ", label, current, optionList)
-	terminal.DisplayContent([]byte(prompt))
+	_ = terminal.DisplayContent([]byte(prompt))
 	input, err := terminal.ReadLine()
 	if err != nil {
 		return current
@@ -200,9 +200,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more ONELINER template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := "\r\n|01Error loading Oneliners screen templates.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading ONELINER templates")
 	}
@@ -283,13 +281,9 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			return nil, "", fmt.Errorf("required string 'EnterOneLiner' is missing or empty")
 		}
 		// Save cursor position
-		wErr = terminal.SaveCursor()
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.SaveCursor() // Best-effort cursor save
 		posClearCmd := fmt.Sprintf("\x1b[%d;1H\x1b[2K", 23) // Use row 23 for input prompt
-		_, wErr = terminal.Write([]byte(posClearCmd))
-		if wErr != nil { /* Log? */
-		}
+		_, _ = terminal.Write([]byte(posClearCmd)) // Best-effort write
 
 		// Log hex bytes before writing
 		enterPromptBytes := terminal.ProcessPipeCodes([]byte(enterPrompt))
@@ -318,23 +312,23 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			if err != nil {
 				log.Printf("ERROR: Node %d: Failed to marshal updated oneliners list to JSON: %v", nodeNumber, err)
 				msg := "\r\n|01Error preparing oneliner data for saving.|07\r\n"
-				terminal.DisplayContent([]byte(msg))
+				_ = terminal.DisplayContent([]byte(msg))
 			} else {
 				err = os.WriteFile(onelinerPath, updatedJsonData, 0644)
 				if err != nil {
 					log.Printf("ERROR: Node %d: Failed to write updated oneliners JSON to %s: %v", nodeNumber, onelinerPath, err)
 					msg := "\r\n|01Error writing oneliner to disk.|07\r\n"
-					terminal.DisplayContent([]byte(msg))
+					_ = terminal.DisplayContent([]byte(msg))
 				} else {
 					log.Printf("INFO: Node %d: Successfully saved updated oneliners to %s", nodeNumber, onelinerPath)
 					msg := "\r\n|10Oneliner added!|07\r\n"
-					terminal.DisplayContent([]byte(msg))
+					_ = terminal.DisplayContent([]byte(msg))
 					time.Sleep(500 * time.Millisecond)
 				}
 			}
 		} else {
 			msg := "\r\n|01Empty oneliner not added.|07\r\n"
-			terminal.DisplayContent([]byte(msg))
+			_ = terminal.DisplayContent([]byte(msg))
 			time.Sleep(500 * time.Millisecond)
 		}
 	} // end if addYes

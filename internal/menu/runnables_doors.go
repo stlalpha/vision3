@@ -72,8 +72,8 @@ func runDoor(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS,
 	_, cleanupDropfile, dropfileErr := generateDropfile(doorConfig, currentUser, nodeNumber, sessionStartTime, substitutions)
 	if dropfileErr != nil {
 		errMsg := fmt.Sprintf("\r\n|12Error creating system file for door '%s'.\r\nPress Enter to continue...\r\n", doorName)
-		terminal.DisplayContent([]byte(errMsg))
-		return nil, "", nil // Abort door execution
+		_ = terminal.DisplayContent([]byte(errMsg)) // Error display, ignore write error
+		return nil, "", nil                         // Abort door execution
 	}
 	if cleanupDropfile != nil {
 		defer cleanupDropfile()
@@ -155,14 +155,12 @@ func substituteInArgs(args []string, substitutions map[string]string) []string {
 // substituteInEnvVars applies placeholder substitutions to environment variables.
 func substituteInEnvVars(envVars map[string]string, substitutions map[string]string) map[string]string {
 	substitutedEnv := make(map[string]string)
-	if envVars != nil {
-		for key, val := range envVars {
-			newVal := val
-			for subKey, subVal := range substitutions {
-				newVal = strings.ReplaceAll(newVal, subKey, subVal)
-			}
-			substitutedEnv[key] = newVal
+	for key, val := range envVars {
+		newVal := val
+		for subKey, subVal := range substitutions {
+			newVal = strings.ReplaceAll(newVal, subKey, subVal)
 		}
+		substitutedEnv[key] = newVal
 	}
 	return substitutedEnv
 }
@@ -279,10 +277,10 @@ func executeDoorWithPTY(cmd *exec.Cmd, s ssh.Session, ptyReq ssh.Pty,
 	// Handle window size changes
 	go func() {
 		if ptyReq.Window.Width > 0 || ptyReq.Window.Height > 0 {
-			pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(ptyReq.Window.Height), Cols: uint16(ptyReq.Window.Width)})
+			_ = pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(ptyReq.Window.Height), Cols: uint16(ptyReq.Window.Width)})
 		}
 		for win := range windowChangeChannel {
-			pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(win.Height), Cols: uint16(win.Width)})
+			_ = pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(win.Height), Cols: uint16(win.Width)})
 		}
 	}()
 
@@ -347,10 +345,10 @@ func handleDoorResult(commandErr error, terminal *terminalPkg.BBS, s ssh.Session
 	if commandErr != nil {
 		log.Printf("ERROR: Node %d: Door command execution failed for user %s, door %s: %v", nodeNumber, userHandle, doorName, commandErr)
 		errMsg := fmt.Sprintf("\r\n|12Error running external program '%s': %v\r\nPress Enter to continue...\r\n", doorName, commandErr)
-		terminal.DisplayContent([]byte(errMsg))
+		_ = terminal.DisplayContent([]byte(errMsg)) // Error display, ignore write error
 	} else {
 		log.Printf("INFO: Node %d: Door command completed for user %s, door %s", nodeNumber, userHandle, doorName)
-		terminal.DisplayContent([]byte("\r\n|07Press |15[ENTER]|07 to return to the menu... "))
+		_ = terminal.DisplayContent([]byte("\r\n|07Press |15[ENTER]|07 to return to the menu... ")) // Prompt, ignore write error
 
 		// Wait for Enter key press using the session reader
 		bufioReader := bufio.NewReader(s)

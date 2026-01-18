@@ -17,9 +17,6 @@ import (
 	"github.com/stlalpha/vision3/internal/logging"
 )
 
-// TODO: Replace this with path from config
-const menuDir = "menus"
-
 // LoadMenu reads a .MNU file (assumed JSON) for the given menu name.
 func LoadMenu(menuName string, configPath string) (*MenuRecord, error) {
 	filePath := filepath.Join(configPath, menuName+".MNU")

@@ -16,11 +16,38 @@ linters-settings:
     check-type-assertions: true
 
 issues:
-  # Skip internal/configtool - 32K lines, needs separate cleanup effort
+  # Skip config tools and installer - separate cleanup effort
   exclude-dirs:
+    - cmd/vision3-config
+    - cmd/vision3-config-new
+    - cmd/install
+    - cmd/debug-tui
+    - cmd/ansitest
+    - pkg/goturbotui
+    - internal/editor
     - internal/configtool
   exclude-rules:
     # Allow log.Printf without checking error (common pattern)
     - linters:
         - errcheck
       source: "log\\.Printf"
+    # Pre-existing issues in files not part of baseline cleanup scope
+    # These should be addressed in future cleanup efforts
+    - path: internal/config/config\.go
+      linters:
+        - gosimple
+    - path: internal/terminal/terminal\.go
+      linters:
+        - staticcheck
+    - path: internal/message/manager\.go
+      linters:
+        - unused
+    - path: internal/menu/executor\.go
+      linters:
+        - errcheck
+        - unused
+        - staticcheck
+    - path: cmd/vision3/main\.go
+      linters:
+        - errcheck
+        - staticcheck

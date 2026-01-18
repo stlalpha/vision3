@@ -125,7 +125,9 @@ func TestGetAreaByID_ReturnsCorrectArea(t *testing.T) {
 
 	configFileAreasJSON, _ := json.MarshalIndent(testFileAreas, "", "  ")
 	configFilePath := filepath.Join(temporaryConfigDirectory, "file_areas.json")
-	os.WriteFile(configFilePath, configFileAreasJSON, 0644)
+	if err := os.WriteFile(configFilePath, configFileAreasJSON, 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
 
 	fileManager, err := NewFileManager(temporaryDataDirectory, temporaryConfigDirectory)
 	if err != nil {
@@ -168,7 +170,9 @@ func TestGetAreaByID_NotFound(t *testing.T) {
 
 	configFileAreasJSON, _ := json.MarshalIndent(testFileAreas, "", "  ")
 	configFilePath := filepath.Join(temporaryConfigDirectory, "file_areas.json")
-	os.WriteFile(configFilePath, configFileAreasJSON, 0644)
+	if err := os.WriteFile(configFilePath, configFileAreasJSON, 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
 
 	fileManager, err := NewFileManager(temporaryDataDirectory, temporaryConfigDirectory)
 	if err != nil {
@@ -204,7 +208,9 @@ func TestGetAreaByTag_ReturnsCorrectArea(t *testing.T) {
 
 	configFileAreasJSON, _ := json.MarshalIndent(testFileAreas, "", "  ")
 	configFilePath := filepath.Join(temporaryConfigDirectory, "file_areas.json")
-	os.WriteFile(configFilePath, configFileAreasJSON, 0644)
+	if err := os.WriteFile(configFilePath, configFileAreasJSON, 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
 
 	fileManager, err := NewFileManager(temporaryDataDirectory, temporaryConfigDirectory)
 	if err != nil {
@@ -243,7 +249,9 @@ func TestGetAreaByTag_CaseInsensitive(t *testing.T) {
 
 	configFileAreasJSON, _ := json.MarshalIndent(testFileAreas, "", "  ")
 	configFilePath := filepath.Join(temporaryConfigDirectory, "file_areas.json")
-	os.WriteFile(configFilePath, configFileAreasJSON, 0644)
+	if err := os.WriteFile(configFilePath, configFileAreasJSON, 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
 
 	fileManager, err := NewFileManager(temporaryDataDirectory, temporaryConfigDirectory)
 	if err != nil {
@@ -288,7 +296,9 @@ func TestGetAreaByTag_NotFound(t *testing.T) {
 
 	configFileAreasJSON, _ := json.MarshalIndent(testFileAreas, "", "  ")
 	configFilePath := filepath.Join(temporaryConfigDirectory, "file_areas.json")
-	os.WriteFile(configFilePath, configFileAreasJSON, 0644)
+	if err := os.WriteFile(configFilePath, configFileAreasJSON, 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
 
 	fileManager, err := NewFileManager(temporaryDataDirectory, temporaryConfigDirectory)
 	if err != nil {
@@ -337,7 +347,9 @@ func TestNewFileManager_SkipsInvalidAreas(t *testing.T) {
 
 	configFileAreasJSON, _ := json.MarshalIndent(testFileAreas, "", "  ")
 	configFilePath := filepath.Join(temporaryConfigDirectory, "file_areas.json")
-	os.WriteFile(configFilePath, configFileAreasJSON, 0644)
+	if err := os.WriteFile(configFilePath, configFileAreasJSON, 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
 
 	fileManager, err := NewFileManager(temporaryDataDirectory, temporaryConfigDirectory)
 	if err != nil {
@@ -372,7 +384,9 @@ func TestGetFilesForArea_EmptyArea(t *testing.T) {
 
 	configFileAreasJSON, _ := json.MarshalIndent(testFileAreas, "", "  ")
 	configFilePath := filepath.Join(temporaryConfigDirectory, "file_areas.json")
-	os.WriteFile(configFilePath, configFileAreasJSON, 0644)
+	if err := os.WriteFile(configFilePath, configFileAreasJSON, 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
 
 	fileManager, err := NewFileManager(temporaryDataDirectory, temporaryConfigDirectory)
 	if err != nil {
@@ -406,7 +420,9 @@ func TestGetFileCountForArea_EmptyArea(t *testing.T) {
 
 	configFileAreasJSON, _ := json.MarshalIndent(testFileAreas, "", "  ")
 	configFilePath := filepath.Join(temporaryConfigDirectory, "file_areas.json")
-	os.WriteFile(configFilePath, configFileAreasJSON, 0644)
+	if err := os.WriteFile(configFilePath, configFileAreasJSON, 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
 
 	fileManager, err := NewFileManager(temporaryDataDirectory, temporaryConfigDirectory)
 	if err != nil {
@@ -480,7 +496,9 @@ func TestListAreas_ReturnsSortedByID(t *testing.T) {
 
 	configFileAreasJSON, _ := json.MarshalIndent(testFileAreas, "", "  ")
 	configFilePath := filepath.Join(temporaryConfigDirectory, "file_areas.json")
-	os.WriteFile(configFilePath, configFileAreasJSON, 0644)
+	if err := os.WriteFile(configFilePath, configFileAreasJSON, 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
 
 	fileManager, err := NewFileManager(temporaryDataDirectory, temporaryConfigDirectory)
 	if err != nil {

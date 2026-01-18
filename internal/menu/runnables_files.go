@@ -29,9 +29,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: LISTFILES called without logged in user.", nodeNumber)
 		msg := "\r\n|01Error: You must be logged in to list files.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
@@ -43,9 +41,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	if currentAreaID <= 0 {
 		log.Printf("WARN: Node %d: User %s has no current file area selected.", nodeNumber, currentUser.Handle)
 		msg := "\r\n|01Error: No file area selected.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
@@ -72,9 +68,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more FILELIST template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := "\r\n|01Error loading File List screen templates.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading FILELIST templates")
 	}
@@ -85,14 +79,12 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 
 	// 3. Fetch Files and Pagination Logic
 	// --- Determine lines available per page ---
-	termWidth := 80  // Default width
 	termHeight := 24 // Default height
 	ptyReq, _, isPty := s.Pty()
 	if isPty && ptyReq.Window.Width > 0 && ptyReq.Window.Height > 0 {
-		termWidth = ptyReq.Window.Width // Use actual width later for wrapping/truncating if needed
 		termHeight = ptyReq.Window.Height
 	} else {
-		log.Printf("WARN: Node %d: Could not get PTY dimensions for file list, using default %dx%d", nodeNumber, termWidth, termHeight)
+		log.Printf("WARN: Node %d: Could not get PTY dimensions for file list, using default height %d", nodeNumber, termHeight)
 	}
 
 	// Estimate lines used by header, footer, prompt
@@ -113,9 +105,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to get file count for area %d: %v", nodeNumber, currentAreaID, err)
 		msg := fmt.Sprintf("\r\n|01Error retrieving file list for area '%s'.|07\r\n", currentAreaTag)
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed getting file count: %w", err)
 	}
@@ -138,9 +128,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		if err != nil {
 			log.Printf("ERROR: Node %d: Failed to get files for area %d, page %d: %v", nodeNumber, currentAreaID, currentPage, err)
 			msg := fmt.Sprintf("\r\n|01Error retrieving file list page for area '%s'.|07\r\n", currentAreaTag)
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 			return nil, "", fmt.Errorf("failed getting file page: %w", err)
 		}
@@ -175,9 +163,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			// Display "No files in this area" message
 			// TODO: Use a configurable string?
 			noFilesMsg := "\r\n|07   No files in this area.   \r\n"
-			wErr = terminal.DisplayContent([]byte(noFilesMsg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(noFilesMsg)) // Error display, ignore write error
 		} else {
 			for i, fileRec := range filesOnPage {
 				line := processedMidTemplate
@@ -230,19 +216,14 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		bottomLine := string(processedBotTemplate)
 		bottomLine = strings.ReplaceAll(bottomLine, "^PAGE", strconv.Itoa(currentPage))
 		bottomLine = strings.ReplaceAll(bottomLine, "^TOTALPAGES", strconv.Itoa(totalPages))
-		_, wErr = terminal.Write([]byte(bottomLine))
-		if wErr != nil {
+		if _, wErr = terminal.Write([]byte(bottomLine)); wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing LISTFILES bottom template: %v", nodeNumber, wErr)
-			// Handle error
 		}
 
 		// 4.5 Display Prompt (Use a standard file list prompt or configure one)
 		// TODO: Use configurable prompt string
 		prompt := "\r\n|07File Cmd (|15N|07=Next, |15P|07=Prev, |15#|07=Mark, |15D|07=Download, |15Q|07=Quit): |15"
-		wErr = terminal.DisplayContent([]byte(prompt))
-		if wErr != nil {
-			// Handle error
-		}
+		_ = terminal.DisplayContent([]byte(prompt)) // Prompt display, ignore write error
 
 		// 4.6 Read User Input
 		input, err := terminal.ReadLine()
@@ -273,7 +254,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 				}
 			} else {
 				// Indicate last page (optional feedback)
-				terminal.Write([]byte("\r\n|07Already on last page.|07"))
+				_, _ = terminal.Write([]byte("\r\n|07Already on last page.|07"))
 				time.Sleep(500 * time.Millisecond)
 			}
 			continue // Redraw loop
@@ -290,7 +271,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 				}
 			} else {
 				// Indicate first page (optional feedback)
-				terminal.Write([]byte("\r\n|07Already on first page.|07"))
+				_, _ = terminal.Write([]byte("\r\n|07Already on first page.|07"))
 				time.Sleep(500 * time.Millisecond)
 			}
 			continue // Redraw loop
@@ -303,9 +284,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			// 1. Check if any files are marked
 			if len(currentUser.TaggedFileIDs) == 0 {
 				msg := "\\r\\n|07No files marked for download. Use |15#|07 to mark files.|07\\r\\n"
-				wErr := terminal.DisplayContent([]byte(msg))
-				if wErr != nil { /* Log? */
-				}
+				_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 				time.Sleep(1 * time.Second)
 				continue // Go back to file list display
 			}
@@ -315,11 +294,11 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			// Use WriteProcessedBytes for SaveCursor, positioning, and clear line
 			// Need to position this prompt carefully, perhaps near the bottom prompt line.
 			// For now, just display it after the main prompt. TODO: Improve positioning.
-			terminal.Write([]byte(terminalPkg.SaveCursor()))
-			terminal.Write([]byte("\\r\\n\\x1b[K")) // Newline, clear line
+			_, _ = terminal.Write([]byte(terminalPkg.SaveCursor()))
+			_, _ = terminal.Write([]byte("\\r\\n\\x1b[K")) // Newline, clear line
 
 			proceed, err := e.promptYesNoLightbar(s, terminal, confirmPrompt, outputMode, nodeNumber)
-			terminal.Write([]byte(terminalPkg.RestoreCursor())) // Restore cursor after prompt
+			_, _ = terminal.Write([]byte(terminalPkg.RestoreCursor())) // Restore cursor after prompt
 
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -328,21 +307,21 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 				}
 				log.Printf("ERROR: Node %d: Error getting download confirmation: %v", nodeNumber, err)
 				msg := "\\r\\n|01Error during confirmation.|07\\r\\n"
-				terminal.DisplayContent([]byte(msg))
+				_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 				time.Sleep(1 * time.Second)
 				continue // Back to file list
 			}
 
 			if !proceed {
 				logging.Debug("Node %d: User cancelled download.", nodeNumber)
-				terminal.Write([]byte("\\r\\n|07Download cancelled.|07"))
+				_, _ = terminal.Write([]byte("\\r\\n|07Download cancelled.|07"))
 				time.Sleep(500 * time.Millisecond)
 				continue // Back to file list
 			}
 
 			// 3. Process downloads
 			log.Printf("INFO: Node %d: User %s starting download of %d files.", nodeNumber, currentUser.Handle, len(currentUser.TaggedFileIDs))
-			terminal.Write([]byte("\\r\\n|07Preparing download...\\r\\n"))
+			_, _ = terminal.Write([]byte("\\r\\n|07Preparing download...\\r\\n"))
 			time.Sleep(500 * time.Millisecond) // Small pause
 
 			successCount := 0
@@ -374,8 +353,8 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			if len(filesToDownload) > 0 {
 				// **** Actual ZMODEM Transfer using sz ****
 				log.Printf("INFO: Node %d: Attempting ZMODEM transfer for files: %v", nodeNumber, filenamesOnly)
-				terminal.Write([]byte("|15Initiating ZMODEM transfer...\\r\\n"))
-				terminal.Write([]byte("|07Please start the ZMODEM receive function in your terminal.\\r\\n"))
+				_, _ = terminal.Write([]byte("|15Initiating ZMODEM transfer...\\r\\n"))
+				_, _ = terminal.Write([]byte("|07Please start the ZMODEM receive function in your terminal.\\r\\n"))
 
 				// Use the unified protocol manager for ZMODEM transfer
 				pm := transfer.NewProtocolManager()
@@ -385,13 +364,13 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 				if transferErr != nil {
 					// Transfer failed or was cancelled
 					log.Printf("ERROR: Node %d: ZMODEM transfer failed: %v", nodeNumber, transferErr)
-					terminal.Write([]byte("|01ZMODEM transfer failed or was cancelled.\\r\\n"))
+					_, _ = terminal.Write([]byte("|01ZMODEM transfer failed or was cancelled.\\r\\n"))
 					failCount = len(filesToDownload) // Assume all failed if transfer returns error
 					successCount = 0
 				} else {
 					// Transfer completed successfully
 					log.Printf("INFO: Node %d: ZMODEM transfer completed successfully.", nodeNumber)
-					terminal.Write([]byte("|07ZMODEM transfer complete.\\r\\n"))
+					_, _ = terminal.Write([]byte("|07ZMODEM transfer complete.\\r\\n"))
 					successCount = len(filesToDownload) // Assume all succeeded if transfer exits cleanly
 					failCount = 0
 
@@ -414,7 +393,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			} else {
 				log.Printf("WARN: Node %d: No valid file paths found for tagged files.", nodeNumber)
 				msg := "\\r\\n|01Could not find any of the marked files on the server.|07\\r\\n"
-				terminal.DisplayContent([]byte(msg))
+				_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 				failCount = len(currentUser.TaggedFileIDs) // Mark all as failed if none were found
 			}
 
@@ -424,12 +403,12 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 			if err := userManager.SaveUsers(); err != nil {
 				log.Printf("ERROR: Node %d: Failed to save user data after download attempt: %v", nodeNumber, err)
 				// Inform user? State might be inconsistent.
-				terminal.Write([]byte("\\r\\n|01Error saving user state after download.|07"))
+				_, _ = terminal.Write([]byte("\\r\\n|01Error saving user state after download.|07"))
 			}
 
 			// 5. Final status message
 			statusMsg := fmt.Sprintf("|07Download attempt finished. Success: %d, Failed: %d.|07\r\n", successCount, failCount)
-			terminal.Write([]byte(statusMsg))
+			_, _ = terminal.Write([]byte(statusMsg))
 			time.Sleep(2 * time.Second)
 
 			// Go back to the file list (will redraw with cleared marks)
@@ -437,25 +416,19 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, use
 		case "U": // Upload (Placeholder)
 			logging.Debug("Node %d: Upload command entered (Not Implemented)", nodeNumber)
 			msg := "\r\n|01Upload function not yet implemented.|07\r\n"
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 			// Stay on the same page
 		case "V": // View (Placeholder)
 			logging.Debug("Node %d: View command entered (Not Implemented)", nodeNumber)
 			msg := "\r\n|01View function not yet implemented.|07\r\n"
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 			// Stay on the same page
 		case "A": // Area Change (Placeholder/Not implemented here, handled by menu?)
 			logging.Debug("Node %d: Area Change command entered (Handled by menu)", nodeNumber)
 			msg := "\r\n|01Use menu options to change area.|07\r\n"
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 		default: // Includes 'T' (Tagging) and potential numeric input
 			// Try to parse as a number for tagging
@@ -526,9 +499,7 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 		log.Printf("ERROR: Node %d: Failed to load one or more FILEAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		// Display error message to terminal
 		msg := "\r\n|01Error loading File Area screen templates.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return fmt.Errorf("failed loading FILEAREA templates")
 	}
@@ -607,9 +578,7 @@ func runListFileAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS,
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: LISTFILEAR called without logged in user.", nodeNumber)
 		msg := "\r\n|01Error: You must be logged in to list file areas.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
@@ -679,9 +648,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: SELECTFILEAREA called without logged in user.", nodeNumber)
 		msg := "\r\n|01Error: You must be logged in to select a file area.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
@@ -693,7 +660,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 		return currentUser, "", err // Return error
 	}
 	// Add a newline between list and prompt
-	terminal.Write([]byte("\r\n"))
+	_, _ = terminal.Write([]byte("\r\n"))
 
 	// Prompt for area tag
 	prompt := e.LoadedStrings.ChangeFileAreaStr
@@ -722,7 +689,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 
 	if upperInput == "" || upperInput == "Q" { // Allow Q to quit
 		logging.Debug("Node %d: SELECTFILEAREA aborted by user.", nodeNumber)
-		terminal.Write([]byte("\r\n")) // Newline after abort
+		_, _ = terminal.Write([]byte("\r\n")) // Newline after abort
 		return currentUser, "", nil    // Return to previous menu
 	}
 
@@ -744,9 +711,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 		if !exists {
 			log.Printf("WARN: Node %d: User %s entered non-existent file area ID: %d", nodeNumber, currentUser.Handle, inputID)
 			msg := fmt.Sprintf("\r\n|01Error: File area ID '%d' not found.|07\r\n", inputID)
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 			return currentUser, "", nil // Return to menu
 		}
@@ -757,9 +722,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 		if !exists {
 			log.Printf("WARN: Node %d: User %s entered non-existent file area tag: %s", nodeNumber, currentUser.Handle, upperInput)
 			msg := fmt.Sprintf("\r\n|01Error: File area tag '%s' not found.|07\r\n", upperInput)
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 			return currentUser, "", nil // Return to menu
 		}
@@ -773,9 +736,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	if !checkACS(area.ACSList, currentUser, s, terminal, sessionStartTime) {
 		log.Printf("WARN: Node %d: User %s denied access to file area %d ('%s') due to ACS '%s'", nodeNumber, currentUser.Handle, area.ID, area.Tag, area.ACSList)
 		msg := fmt.Sprintf("\r\n|01Error: Access denied to file area '%s'.|07\r\n", area.Tag)
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil // Return to menu
 	}
@@ -789,9 +750,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 		log.Printf("ERROR: Node %d: Failed to save user data after updating file area: %v", nodeNumber, err)
 		// Should we inform the user? Proceed anyway?
 		msg := "\r\n|01Error: Could not save area selection.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		// Don't change area if save failed?
 		// Or let it proceed and hope for next save?
@@ -800,9 +759,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 
 	log.Printf("INFO: Node %d: User %s changed file area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)
 	msg := fmt.Sprintf("\r\n|07Current file area set to: |15%s|07\r\n", area.Name) // Use area name for confirmation
-	wErr = terminal.DisplayContent([]byte(msg))                                    // <-- Use = instead of :=
-	if wErr != nil {                                                               /* Log? */
-	}
+	_ = terminal.DisplayContent([]byte(msg))                                       // Confirmation display, ignore write error
 	time.Sleep(1 * time.Second)
 
 	return currentUser, "", nil // Success, return to previous menu/state

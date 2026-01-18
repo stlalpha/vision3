@@ -46,9 +46,7 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.B
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more MSGAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := "\r\n|01Error loading Message Area screen templates.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading MSGAREA templates")
 	}
@@ -173,18 +171,14 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 		if currentUser == nil {
 			log.Printf("WARN: Node %d: COMPOSEMSG called without user and without args.", nodeNumber)
 			msg := "\r\n|01Error: Not logged in and no area specified.|07\r\n"
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 			return nil, "", nil // Return to menu
 		}
 		if currentUser.CurrentMessageAreaTag == "" || currentUser.CurrentMessageAreaID <= 0 {
 			log.Printf("WARN: Node %d: COMPOSEMSG called by %s, but no current message area is set.", nodeNumber, currentUser.Handle)
 			msg := "\r\n|01Error: No current message area selected.|07\r\n"
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 			return nil, "", nil // Return to menu
 		}
@@ -202,9 +196,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	if !exists {
 		log.Printf("ERROR: Node %d: COMPOSEMSG called with invalid Area Tag: %s", nodeNumber, areaTag)
 		msg := fmt.Sprintf("\r\n|01Invalid message area: %s|07\r\n", areaTag)
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu, not an error
 	}
@@ -213,9 +205,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: COMPOSEMSG reached ACS check without logged in user (Area: %s).", nodeNumber, areaTag)
 		msg := "\r\n|01Error: You must be logged in to post messages.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
@@ -236,7 +226,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 		prompt = "|07Subject: |15"
 	}
 	// Add newline for spacing before prompt
-	terminal.Write([]byte("\r\n"))
+	_, _ = terminal.Write([]byte("\r\n"))
 	wErr := terminal.DisplayContent([]byte(prompt))
 	if wErr != nil {
 		log.Printf("WARN: Node %d: Failed to write subject prompt: %v", nodeNumber, wErr)
@@ -249,7 +239,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 			return nil, "LOGOFF", io.EOF
 		}
 		log.Printf("ERROR: Node %d: Failed reading subject input: %v", nodeNumber, err)
-		terminal.Write([]byte("\r\nError reading subject.\r\n"))
+		_, _ = terminal.Write([]byte("\r\nError reading subject.\r\n"))
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
@@ -272,7 +262,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	// Reverted to logic from commit 32f3c59...
 
 	logging.Debug(" Node %d: Clearing screen before calling editor.RunEditor", nodeNumber)
-	terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear screen before editor (as per 32f3c59)
+	_ = terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear screen before editor (as per 32f3c59)
 	logging.Debug(" Node %d: Calling editor.RunEditor for area %s", nodeNumber, area.Tag)
 
 	// Get TERM env var
@@ -300,13 +290,13 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	// IMPORTANT: Need to redraw the current menu screen after editor exits!
 	// This needs to be handled by the main menu loop after this function returns (CONTINUE).
 	// Clear screen *after* editor exits (as per 32f3c59 placeholder logic)
-	terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
+	_ = terminal.DisplayContent([]byte("\x1b[2J\x1b[H"))
 	// terminal.Write([]byte("\\r\\nEditor exited. Processing message...\\r\\n")) // Removed placeholder
 
 	if !saved {
 		log.Printf("INFO: Node %d: User %s aborted message composition for area %s.", nodeNumber, currentUser.Handle, area.Tag)
 		// Restore message from 32f3c59
-		terminal.Write([]byte("\r\nMessage aborted.\r\n"))
+		_, _ = terminal.Write([]byte("\r\nMessage aborted.\r\n"))
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to current menu
 	}
@@ -314,7 +304,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	if strings.TrimSpace(body) == "" {
 		log.Printf("INFO: Node %d: User %s saved empty message for area %s.", nodeNumber, currentUser.Handle, area.Tag)
 		// Restore message from 32f3c59
-		terminal.Write([]byte("\r\nMessage body empty. Aborting post.\r\n"))
+		_, _ = terminal.Write([]byte("\r\nMessage body empty. Aborting post.\r\n"))
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to current menu
 	}
@@ -346,7 +336,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to save message from user %s to area %s: %v", nodeNumber, currentUser.Handle, area.Tag, err)
 		// TODO: Display user-friendly error
-		terminal.Write([]byte("\r\n|01Error saving message!|07\r\n"))
+		_, _ = terminal.Write([]byte("\r\n|01Error saving message!|07\r\n"))
 		time.Sleep(2 * time.Second)
 		return nil, "", fmt.Errorf("failed saving message: %w", err) // Return error for now
 	}
@@ -354,7 +344,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS
 	// 6. Confirmation
 	log.Printf("INFO: Node %d: User %s successfully posted message %s to area %s", nodeNumber, currentUser.Handle, newMessage.ID, area.Tag)
 	// TODO: Use string config for confirmation message
-	terminal.Write([]byte("\r\n|02Message Posted!|07\r\n"))
+	_, _ = terminal.Write([]byte("\r\n|02Message Posted!|07\r\n"))
 	time.Sleep(1 * time.Second)
 
 	// Return to current menu. The menu loop should handle redraw because we return CONTINUE action ("", nil).
@@ -393,7 +383,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 	if errTop != nil || errMid != nil || errBot != nil { // Check BOT error too
 		log.Printf("ERROR: Node %d: Failed to load one or more MSGAREA template files for prompt: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := "\r\n|01Error loading Message Area screen templates.|07\r\n"
-		terminal.DisplayContent([]byte(msg))
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading MSGAREA templates for prompt")
 	}
@@ -407,12 +397,12 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 	// For now, list all areas, permission check happens later on selection.
 	// TODO: Implement ACSRead filtering here if needed for the list display.
 
-	terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear before displaying list
-	terminal.Write([]byte(processedTopTemplate))     // Write TOP
+	_ = terminal.DisplayContent([]byte("\x1b[2J\x1b[H")) // Clear before displaying list
+	_, _ = terminal.Write([]byte(processedTopTemplate))  // Write TOP
 
 	if len(areas) == 0 {
 		logging.Debug(" Node %d: No message areas available to post in.", nodeNumber)
-		terminal.Write([]byte("\r\n|07No message areas available.|07\r\n"))
+		_, _ = terminal.Write([]byte("\r\n|07No message areas available.|07\r\n"))
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
@@ -429,10 +419,10 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 		line = strings.ReplaceAll(line, "^NA", name)
 		line = strings.ReplaceAll(line, "^DS", desc)
 
-		terminal.Write([]byte(line)) // Write MID for each area
+		_, _ = terminal.Write([]byte(line)) // Write MID for each area
 	}
 
-	terminal.Write([]byte(processedBotTemplate)) // Write BOT
+	_, _ = terminal.Write([]byte(processedBotTemplate)) // Write BOT
 
 	// 2. Prompt for Area Selection
 	// TODO: Use a configurable string for this prompt
@@ -457,7 +447,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 	if selectedAreaStr == "" {
 		log.Printf("INFO: Node %d: User cancelled message posting.", nodeNumber)
 		// TODO: Need to redraw the menu screen!
-		terminal.Write([]byte("\r\nPost cancelled.\r\n"))
+		_, _ = terminal.Write([]byte("\r\nPost cancelled.\r\n"))
 		time.Sleep(500 * time.Millisecond)
 		return nil, "", nil // Return to current menu
 	}
@@ -480,7 +470,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 		log.Printf("WARN: Node %d: Invalid area selection '%s' by user %s.", nodeNumber, selectedAreaStr, currentUser.Handle)
 		// TODO: Use configurable string
 		msg := fmt.Sprintf("\r\n|01Invalid area: %s|07\r\n", selectedAreaStr)
-		terminal.DisplayContent([]byte(msg))
+		_ = terminal.DisplayContent([]byte(msg))
 		time.Sleep(1 * time.Second)
 		// TODO: Need to redraw menu
 		return nil, "", nil // Return to menu
@@ -491,7 +481,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *termin
 		log.Printf("WARN: Node %d: User %s denied post access to selected area %s (%s)", nodeNumber, currentUser.Handle, selectedArea.Tag, selectedArea.ACSWrite)
 		// TODO: Use configurable string for access denied
 		msg := fmt.Sprintf("\r\n|01Access denied to post in area: %s|07\r\n", selectedArea.Name)
-		terminal.DisplayContent([]byte(msg))
+		_ = terminal.DisplayContent([]byte(msg))
 		time.Sleep(1 * time.Second)
 		// TODO: Need to redraw menu
 		return nil, "", nil // Return to menu
@@ -512,9 +502,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: READMSGS called without logged in user.", nodeNumber)
 		msg := "\r\n|01Error: You must be logged in to read messages.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
@@ -525,9 +513,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 	if currentAreaID <= 0 || currentAreaTag == "" {
 		log.Printf("WARN: Node %d: User %s has no current message area set (ID: %d, Tag: %s).", nodeNumber, currentUser.Handle, currentAreaID, currentAreaTag)
 		msg := "\r\n|01Error: No message area selected.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
@@ -541,9 +527,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to get total message count for area %d: %v", nodeNumber, currentAreaID, err)
 		msg := fmt.Sprintf("\r\n|01Error loading message info for area %s.|07\r\n", currentAreaTag)
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", err
 	}
@@ -551,9 +535,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 	if totalMessageCount == 0 {
 		log.Printf("INFO: Node %d: No messages found in area %s (%d).", nodeNumber, currentAreaTag, currentAreaID)
 		msg := fmt.Sprintf("\r\n|07No messages in area |15%s|07.\r\n", currentAreaTag)
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
@@ -567,9 +549,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to get new message count for area %d: %v", nodeNumber, currentAreaID, err)
 		msg := fmt.Sprintf("\r\n|01Error checking for new messages in area %s.|07\r\n", currentAreaTag)
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", err
 	}
@@ -588,9 +568,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 		if err != nil {
 			log.Printf("ERROR: Node %d: Failed to load new messages for area %d: %v", nodeNumber, currentAreaID, err)
 			msg := fmt.Sprintf("\r\n|01Error loading new messages for area %s.|07\r\n", currentAreaTag)
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 			return nil, "", err
 		}
@@ -604,8 +582,8 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 		totalMsg := fmt.Sprintf(" |07Total messages: |15%d|07.", totalMessageCount)
 		promptMsg := fmt.Sprintf("\r\n|07Read message # (|151-%d|07, |15Enter|07=Cancel): |15", totalMessageCount)
 
-		terminal.DisplayContent([]byte(noNewMsg + totalMsg))
-		terminal.DisplayContent([]byte(promptMsg))
+		_ = terminal.DisplayContent([]byte(noNewMsg + totalMsg))
+		_ = terminal.DisplayContent([]byte(promptMsg))
 
 		input, readErr := terminal.ReadLine()
 		if readErr != nil {
@@ -627,7 +605,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 		if parseErr != nil || selectedNum < 1 || selectedNum > totalMessageCount {
 			log.Printf("WARN: Node %d: Invalid message number input: '%s'", nodeNumber, selectedNumStr)
 			msg := fmt.Sprintf("\r\n|01Invalid message number: %s|07\r\n", selectedNumStr)
-			terminal.DisplayContent([]byte(msg))
+			_ = terminal.DisplayContent([]byte(msg))
 			time.Sleep(1 * time.Second)
 			return nil, "", nil // Return to menu
 		}
@@ -638,9 +616,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 		if err != nil {
 			log.Printf("ERROR: Node %d: Failed to load all messages for area %d: %v", nodeNumber, currentAreaID, err)
 			msg := fmt.Sprintf("\r\n|01Error loading messages for area %s.|07\r\n", currentAreaTag)
-			wErr := terminal.DisplayContent([]byte(msg))
-			if wErr != nil { /* Log? */
-			}
+			_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 			time.Sleep(1 * time.Second)
 			return nil, "", err
 		}
@@ -662,9 +638,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, user
 	if errHead != nil || errPrompt != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGHEAD/MSGREAD templates: Head(%v), Prompt(%v)", nodeNumber, errHead, errPrompt)
 		msg := "\r\n|01Error loading message display templates.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading message templates")
 	}
@@ -881,7 +855,7 @@ readerLoop:
 			}
 			log.Printf("ERROR: Node %d: Failed reading message reader input: %v", nodeNumber, err)
 			// Maybe break loop on error? Or just retry?
-			terminal.Write([]byte("\r\n|01Error reading input.|07\r\n"))
+			_, _ = terminal.Write([]byte("\r\n|01Error reading input.|07\r\n"))
 			time.Sleep(1 * time.Second)
 			continue // Retry reading input
 		}
@@ -895,7 +869,7 @@ readerLoop:
 			} else {
 				// Optionally wrap around or stay at last message
 				// For now, stay at last message and indicate
-				terminal.Write([]byte("\r\n|07Last message.|07"))
+				_, _ = terminal.Write([]byte("\r\n|07Last message.|07"))
 				time.Sleep(500 * time.Millisecond)
 			}
 		case "N": // Explicit 'N' - Do nothing now, or maybe show help?
@@ -906,7 +880,7 @@ readerLoop:
 				currentMessageIndex--
 			} else {
 				// TODO: Display "First message" indicator?
-				terminal.Write([]byte("\r\n|07First message.|07"))
+				_, _ = terminal.Write([]byte("\r\n|07First message.|07"))
 				time.Sleep(500 * time.Millisecond)
 			}
 		case "Q":
@@ -938,7 +912,7 @@ readerLoop:
 			quotedBody := formatQuote(&currentMsg, quotePrefix)
 
 			// 3. Run Editor
-			terminal.Write([]byte("\r\nLaunching editor...\r\n"))
+			_, _ = terminal.Write([]byte("\r\nLaunching editor...\r\n"))
 
 			// Get TERM env var
 			termType := "vt100" // Default TERM
@@ -962,9 +936,9 @@ readerLoop:
 
 			// Display the prompt (clear line first?)
 			// TODO: Consider clearing a specific line if layout is fixed
-			terminal.Write([]byte("\r\n")) // Add newline before prompt
-			terminal.Write(subjectPromptBytes)
-			terminal.Write([]byte(defaultSubject))
+			_, _ = terminal.Write([]byte("\r\n")) // Add newline before prompt
+			_, _ = terminal.Write(subjectPromptBytes)
+			_, _ = terminal.Write([]byte(defaultSubject))
 
 			// Read the input using standard ReadLine
 			rawInput, err := terminal.ReadLine()
@@ -974,7 +948,7 @@ readerLoop:
 					return nil, "LOGOFF", io.EOF // Signal logoff
 				}
 				log.Printf("ERROR: Node %d: Failed getting subject input: %v", nodeNumber, err)
-				terminal.Write([]byte("\r\nError getting subject.\r\n"))
+				_, _ = terminal.Write([]byte("\r\nError getting subject.\r\n"))
 				time.Sleep(1 * time.Second)
 				continue // Abort reply, redraw reader
 			}
@@ -984,7 +958,7 @@ readerLoop:
 			}
 			// Ensure subject is not completely empty after defaulting
 			if strings.TrimSpace(newSubject) == "" {
-				terminal.Write([]byte("\r\nSubject cannot be empty. Reply cancelled.\r\n"))
+				_, _ = terminal.Write([]byte("\r\nSubject cannot be empty. Reply cancelled.\r\n"))
 				time.Sleep(1 * time.Second)
 				continue // Abort reply, redraw reader
 			}
@@ -995,14 +969,14 @@ readerLoop:
 
 			if editErr != nil {
 				log.Printf("ERROR: Node %d: Editor failed: %v", nodeNumber, editErr)
-				terminal.Write([]byte("\r\nEditor encountered an error.\r\n"))
+				_, _ = terminal.Write([]byte("\r\nEditor encountered an error.\r\n"))
 				time.Sleep(2 * time.Second)
 				// Screen needs redraw - continue will force it
 				continue
 			}
 
 			if !saved {
-				terminal.Write([]byte("\r\nReply cancelled.\r\n"))
+				_, _ = terminal.Write([]byte("\r\nReply cancelled.\r\n"))
 				time.Sleep(1 * time.Second)
 				// Screen needs redraw - continue will force it
 				continue
@@ -1024,10 +998,10 @@ readerLoop:
 			err = e.MessageMgr.AddMessage(currentAreaID, replyMsg) // Pass value, not pointer
 			if err != nil {
 				log.Printf("ERROR: Node %d: Failed to save reply message: %v", nodeNumber, err)
-				terminal.Write([]byte("\r\nError saving reply message.\r\n"))
+				_, _ = terminal.Write([]byte("\r\nError saving reply message.\r\n"))
 				time.Sleep(2 * time.Second)
 			} else {
-				terminal.Write([]byte("\r\nReply posted successfully!\r\n"))
+				_, _ = terminal.Write([]byte("\r\nReply posted successfully!\r\n"))
 				time.Sleep(1 * time.Second)
 				// --- Update Counters and Slice ---
 				totalMessages++         // Increment count of messages loaded in the *current slice*
@@ -1048,7 +1022,7 @@ readerLoop:
 		default:
 			// Optional: Display invalid command message
 			logging.Debug(" Node %d: Invalid command '%s' in message reader.", nodeNumber, upperInput)
-			terminal.Write([]byte("\r\n|01Invalid command.|07"))
+			_, _ = terminal.Write([]byte("\r\n|01Invalid command.|07"))
 			time.Sleep(500 * time.Millisecond)
 		}
 		// continue loop implicitly unless 'Q' was pressed
@@ -1061,17 +1035,15 @@ readerLoop:
 
 // runNewscan checks all accessible message areas for new messages.
 func runNewscan(e *MenuExecutor, s ssh.Session, terminal *terminalPkg.BBS, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode terminalPkg.OutputMode) (*user.User, string, error) {
-	logging.Debug(" Node %d: Running NEWSCAN for user %s", nodeNumber, currentUser.Handle)
-
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: NEWSCAN called without logged in user.", nodeNumber)
 		msg := "\r\n|01Error: You must be logged in to scan for new messages.|07\r\n"
-		wErr := terminal.DisplayContent([]byte(msg))
-		if wErr != nil { /* Log? */
-		}
+		_ = terminal.DisplayContent([]byte(msg)) // Error display, ignore write error
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
+
+	logging.Debug(" Node %d: Running NEWSCAN for user %s", nodeNumber, currentUser.Handle)
 
 	allAreas := e.MessageMgr.ListAreas()
 	// Store results as a slice of structs to maintain order and store counts
