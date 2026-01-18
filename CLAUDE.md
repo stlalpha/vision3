@@ -6,182 +6,248 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ### Building and Running
 ```bash
-# Build the main BBS application
-cd cmd/vision3
-go build
+# Build main BBS application
+cd cmd/vision3 && go build
+
+# Build all tools at once
+go build ./cmd/...
 
 # Run the BBS server
-./vision3
+./cmd/vision3/vision3
 
-# Run with specific output mode
+# Output modes
 ./vision3 --output-mode=utf8    # Force UTF-8 output
-./vision3 --output-mode=cp437   # Force CP437 output for authentic BBS experience
-./vision3 --output-mode=auto    # Auto-detect based on terminal (default)
+./vision3 --output-mode=cp437   # Force CP437 for authentic BBS experience
+./vision3 --output-mode=auto    # Auto-detect (default)
 ```
 
-### Development Tools
+### Testing
 ```bash
-# Build ANSI test utility
-cd cmd/ansitest  
-go build
-
-# Format code
-go fmt ./...
-
-# Run linter
-golangci-lint run
-
-# Run tests
-go test ./...
-
-# Run tests for specific package
-go test ./internal/ansi
+go test ./...                          # Run all tests
+go test -v ./internal/menu/            # Verbose tests for specific package
+go test -run TestACS ./internal/menu/  # Run specific test
+go test ./... -coverprofile=coverage.out  # Generate coverage report
+go test -race ./...                    # Run with race detector
 ```
 
-### Setup and Configuration
+### Code Quality
 ```bash
-# Quick setup (generates SSH keys, creates directories, builds executable)
-./setup.sh
+go fmt ./...          # Format code
+go vet ./...          # Static analysis
+golangci-lint run     # Linter (configured in .golangci.yml)
+```
+
+### Using Makefile
+```bash
+make              # Build main binary
+make build        # Build main binary
+make test         # Run tests
+make lint         # Run linter
+make vet          # Run go vet
+make fmt          # Format code
+make all          # Run lint, vet, test, and build
+make clean        # Remove build artifacts
+```
+
+### Setup
+```bash
+./setup.sh            # Quick setup (SSH keys, directories, build)
 
 # Manual SSH key generation
 cd configs
 ssh-keygen -t rsa -f ssh_host_rsa_key -N ""
 ssh-keygen -t ed25519 -f ssh_host_ed25519_key -N ""
+```
 
-# Create necessary directories
-mkdir -p data/users data/files/general log
+### Connecting
+```bash
+ssh felonius@localhost -p 2222    # Default login: felonius/password
 ```
 
 ## High-Level Architecture
 
-### Core System Design
-ViSiON/3 is a single Go binary that implements a classic BBS (Bulletin Board System) accessible via SSH. It recreates the authentic BBS experience of the 1990s using modern Go technologies.
+ViSiON/3 is a single Go binary BBS accessible via SSH, recreating the authentic 1990s BBS experience.
 
-**Key Architectural Principles:**
-- **Single Binary Deployment**: All functionality compiled into one executable
-- **SSH-Only Access**: Secure remote access (no telnet), listens on port 2222 by default
-- **Menu-Driven Interface**: All functionality accessed through hierarchical menu system
-- **Legacy Compatibility**: Maintains ViSiON/2 pipe code compatibility for ANSI art
-- **Multiple Character Encodings**: Supports CP437 (authentic DOS/BBS) and UTF-8 output modes
-
-### Session Management Flow
-1. **Connection**: SSH client connects → main accepts → sessionHandler goroutine spawned
-2. **PTY Setup**: Handle PTY requests, window size changes, determine output mode (auto/utf8/cp437)
-3. **Authentication Loop**: Menu executor loads LOGIN menu, handles user authentication
-4. **Main Loop**: After successful login, navigate through menu system (MAIN, READ_MSG, etc.)
-5. **Data Persistence**: User/message/file data persisted to JSON files in `data/` directory
+### Session Flow
+```
+SSH Client → gliderlabs/ssh server → sessionHandler goroutine
+  → PTY setup + output mode detection
+  → LOGIN menu (authentication)
+  → MAIN menu loop
+  → Menu executor processes commands
+  → Data persisted to JSON/JSONL files
+```
 
 ### Core Components
 
-#### Main Application (`cmd/vision3/main.go`)
-- SSH server initialization using `gliderlabs/ssh`
-- Session lifecycle management and connection handling
-- Global managers initialization (user, message, file, menu)
-- Host key loading and crypto configuration
+| Package | Purpose |
+|---------|---------|
+| `cmd/vision3/main.go` | SSH server, session lifecycle, manager initialization |
+| `internal/menu/` | Menu system (see below) |
+| `internal/user/` | User persistence, bcrypt auth, ACS evaluation |
+| `internal/message/` | Message areas, JSONL storage |
+| `internal/file/` | File areas, ZMODEM via external sz/rz |
+| `internal/terminal/` | BBS terminal class, encoding, pipe code processing |
+| `internal/logging/` | Debug logging utility with runtime toggle |
 
-#### Menu System (`internal/menu/`)
-- **MenuExecutor**: Central coordinator for menu display and command execution
-- **Loader**: Parses `.MNU` (binary menu definitions) and `.CFG` (display configs) files
-- **Command Processing**: Handles menu navigation, user input, and action execution
-- **Lightbar Support**: Full lightbar navigation for compatible menus
-- **ACS Integration**: Access Control String evaluation for menu access
+### Menu Package Structure
 
-#### User Management (`internal/user/`)
-- **UserManager**: User account persistence (`data/users/users.json`)
-- **Authentication**: bcrypt password hashing and verification
-- **Call History**: Session tracking in `data/users/callhistory.json`
-- **ACS Evaluation**: Access control validation (security levels, flags, time limits)
+The menu system has been organized into focused modules:
 
-#### ANSI/Character Handling (`internal/ansi/`)
-- **Pipe Code Processing**: ViSiON/2 compatible color codes (`|00`-`|15`, `|B0`-`|B7`)
-- **Character Encoding**: CP437 to UTF-8 conversion with VT100 line drawing support
-- **Output Modes**: Auto-detection, forced UTF-8, or authentic CP437 rendering
-- **ANSI Art Display**: Proper rendering of classic BBS artwork
+| File | Purpose |
+|------|---------|
+| `executor.go` | Core MenuExecutor struct and session handling |
+| `loader.go` | Menu file loading (.MNU, .CFG) |
+| `dispatcher.go` | Command routing and execution |
+| `registry.go` | Runnable function registration |
+| `acs_checker.go` | Access Control System evaluation |
+| `runnables_system.go` | System functions (login, version, user editor) |
+| `runnables_messaging.go` | Message area listing, reading, composing |
+| `runnables_files.go` | File area listing, downloads, uploads |
+| `runnables_doors.go` | External door program execution |
+| `runnables_misc.go` | Oneliners, renderer settings |
 
-#### Message System (`internal/message/`)
-- **MessageManager**: Message area and message persistence
-- **Configuration**: Area definitions in `data/message_areas.json`
-- **Storage**: JSONL files per area (e.g., `messages_area_1.jsonl`)
-- **Features**: Private/public areas, threading, newscan functionality
+### Menu System
 
-#### File Management (`internal/file/`)
-- **FileManager**: File area management and metadata tracking
-- **Configuration**: Area definitions in `configs/file_areas.json`
-- **Storage**: File metadata in `data/files/` directory
-- **Transfer Protocol**: ZMODEM support via external `sz`/`rz` commands
+**File Types:**
+- `.MNU` files: JSON with CLR, PROMPT1, FALLBACK, ACS, PASS fields
+- `.CFG` files: JSON array of commands with KEYS, CMD, ACS, HIDDEN
+- `.ANS` files: ANSI art with pipe codes (`|00`-`|15`, `|B0`-`|B7`)
 
-### Data Organization
+**Command Types:**
+- `GOTO:MENU` - Navigate to menu
+- `RUN:FUNCTION` - Execute registered runnable
+- `DOOR:DOORNAME` - Launch external program
+- `LOGOFF` - Disconnect user
+- `//` prefix - Auto-run once per session
+- `~~` prefix - Auto-run every visit
 
+### Access Control System (ACS)
+
+ACS strings control menu and command access. Operators: `&` (AND), `|` (OR), `!` (NOT), `()` grouping.
+
+| Code | Meaning |
+|------|---------|
+| `S10` | Security level >= 10 |
+| `FZ` | User has flag 'Z' |
+| `U5` | User ID = 5 |
+| `L` | Local connection |
+| `A` | ANSI/PTY connection |
+| `V` | Validated user |
+| `E10` | At least 10 logons |
+| `P50` | At least 50 file points |
+| `*` | Always allow |
+| `` (empty) | Require authentication |
+
+Example: `S100|FA` = security level 100+ OR has flag A
+
+## Adding Features
+
+### New Runnable Function
+
+1. Add function to the appropriate `internal/menu/runnables_*.go` file:
+```go
+func runMyFeature(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
+    userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
+    sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+
+    msg := "|15Feature output|07\r\n"
+    wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+    if wErr != nil {
+        log.Printf("ERROR: Node %d: Failed writing: %v", nodeNumber, wErr)
+    }
+    return nil, "", nil  // Returns: updated user, next action, error
+}
 ```
-data/
-├── users/
-│   ├── users.json           # User account database
-│   └── callhistory.json     # Session history
-├── files/                   # File area directories
-│   └── general/
-│       └── metadata.json    # File listings
-├── logs/                    # Application logs
-└── message_*.jsonl          # Message data files
+
+2. Register in `registerAppRunnables()`:
+```go
+registry["MYFEATURE"] = runMyFeature
 ```
 
-### Menu Resources
-
-```
-menus/v3/
-├── ansi/                    # ANSI art files (.ANS)
-├── cfg/                     # Menu display configurations
-├── mnu/                     # Menu command definitions (.MNU)
-└── templates/               # Display templates (.MID files)
+3. Add to menu `.CFG` file:
+```json
+{"KEYS": "M", "CMD": "RUN:MYFEATURE", "ACS": ""}
 ```
 
-### Configuration Files
+### New Door Program
 
+Add to `configs/doors.json`:
+```json
+{
+  "name": "MYDOOR",
+  "command": "/path/to/door",
+  "args": ["-node", "{NODE}"],
+  "working_directory": "/path/to/door",
+  "dropfile_type": "DOOR.SYS",
+  "io_mode": "STDIO",
+  "requires_raw_terminal": true
+}
 ```
-configs/
-├── config.json              # General BBS configuration  
-├── strings.json             # Customizable UI text
-├── doors.json               # External program definitions
-├── file_areas.json          # File area configurations
-└── ssh_host_*_key          # SSH host keys
+
+## Code Patterns
+
+### Terminal Output
+```go
+// Always use terminalio.WriteProcessedBytes for output
+msg := "|15White text|07\r\n"
+terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 ```
+
+### ANSI File Display
+```go
+rawContent, err := ansi.GetAnsiFileContent(filepath.Join(e.MenuSetPath, "ansi", "file.ans"))
+result, err := ansi.ProcessAnsiAndExtractCoords(rawContent, outputMode)
+terminalio.WriteProcessedBytes(terminal, result.DisplayBytes, outputMode)
+```
+
+### Path Resolution
+```go
+ansPath := filepath.Join(e.MenuSetPath, "ansi", "file.ans")      // Menu assets
+configPath := filepath.Join(e.RootConfigPath, "config.json")     // Global configs
+dataPath := filepath.Join("data", "users", "users.json")         // Runtime data
+```
+
+### Logging
+```go
+// Standard logging (always output)
+log.Printf("INFO: Node %d: User %s logged in", nodeNumber, user.Handle)
+log.Printf("ERROR: Node %d: Failed to load menu: %v", nodeNumber, err)
+
+// Debug logging (controlled by logging.DebugEnabled)
+import "github.com/stlalpha/vision3/internal/logging"
+logging.Debug("Node %d: Processing menu %s", nodeNumber, menuName)
+```
+
+Enable debug logging by setting `logging.DebugEnabled = true` at startup.
 
 ## Development Guidelines
 
-### Code Organization
-- Follow Go's package organization principles (functionality over type)
-- Keep modules under 300 lines when possible
-- Use the established internal package structure
-- Respect module boundaries defined in `docs/architecture.md`
-
-### Important Cursor Rules
 From `.cursorrules`:
-- **Simplicity**: Prioritize simple, maintainable solutions over complexity
-- **Iterate**: Prefer improving existing code rather than rewriting from scratch
-- **Documentation First**: Always check project documentation before starting tasks
-- **Architecture Adherence**: Respect module boundaries and data flow patterns
-- **TDD Approach**: Write tests before implementing new features
-- **Security**: Never hardcode credentials, validate all input, use proper error handling
+- **Simplicity**: Prefer simple, maintainable solutions
+- **Iterate**: Improve existing code rather than rewriting
+- **Documentation First**: Check `docs/architecture.md` before starting
+- **TDD**: Write tests before implementation
+- **Keep files under 300 lines** when possible
 
-### BBS-Specific Considerations
-- **Terminal Compatibility**: Consider both modern UTF-8 terminals and legacy CP437 clients
-- **Menu Navigation**: Understand the hierarchical menu flow and lightbar system
-- **ANSI Art**: Preserve authentic visual appearance while ensuring compatibility
-- **Character Encoding**: Handle pipe codes (`|XX`) and CP437 character mapping correctly
-- **Session State**: Track user context across menu navigation
+### BBS-Specific
+- Use `\r\n` for line endings (BBS standard)
+- Support both UTF-8 and CP437 output modes
+- Use pipe codes for colors: `|00`-`|15` foreground, `|B0`-`|B7` background
+- Handle disconnection gracefully (check for io.EOF)
 
-### Key Technologies
-- **SSH Library**: `github.com/gliderlabs/ssh` for secure remote access
-- **Terminal Handling**: `golang.org/x/term` for terminal I/O operations
-- **UI Components**: `github.com/charmbracelet/bubbletea` for interactive editors
-- **Crypto**: `golang.org/x/crypto/bcrypt` for password security
-- **Data Format**: JSON for configuration and data persistence
+### What NOT to Do
+- No REST APIs or web frontend
+- No rewrites in other languages
+- No custom build systems
+- Don't commit one-time utility scripts
 
-### Testing Commands
-```bash
-# Connect to running BBS (default login: felonius/password)
-ssh felonius@localhost -p 2222
+## Data Storage
 
-# Test specific menu functionality
-# Navigate through menus using lightbar (arrow keys) or hotkeys
-# Test message posting, file listing, door programs
-```
+| Location | Format | Purpose |
+|----------|--------|---------|
+| `data/users/users.json` | JSON | User accounts |
+| `data/users/callhistory.json` | JSON | Session history |
+| `data/message_areas.json` | JSON | Message area config |
+| `data/messages_area_*.jsonl` | JSONL | Message content |
+| `configs/` | JSON | All configuration files |
