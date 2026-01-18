@@ -1,0 +1,26 @@
+# .golangci.yml
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck      # Unchecked errors
+    - govet         # Suspicious constructs
+    - staticcheck   # Bugs and simplifications
+    - unused        # Dead code
+    - ineffassign   # Ineffective assignments
+    - gosimple      # Simplifications
+
+linters-settings:
+  errcheck:
+    check-type-assertions: true
+
+issues:
+  # Skip internal/configtool - 32K lines, needs separate cleanup effort
+  exclude-dirs:
+    - internal/configtool
+  exclude-rules:
+    # Allow log.Printf without checking error (common pattern)
+    - linters:
+        - errcheck
+      source: "log\\.Printf"
