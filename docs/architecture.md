@@ -18,6 +18,9 @@ The system is designed as a single Go application that listens for incoming SSH 
 2. **Session Handler (`sessionHandler` in `cmd/vision3/main.go`)**
    * Manages the lifecycle of a single session (SSH or telnet)
    * Handles PTY requests and window size changes
+   * Tracks terminal dimensions with `atomic.Int32` for thread-safe access between the resize goroutine and main session goroutine
+   * Calls `terminal.SetSize()` on initial PTY setup and on each resize event
+   * After authentication, applies user's stored `ScreenWidth`/`ScreenHeight` preferences to cap effective terminal dimensions
    * Determines output mode (UTF-8, CP437, or auto-detect)
    * Creates terminal instance for I/O
    * Manages authentication loop using the menu executor
@@ -28,8 +31,8 @@ The system is designed as a single Go application that listens for incoming SSH 
 3. **Menu System (`internal/menu/`)**
    * `MenuExecutor` handles menu loading, display, and command execution
    * Loads menu configurations from `menus/v3/mnu/` (`.MNU` files)
-   * Loads menu display files from `menus/v3/cfg/` (`.CFG` files) 
-   * Displays ANSI screens from `menus/v3/ansi/` (`.ANS` files)
+   * Loads menu display files from `menus/v3/cfg/` (`.CFG` files)
+   * Displays ANSI screens from `menus/v3/ansi/` (`.ANS` files), truncated to the user's effective terminal height to prevent scrolling
    * Handles auto-run commands and user input
    * Integrates with all managers (user, message, file)
 
@@ -68,12 +71,13 @@ The system is designed as a single Go application that listens for incoming SSH 
 
 1. Client connects via SSH or telnet → `main` accepts → `sessionHandler` spawned
 2. `sessionHandler` handles PTY setup and determines output mode
-3. `sessionHandler` starts authentication loop via menu executor
-4. Menu executor loads LOGIN menu and handles authentication
-5. Successful login transitions to main menu loop (e.g., FASTLOGN or MAIN)
-6. Menu executor processes user commands and navigates between menus
-7. ANSI screens are loaded from `menus/v3/ansi/` and processed by `ansi` package
-8. User/message/file data is persisted to `data/` directory
+3. SSH users with known accounts are auto-logged in, skipping to step 6
+4. Telnet users see the pre-login matrix screen (`PDMATRIX.ANS`) with options: login, create account, check access, or disconnect
+5. `sessionHandler` starts authentication loop via menu executor (LOGIN menu)
+6. Successful login transitions to main menu loop (e.g., FASTLOGN or MAIN)
+7. Menu executor processes user commands and navigates between menus
+8. ANSI screens are loaded from `menus/v3/ansi/` and processed by `ansi` package
+9. User/message/file data is persisted to `data/` directory
 
 ## Directory Structure
 

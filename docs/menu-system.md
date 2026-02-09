@@ -218,13 +218,123 @@ Add a command in another menu to access it:
 }
 ```
 
+## Pre-Login Matrix Screen
+
+The matrix screen is a pre-authentication menu shown to telnet users before the LOGIN screen. It is based on the original ViSiON/2 Pascal `ConfigPdMatrix` procedure from `GETLOGIN.PAS` and provides a lightbar menu for choosing an action before authentication.
+
+SSH users with known accounts skip the matrix screen entirely (auto-login to MAIN). All other users see the matrix first.
+
+### Configuration
+
+The matrix uses the standard menu file system with three files:
+
+1. `menus/v3/bar/PDMATRIX.BAR` — Lightbar option layout (positions, colors, hotkeys, text)
+2. `menus/v3/cfg/PDMATRIX.CFG` — Command definitions mapping hotkeys to actions
+3. `menus/v3/mnu/PDMATRIX.MNU` — Menu settings (optional, for consistency)
+
+**PDMATRIX.BAR:**
+```
+; Pre-login matrix menu
+; FORMAT: X,Y,HiLitedColor,RegularColor,HotKey,ReturnValue,DisplayText
+49,10,31,5,J,UNUSED, Journey onward.
+49,11,31,5,C,UNUSED, Create an account.
+49,12,31,5,A,UNUSED, Check your access.
+49,13,31,5,D,UNUSED, Disconnect.
+```
+
+**PDMATRIX.CFG:**
+```json
+[
+    {"KEYS": "J", "CMD": "LOGIN", "ACS": "*", "HIDDEN": false},
+    {"KEYS": "C", "CMD": "NEWUSER", "ACS": "*", "HIDDEN": false},
+    {"KEYS": "A", "CMD": "CHECKACCESS", "ACS": "*", "HIDDEN": false},
+    {"KEYS": "D", "CMD": "DISCONNECT", "ACS": "*", "HIDDEN": false}
+]
+```
+
+### BAR File Fields
+
+Each line defines one menu option (see [Lightbar Menus](#lightbar-menus) for format details):
+
+- `X, Y` - Screen coordinates (column, row) where the option text is drawn
+- `HiLitedColor` - DOS color code when selected (e.g., 31 = bright white on blue)
+- `RegularColor` - DOS color code when not selected (e.g., 5 = magenta on black)
+- `HotKey` - Key that directly selects this option (must match `KEYS` in the CFG file)
+- `ReturnValue` - Unused (set to `UNUSED`)
+- `DisplayText` - Text drawn at the specified coordinates
+
+### CFG File Fields
+
+Standard command definition format (see [Command Definition Files](#command-definition-files-cfg)):
+
+- `KEYS` - Hotkey matching the BAR file's HotKey field
+- `CMD` - Action to execute (see below)
+- `ACS` - Access control (use `*` for pre-login)
+- `HIDDEN` - Whether command is hidden
+
+### Available Actions
+
+| Action | Behavior |
+| --- | --- |
+| `LOGIN` | Displays a random PRELOGON ANSI file (if any exist), then proceeds to the LOGIN menu for authentication |
+| `NEWUSER` | Launches the new user registration form, then returns to the matrix |
+| `CHECKACCESS` | Prompts for a username and displays account validation status, then returns to the matrix |
+| `DISCONNECT` | Disconnects the session |
+
+### Navigation
+
+- **Up/Down arrows** - Move selection with wrapping
+- **Number keys (1-9)** - Direct selection by index (always enabled)
+- **Hotkey** - Press the option's HotKey character (e.g., J, C, A, D)
+- **Enter** - Confirm current selection
+- **Spacebar** - Redraw the screen
+
+After 10 actions without logging in, the session is automatically disconnected (matching the original Pascal `Tries` limit).
+
+### ANSI Art
+
+Place a `PDMATRIX.ANS` file in `menus/v3/ansi/` with the visual layout. The option text from the BAR file is drawn over the ANSI art at the specified X,Y coordinates — design the art to leave space for option text at those positions.
+
+### Disabling the Matrix Screen
+
+If `menus/v3/bar/PDMATRIX.BAR` does not exist or cannot be loaded, the matrix screen is skipped and telnet users go directly to the LOGIN menu. The same applies if the CFG file or ANSI file is missing.
+
+## Pre-Login ANSI Files (PRELOGON)
+
+When a user selects "Journey onward" (LOGIN action) from the matrix screen, a PRELOGON ANSI file is displayed before the login screen appears. This matches the original ViSiON/2 Pascal behavior (`Printfile(PRELOGON.x) + HoldScreen`).
+
+### File Naming
+
+The system looks for numbered files first, then falls back to a single file:
+
+1. **Numbered files**: `PRELOGON.1`, `PRELOGON.2`, `PRELOGON.3`, ... (up to `PRELOGON.20`)
+2. **Single file**: `PRELOGON.ANS`
+
+All files are placed in `menus/v3/ansi/`.
+
+### Random Selection
+
+If multiple numbered files exist (e.g., `PRELOGON.1` through `PRELOGON.5`), one is chosen at random each time. Numbering must be sequential starting from 1 — the system stops searching at the first gap.
+
+### Pause Behavior
+
+After displaying the PRELOGON screen, the system shows the `pauseString` from `configs/strings.json` and waits for the user to press Enter before proceeding to the LOGIN screen.
+
+### Disabling PRELOGON
+
+If no PRELOGON files exist in `menus/v3/ansi/`, the step is silently skipped and the user goes directly to the LOGIN screen.
+
 ## Menu Flow Examples
 
 ### Login Flow
-1. `LOGIN` menu displays login screen with coordinate codes
-2. User enters credentials at marked positions
-3. On success: System goes to `FASTLOGN` or `MAIN`
-4. On failure: Stay at `LOGIN`
+
+1. Telnet users see the pre-login matrix screen (`PDMATRIX.ANS`) — see above
+2. User selects "Journey onward" (or SSH users arrive here directly)
+3. A random PRELOGON ANSI file is displayed (if any exist), followed by a pause prompt
+4. `LOGIN` menu displays login screen with coordinate codes
+5. User enters credentials at marked positions
+6. On success: System goes to `FASTLOGN` or `MAIN`
+7. On failure: Stay at `LOGIN`
 
 ### Main Menu Flow
 1. Load `MAIN.MNU` configuration
@@ -276,8 +386,10 @@ Format: X,Y,HighlightColor,NormalColor,Hotkey,Unused,DisplayText
 Functions available via `RUN:` command:
 
 ### Authentication & User Management
+
 - `AUTHENTICATE` - Prompt for login
 - `FULL_LOGIN_SEQUENCE` - Complete login process
+- `NEWUSER` - New user registration form
 - `SHOWSTATS` - Display user statistics
 - `LISTUSERS` - List all users
 - `LASTCALLERS` - Show recent callers

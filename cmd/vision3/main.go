@@ -329,17 +329,18 @@ func sessionHandler(s ssh.Session) {
 
 	// --- PTY Request Handling ---
 	ptyReq, winCh, isPty := s.Pty() // Get PTY info from SessionAdapter
-	termWidth := 80  // Default terminal width
-	termHeight := 25 // Default terminal height
+	var termWidth, termHeight atomic.Int32
+	termWidth.Store(80)  // Default terminal width
+	termHeight.Store(25) // Default terminal height
 	if isPty {
 		log.Printf("Node %d: PTY Request Accepted: %s", nodeID, ptyReq.Term)
 		if ptyReq.Window.Width > 0 {
-			termWidth = ptyReq.Window.Width
+			termWidth.Store(int32(ptyReq.Window.Width))
 		}
 		if ptyReq.Window.Height > 0 {
-			termHeight = ptyReq.Window.Height
+			termHeight.Store(int32(ptyReq.Window.Height))
 		}
-		log.Printf("Node %d: Terminal size from PTY: %dx%d", nodeID, termWidth, termHeight)
+		log.Printf("Node %d: Terminal size from PTY: %dx%d", nodeID, termWidth.Load(), termHeight.Load())
 	} else {
 		log.Printf("Node %d: No PTY Request received. Proceeding without PTY.", nodeID)
 	}
@@ -378,23 +379,28 @@ func sessionHandler(s ssh.Session) {
 	log.Printf("Node %d: Creating terminal for session", nodeID)
 	terminal := term.NewTerminal(s, "") // Use session 's' as the R/W source for the terminal
 
-	// --- Simple Test Output ---
-	// NOTE: Removed immediate test output and environment override attempts
-	// These were interfering with SyncTerm session activation
-	// The terminal is ready to use once created
-	// -------------------------------------------
+	// Set initial terminal size from PTY request (term.NewTerminal defaults to 80 columns)
+	if isPty {
+		tw, th := int(termWidth.Load()), int(termHeight.Load())
+		if tw > 0 && th > 0 {
+			_ = terminal.SetSize(tw, th)
+			log.Printf("Node %d: Set terminal size to %dx%d", nodeID, tw, th)
+		}
+	}
 
 	// --- Handle Window Size Changes ---
-	// Need to start this gouroutine regardless of initial PTY request
-	// because a PTY might be granted later or window size changes can occur
+	// Forward resize events to both our atomic values and the term.Terminal
 	go func() {
-		for win := range winCh { // Loop until the channel is closed
+		for win := range winCh {
 			log.Printf("Node %d: Window resize event: %dx%d", nodeID, win.Width, win.Height)
 			if win.Width > 0 {
-				termWidth = win.Width
+				termWidth.Store(int32(win.Width))
 			}
 			if win.Height > 0 {
-				termHeight = win.Height
+				termHeight.Store(int32(win.Height))
+			}
+			if win.Width > 0 && win.Height > 0 {
+				_ = terminal.SetSize(win.Width, win.Height)
 			}
 		}
 		log.Printf("Node %d: Window change channel closed.", nodeID)
@@ -437,10 +443,11 @@ func sessionHandler(s ssh.Session) {
 			authenticatedUser = sshUser
 			log.Printf("Node %d: SSH auto-login successful for user '%s' (Handle: %s)", nodeID, sshUsername, sshUser.Handle)
 			// Update user's terminal dimensions from detected PTY size
-			if termWidth > 0 && termHeight > 0 {
-				authenticatedUser.ScreenWidth = termWidth
-				authenticatedUser.ScreenHeight = termHeight
-				log.Printf("Node %d: Updated user %s screen preferences to %dx%d", nodeID, sshUser.Handle, termWidth, termHeight)
+			tw, th := int(termWidth.Load()), int(termHeight.Load())
+			if tw > 0 && th > 0 {
+				authenticatedUser.ScreenWidth = tw
+				authenticatedUser.ScreenHeight = th
+				log.Printf("Node %d: Updated user %s screen preferences to %dx%d", nodeID, sshUser.Handle, tw, th)
 				if saveErr := userMgr.SaveUsers(); saveErr != nil {
 					log.Printf("ERROR: Node %d: Failed to save user screen preferences: %v", nodeID, saveErr)
 				}
@@ -451,6 +458,20 @@ func sessionHandler(s ssh.Session) {
 			log.Printf("Node %d: SSH user '%s' not found in BBS database, requiring manual login", nodeID, sshUsername)
 			// User not in database, proceed with normal LOGIN flow
 		}
+	}
+
+	// Pre-login matrix screen for telnet users (no SSH auto-login)
+	if authenticatedUser == nil && sshUsername == "" {
+		matrixAction, matrixErr := menuExecutor.RunMatrixScreen(s, terminal, userMgr, int(nodeID), effectiveMode)
+		if matrixErr != nil {
+			log.Printf("Node %d: Matrix screen error: %v", nodeID, matrixErr)
+			return
+		}
+		if matrixAction == "DISCONNECT" {
+			log.Printf("Node %d: User selected disconnect from matrix screen", nodeID)
+			return
+		}
+		// matrixAction == "LOGIN" — proceed to normal login loop
 	}
 
 	// Login Loop
@@ -466,7 +487,7 @@ func sessionHandler(s ssh.Session) {
 		// Pass nodeID directly as int, use sessionStartTime from context
 		// Pass the session's autoRunLog
 		// Pass "" for currentAreaName during login
-		nextMenuName, authUser, execErr := menuExecutor.Run(s, terminal, userMgr, nil, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "", termWidth, termHeight)
+		nextMenuName, authUser, execErr := menuExecutor.Run(s, terminal, userMgr, nil, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "", int(termWidth.Load()), int(termHeight.Load()))
 		if execErr != nil {
 			// Log the error and decide how to proceed
 			log.Printf("Node %d: Error executing menu '%s': %v", nodeID, currentMenuName, execErr)
@@ -512,6 +533,22 @@ func sessionHandler(s ssh.Session) {
 	}
 	log.Printf("Node %d: Entering main loop for authenticated user: %s", nodeID, authenticatedUser.Handle)
 
+	// Apply user's stored screen size preferences (caps terminal to user setting)
+	if authenticatedUser.ScreenHeight > 0 {
+		th := int32(authenticatedUser.ScreenHeight)
+		if th < termHeight.Load() || termHeight.Load() == 25 {
+			termHeight.Store(th)
+		}
+	}
+	if authenticatedUser.ScreenWidth > 0 {
+		tw := int32(authenticatedUser.ScreenWidth)
+		if tw < termWidth.Load() || termWidth.Load() == 80 {
+			termWidth.Store(tw)
+		}
+	}
+	_ = terminal.SetSize(int(termWidth.Load()), int(termHeight.Load()))
+	log.Printf("Node %d: Effective terminal size for %s: %dx%d", nodeID, authenticatedUser.Handle, termWidth.Load(), termHeight.Load())
+
 	// << NEW: Set the initial menu for the main loop based on the action returned from login
 	parts := strings.SplitN(nextActionAfterLogin, ":", 2) // Split action like "GOTO:MENU"
 	if len(parts) == 2 {
@@ -537,7 +574,7 @@ func sessionHandler(s ssh.Session) {
 		// Pass nodeID directly as int, use sessionStartTime from context
 		// Pass the session's autoRunLog
 		// Pass "" for currentAreaName for now (TODO: Pass actual session area name)
-		nextMenuName, _, execErr := menuExecutor.Run(s, terminal, userMgr, authenticatedUser, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "", termWidth, termHeight)
+		nextMenuName, _, execErr := menuExecutor.Run(s, terminal, userMgr, authenticatedUser, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "", int(termWidth.Load()), int(termHeight.Load()))
 		if execErr != nil {
 			log.Printf("Node %d: Error executing menu '%s': %v", nodeID, currentMenuName, execErr)
 			fmt.Fprintf(terminal, "\r\nSystem error during menu execution: %v\r\n", execErr)

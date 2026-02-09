@@ -415,6 +415,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTFILES"] = runListFiles                             // <-- ADDED: Register file list runnable
 	registry["LISTFILEAR"] = runListFileAreas                        // <-- ADDED: Register file area list runnable
 	registry["SELECTFILEAREA"] = runSelectFileArea                   // <-- ADDED: Register file area selection runnable
+	registry["NEWUSER"] = runNewUser                                 // Register new user application runnable
 }
 
 // runShowStats displays the user statistics screen (YOURSTAT.ANS).
@@ -774,6 +775,19 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return nil, "", nil // Empty username, just redisplay login menu
 	}
 
+	// Check if user wants to apply as a new user
+	if strings.EqualFold(username, "new") {
+		log.Printf("INFO: Node %d: User typed 'new' in AUTHENTICATE - starting new user application", nodeNumber)
+		newUserErr := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode)
+		if newUserErr != nil {
+			if errors.Is(newUserErr, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			log.Printf("ERROR: Node %d: New user application error: %v", nodeNumber, newUserErr)
+		}
+		return nil, "", nil // Return to LOGIN screen after signup
+	}
+
 	// Move to Password position, display prompt, and read input securely
 	terminal.Write([]byte(ansi.MoveCursor(passRow, passCol)))
 	passwordPrompt := "|07Password: |15" // Original prompt text was in ANSI
@@ -906,16 +920,15 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			// Display the processed LOGIN screen, truncated to fit terminal height
 			terminal.Write([]byte(ansi.ClearScreen())) // Clear first
 			displayBytes := ansiProcessResult.DisplayBytes
-			if termHeight > 0 && termHeight < 25 {
+			if termHeight > 0 {
 				// Truncate ANSI output to terminal height to prevent scrolling
 				// which would shift all Y coordinates
 				lines := bytes.Split(displayBytes, []byte("\n"))
 				if len(lines) > termHeight {
-					lines = lines[:termHeight]
+					displayBytes = bytes.Join(lines[:termHeight], []byte("\n"))
+					log.Printf("DEBUG: Truncated LOGIN.ANS from %d to %d lines for %d-row terminal",
+						len(lines), termHeight, termHeight)
 				}
-				displayBytes = bytes.Join(lines, []byte("\n"))
-				log.Printf("DEBUG: Truncated LOGIN.ANS from %d to %d lines for %d-row terminal",
-					len(bytes.Split(ansiProcessResult.DisplayBytes, []byte("\n"))), len(lines), termHeight)
 			}
 			_, wErr := terminal.Write(displayBytes)
 			if wErr != nil {
@@ -1189,15 +1202,20 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			if menuRec.GetClrScrBefore() {
 				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 				if wErr != nil {
-					// Log error but continue if possible
 					log.Printf("ERROR: Node %d: Failed clearing screen for menu %s: %v", nodeNumber, currentMenuName, wErr)
 				}
 			}
-			// Use new helper for ANSI display (regular case)
-			// if currentMenuName == "MAIN" {
-			//	log.Printf("DEBUG: Node %d: Bytes for MAIN.ANS before WriteProcessedBytes (hex): %x", nodeNumber, ansiProcessResult.DisplayBytes)
-			//}
-			wErr := terminalio.WriteProcessedBytes(terminal, ansiProcessResult.DisplayBytes, outputMode)
+			// Truncate ANSI output to terminal height to prevent scrolling
+			displayBytes := ansiProcessResult.DisplayBytes
+			if termHeight > 0 {
+				lines := bytes.Split(displayBytes, []byte("\n"))
+				if len(lines) > termHeight {
+					displayBytes = bytes.Join(lines[:termHeight], []byte("\n"))
+					log.Printf("DEBUG: Truncated %s.ANS from %d to %d lines for %d-row terminal",
+						currentMenuName, len(lines), termHeight, termHeight)
+				}
+			}
+			wErr := terminalio.WriteProcessedBytes(terminal, displayBytes, outputMode)
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing ANSI screen for %s: %v", currentMenuName, wErr)
 				return "", nil, fmt.Errorf("failed displaying screen: %w", wErr)
@@ -1540,6 +1558,19 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 	if username == "" {
 		log.Printf("DEBUG: Node %d: Empty username entered.", nodeNumber)
 		return nil, nil // Return nil user, nil error to signal retry LOGIN
+	}
+
+	// Check if user wants to apply as a new user
+	if strings.EqualFold(username, "new") {
+		log.Printf("INFO: Node %d: User typed 'new' - starting new user application", nodeNumber)
+		err := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, io.EOF
+			}
+			log.Printf("ERROR: Node %d: New user application error: %v", nodeNumber, err)
+		}
+		return nil, nil // Return to LOGIN screen after signup
 	}
 
 	// Move to Password position (coordinates are accurate since display is truncated to fit)
@@ -2392,6 +2423,11 @@ func requestCursorPosition(s ssh.Session, terminal *term.Terminal) (int, int, er
 // promptYesNoLightbar displays a Yes/No prompt with lightbar selection.
 // Returns true for Yes, false for No, and error on issues like disconnect.
 func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Terminal, promptText string, outputMode ansi.OutputMode, nodeNumber int) (bool, error) {
+	// Strip trailing ' @' — ViSiON/2 convention for Yes/No prompt terminator.
+	// The '@' signals WriteStr to render an interactive Yes/No lightbar.
+	promptText = strings.TrimSuffix(promptText, " @")
+	promptText = strings.TrimSuffix(promptText, "@")
+
 	// Use nodeNumber in logging calls instead of e.nodeID
 	ptyReq, _, isPty := s.Pty()
 	hasPtyHeight := isPty && ptyReq.Window.Height > 0
@@ -2442,7 +2478,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 
 		promptDisplayBytes := ansi.ReplacePipeCodes([]byte(promptText))
 		log.Printf("DEBUG: Node %d: Writing prompt text bytes (hex): %x", nodeNumber, promptDisplayBytes) // Use nodeNumber
-		err := terminalio.WriteProcessedBytes(terminal, promptDisplayBytes, outputMode)
+		err := terminalio.WriteStringCP437(terminal, promptDisplayBytes, outputMode)
 		if err != nil {
 			log.Printf("ERROR: Node %d: Failed writing Yes/No prompt text (lightbar mode): %v", nodeNumber, err) // Use nodeNumber
 			return false, fmt.Errorf("failed writing prompt text: %w", err)
@@ -2622,7 +2658,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 		}
 
 		processedPromptBytes := ansi.ReplacePipeCodes([]byte(fullPrompt))
-		err := terminalio.WriteProcessedBytes(terminal, processedPromptBytes, outputMode)
+		err := terminalio.WriteStringCP437(terminal, processedPromptBytes, outputMode)
 		if err != nil {
 			log.Printf("ERROR: Node %d: Failed writing Yes/No prompt text (fallback mode): %v", nodeNumber, err) // Use nodeNumber
 			return false, fmt.Errorf("failed writing fallback prompt text: %w", err)

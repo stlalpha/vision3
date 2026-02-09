@@ -370,6 +370,13 @@ func (um *UserMgr) GetUserByHandle(handle string) (*User, bool) { // Receiver us
 	return nil, false
 }
 
+// NextUserID returns the ID that will be assigned to the next new user.
+func (um *UserMgr) NextUserID() int {
+	um.mu.RLock()
+	defer um.mu.RUnlock()
+	return um.nextUserID
+}
+
 // AddUser creates a new user, hashes the password, assigns an ID, and saves.
 // Added GroupLocation parameter.
 func (um *UserMgr) AddUser(username, password, handle, realName, phoneNum, groupLocation string) (*User, error) { // Receiver uses renamed type

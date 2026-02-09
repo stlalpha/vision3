@@ -13,6 +13,12 @@ Configuration files are split between two directories:
 - `config.json` - General BBS configuration
 - SSH host keys (`ssh_host_rsa_key`, etc.)
 
+**In `menus/v3/` directory (menu set):**
+
+- `bar/PDMATRIX.BAR`, `cfg/PDMATRIX.CFG`, `mnu/PDMATRIX.MNU` - Pre-login matrix menu (see [Menu System Guide](menu-system.md#pre-login-matrix-screen))
+- `theme.json` - Theme color settings
+- `ansi/PRELOGON.ANS` (or `PRELOGON.1`, `PRELOGON.2`, ...) - Pre-login ANSI screens shown before LOGIN (see [Menu System Guide](menu-system.md#pre-login-ansi-files-prelogon))
+
 **In `data/` directory:**
 - `message_areas.json` - Message area definitions
 - `oneliners.json` - One-liner messages (JSON array)
@@ -40,6 +46,7 @@ This file contains all the customizable text strings displayed by the BBS. You c
 - `createAPassword` - New user password creation
 - `enterRealName` - Real name prompt
 - `enterNumber` - Phone number prompt
+- `checkingUserBase` - Message shown while validating handle uniqueness
 
 **Message System Strings:**
 - `msgTitleStr` - Message title prompt
