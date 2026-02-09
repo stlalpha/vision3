@@ -5,6 +5,28 @@
 - Go 1.24.2 or higher
 - Git
 - SSH client for testing
+- `libssh` - C library for SSH (required by the SSH server)
+- `pkg-config` - Used to locate libssh during build
+
+### Installing C Dependencies
+
+**macOS (Homebrew):**
+
+```bash
+brew install libssh pkg-config
+```
+
+**Debian/Ubuntu:**
+
+```bash
+sudo apt install libssh-dev pkg-config
+```
+
+**Fedora:**
+
+```bash
+sudo dnf install libssh-devel pkgconf-pkg-config
+```
 
 ## Installation Steps
 
