@@ -344,4 +344,53 @@ func LoadThemeConfig(menuSetPath string) (ThemeConfig, error) {
 	return theme, nil
 }
 
+// ServerConfig defines server-wide settings
+type ServerConfig struct {
+	BoardName        string `json:"boardName"`
+	BoardPhoneNumber string `json:"boardPhoneNumber"`
+	SysOpLevel       int    `json:"sysOpLevel"`
+	CoSysLevel       int    `json:"coSysLevel"`
+	LogonLevel       int    `json:"logonLevel"`
+	SSHPort          int    `json:"sshPort"`
+	SSHHost          string `json:"sshHost"`
+}
+
+// LoadServerConfig loads the server configuration from config.json
+func LoadServerConfig(configPath string) (ServerConfig, error) {
+	filePath := filepath.Join(configPath, "config.json")
+	log.Printf("INFO: Loading server configuration from %s", filePath)
+
+	// Default config values
+	defaultConfig := ServerConfig{
+		BoardName:        "ViSiON/3 BBS",
+		BoardPhoneNumber: "",
+		SysOpLevel:       255,
+		CoSysLevel:       250,
+		LogonLevel:       100,
+		SSHPort:          2222,
+		SSHHost:          "0.0.0.0",
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("WARN: config.json not found at %s. Using default settings.", filePath)
+			return defaultConfig, nil
+		}
+		return defaultConfig, fmt.Errorf("failed to read config file %s: %w", filePath, err)
+	}
+
+	var config ServerConfig
+	// Initialize with defaults before unmarshalling
+	config = defaultConfig
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		log.Printf("ERROR: Failed to parse config JSON from %s: %v. Using default settings.", filePath, err)
+		return defaultConfig, fmt.Errorf("failed to parse config JSON from %s: %w", filePath, err)
+	}
+
+	log.Printf("INFO: Successfully loaded server configuration from %s", filePath)
+	return config, nil
+}
+
 // Add other shared config structs here later if needed.

@@ -7,9 +7,9 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.4
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/creack/pty v1.1.24
-	github.com/gliderlabs/ssh v0.3.8
+	github.com/gliderlabs/ssh v0.3.2
 	github.com/google/uuid v1.6.0
-	golang.org/x/crypto v0.41.0
+	golang.org/x/crypto v0.0.0-20201221181555-eec23a3978ad
 	golang.org/x/term v0.34.0
 	golang.org/x/text v0.28.0
 )

@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,8 +16,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gliderlabs/ssh"
-	gossh "golang.org/x/crypto/ssh" // Alias standard crypto/ssh
+	"github.com/gliderlabs/ssh"          // Keep for type compatibility
+	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 
 	// Local packages (Update paths)
@@ -25,13 +26,9 @@ import (
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/menu"
 	"github.com/stlalpha/vision3/internal/message"
-	"github.com/stlalpha/vision3/internal/session"
+	"github.com/stlalpha/vision3/internal/sshserver"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
-	// Needed for test code / shared types? Keep imports but ensure they are still needed.
-	// Removed imports only used by test code
-	// terminal "golang.org/x/crypto/ssh/terminal" // Alias to avoid conflict
-	// "golang.org/x/text/encoding/charmap"
 )
 
 var (
@@ -49,13 +46,231 @@ var (
 	outputModeFlag string // Output mode flag (auto, utf8, cp437)
 )
 
+// --- SSH Session Types (golang.org/x/crypto/ssh adapter) ---
+// Use gliderlabs/ssh types for compatibility
+
+// SessionContext provides session context information and implements gliderlabs/ssh.Context
+type SessionContext struct {
+	ctx         context.Context
+	sessionID   string
+	user        string
+	remoteAddr  net.Addr
+	localAddr   net.Addr
+	clientVer   string
+	serverVer   string
+	permissions *ssh.Permissions
+	mu          sync.Mutex
+	values      map[interface{}]interface{}
+}
+
+// context.Context methods
+func (sc *SessionContext) Value(key interface{}) interface{} {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if v, ok := sc.values[key]; ok {
+		return v
+	}
+	return sc.ctx.Value(key)
+}
+
+func (sc *SessionContext) Deadline() (deadline time.Time, ok bool) {
+	return sc.ctx.Deadline()
+}
+
+func (sc *SessionContext) Done() <-chan struct{} {
+	return sc.ctx.Done()
+}
+
+func (sc *SessionContext) Err() error {
+	return sc.ctx.Err()
+}
+
+// sync.Locker methods
+func (sc *SessionContext) Lock() {
+	sc.mu.Lock()
+}
+
+func (sc *SessionContext) Unlock() {
+	sc.mu.Unlock()
+}
+
+// gliderlabs/ssh.Context methods
+func (sc *SessionContext) User() string {
+	return sc.user
+}
+
+func (sc *SessionContext) SessionID() string {
+	return sc.sessionID
+}
+
+func (sc *SessionContext) ClientVersion() string {
+	return sc.clientVer
+}
+
+func (sc *SessionContext) ServerVersion() string {
+	return sc.serverVer
+}
+
+func (sc *SessionContext) RemoteAddr() net.Addr {
+	return sc.remoteAddr
+}
+
+func (sc *SessionContext) LocalAddr() net.Addr {
+	return sc.localAddr
+}
+
+func (sc *SessionContext) Permissions() *ssh.Permissions {
+	return sc.permissions
+}
+
+func (sc *SessionContext) SetValue(key, value interface{}) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if sc.values == nil {
+		sc.values = make(map[interface{}]interface{})
+	}
+	sc.values[key] = value
+}
+
+// SessionAdapter adapts golang.org/x/crypto/ssh to gliderlabs/ssh Session interface
+type SessionAdapter struct {
+	conn        *gossh.ServerConn
+	channel     gossh.Channel
+	requests    <-chan *gossh.Request
+	user        string
+	remoteAddr  net.Addr
+	localAddr   net.Addr
+	environ     []string
+	command     []string
+	rawCommand  string
+	subsystem   string
+	ptyMutex    sync.Mutex
+	pty         *ssh.Pty
+	winch       chan ssh.Window
+	hasPty      bool
+	ctx         *SessionContext
+	cancel      context.CancelFunc
+	signalsChan chan<- ssh.Signal
+	breakChan   chan<- bool
+}
+
+// Implement gossh.Channel methods
+func (s *SessionAdapter) Read(p []byte) (n int, err error) {
+	return s.channel.Read(p)
+}
+
+func (s *SessionAdapter) Write(p []byte) (n int, err error) {
+	return s.channel.Write(p)
+}
+
+func (s *SessionAdapter) CloseWrite() error {
+	return s.channel.CloseWrite()
+}
+
+func (s *SessionAdapter) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
+	return s.channel.SendRequest(name, wantReply, payload)
+}
+
+func (s *SessionAdapter) Stderr() io.ReadWriter {
+	return s.channel.Stderr()
+}
+
+// Implement Session interface methods
+func (s *SessionAdapter) User() string {
+	return s.user
+}
+
+func (s *SessionAdapter) RemoteAddr() net.Addr {
+	return s.remoteAddr
+}
+
+func (s *SessionAdapter) LocalAddr() net.Addr {
+	return s.localAddr
+}
+
+func (s *SessionAdapter) Context() context.Context {
+	return s.ctx
+}
+
+func (s *SessionAdapter) SessionID() string {
+	return s.ctx.sessionID
+}
+
+func (s *SessionAdapter) Environ() []string {
+	return s.environ
+}
+
+func (s *SessionAdapter) Command() []string {
+	return s.command
+}
+
+func (s *SessionAdapter) RawCommand() string {
+	return s.rawCommand
+}
+
+func (s *SessionAdapter) Subsystem() string {
+	return s.subsystem
+}
+
+func (s *SessionAdapter) PublicKey() ssh.PublicKey {
+	return nil // BBS uses password auth
+}
+
+func (s *SessionAdapter) Permissions() ssh.Permissions {
+	if s.ctx != nil && s.ctx.permissions != nil {
+		return *s.ctx.permissions
+	}
+	return ssh.Permissions{}
+}
+
+func (s *SessionAdapter) Pty() (ssh.Pty, <-chan ssh.Window, bool) {
+	s.ptyMutex.Lock()
+	defer s.ptyMutex.Unlock()
+	if s.hasPty && s.pty != nil {
+		return *s.pty, s.winch, true
+	}
+	return ssh.Pty{}, nil, false
+}
+
+func (s *SessionAdapter) Exit(code int) error {
+	// Send exit status
+	status := struct{ Status uint32 }{uint32(code)}
+	payload := gossh.Marshal(status)
+	s.SendRequest("exit-status", false, payload)
+	return s.Close()
+}
+
+func (s *SessionAdapter) Signals(c chan<- ssh.Signal) {
+	s.signalsChan = c
+}
+
+func (s *SessionAdapter) Break(c chan<- bool) {
+	s.breakChan = c
+}
+
+func (s *SessionAdapter) Close() error {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	return s.channel.Close()
+}
+
 // --- ANSI Test Server Code REMOVED ---
 
 // --- BBS sessionHandler (Original logic) ---
 func sessionHandler(s ssh.Session) {
 	nodeID := atomic.AddInt32(&nodeCounter, 1)
 	remoteAddr := s.RemoteAddr().String()
-	log.Printf("Node %d: Connection from %s (User: %s, Session ID: %s)", nodeID, remoteAddr, s.User(), s.Context().SessionID())
+
+	// Extract session ID if available (type-specific)
+	sessionID := fmt.Sprintf("node-%d", nodeID)
+	if ctx, ok := s.Context().(interface{ SessionID() string }); ok {
+		sessionID = ctx.SessionID()
+	}
+
+	log.Printf("Node %d: Connection from %s (User: %s, Session ID: %s)", nodeID, remoteAddr, s.User(), sessionID)
+	log.Printf("Node %d: Environment: %v", nodeID, s.Environ())
+	log.Printf("Node %d: Command: %v", nodeID, s.Command())
 
 	// Add session to active sessions map
 	activeSessionsMutex.Lock()
@@ -100,25 +315,25 @@ func sessionHandler(s ssh.Session) {
 		s.Close() // Ensure the session is closed
 	}(capturedStartTime) // Pass only the startTime value
 
-	// Create the session state object *early*
-	sessionState := &session.BbsSession{
-		// Conn:    s.Conn,     // Need the underlying gossh.Conn if possible, might need context
-		Channel:    nil,         // Channel might not be directly available here, depends on gliderlabs/ssh context
-		User:       nil,         // Set after authentication
-		ID:         int(nodeID), // Use correct field name 'ID'
-		StartTime:  time.Now(),  // Record session start time
-		Pty:        nil,         // Will be set if/when PTY is granted
-		AutoRunLog: make(types.AutoRunTracker),
-	}
+	// Create the session state object *early* - COMMENTED OUT (not used, type mismatch)
+	// sessionState := &session.BbsSession{
+	// 	// Conn:    s.Conn,     // Need the underlying gossh.Conn if possible, might need context
+	// 	Channel:    nil,         // Channel might not be directly available here, depends on gliderlabs/ssh context
+	// 	User:       nil,         // Set after authentication
+	// 	ID:         int(nodeID), // Use correct field name 'ID'
+	// 	StartTime:  time.Now(),  // Record session start time
+	// 	Pty:        nil,         // Will be set if/when PTY is granted
+	// 	AutoRunLog: make(types.AutoRunTracker),
+	// }
 
 	// --- PTY Request Handling ---
-	ptyReq, winCh, isPty := s.Pty() // Get PTY info from the original ssh.Session 's'
+	ptyReq, winCh, isPty := s.Pty() // Get PTY info from SessionAdapter
 	if isPty {
 		log.Printf("Node %d: PTY Request Accepted: %s", nodeID, ptyReq.Term)
-		// Store PTY info in session state
-		sessionState.Pty = &ptyReq // Store a pointer to the ptyReq
-		sessionState.Width = ptyReq.Window.Width
-		sessionState.Height = ptyReq.Window.Height
+		// Store PTY info in session state - COMMENTED OUT (sessionState not used)
+		// sessionState.Pty = &ptyReq
+		// sessionState.Width = ptyReq.Window.Width
+		// sessionState.Height = ptyReq.Window.Height
 	} else {
 		log.Printf("Node %d: No PTY Request received. Proceeding without PTY.", nodeID)
 		// Handle non-PTY sessions gracefully, maybe just print a message and exit?
@@ -142,7 +357,7 @@ func sessionHandler(s ssh.Session) {
 			termType := strings.ToLower(ptyReq.Term)
 			log.Printf("Node %d: Auto mode detecting based on TERM='%s'", nodeID, termType)
 			// Heuristic: Check for known CP437-preferring TERM types
-			if termType == "sync" || termType == "ansi" || termType == "scoansi" || strings.HasPrefix(termType, "vt100") {
+			if termType == "sync" || termType == "syncterm" || termType == "ansi" || termType == "scoansi" || strings.HasPrefix(termType, "vt100") {
 				log.Printf("Node %d: Auto mode selecting CP437 output for TERM='%s'", nodeID, termType)
 				effectiveMode = ansi.OutputModeCP437
 			} else {
@@ -162,35 +377,9 @@ func sessionHandler(s ssh.Session) {
 	terminal := term.NewTerminal(s, "") // Use session 's' as the R/W source for the terminal
 
 	// --- Simple Test Output ---
-	testMsg := "\r\n\x1b[31mSimple Test: RED\x1b[0m | \x1b[32mGREEN\x1b[0m | ASCII: Hello! 123?.,;\r\n"
-	log.Printf("Node %d: Writing simple test message...", nodeID)
-	_, testErr := terminal.Write([]byte(testMsg))
-	if testErr != nil {
-		log.Printf("Node %d: Error writing test message: %v", nodeID, testErr)
-	}
-	log.Printf("Node %d: Finished writing simple test message.", nodeID)
-	// ------------------------
-
-	// --- Attempt PTY/Environment Negotiation ---
-	// Send requests AFTER terminal is created, potentially influencing the PTY env
-	if isPty {
-		log.Printf("Node %d: PTY acquired. Attempting to configure environment.", nodeID)
-
-		// Helper to send environment variables (RFC 4254 Section 6.4)
-		sendEnv(s, "TERM", "xterm-256color")
-		// Attempt to force UTF-8 locale (common variables, might not be respected by Windows SSHd)
-		sendEnv(s, "LANG", "en_US.UTF-8")
-		sendEnv(s, "LC_ALL", "en_US.UTF-8")
-		sendEnv(s, "LC_CTYPE", "UTF-8")
-
-		// Short delay to allow server to potentially process requests
-		log.Printf("Node %d: Waiting briefly after sending env requests...", nodeID)
-		time.Sleep(150 * time.Millisecond) // Slightly longer pause
-		log.Printf("Node %d: Proceeding after environment configuration attempt.", nodeID)
-
-	} else {
-		log.Printf("Node %d: No PTY requested, skipping environment configuration.", nodeID)
-	}
+	// NOTE: Removed immediate test output and environment override attempts
+	// These were interfering with SyncTerm session activation
+	// The terminal is ready to use once created
 	// -------------------------------------------
 
 	// --- Handle Window Size Changes ---
@@ -240,6 +429,24 @@ func sessionHandler(s ssh.Session) {
 	currentMenuName := "LOGIN"               // Start with LOGIN
 	var nextActionAfterLogin string          // << NEW: Variable to store the action after successful login
 	autoRunLog := make(types.AutoRunTracker) // Initialize tracker for this session
+
+	// Check if user is already authenticated via SSH
+	sshUsername := s.User()
+	if sshUsername != "" {
+		log.Printf("Node %d: SSH user '%s' detected, attempting auto-login", nodeID, sshUsername)
+		// Try to load the user from the database
+		sshUser, found := userMgr.GetUser(sshUsername)
+		if found && sshUser != nil {
+			// User exists in database, authenticate them automatically
+			authenticatedUser = sshUser
+			log.Printf("Node %d: SSH auto-login successful for user '%s' (Handle: %s)", nodeID, sshUsername, sshUser.Handle)
+			currentMenuName = "MAIN" // Skip LOGIN, go directly to MAIN menu
+			nextActionAfterLogin = "MAIN"
+		} else {
+			log.Printf("Node %d: SSH user '%s' not found in BBS database, requiring manual login", nodeID, sshUsername)
+			// User not in database, proceed with normal LOGIN flow
+		}
+	}
 
 	// Login Loop
 	for authenticatedUser == nil {
@@ -341,6 +548,17 @@ func sessionHandler(s ssh.Session) {
 	log.Printf("Node %d: Session handler finished for %s.", nodeID, authenticatedUser.Handle)
 }
 
+// libsshSessionHandler adapts libssh sessions to the existing BBS session handler
+func libsshSessionHandler(sess *sshserver.Session) error {
+	// Create adapter that implements ssh.Session interface
+	adapter := sshserver.NewBBSSessionAdapter(sess)
+
+	// Call the existing session handler with the adapter
+	sessionHandler(adapter)
+
+	return nil
+}
+
 // --- Test Functions REMOVED ---
 
 // --- Main Function --- //
@@ -393,6 +611,12 @@ func main() {
 		defer logFile.Close()
 	}
 
+	// Load server configuration
+	serverConfig, err := config.LoadServerConfig(rootConfigPath)
+	if err != nil {
+		log.Fatalf("Failed to load server configuration: %v", err)
+	}
+
 	// Load global strings configuration from the new location
 	loadedStrings, err = config.LoadStrings(rootConfigPath)
 	if err != nil {
@@ -441,47 +665,301 @@ func main() {
 	// Initialize MenuExecutor with new paths, loaded theme, and message manager
 	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, messageMgr, fileMgr)
 
-	// Load Host Key
-	hostKeyPath := filepath.Join(rootConfigPath, "ssh_host_rsa_key") // Example host key path
-	hostKeySigner := loadHostKey(hostKeyPath)
+	// Host key path for libssh
+	hostKeyPath := filepath.Join(rootConfigPath, "ssh_host_rsa_key")
 
-	sshPort := 2222
-	sshHost := "0.0.0.0"
-	log.Printf("INFO: Configuring BBS SSH server on %s:%d...", sshHost, sshPort)
+	// Verify host key exists
+	if _, err := os.Stat(hostKeyPath); err != nil {
+		log.Fatalf("FATAL: Host key not found at %s: %v", hostKeyPath, err)
+	}
+	log.Printf("INFO: Host key found at %s", hostKeyPath)
 
-	algorithms := gossh.SupportedAlgorithms() // drop insecure algos.
-	server := &ssh.Server{
-		Addr:    fmt.Sprintf("%s:%d", sshHost, sshPort),
-		Handler: sessionHandler,
-		ServerConfigCallback: func(ctx ssh.Context) *gossh.ServerConfig {
-			cfg := &gossh.ServerConfig{
-				Config: gossh.Config{
-					KeyExchanges: algorithms.KeyExchanges,
-					Ciphers:      algorithms.Ciphers,
-					MACs:         algorithms.MACs,
-				},
-			}
-			return cfg
-		},
+	// Use SSH settings from server config
+	sshPort := serverConfig.SSHPort
+	sshHost := serverConfig.SSHHost
+	log.Printf("INFO: Configuring libssh SSH server on %s:%d...", sshHost, sshPort)
+
+	// Create libssh server
+	server, err := sshserver.NewServer(sshserver.Config{
+		HostKeyPath:    hostKeyPath,
+		Port:           sshPort,
+		SessionHandler: libsshSessionHandler,
+	})
+	if err != nil {
+		log.Fatalf("FATAL: Failed to create SSH server: %v", err)
+	}
+	defer server.Close()
+	defer sshserver.Cleanup()
+
+	// Start listening
+	if err := server.Listen(); err != nil {
+		log.Fatalf("FATAL: Failed to start SSH server: %v", err)
 	}
 
-	server.AddHostKey(hostKeySigner)
+	log.Printf("INFO: BBS server ready - connect via: ssh <username>@%s -p %d", sshHost, sshPort)
 
-	// Revert log message back to original
-	log.Printf("INFO: Starting BBS server on %s:%d...", sshHost, sshPort)
-	if err := server.ListenAndServe(); err != nil {
-		if !errors.Is(err, ssh.ErrServerClosed) {
-			log.Fatalf("FATAL: Failed to start BBS server: %v", err)
-		} else {
-			log.Println("INFO: BBS server closed gracefully.")
+	// Accept connections loop
+	for {
+		if err := server.Accept(); err != nil {
+			log.Printf("ERROR: Failed to accept connection: %v", err)
+			time.Sleep(100 * time.Millisecond) // Brief delay to avoid tight loop on persistent errors
 		}
 	}
-	log.Println("INFO: BBS Application shutting down.")
 
 }
 
+// --- SSH Helper Functions ---
+
+// parsePtyRequest parses a PTY request payload
+func parsePtyRequest(payload []byte) (ssh.Pty, bool) {
+	if len(payload) < 4 {
+		return ssh.Pty{}, false
+	}
+	termLen := binary.BigEndian.Uint32(payload[:4])
+	if len(payload) < int(4+termLen+16) {
+		return ssh.Pty{}, false
+	}
+	term := string(payload[4 : 4+termLen])
+	w := binary.BigEndian.Uint32(payload[4+termLen:])
+	h := binary.BigEndian.Uint32(payload[8+termLen:])
+	return ssh.Pty{
+		Term: term,
+		Window: ssh.Window{
+			Width:  int(w),
+			Height: int(h),
+		},
+	}, true
+}
+
+// parseWinchRequest parses a window-change request payload
+func parseWinchRequest(payload []byte) (ssh.Window, bool) {
+	if len(payload) < 8 {
+		return ssh.Window{}, false
+	}
+	w := binary.BigEndian.Uint32(payload[:4])
+	h := binary.BigEndian.Uint32(payload[4:8])
+	return ssh.Window{Width: int(w), Height: int(h)}, true
+}
+
+// generateSessionID generates a unique session ID
+func generateSessionID() string {
+	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), atomic.AddInt32(&nodeCounter, 1))
+}
+
+// handleSSHConnection handles an SSH connection
+func handleSSHConnection(tcpConn net.Conn, sshConfig *gossh.ServerConfig) {
+	defer tcpConn.Close()
+
+	remoteAddr := tcpConn.RemoteAddr().String()
+	log.Printf("New TCP connection from %s", remoteAddr)
+
+	// Set a deadline for the handshake to prevent hanging connections
+	tcpConn.SetDeadline(time.Now().Add(30 * time.Second))
+
+	// Perform SSH handshake
+	log.Printf("DEBUG: Starting SSH handshake with %s", remoteAddr)
+	sshConn, chans, reqs, err := gossh.NewServerConn(tcpConn, sshConfig)
+	if err != nil {
+		log.Printf("ERROR: SSH handshake failed from %s: %v", remoteAddr, err)
+		log.Printf("DEBUG: This typically means algorithm negotiation failed or client disconnected")
+		return
+	}
+	defer sshConn.Close()
+
+	log.Printf("SSH handshake successful from %s (user: %s)", tcpConn.RemoteAddr(), sshConn.User())
+
+	// Discard global requests
+	go gossh.DiscardRequests(reqs)
+
+	// Handle incoming channels
+	for newChannel := range chans {
+		if newChannel.ChannelType() != "session" {
+			newChannel.Reject(gossh.UnknownChannelType, "unknown channel type")
+			log.Printf("Rejected channel type: %s", newChannel.ChannelType())
+			continue
+		}
+
+		// Accept session channel
+		channel, requests, err := newChannel.Accept()
+		if err != nil {
+			log.Printf("Failed to accept channel: %v", err)
+			continue
+		}
+
+		// Handle session in goroutine
+		go handleSessionChannel(sshConn, channel, requests)
+	}
+}
+
+// handleSessionChannel processes a session channel and its requests
+func handleSessionChannel(conn *gossh.ServerConn, channel gossh.Channel, requests <-chan *gossh.Request) {
+	defer channel.Close()
+
+	// Create session adapter
+	baseCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sessionID := generateSessionID()
+
+	sessionCtx := &SessionContext{
+		ctx:        baseCtx,
+		sessionID:  sessionID,
+		user:       conn.User(),
+		remoteAddr: conn.RemoteAddr(),
+		localAddr:  conn.LocalAddr(),
+		clientVer:  string(conn.ClientVersion()),
+		serverVer:  string(conn.ServerVersion()),
+		values:     make(map[interface{}]interface{}),
+	}
+
+	adapter := &SessionAdapter{
+		conn:       conn,
+		channel:    channel,
+		requests:   requests,
+		user:       conn.User(),
+		remoteAddr: conn.RemoteAddr(),
+		localAddr:  conn.LocalAddr(),
+		environ:    make([]string, 0),
+		command:    make([]string, 0),
+		ctx:        sessionCtx,
+		cancel:     cancel,
+		winch:      make(chan ssh.Window, 1),
+	}
+
+	// Process channel requests until shell/exec
+	shellRequested := false
+	for req := range requests {
+		switch req.Type {
+		case "pty-req":
+			pty, ok := parsePtyRequest(req.Payload)
+			if ok {
+				adapter.ptyMutex.Lock()
+				adapter.pty = &pty
+				adapter.hasPty = true
+				select {
+				case adapter.winch <- pty.Window:
+				default:
+				}
+				adapter.ptyMutex.Unlock()
+				req.Reply(true, nil)
+				log.Printf("PTY Request accepted: Term=%s, Width=%d, Height=%d",
+					pty.Term, pty.Window.Width, pty.Window.Height)
+			} else {
+				req.Reply(false, nil)
+				log.Printf("PTY Request failed to parse")
+			}
+
+		case "window-change":
+			win, ok := parseWinchRequest(req.Payload)
+			if ok && adapter.hasPty {
+				adapter.ptyMutex.Lock()
+				adapter.pty.Window = win
+				select {
+				case adapter.winch <- win:
+				default:
+				}
+				adapter.ptyMutex.Unlock()
+				req.Reply(true, nil)
+				log.Printf("Window change: %dx%d", win.Width, win.Height)
+			} else {
+				req.Reply(false, nil)
+			}
+
+		case "env":
+			// Parse KEY=VALUE from payload
+			if len(req.Payload) >= 8 {
+				keyLen := binary.BigEndian.Uint32(req.Payload[:4])
+				if len(req.Payload) >= int(8+keyLen) {
+					key := string(req.Payload[4 : 4+keyLen])
+					valLen := binary.BigEndian.Uint32(req.Payload[4+keyLen:])
+					if len(req.Payload) >= int(8+keyLen+valLen) {
+						val := string(req.Payload[8+keyLen : 8+keyLen+valLen])
+						adapter.environ = append(adapter.environ, fmt.Sprintf("%s=%s", key, val))
+					}
+				}
+			}
+			req.Reply(true, nil)
+
+		case "shell":
+			req.Reply(true, nil)
+			shellRequested = true
+			log.Printf("Shell request accepted")
+			// Continue processing requests in background for window-change
+			go func() {
+				for req := range requests {
+					if req.Type == "window-change" {
+						win, ok := parseWinchRequest(req.Payload)
+						if ok && adapter.hasPty {
+							adapter.ptyMutex.Lock()
+							adapter.pty.Window = win
+							select {
+							case adapter.winch <- win:
+							default:
+							}
+							adapter.ptyMutex.Unlock()
+							req.Reply(true, nil)
+						} else {
+							req.Reply(false, nil)
+						}
+					} else {
+						req.Reply(false, nil)
+					}
+				}
+			}()
+			// Invoke BBS session handler
+			sessionHandler(adapter)
+			return
+
+		case "exec":
+			// Parse command
+			if len(req.Payload) >= 4 {
+				cmdLen := binary.BigEndian.Uint32(req.Payload[:4])
+				if len(req.Payload) >= int(4+cmdLen) {
+					cmd := string(req.Payload[4 : 4+cmdLen])
+					adapter.command = strings.Fields(cmd)
+				}
+			}
+			req.Reply(true, nil)
+			shellRequested = true
+			log.Printf("Exec request: %v", adapter.command)
+			// Background request processing (same as shell)
+			go func() {
+				for req := range requests {
+					if req.Type == "window-change" {
+						win, ok := parseWinchRequest(req.Payload)
+						if ok && adapter.hasPty {
+							adapter.ptyMutex.Lock()
+							adapter.pty.Window = win
+							select {
+							case adapter.winch <- win:
+							default:
+							}
+							adapter.ptyMutex.Unlock()
+							req.Reply(true, nil)
+						} else {
+							req.Reply(false, nil)
+						}
+					} else {
+						req.Reply(false, nil)
+					}
+				}
+			}()
+			sessionHandler(adapter)
+			return
+
+		default:
+			req.Reply(false, nil)
+		}
+	}
+
+	// Channel closed without shell/exec request
+	if !shellRequested {
+		log.Printf("Channel closed without shell/exec request")
+	}
+}
+
 // --- Helper Functions (Existing loadHostKey, sendEnv) ---
-func loadHostKey(path string) ssh.Signer {
+func loadHostKey(path string) gossh.Signer {
 	keyBytes, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to read host key %s: %v", path, err)
@@ -491,10 +969,11 @@ func loadHostKey(path string) ssh.Signer {
 		log.Fatalf("FATAL: Failed to parse host key %s: %v", path, err)
 	}
 	log.Printf("INFO: Host key loaded successfully from %s", path)
+	log.Printf("DEBUG: Host key type: %s", signer.PublicKey().Type())
 	return signer
 }
 
-func sendEnv(s ssh.Session, name, value string) {
+func sendEnv(s *SessionAdapter, name, value string) {
 	payload := &bytes.Buffer{}
 	binary.Write(payload, binary.BigEndian, uint32(len(name)))
 	payload.WriteString(name)
