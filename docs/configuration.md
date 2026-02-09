@@ -166,17 +166,34 @@ General BBS configuration settings.
   "boardPhoneNumber": "314-567-3833",
   "sysOpLevel": 255,
   "coSysLevel": 250,
-  "logonLevel": 100
+  "logonLevel": 100,
+  "sshPort": 2222,
+  "sshHost": "0.0.0.0",
+  "sshEnabled": true,
+  "telnetPort": 2323,
+  "telnetHost": "0.0.0.0",
+  "telnetEnabled": true
 }
 ```
 
 ### Field Descriptions
 
+**BBS Settings:**
 - `boardName` - BBS name displayed to users
 - `boardPhoneNumber` - Phone number (historical/display purposes)
 - `sysOpLevel` - Security level for SysOp access
 - `coSysLevel` - Security level for Co-SysOp access
 - `logonLevel` - Security level granted after successful login
+
+**SSH Server:**
+- `sshPort` - Port for SSH connections (default: 2222)
+- `sshHost` - Bind address for SSH listener (default: `0.0.0.0`)
+- `sshEnabled` - Enable or disable the SSH server
+
+**Telnet Server:**
+- `telnetPort` - Port for telnet connections (default: 2323)
+- `telnetHost` - Bind address for telnet listener (default: `0.0.0.0`)
+- `telnetEnabled` - Enable or disable the telnet server
 
 ## message_areas.json
 

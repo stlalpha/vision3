@@ -20,6 +20,10 @@ This directory contains comprehensive documentation for the ViSiON/3 BBS system.
 - [File Areas](file-areas.md) - Configuring file areas and transfers
 - [Door Programs](doors.md) - Setting up external door programs
 
+### Networking
+- [SSH Server Migration](ssh-server-migration.md) - SSH server libssh implementation details
+- [Telnet Server](telnet-server.md) - Telnet server protocol and implementation details
+
 ### Reference
 - [Technical Details](technical.md) - Implementation details and decisions
 - [Project Status](status.md) - Current implementation status

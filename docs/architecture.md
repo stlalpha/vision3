@@ -4,19 +4,19 @@ This document outlines the high-level architecture of the ViSiON/3 Go BBS.
 
 ## Overview
 
-The system is designed as a single Go application that listens for incoming SSH connections and manages individual user sessions. The main entry point is `cmd/vision3/main.go`.
+The system is designed as a single Go application that listens for incoming SSH and telnet connections and manages individual user sessions. Both protocols share the same session handler via the `gliderlabs/ssh.Session` interface. The main entry point is `cmd/vision3/main.go`.
 
 ## Components
 
 1. **Main Application (`cmd/vision3/main.go`)**
    * Initializes logging, configuration, user/message/file managers, and menu executor
-   * Sets up the SSH server configuration using gliderlabs/ssh library
+   * Sets up the SSH server (libssh via CGO) and telnet server (native Go)
    * Loads SSH host keys from `configs/` directory
-   * Listens for incoming TCP connections on the configured port (default: 2222)
+   * Listens for incoming connections on configured ports (SSH default: 2222, Telnet default: 2323)
    * Accepts connections and spawns goroutines to handle individual sessions via `sessionHandler`
 
 2. **Session Handler (`sessionHandler` in `cmd/vision3/main.go`)**
-   * Manages the lifecycle of a single SSH session
+   * Manages the lifecycle of a single session (SSH or telnet)
    * Handles PTY requests and window size changes
    * Determines output mode (UTF-8, CP437, or auto-detect)
    * Creates terminal instance for I/O
@@ -66,7 +66,7 @@ The system is designed as a single Go application that listens for incoming SSH 
 
 ## Data Flow
 
-1. Client connects via SSH → `main` accepts → `sessionHandler` spawned
+1. Client connects via SSH or telnet → `main` accepts → `sessionHandler` spawned
 2. `sessionHandler` handles PTY setup and determines output mode
 3. `sessionHandler` starts authentication loop via menu executor
 4. Menu executor loads LOGIN menu and handles authentication
@@ -93,6 +93,8 @@ vision3/
 │   ├── menu/           # Menu system
 │   ├── message/        # Message area management
 │   ├── session/        # Session management
+│   ├── sshserver/      # SSH server (libssh via CGO)
+│   ├── telnetserver/   # Telnet server (native Go)
 │   ├── terminalio/     # Terminal I/O utilities
 │   ├── transfer/       # File transfer protocols
 │   ├── types/          # Shared types
@@ -106,7 +108,9 @@ vision3/
 
 ## Module Boundaries
 
-* `cmd/vision3`: Main application loop, SSH server setup, session handling
+* `cmd/vision3`: Main application loop, SSH/telnet server setup, session handling
+* `internal/sshserver`: SSH server using libssh via CGO
+* `internal/telnetserver`: Telnet server with IAC protocol handling
 * `internal/user`: User data structures, persistence, authentication, ACS logic
 * `internal/ansi`: ViSiON/2 pipe code parsing and character encoding
 * `internal/config`: Configuration file loading and parsing
@@ -120,7 +124,7 @@ vision3/
 ## Key Design Decisions
 
 1. **Single Binary**: All functionality is compiled into a single Go binary for easy deployment
-2. **SSH-Only**: Uses SSH for secure remote access (no telnet support)
+2. **Dual Protocol**: Supports both SSH (libssh) and telnet, both adapting to `gliderlabs/ssh.Session`
 3. **Menu-Driven**: All functionality is accessed through a hierarchical menu system
 4. **Pipe Code Compatibility**: Maintains compatibility with ViSiON/2 pipe codes for colors
 5. **Multiple Output Modes**: Supports both UTF-8 and CP437 output for compatibility
