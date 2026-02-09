@@ -22,7 +22,6 @@ fi
 echo "Creating directory structure..."
 mkdir -p data/users
 mkdir -p data/files/general
-mkdir -p log
 
 # Check if initial data files exist
 if [ ! -f "data/oneliners.json" ]; then
@@ -77,6 +76,7 @@ echo "IMPORTANT: Change the default password immediately!"
 echo
 echo "To start the BBS:"
 echo "  cd cmd/vision3 && ./vision3"
+echo "  or run ./build_and_run.sh to build and start in one step."
 echo
 echo "To connect:"
-echo "  ssh felonius@localhost -p 2222" 
+echo "  ssh user@localhost -p 2222" 

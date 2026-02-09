@@ -45,6 +45,10 @@ type User struct {
 	CurrentFileAreaID  int         `json:"current_file_area_id,omitempty"`  // Added for default file area tracking
 	CurrentFileAreaTag string      `json:"current_file_area_tag,omitempty"` // Added for default file area tracking
 	TaggedFileIDs      []uuid.UUID `json:"tagged_file_ids,omitempty"`       // List of FileRecord IDs marked for batch download
+
+	// Terminal Preferences
+	ScreenWidth  int `json:"screenWidth,omitempty"`  // Detected/preferred terminal width (default 80)
+	ScreenHeight int `json:"screenHeight,omitempty"` // Detected/preferred terminal height (default 25)
 }
 
 // CallRecord stores information about a single call session.

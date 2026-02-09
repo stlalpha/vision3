@@ -353,6 +353,10 @@ type ServerConfig struct {
 	LogonLevel       int    `json:"logonLevel"`
 	SSHPort          int    `json:"sshPort"`
 	SSHHost          string `json:"sshHost"`
+	SSHEnabled       bool   `json:"sshEnabled"`
+	TelnetPort       int    `json:"telnetPort"`
+	TelnetHost       string `json:"telnetHost"`
+	TelnetEnabled    bool   `json:"telnetEnabled"`
 }
 
 // LoadServerConfig loads the server configuration from config.json
@@ -369,6 +373,10 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		LogonLevel:       100,
 		SSHPort:          2222,
 		SSHHost:          "0.0.0.0",
+		SSHEnabled:       true,
+		TelnetPort:       2323,
+		TelnetHost:       "0.0.0.0",
+		TelnetEnabled:    false,
 	}
 
 	data, err := os.ReadFile(filePath)

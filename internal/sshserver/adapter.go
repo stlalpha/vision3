@@ -90,21 +90,43 @@ func NewBBSSessionAdapter(sess *Session) *BBSSessionAdapter {
 		values:  make(map[interface{}]interface{}),
 	}
 
+	sshWinCh := make(chan ssh.Window, 4)
+
 	adapter := &BBSSessionAdapter{
 		session:  sess,
 		ctx:      bbsCtx,
-		winCh:    make(chan ssh.Window, 1),
+		winCh:    sshWinCh,
 		commands: []string{},
 		env:      []string{},
 	}
 
 	// Send initial window size if PTY was requested
 	if sess.PTY != nil {
-		adapter.winCh <- ssh.Window{
+		sshWinCh <- ssh.Window{
 			Width:  sess.PTY.Width,
 			Height: sess.PTY.Height,
 		}
 	}
+
+	// Bridge window resize events from Session.WinCh (callback-driven)
+	// to the ssh.Window channel consumed by the BBS session handler
+	go func() {
+		for {
+			select {
+			case w, ok := <-sess.WinCh:
+				if !ok {
+					return
+				}
+				select {
+				case sshWinCh <- ssh.Window{Width: w.Width, Height: w.Height}:
+				default:
+					// Drop if full, resize is best-effort
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
 
 	return adapter
 }

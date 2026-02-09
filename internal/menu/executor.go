@@ -845,7 +845,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 // Reverted s parameter back to ssh.Session
 // Added outputMode parameter
 // Added currentAreaName parameter
-func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, startMenu string, nodeNumber int, sessionStartTime time.Time, autoRunLog types.AutoRunTracker, outputMode ansi.OutputMode, currentAreaName string) (string, *user.User, error) {
+func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, startMenu string, nodeNumber int, sessionStartTime time.Time, autoRunLog types.AutoRunTracker, outputMode ansi.OutputMode, currentAreaName string, termWidth int, termHeight int) (string, *user.User, error) {
 	currentMenuName := strings.ToUpper(startMenu)
 	var previousMenuName string // Track the last menu visited
 	// var authenticatedUserResult *user.User // Unused
@@ -903,17 +903,28 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				continue
 			}
 
-			// Display the processed LOGIN screen (display logic moved to regular menu processing)
+			// Display the processed LOGIN screen, truncated to fit terminal height
 			terminal.Write([]byte(ansi.ClearScreen())) // Clear first
-			// Write the processed bytes (encoding determined by outputMode) directly
-			_, wErr := terminal.Write(ansiProcessResult.DisplayBytes)
+			displayBytes := ansiProcessResult.DisplayBytes
+			if termHeight > 0 && termHeight < 25 {
+				// Truncate ANSI output to terminal height to prevent scrolling
+				// which would shift all Y coordinates
+				lines := bytes.Split(displayBytes, []byte("\n"))
+				if len(lines) > termHeight {
+					lines = lines[:termHeight]
+				}
+				displayBytes = bytes.Join(lines, []byte("\n"))
+				log.Printf("DEBUG: Truncated LOGIN.ANS from %d to %d lines for %d-row terminal",
+					len(bytes.Split(ansiProcessResult.DisplayBytes, []byte("\n"))), len(lines), termHeight)
+			}
+			_, wErr := terminal.Write(displayBytes)
 			if wErr != nil {
 				log.Printf("ERROR: Failed to write processed LOGIN.ANS bytes to terminal: %v", wErr)
 				return "", nil, fmt.Errorf("failed to display LOGIN.ANS: %w", wErr)
 			}
 
 			// Handle the interactive login prompt using extracted coordinates
-			authenticatedUserResult, loginErr := e.handleLoginPrompt(s, terminal, userManager, nodeNumber, ansiProcessResult.FieldCoords, outputMode)
+			authenticatedUserResult, loginErr := e.handleLoginPrompt(s, terminal, userManager, nodeNumber, ansiProcessResult.FieldCoords, outputMode, termWidth, termHeight)
 
 			// Process result of login attempt
 			if loginErr != nil {
@@ -928,6 +939,18 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			if authenticatedUserResult != nil {
 				log.Printf("INFO: Login successful for user %s. Proceeding based on LOGIN menu config.", authenticatedUserResult.Handle)
 				currentUser = authenticatedUserResult // Update the user for this Run context
+
+				// --- Update user's terminal dimensions from detected size ---
+				if termWidth > 0 && termHeight > 0 {
+					currentUser.ScreenWidth = termWidth
+					currentUser.ScreenHeight = termHeight
+					log.Printf("INFO: Updated user %s screen preferences to %dx%d", currentUser.Handle, termWidth, termHeight)
+					if userManager != nil {
+						if saveErr := userManager.SaveUsers(); saveErr != nil {
+							log.Printf("ERROR: Failed to save user screen preferences: %v", saveErr)
+						}
+					}
+				}
 
 				// --- BEGIN Set Default Message Area ---
 				if currentUser != nil && e.MessageMgr != nil {
@@ -1480,7 +1503,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 // handleLoginPrompt manages the interactive username/password entry using coordinates.
 // Added outputMode parameter.
-func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, nodeNumber int, coords map[string]struct{ X, Y int }, outputMode ansi.OutputMode) (*user.User, error) {
+func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, nodeNumber int, coords map[string]struct{ X, Y int }, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, error) {
 	// Get coordinates for username and password fields from the map
 	userCoord, userOk := coords["P"] // Use 'P' for Handle/Name field based on LOGIN.ANS
 	passCoord, passOk := coords["O"] // Use 'O' for Password field based on LOGIN.ANS
@@ -1494,14 +1517,17 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		return nil, fmt.Errorf("missing login coordinates P/O in LOGIN.ANS")
 	}
 
-	errorRow := passCoord.Y + 2 // Default error message row below password
+	// No Y offset needed — ANSI display is truncated to termHeight rows,
+	// preventing scrolling, so extracted coordinates are accurate as-is
+	log.Printf("DEBUG: Node %d: Login prompt coords P=(%d,%d) O=(%d,%d) termHeight=%d", nodeNumber, userCoord.X, userCoord.Y, passCoord.X, passCoord.Y, termHeight)
+
+	errorRow := passCoord.Y + 2 // Error message row below password
 	if errorRow <= userCoord.Y || errorRow <= passCoord.Y {
 		errorRow = userCoord.Y + 2 // Adjust if overlapping
 	}
 
-	// Move to Username position (using original X) and read input
-	// Subtract 1 from Y coordinate to move cursor up one line
-	terminal.Write([]byte(ansi.MoveCursor(userCoord.Y-1, userCoord.X)))
+	// Move to Username position (coordinates are accurate since display is truncated to fit)
+	terminal.Write([]byte(ansi.MoveCursor(userCoord.Y, userCoord.X)))
 	usernameInput, err := terminal.ReadLine()
 	if err != nil {
 		if err == io.EOF {
@@ -1516,9 +1542,8 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		return nil, nil // Return nil user, nil error to signal retry LOGIN
 	}
 
-	// Move to Password position and read input securely
-	// Subtract 1 from Y coordinate to move cursor up one line
-	terminal.Write([]byte(ansi.MoveCursor(passCoord.Y-1, passCoord.X)))
+	// Move to Password position (coordinates are accurate since display is truncated to fit)
+	terminal.Write([]byte(ansi.MoveCursor(passCoord.Y, passCoord.X)))
 	password, err := readPasswordSecurely(s, terminal) // Use ssh.Session 's'
 	if err != nil {
 		if errors.Is(err, io.EOF) {

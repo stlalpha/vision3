@@ -27,6 +27,7 @@ import (
 	"github.com/stlalpha/vision3/internal/menu"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/sshserver"
+	"github.com/stlalpha/vision3/internal/telnetserver"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -328,18 +329,19 @@ func sessionHandler(s ssh.Session) {
 
 	// --- PTY Request Handling ---
 	ptyReq, winCh, isPty := s.Pty() // Get PTY info from SessionAdapter
+	termWidth := 80  // Default terminal width
+	termHeight := 25 // Default terminal height
 	if isPty {
 		log.Printf("Node %d: PTY Request Accepted: %s", nodeID, ptyReq.Term)
-		// Store PTY info in session state - COMMENTED OUT (sessionState not used)
-		// sessionState.Pty = &ptyReq
-		// sessionState.Width = ptyReq.Window.Width
-		// sessionState.Height = ptyReq.Window.Height
+		if ptyReq.Window.Width > 0 {
+			termWidth = ptyReq.Window.Width
+		}
+		if ptyReq.Window.Height > 0 {
+			termHeight = ptyReq.Window.Height
+		}
+		log.Printf("Node %d: Terminal size from PTY: %dx%d", nodeID, termWidth, termHeight)
 	} else {
 		log.Printf("Node %d: No PTY Request received. Proceeding without PTY.", nodeID)
-		// Handle non-PTY sessions gracefully, maybe just print a message and exit?
-		// For a BBS, PTY is usually required.
-		// fmt.Fprintln(s, "PTY is required for BBS access.")
-		// return // Exit if no PTY? Or try to proceed?
 	}
 
 	// --- Determine Output Mode ---
@@ -387,19 +389,13 @@ func sessionHandler(s ssh.Session) {
 	// because a PTY might be granted later or window size changes can occur
 	go func() {
 		for win := range winCh { // Loop until the channel is closed
-			log.Printf("Node %d: Window resize event: %+v", nodeID, win)
-			// TODO: Check if SetSize is implemented and safe to call
-			// err := terminal.SetSize(win.Width, win.Height)
-			// if err != nil {
-			// 	log.Printf("Node %d: Error setting terminal size: %v", nodeID, err)
-			// }
-			// Store the latest window size if needed elsewhere
-			// currentWidth = win.Width
-			// currentHeight = win.Height
-
-			// If you need to redraw the screen on resize, signal the main loop here
-			// Example: send a special value on a channel, or set a flag
-			// redrawSignal <- true
+			log.Printf("Node %d: Window resize event: %dx%d", nodeID, win.Width, win.Height)
+			if win.Width > 0 {
+				termWidth = win.Width
+			}
+			if win.Height > 0 {
+				termHeight = win.Height
+			}
 		}
 		log.Printf("Node %d: Window change channel closed.", nodeID)
 	}()
@@ -440,6 +436,15 @@ func sessionHandler(s ssh.Session) {
 			// User exists in database, authenticate them automatically
 			authenticatedUser = sshUser
 			log.Printf("Node %d: SSH auto-login successful for user '%s' (Handle: %s)", nodeID, sshUsername, sshUser.Handle)
+			// Update user's terminal dimensions from detected PTY size
+			if termWidth > 0 && termHeight > 0 {
+				authenticatedUser.ScreenWidth = termWidth
+				authenticatedUser.ScreenHeight = termHeight
+				log.Printf("Node %d: Updated user %s screen preferences to %dx%d", nodeID, sshUser.Handle, termWidth, termHeight)
+				if saveErr := userMgr.SaveUsers(); saveErr != nil {
+					log.Printf("ERROR: Node %d: Failed to save user screen preferences: %v", nodeID, saveErr)
+				}
+			}
 			currentMenuName = "MAIN" // Skip LOGIN, go directly to MAIN menu
 			nextActionAfterLogin = "MAIN"
 		} else {
@@ -461,7 +466,7 @@ func sessionHandler(s ssh.Session) {
 		// Pass nodeID directly as int, use sessionStartTime from context
 		// Pass the session's autoRunLog
 		// Pass "" for currentAreaName during login
-		nextMenuName, authUser, execErr := menuExecutor.Run(s, terminal, userMgr, nil, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "")
+		nextMenuName, authUser, execErr := menuExecutor.Run(s, terminal, userMgr, nil, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "", termWidth, termHeight)
 		if execErr != nil {
 			// Log the error and decide how to proceed
 			log.Printf("Node %d: Error executing menu '%s': %v", nodeID, currentMenuName, execErr)
@@ -532,7 +537,7 @@ func sessionHandler(s ssh.Session) {
 		// Pass nodeID directly as int, use sessionStartTime from context
 		// Pass the session's autoRunLog
 		// Pass "" for currentAreaName for now (TODO: Pass actual session area name)
-		nextMenuName, _, execErr := menuExecutor.Run(s, terminal, userMgr, authenticatedUser, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "")
+		nextMenuName, _, execErr := menuExecutor.Run(s, terminal, userMgr, authenticatedUser, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "", termWidth, termHeight)
 		if execErr != nil {
 			log.Printf("Node %d: Error executing menu '%s': %v", nodeID, currentMenuName, execErr)
 			fmt.Fprintf(terminal, "\r\nSystem error during menu execution: %v\r\n", execErr)
@@ -557,6 +562,11 @@ func libsshSessionHandler(sess *sshserver.Session) error {
 	sessionHandler(adapter)
 
 	return nil
+}
+
+// telnetSessionHandler adapts telnet sessions to the existing BBS session handler
+func telnetSessionHandler(adapter *telnetserver.TelnetSessionAdapter) {
+	sessionHandler(adapter)
 }
 
 // --- Test Functions REMOVED ---
@@ -674,36 +684,78 @@ func main() {
 	}
 	log.Printf("INFO: Host key found at %s", hostKeyPath)
 
-	// Use SSH settings from server config
-	sshPort := serverConfig.SSHPort
-	sshHost := serverConfig.SSHHost
-	log.Printf("INFO: Configuring libssh SSH server on %s:%d...", sshHost, sshPort)
-
-	// Create libssh server
-	server, err := sshserver.NewServer(sshserver.Config{
-		HostKeyPath:    hostKeyPath,
-		Port:           sshPort,
-		SessionHandler: libsshSessionHandler,
-	})
-	if err != nil {
-		log.Fatalf("FATAL: Failed to create SSH server: %v", err)
-	}
-	defer server.Close()
-	defer sshserver.Cleanup()
-
-	// Start listening
-	if err := server.Listen(); err != nil {
-		log.Fatalf("FATAL: Failed to start SSH server: %v", err)
+	// Ensure at least one protocol is enabled
+	if !serverConfig.SSHEnabled && !serverConfig.TelnetEnabled {
+		log.Fatalf("FATAL: Neither SSH nor Telnet is enabled in config. Enable at least one protocol.")
 	}
 
-	log.Printf("INFO: BBS server ready - connect via: ssh <username>@%s -p %d", sshHost, sshPort)
+	// Start SSH server if enabled
+	var server *sshserver.Server
+	if serverConfig.SSHEnabled {
+		sshPort := serverConfig.SSHPort
+		sshHost := serverConfig.SSHHost
+		log.Printf("INFO: Configuring libssh SSH server on %s:%d...", sshHost, sshPort)
 
-	// Accept connections loop
-	for {
-		if err := server.Accept(); err != nil {
-			log.Printf("ERROR: Failed to accept connection: %v", err)
-			time.Sleep(100 * time.Millisecond) // Brief delay to avoid tight loop on persistent errors
+		var err error
+		server, err = sshserver.NewServer(sshserver.Config{
+			HostKeyPath:    hostKeyPath,
+			Port:           sshPort,
+			SessionHandler: libsshSessionHandler,
+		})
+		if err != nil {
+			log.Fatalf("FATAL: Failed to create SSH server: %v", err)
 		}
+		defer server.Close()
+		defer sshserver.Cleanup()
+
+		if err := server.Listen(); err != nil {
+			log.Fatalf("FATAL: Failed to start SSH server: %v", err)
+		}
+
+		log.Printf("INFO: SSH server ready - connect via: ssh <username>@%s -p %d", sshHost, sshPort)
+	} else {
+		log.Printf("INFO: SSH server disabled in config")
+	}
+
+	// Start telnet server if enabled
+	if serverConfig.TelnetEnabled {
+		telnetPort := serverConfig.TelnetPort
+		telnetHost := serverConfig.TelnetHost
+		log.Printf("INFO: Configuring telnet server on %s:%d...", telnetHost, telnetPort)
+
+		telnetSrv, telnetErr := telnetserver.NewServer(telnetserver.Config{
+			Port:           telnetPort,
+			Host:           telnetHost,
+			SessionHandler: telnetSessionHandler,
+		})
+		if telnetErr != nil {
+			log.Fatalf("FATAL: Failed to create telnet server: %v", telnetErr)
+		}
+		defer telnetSrv.Close()
+
+		go func() {
+			if listenErr := telnetSrv.ListenAndServe(); listenErr != nil {
+				log.Printf("ERROR: Telnet server error: %v", listenErr)
+			}
+		}()
+
+		log.Printf("INFO: Telnet server ready - connect via: telnet %s %d", telnetHost, telnetPort)
+	} else {
+		log.Printf("INFO: Telnet server disabled in config")
+	}
+
+	// Main accept loop — SSH accepts if enabled, otherwise block on signal
+	if server != nil {
+		for {
+			if err := server.Accept(); err != nil {
+				log.Printf("ERROR: Failed to accept connection: %v", err)
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	} else {
+		// Telnet-only mode: block until interrupted
+		log.Printf("INFO: Running in telnet-only mode")
+		select {}
 	}
 
 }

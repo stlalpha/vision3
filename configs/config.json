@@ -5,5 +5,9 @@
   "coSysLevel": 250,
   "logonLevel": 100,
   "sshPort": 2222,
-  "sshHost": "0.0.0.0"
+  "sshHost": "0.0.0.0",
+  "sshEnabled": true,
+  "telnetPort": 2323,
+  "telnetHost": "0.0.0.0",
+  "telnetEnabled": true
 } 
