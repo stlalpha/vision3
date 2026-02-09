@@ -8,7 +8,7 @@
 
 This project is a work-in-progress refactor and modernization of the classic ViSiON/2 BBS software, written in Go. The goal is to recreate the core functionality of the classic BBS experience using modern technologies.
 
-This version utilizes the `gliderlabs/ssh` library for handling SSH connections.
+This version uses **libssh** (via CGO) for SSH server functionality, providing full compatibility with legacy BBS terminal software like SyncTerm while maintaining modern security standards.
 
 **Note:** This is currently under active development and is not yet feature-complete.
 
@@ -103,7 +103,10 @@ Do we need a Discord? Do you want to host it? Contact me!
 
 ### Working Features
 
-*   SSH Server with PTY support (via `gliderlabs/ssh`)
+*   SSH Server with PTY support (via libssh CGO wrapper)
+    *   Full SyncTerm and retro terminal compatibility
+    *   SSH authentication bypass (auto-login for SSH-authenticated users)
+    *   Modern SSH algorithms (no legacy crypto needed)
 *   User Authentication (bcrypt hashed passwords)
 *   User Persistence (`data/users/users.json`)
 *   Menu System Loading & Execution (`.MNU`, `.CFG`, `.ANS` files)
@@ -140,7 +143,8 @@ See `docs/status.md` for detailed progress and `tasks/tasks.md` for specific dev
 ## Technology Stack
 
 *   **Language:** Go 1.24.2
-*   **SSH Library:** `github.com/gliderlabs/ssh`
+*   **SSH Server:** libssh (via CGO) - native C library for SSH protocol
+*   **Interface Adapter:** `github.com/gliderlabs/ssh` (types only)
 *   **Terminal Handling:** `golang.org/x/term`
 *   **Password Hashing:** `golang.org/x/crypto/bcrypt`
 *   **Data Format:** JSON (for users, configuration, and message storage)
@@ -171,6 +175,7 @@ vision3/
 │   ├── menu/            # Menu system
 │   ├── message/         # Message base system
 │   ├── session/         # Session management
+│   ├── sshserver/       # libssh CGO wrapper and adapter
 │   ├── terminalio/      # Terminal I/O handling
 │   ├── transfer/        # File transfer protocols
 │   ├── types/           # Shared types
@@ -186,6 +191,21 @@ vision3/
 
 ## Setup & Installation
 
+### System Requirements
+
+**libssh development library** is required for SSH server functionality:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install libssh-dev
+
+# Fedora/RHEL
+sudo dnf install libssh-devel
+
+# macOS
+brew install libssh
+```
+
 ### Quick Setup
 
 1. **Clone the repository:**
@@ -194,44 +214,52 @@ vision3/
     cd vision3
     ```
 
-2. **Run the setup script:**
+2. **Install system dependencies** (see System Requirements above)
+
+3. **Copy and configure settings:**
     ```bash
-    ./setup.sh
+    cp configs/config.json.example configs/config.json
+    # Edit configs/config.json with your BBS settings
     ```
 
-   This script will:
-   - Generate SSH host keys
-   - Create necessary directories
-   - Initialize data files
-   - Build the BBS executable
-
-3. **Run the server:**
+4. **Run the build script:**
     ```bash
-    cd cmd/vision3
-    ./vision3
+    ./build-and-run.sh
     ```
+
+   This will build and start the BBS server.
 
 ### Manual Setup
 
 If you prefer to set up manually:
 
-1. **Build the application:**
+1. **Install libssh-dev** (see System Requirements above)
+
+2. **Copy configuration:**
+    ```bash
+    cp configs/config.json.example configs/config.json
+    ```
+
+3. **Build the application:**
     ```bash
     cd cmd/vision3
-    go build
+    go build -o ../../vision3
+    cd ../..
     ```
 
-2. **Generate SSH Host Keys:**
+4. **Generate SSH Host Key:**
     ```bash
-    cd configs
-    ssh-keygen -t rsa -f ssh_host_rsa_key -N ""
-    ssh-keygen -t ed25519 -f ssh_host_ed25519_key -N ""
-    ssh-keygen -t dsa -f ssh_host_dsa_key -N ""
+    ssh-keygen -t rsa -b 2048 -f configs/ssh_host_rsa_key -N ""
     ```
 
-3. **Create directories:**
+5. **Create directories:**
     ```bash
-    mkdir -p data/users data/files/general log
+    mkdir -p data/users data/files/general data/logs
+    ```
+
+6. **Run the server:**
+    ```bash
+    ./vision3
     ```
 
 The server listens on port 2222 by default.
@@ -252,6 +280,15 @@ Connect using any SSH client:
 ssh felonius@localhost -p 2222
 ```
 
+### SyncTerm and Retro Terminal Support
+
+ViSiON/3 fully supports **SyncTerm** and other classic BBS terminal emulators:
+- Automatic CP437 encoding for authentic ANSI graphics
+- Compatible with modern SSH algorithms (no legacy crypto needed)
+- SSH-authenticated users bypass the login screen
+
+Download SyncTerm: https://syncterm.bbsdev.net/
+
 ## Command Line Options
 
 ```bash
@@ -267,10 +304,18 @@ ssh felonius@localhost -p 2222
 
 Configuration files are located in the `configs/` directory:
 
+- `config.json`: General BBS configuration (copy from `config.json.example`)
 - `strings.json`: Customize BBS prompts and messages
 - `doors.json`: Configure external door programs
 - `file_areas.json`: Define file areas
-- `config.json`: General BBS configuration
+
+**Note:** The `config.json` file is not tracked in git. Copy `config.json.example` to `config.json` and customize for your BBS.
+
+## Documentation
+
+- [SSH Server Migration Guide](docs/ssh-server-migration.md) - Details about the libssh implementation
+- [Developer Guide](docs/developer-guide.md) - Guide for contributors
+- [Status](docs/status.md) - Current development status
 
 ## Contributing
 
