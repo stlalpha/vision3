@@ -5,17 +5,13 @@
 echo "=== ViSiON/3 BBS Setup Script ==="
 echo
 
-# Check if SSH host keys exist
+# Check if SSH host key exists
 if [ ! -f "configs/ssh_host_rsa_key" ]; then
-    echo "Generating SSH host keys..."
-    cd configs/
-    ssh-keygen -t rsa -f ssh_host_rsa_key -N "" -q
-    ssh-keygen -t ed25519 -f ssh_host_ed25519_key -N "" -q
-    ssh-keygen -t dsa -f ssh_host_dsa_key -N "" -q
-    cd ..
-    echo "SSH host keys generated."
+    echo "Generating SSH host key (RSA)..."
+    ssh-keygen -t rsa -b 4096 -f configs/ssh_host_rsa_key -N "" -q
+    echo "SSH host key generated."
 else
-    echo "SSH host keys already exist."
+    echo "SSH host key already exists."
 fi
 
 # Create necessary directories
@@ -26,14 +22,14 @@ mkdir -p data/logs
 mkdir -p data/msgbases
 mkdir -p data/ftn
 
-# Copy all .example config files to their .json equivalents if they don't exist
+# Copy template config files to configs/ if they don't exist
 echo "Setting up configuration files..."
-for example_file in configs/*.example; do
-    if [ -f "$example_file" ]; then
-        target_file="${example_file%.example}"
+for template_file in templates/configs/*.json; do
+    if [ -f "$template_file" ]; then
+        target_file="configs/$(basename "$template_file")"
         if [ ! -f "$target_file" ]; then
-            echo "  Creating $(basename "$target_file") from example..."
-            cp "$example_file" "$target_file"
+            echo "  Creating $(basename "$target_file") from template..."
+            cp "$template_file" "$target_file"
         else
             echo "  $(basename "$target_file") already exists, skipping."
         fi

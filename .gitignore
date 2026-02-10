@@ -41,12 +41,11 @@ tmp/
 /tmp/*
 
 # Config files (contain site-specific settings, FTN addresses, passwords)
+# Actual config files are ignored, but templates/ directory is tracked
 configs/*.json
-!configs/*.json.example
 
-# SSH host keys (all of them, including public keys)
+# SSH host keys (generated during setup, not tracked in git)
 configs/ssh_host_*
-!configs/ssh_host_keys.example
 
 # Logs and debug files
 *.log

@@ -158,7 +158,7 @@ vision3/
 │   ├── helper/             # FTN setup utility (import echomail areas)
 │   ├── jamutil/            # JAM message base utility (stats, pack, purge, fix)
 │   └── vision3/            # Main BBS server application
-├── configs/                # Global configuration files
+├── configs/                # Active configuration files (not tracked in git)
 │   ├── config.json         # Main BBS configuration
 │   ├── conferences.json    # Message/file conference definitions
 │   ├── doors.json          # Door/external program configurations
@@ -168,6 +168,8 @@ vision3/
 │   ├── theme.json          # Color theme configuration
 │   ├── ftn.json            # FidoNet/FTN network configuration
 │   └── ssh_host_rsa_key    # SSH host key
+├── templates/              # Configuration templates (tracked in git)
+│   └── configs/            # Template configuration files
 ├── data/                   # Runtime data
 │   ├── users/              # User database and call history
 │   ├── msgbases/           # JAM format message bases
@@ -229,18 +231,28 @@ brew install libssh
 
 2. **Install system dependencies** (see System Requirements above)
 
-3. **Copy and configure settings:**
+3. **Run the setup script:**
     ```bash
-    cp configs/config.json.example configs/config.json
-    # Edit configs/config.json with your BBS settings
+    ./setup.sh
     ```
 
-4. **Run the build script:**
+   This will:
+   - Generate SSH host keys
+   - Copy template configuration files from `templates/configs/` to `configs/`
+   - Create necessary directory structure
+   - Create initial data files
+   - Build the application
+
+4. **Configure your BBS:**
+    ```bash
+    # Edit configs/config.json with your BBS settings
+    nano configs/config.json
+    ```
+
+5. **Run the BBS:**
     ```bash
     ./build-and-run.sh
     ```
-
-   This will build and start the BBS server.
 
 ### Manual Setup
 
@@ -248,9 +260,10 @@ If you prefer to set up manually:
 
 1. **Install libssh-dev** (see System Requirements above)
 
-2. **Copy configuration:**
+2. **Copy configuration templates:**
     ```bash
-    cp configs/config.json.example configs/config.json
+    cp templates/configs/*.json configs/
+    # Edit configs/config.json with your BBS settings
     ```
 
 3. **Build the application:**
@@ -319,8 +332,10 @@ Configuration files are located in the `configs/` directory:
 
 ### Core Configuration
 
+All configuration files are located in `configs/` and are generated from templates in `templates/configs/` during setup:
+
 - **`config.json`**: Main BBS configuration (BBS name, ports, paths, node settings)
-  - **Note:** Not tracked in git. Copy from `config.json.example` and customize for your BBS
+  - **Note:** Not tracked in git. Copied from template during setup
 - **`theme.json`**: Color theme configuration (lightbar colors, prompt colors, ANSI codes)
 - **`strings.json`**: Customizable BBS prompts and messages
 
