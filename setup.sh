@@ -22,43 +22,76 @@ fi
 echo "Creating directory structure..."
 mkdir -p data/users
 mkdir -p data/files/general
+mkdir -p data/logs
+mkdir -p data/msgbases
+mkdir -p data/ftn
 
-# Check if initial data files exist
+# Copy all .example config files to their .json equivalents if they don't exist
+echo "Setting up configuration files..."
+for example_file in configs/*.example; do
+    if [ -f "$example_file" ]; then
+        target_file="${example_file%.example}"
+        if [ ! -f "$target_file" ]; then
+            echo "  Creating $(basename "$target_file") from example..."
+            cp "$example_file" "$target_file"
+        else
+            echo "  $(basename "$target_file") already exists, skipping."
+        fi
+    fi
+done
+
+# Create initial data files if they don't exist
 if [ ! -f "data/oneliners.json" ]; then
     echo "Creating empty oneliners.json..."
     echo "[]" > data/oneliners.json
 fi
 
-if [ ! -f "data/message_areas.json" ]; then
-    echo "Creating initial message areas..."
-    cat > data/message_areas.json << 'EOF'
+if [ ! -f "data/users/users.json" ]; then
+    echo "Creating initial users.json with default sysop account..."
+    cat > data/users/users.json << 'EOF'
 [
-    {
-        "id": 1,
-        "tag": "GENERAL",
-        "name": "General Discussion",
-        "description": "General discussion area",
-        "acs_read": "",
-        "acs_post": "",
-        "anonymous_allowed": false,
-        "real_names_only": false,
-        "created_at": "2024-01-01T00:00:00Z",
-        "last_post_at": "2024-01-01T00:00:00Z"
-    },
-    {
-        "id": 2,
-        "tag": "SYSOP",
-        "name": "SysOp Area",
-        "description": "Private sysop discussion",
-        "acs_read": "s10",
-        "acs_post": "s10",
-        "anonymous_allowed": false,
-        "real_names_only": true,
-        "created_at": "2024-01-01T00:00:00Z",
-        "last_post_at": "2024-01-01T00:00:00Z"
-    }
+  {
+    "id": 1,
+    "username": "felonius",
+    "passwordHash": "$2a$10$4BzeQ5Pgg6GT6ckfLtTJOuInTvQxXRSj0DETBGIL87SYG2hHpXbtO",
+    "handle": "Felonius",
+    "accessLevel": 100,
+    "flags": "",
+    "lastLogin": "0001-01-01T00:00:00Z",
+    "timesCalled": 0,
+    "lastBulletinRead": "0001-01-01T00:00:00Z",
+    "realName": "System Operator",
+    "phoneNumber": "",
+    "createdAt": "2024-01-01T00:00:00Z",
+    "validated": true,
+    "filePoints": 0,
+    "numUploads": 0,
+    "timeLimit": 60,
+    "privateNote": "",
+    "current_msg_conference_id": 1,
+    "current_msg_conference_tag": "LOCAL",
+    "current_file_conference_id": 1,
+    "current_file_conference_tag": "LOCAL",
+    "group_location": "",
+    "current_message_area_id": 1,
+    "current_message_area_tag": "GENERAL",
+    "current_file_area_id": 1,
+    "current_file_area_tag": "GENERAL",
+    "screenWidth": 80,
+    "screenHeight": 24
+  }
 ]
 EOF
+fi
+
+if [ ! -f "data/users/callhistory.json" ]; then
+    echo "Creating empty callhistory.json..."
+    echo "[]" > data/users/callhistory.json
+fi
+
+if [ ! -f "data/users/callnumber.json" ]; then
+    echo "Creating callnumber.json..."
+    echo "1" > data/users/callnumber.json
 fi
 
 # Build the BBS
