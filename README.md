@@ -4,8 +4,6 @@
 
 ![ViSiON/3](ViSiON3.png)
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/robbiew/vision3)](https://goreportcard.com/report/github.com/robbiew/vision3)
-
 ## Overview
 
 This project is a work-in-progress refactor and modernization of the classic ViSiON/2 BBS software, written in Go. The goal is to recreate the core functionality of the classic BBS experience using modern technologies.
