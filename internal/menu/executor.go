@@ -24,9 +24,9 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
 	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/robbiew/vision3/internal/conference"
 	"github.com/robbiew/vision3/internal/config"
 	"github.com/robbiew/vision3/internal/editor"
-	"github.com/robbiew/vision3/internal/conference"
 	"github.com/robbiew/vision3/internal/file"
 	"github.com/robbiew/vision3/internal/message"
 	"github.com/robbiew/vision3/internal/terminalio" // <-- Added import
@@ -47,26 +47,27 @@ type RunnableFunc func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 
 // MenuExecutor handles the loading and execution of ViSiON/2 menus.
 type MenuExecutor struct {
-	ConfigPath     string                       // DEPRECATED: Use MenuSetPath + "/cfg" or RootConfigPath
-	AssetsPath     string                       // DEPRECATED: Use MenuSetPath + "/ansi" or RootAssetsPath
-	MenuSetPath    string                       // NEW: Path to the active menu set (e.g., "menus/v3")
-	RootConfigPath string                       // NEW: Path to global configs (e.g., "configs")
-	RootAssetsPath string                       // NEW: Path to global assets (e.g., "assets")
-	RunRegistry    map[string]RunnableFunc      // Map RUN: targets to functions (Use local RunnableFunc)
-	DoorRegistry   map[string]config.DoorConfig // Map DOOR: targets to configurations
-	OneLiners      []string                     // Loaded oneliners (Consider if these should be menu-set specific)
-	LoadedStrings  config.StringsConfig         // Loaded global strings configuration
-	Theme          config.ThemeConfig           // Loaded theme configuration
-	MessageMgr     *message.MessageManager          // <-- ADDED FIELD
-	FileMgr        *file.FileManager                // <-- ADDED FIELD: File manager instance
-	ConferenceMgr  *conference.ConferenceManager    // Conference grouping manager
+	ConfigPath     string                        // DEPRECATED: Use MenuSetPath + "/cfg" or RootConfigPath
+	AssetsPath     string                        // DEPRECATED: Use MenuSetPath + "/ansi" or RootAssetsPath
+	MenuSetPath    string                        // NEW: Path to the active menu set (e.g., "menus/v3")
+	RootConfigPath string                        // NEW: Path to global configs (e.g., "configs")
+	RootAssetsPath string                        // NEW: Path to global assets (e.g., "assets")
+	RunRegistry    map[string]RunnableFunc       // Map RUN: targets to functions (Use local RunnableFunc)
+	DoorRegistry   map[string]config.DoorConfig  // Map DOOR: targets to configurations
+	OneLiners      []string                      // Loaded oneliners (Consider if these should be menu-set specific)
+	LoadedStrings  config.StringsConfig          // Loaded global strings configuration
+	Theme          config.ThemeConfig            // Loaded theme configuration
+	ServerCfg      config.ServerConfig           // Server configuration (NEW)
+	MessageMgr     *message.MessageManager       // <-- ADDED FIELD
+	FileMgr        *file.FileManager             // <-- ADDED FIELD: File manager instance
+	ConferenceMgr  *conference.ConferenceManager // Conference grouping manager
 }
 
 // NewExecutor creates a new MenuExecutor.
-// Added oneLiners, loadedStrings, theme, messageMgr, and fileMgr parameters
+// Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, and serverCfg parameters
 // Updated paths to use new structure
-// << UPDATED Signature with msgMgr and fileMgr
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager) *MenuExecutor {
+// << UPDATED Signature with msgMgr, fileMgr, and serverCfg
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -82,6 +83,7 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		OneLiners:      oneLiners,     // Store loaded oneliners
 		LoadedStrings:  loadedStrings, // Store loaded strings
 		Theme:          theme,         // Store loaded theme
+		ServerCfg:      serverCfg,     // Store server configuration
 		MessageMgr:     msgMgr,        // <-- ASSIGN FIELD
 		FileMgr:        fileMgr,       // <-- ASSIGN FIELD
 		ConferenceMgr:  confMgr,       // Conference grouping manager
@@ -441,10 +443,10 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTFILES"] = runListFiles                             // <-- ADDED: Register file list runnable
 	registry["LISTFILEAR"] = runListFileAreas                        // <-- ADDED: Register file area list runnable
 	registry["SELECTFILEAREA"] = runSelectFileArea                   // <-- ADDED: Register file area selection runnable
-	registry["SELECTMSGAREA"] = runSelectMessageArea                // Register message area selection runnable
-	registry["CHANGEMSGCONF"] = runChangeMsgConference              // Change message conference
-	registry["NEXTMSGAREA"] = runNextMsgArea                        // Navigate to next message area
-	registry["PREVMSGAREA"] = runPrevMsgArea                        // Navigate to previous message area
+	registry["SELECTMSGAREA"] = runSelectMessageArea                 // Register message area selection runnable
+	registry["CHANGEMSGCONF"] = runChangeMsgConference               // Change message conference
+	registry["NEXTMSGAREA"] = runNextMsgArea                         // Navigate to next message area
+	registry["PREVMSGAREA"] = runPrevMsgArea                         // Navigate to previous message area
 	registry["NEWUSER"] = runNewUser                                 // Register new user application runnable
 	registry["GETHEADERTYPE"] = runGetHeaderType                     // Message header style selection
 }
@@ -3168,52 +3170,118 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		return nil, "", nil // Return to menu, not an error
 	}
 
-	// === BEGIN MOVED SUBJECT LOGIC ===
-	// 2. Prompt for Subject
-	prompt := e.LoadedStrings.MsgTitleStr
-	if prompt == "" {
-		log.Printf("WARN: Node %d: MsgTitleStr is empty in strings config. Using fallback.", nodeNumber)
-		prompt = "|07Subject: |15"
+	// === PASCAL-STYLE MESSAGE POSTING FLOW ===
+
+	// 2. Prompt for Title (30 chars)
+	titlePrompt := e.LoadedStrings.MsgTitleStr
+	if titlePrompt == "" {
+		titlePrompt = "|07Title: |15"
 	}
-	// Add newline for spacing before prompt
 	terminal.Write([]byte("\r\n"))
-	wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+	wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(titlePrompt)), outputMode)
 	if wErr != nil {
-		log.Printf("WARN: Node %d: Failed to write subject prompt: %v", nodeNumber, wErr)
+		log.Printf("WARN: Node %d: Failed to write title prompt: %v", nodeNumber, wErr)
 	}
 
-	subject, err := terminal.ReadLine()
+	subject, err := styledInput(terminal, s, outputMode, 30, "")
 	if err != nil {
 		if errors.Is(err, io.EOF) {
-			log.Printf("INFO: Node %d: User disconnected during subject input.", nodeNumber)
+			log.Printf("INFO: Node %d: User disconnected during title input.", nodeNumber)
 			return nil, "LOGOFF", io.EOF
 		}
-		log.Printf("ERROR: Node %d: Failed reading subject input: %v", nodeNumber, err)
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading subject.\r\n"), outputMode)
+		log.Printf("ERROR: Node %d: Failed reading title input: %v", nodeNumber, err)
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading title.\r\n"), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
 	subject = strings.TrimSpace(subject)
-	// Allow empty subject for now, set default later if needed after editor
-	// if subject == "" {
-	// 	subject = "(no subject)" // Default subject
-	// }
-	// Check if subject is truly empty after defaulting
-	// if strings.TrimSpace(subject) == "" {
-	// 	terminalio.WriteProcessedBytes(terminal, []byte("\r\nSubject cannot be empty. Post cancelled.\r\n"), outputMode)
-	// 	time.Sleep(1 * time.Second)
-	// 	return nil, "", nil // Return to menu
-	// }
-	// === END MOVED SUBJECT LOGIC ===
+	if subject == "" {
+		subject = "(no subject)"
+	}
 
-	// 3. Call the Editor
-	// We need to temporarily leave the menu loop's terminal control
-	// The editor.RunEditor will take over the PTY.
-	// Reverted to logic from commit 32f3c59...
+	// 3. Prompt for To (24 chars, default "All")
+	toPrompt := e.LoadedStrings.MsgToStr
+	if toPrompt == "" {
+		toPrompt = "|07To: |15"
+	}
+	wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(toPrompt)), outputMode)
+	if wErr != nil {
+		log.Printf("WARN: Node %d: Failed to write 'to' prompt: %v", nodeNumber, wErr)
+	}
 
+	toUser, err := styledInput(terminal, s, outputMode, 24, "All")
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during 'to' input.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
+		}
+		log.Printf("ERROR: Node %d: Failed reading 'to' input: %v", nodeNumber, err)
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading recipient.\r\n"), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil // Return to menu
+	}
+	toUser = strings.TrimSpace(toUser)
+	if toUser == "" {
+		toUser = "All"
+	}
+
+	// 4. Prompt for Anonymous (if user level >= AnonymousLevel)
+	isAnonymous := false
+	allowAnon := currentUser.AccessLevel >= e.ServerCfg.AnonymousLevel
+	if allowAnon {
+		areaAllowsAnon := true
+		if area.AllowAnon != nil {
+			areaAllowsAnon = *area.AllowAnon
+		}
+		confAllowsAnon := true
+		if e.ConferenceMgr != nil && area.ConferenceID != 0 {
+			if conf, ok := e.ConferenceMgr.GetByID(area.ConferenceID); ok {
+				if conf.AllowAnon != nil {
+					confAllowsAnon = *conf.AllowAnon
+				}
+			}
+		}
+		allowAnon = areaAllowsAnon && confAllowsAnon
+	}
+	if allowAnon {
+		anonPrompt := e.LoadedStrings.MsgAnonStr
+		if anonPrompt == "" {
+			anonPrompt = "|07Anonymous? @"
+		}
+		isAnon, err := e.promptYesNoInline(s, terminal, anonPrompt, outputMode, nodeNumber)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				log.Printf("INFO: Node %d: User disconnected during anonymous input.", nodeNumber)
+				return nil, "LOGOFF", io.EOF
+			}
+			log.Printf("ERROR: Node %d: Failed reading anonymous input: %v", nodeNumber, err)
+			isAnon = false
+		}
+		isAnonymous = isAnon
+		terminal.Write([]byte("\r\n"))
+	}
+
+	// 5. Prompt for Upload (Y/N)
+	uploadPrompt := e.LoadedStrings.UploadMsgStr
+	if uploadPrompt == "" {
+		uploadPrompt = "|07Upload Message? @"
+	}
+	uploadYes, err := e.promptYesNoInline(s, terminal, uploadPrompt, outputMode, nodeNumber)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during upload input.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
+		}
+		log.Printf("ERROR: Node %d: Failed reading upload input: %v", nodeNumber, err)
+		uploadYes = false
+	}
+	terminal.Write([]byte("\r\n"))
+	// TODO: Implement upload functionality if uploadYes == true
+	_ = uploadYes // Suppress unused warning for now
+
+	// 6. Call the Editor
 	log.Printf("DEBUG: Node %d: Clearing screen before calling editor.RunEditor", nodeNumber)
-	terminal.Write([]byte(ansi.ClearScreen())) // Clear screen before editor (as per 32f3c59)
-	log.Printf("DEBUG: Node %d: Calling editor.RunEditor for area %s", nodeNumber, area.Tag)
+	terminal.Write([]byte(ansi.ClearScreen())) // Clear screen before editor
 
 	// Get TERM env var
 	termType := "unknown"
@@ -3225,27 +3293,19 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	}
 	log.Printf("DEBUG: Node %d: Passing TERM=%s to editor.RunEditor", nodeNumber, termType)
 
-	body, saved, err := editor.RunEditor("", s, s, termType) // Pass session as input/output and termType
+	body, saved, err := editor.RunEditor("", s, s, termType)
 	log.Printf("DEBUG: Node %d: editor.RunEditor returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
 
 	if err != nil {
 		log.Printf("ERROR: Node %d: Editor failed for user %s: %v", nodeNumber, currentUser.Handle, err)
-		// Restore original error handling from 32f3c59 (propagate error)
-		// Need to handle redraw in the main loop potentially.
-		// Consider clearing screen here before returning?
-		// terminal.Write([]byte(ansi.ClearScreen())) // Optional clear on error
 		return nil, "", fmt.Errorf("editor error: %w", err)
 	}
 
-	// IMPORTANT: Need to redraw the current menu screen after editor exits!
-	// This needs to be handled by the main menu loop after this function returns (CONTINUE).
-	// Clear screen *after* editor exits (as per 32f3c59 placeholder logic)
+	// Clear screen after editor exits
 	terminal.Write([]byte(ansi.ClearScreen()))
-	// terminal.Write([]byte("\\r\\nEditor exited. Processing message...\\r\\n")) // Removed placeholder
 
 	if !saved {
 		log.Printf("INFO: Node %d: User %s aborted message composition for area %s.", nodeNumber, currentUser.Handle, area.Tag)
-		// Restore message from 32f3c59
 		terminal.Write([]byte("\r\nMessage aborted.\r\n"))
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to current menu
@@ -3253,20 +3313,19 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 
 	if strings.TrimSpace(body) == "" {
 		log.Printf("INFO: Node %d: User %s saved empty message for area %s.", nodeNumber, currentUser.Handle, area.Tag)
-		// Restore message from 32f3c59
 		terminal.Write([]byte("\r\nMessage body empty. Aborting post.\r\n"))
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to current menu
 	}
 
-	// === MOVED: Subject prompt is now before editor ===
-	// Set default subject if user left it blank earlier
-	if subject == "" {
-		subject = "(no subject)" // Default subject
+	// 7. Save the Message via JAM backend
+	// Determine the "from" name (may be anonymous)
+	fromName := currentUser.Handle
+	if isAnonymous {
+		fromName = "Anonymous"
 	}
 
-	// 4. Save the Message via JAM backend
-	msgNum, err := e.MessageMgr.AddMessage(area.ID, currentUser.Handle, message.MsgToUserAll, subject, body, "")
+	msgNum, err := e.MessageMgr.AddMessage(area.ID, fromName, toUser, subject, body, "")
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to save message from user %s to area %s: %v", nodeNumber, currentUser.Handle, area.Tag, err)
 		terminal.Write([]byte("\r\n|01Error saving message!|07\r\n"))
@@ -3274,13 +3333,11 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		return nil, "", fmt.Errorf("failed saving message: %w", err)
 	}
 
-	// 5. Confirmation
+	// 8. Confirmation
 	log.Printf("INFO: Node %d: User %s successfully posted message #%d to area %s", nodeNumber, currentUser.Handle, msgNum, area.Tag)
-	// TODO: Use string config for confirmation message
 	terminal.Write([]byte("\r\n|02Message Posted!|07\r\n"))
 	time.Sleep(1 * time.Second)
 
-	// Return to current menu. The menu loop should handle redraw because we return CONTINUE action ("", nil).
 	return nil, "", nil
 }
 
@@ -4645,4 +4702,122 @@ func runSelectMessageArea(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	time.Sleep(1 * time.Second)
 
 	return currentUser, "", nil
+}
+
+// styledInput reads input with character-by-character display styling.
+// Mimics Pascal NoCRInput with a shaded cursor cell, solid blue typed area,
+// and a bright blue background fill for remaining space.
+func styledInput(terminal *term.Terminal, session ssh.Session, outputMode ansi.OutputMode, maxLen int, defaultValue string) (string, error) {
+	typedStyle := string(ansi.ReplacePipeCodes([]byte("|B4|15")))
+	cursorStyle := string(ansi.ReplacePipeCodes([]byte("|B4|15")))
+	remainingStyle := string(ansi.ReplacePipeCodes([]byte("|B12|15")))
+	resetColor := "\x1b[0m"
+
+	shadeChar := "\u2591"
+
+	input := make([]byte, 0, maxLen)
+	cursorStyleSet := false
+	savedCursor := false
+
+	// Function to render the current state of the input box
+	renderBox := func(moveBack bool) {
+		var display strings.Builder
+		if savedCursor {
+			display.WriteString("\x1b[u")
+		}
+		display.WriteString(typedStyle)
+		if len(input) > 0 {
+			display.Write(input)
+		}
+		cursorPos := len(input)
+		remainingLen := 0
+		if len(input) < maxLen {
+			display.WriteString(cursorStyle)
+			display.WriteString(shadeChar)
+			remainingLen = maxLen - len(input) - 1
+		}
+		if remainingLen > 0 {
+			display.WriteString(remainingStyle)
+			display.WriteString(strings.Repeat(" ", remainingLen))
+		}
+		display.WriteString(resetColor)
+
+		moveToCursor := ""
+		if cursorPos < maxLen {
+			moveToCursor = fmt.Sprintf("\x1b[%dD", maxLen-cursorPos)
+		}
+		terminalio.WriteStringCP437(terminal, []byte(display.String()+moveToCursor), outputMode)
+	}
+
+	// Display initial empty box with cursor and default padding
+	if maxLen > 0 {
+		terminal.Write([]byte("\x1b[s"))
+		savedCursor = true
+		terminal.Write([]byte("\x1b[3 q"))
+		cursorStyleSet = true
+		defer func() {
+			if cursorStyleSet {
+				terminal.Write([]byte("\x1b[0 q"))
+			}
+		}()
+		renderBox(false)
+	}
+
+	// Read character by character from session
+	readBuf := make([]byte, 1)
+
+	for {
+		n, err := session.Read(readBuf)
+		if err != nil {
+			if err == io.EOF {
+				return "", err
+			}
+			return "", err
+		}
+		if n == 0 {
+			continue
+		}
+
+		ch := readBuf[0]
+
+		switch ch {
+		case 13, 10: // Enter or LF
+			// User pressed Enter
+			result := string(input)
+			if result == "" && defaultValue != "" {
+				input = append(input[:0], []byte(defaultValue)...)
+				if len(input) > maxLen {
+					input = input[:maxLen]
+				}
+				renderBox(true)
+				terminal.Write([]byte("\r\n"))
+				return defaultValue, nil
+			}
+			terminal.Write([]byte("\r\n"))
+			return strings.TrimSpace(result), nil
+
+		case 8, 127: // Backspace or Delete
+			if len(input) > 0 {
+				input = input[:len(input)-1]
+				renderBox(true)
+			}
+
+		case 27: // ESC - clear input
+			if len(input) > 0 {
+				input = input[:0]
+				renderBox(true)
+			}
+
+		case 3: // Ctrl+C - abort
+			terminal.Write([]byte("\r\n"))
+			return "", io.EOF
+
+		default:
+			// Printable ASCII character
+			if ch >= 32 && ch < 127 && len(input) < maxLen {
+				input = append(input, ch)
+				renderBox(true)
+			}
+		}
+	}
 }

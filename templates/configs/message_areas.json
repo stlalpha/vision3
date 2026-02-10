@@ -6,6 +6,7 @@
         "description": "General discussion area",
         "acs_read": "",
         "acs_write": "",
+        "allow_anonymous": false,
         "conference_id": 1,
         "base_path": "msgbases/general",
         "area_type": "local"
@@ -17,6 +18,7 @@
         "description": "Private sysop discussion",
         "acs_read": "s10",
         "acs_write": "s10",
+        "allow_anonymous": false,
         "conference_id": 1,
         "base_path": "msgbases/sysop",
         "area_type": "local"

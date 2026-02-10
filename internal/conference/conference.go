@@ -19,6 +19,7 @@ type Conference struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	ACS         string `json:"acs"` // ACS string — who can see/enter this conference
+	AllowAnon   *bool  `json:"allow_anonymous,omitempty"` // Optional: allow anonymous posts (nil defaults to true)
 }
 
 // ConferenceManager handles loading and accessing conference definitions.

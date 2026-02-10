@@ -4,6 +4,7 @@
         "tag": "LOCAL",
         "name": "Local Areas",
         "description": "Local BBS discussion and file areas",
-        "acs": ""
+        "acs": "",
+        "allow_anonymous": false
     }
 ]

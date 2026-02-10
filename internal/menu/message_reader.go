@@ -125,7 +125,8 @@ readerLoop:
 		}
 
 		// Build Pascal-style substitution map
-		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount)
+		// Note: User note is disabled until proper UI for setting it is implemented
+		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, "", currentUser.AccessLevel)
 
 		// Process template with substitutions
 		processedHeader := processDataFile(hdrTemplateBytes, substitutions)
@@ -146,7 +147,7 @@ readerLoop:
 		// Calculate available body height
 		// Find the actual bottom row of the header using ANSI cursor tracking
 		headerEndRow := findHeaderEndRow(processedHeader)
-		bodyStartRow := headerEndRow
+		bodyStartRow := headerEndRow + 1 // Start body on next row after header
 		barLines := 3 // Horizontal line + board info line + lightbar
 		bodyAvailHeight := termHeight - bodyStartRow - barLines
 		if bodyAvailHeight < 1 {
@@ -241,6 +242,10 @@ readerLoop:
 
 			// Handle scrolling keys first
 			switch keySeq {
+			case "\x1b": // ESC key - quit reader
+				quitNewscan = true
+				break readerLoop
+
 			case "\x1b[A": // Up arrow - scroll up one line
 				if scrollOffset > 0 {
 					scrollOffset--
@@ -508,10 +513,77 @@ readerLoop:
 }
 
 // buildMsgSubstitutions creates the Pascal-style substitution map for MSGHDR templates.
-func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int) map[byte]string {
+func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userNote string, userLevel int) map[byte]string {
+	// Import jam constants
+	const (
+		msgTypeLocal = 0x00800000
+		msgTypeEcho  = 0x01000000
+		msgTypeNet   = 0x02000000
+		msgPrivate   = 0x00000004
+		msgRead      = 0x00000008
+		msgSent      = 0x00000010
+	)
+
+	// Truncate user note if too long (max 25 characters for display)
+	const maxUserNoteLen = 25
+	truncatedNote := userNote
+	if len(userNote) > maxUserNoteLen {
+		truncatedNote = userNote[:maxUserNoteLen-3] + "..."
+	}
+
+	// Build From field with user note and/or FidoNet address
+	fromStr := msg.From
+	if truncatedNote != "" && msg.OrigAddr != "" {
+		// Both user note and FidoNet address
+		fromStr = fmt.Sprintf("%s \"%s\" (%s)", msg.From, truncatedNote, msg.OrigAddr)
+	} else if truncatedNote != "" {
+		// Just user note
+		fromStr = fmt.Sprintf("%s \"%s\"", msg.From, truncatedNote)
+	} else if msg.OrigAddr != "" {
+		// Just FidoNet address
+		fromStr = fmt.Sprintf("%s (%s)", msg.From, msg.OrigAddr)
+	}
+
+	// Build To field with FidoNet destination address if available
 	toStr := msg.To
-	// Note: We don't have a "Received" flag in DisplayMessage currently,
-	// but this is where it would be appended like Pascal does
+	if msg.DestAddr != "" {
+		toStr = fmt.Sprintf("%s (%s)", msg.To, msg.DestAddr)
+	}
+
+	// Build message status string from message attributes
+	var statusParts []string
+	isEcho := (msg.Attributes & msgTypeEcho) != 0
+	isNet := (msg.Attributes & msgTypeNet) != 0
+	isSent := (msg.Attributes & msgSent) != 0
+	isRead := (msg.Attributes & msgRead) != 0
+	isPrivate := (msg.Attributes & msgPrivate) != 0
+
+	// Determine message type
+	if isEcho {
+		if isSent {
+			statusParts = append(statusParts, "ECHOMAIL SENT")
+		} else {
+			statusParts = append(statusParts, "ECHOMAIL")
+		}
+	} else if isNet {
+		if isSent {
+			statusParts = append(statusParts, "NETMAIL SENT")
+		} else {
+			statusParts = append(statusParts, "NETMAIL UNSENT")
+		}
+	} else {
+		statusParts = append(statusParts, "LOCAL")
+	}
+
+	// Add additional status flags
+	if isRead {
+		statusParts = append(statusParts, "READ")
+	}
+	if isPrivate {
+		statusParts = append(statusParts, "PRIVATE")
+	}
+
+	msgStatusStr := strings.Join(statusParts, " ")
 
 	replyStr := "None"
 	if msg.ReplyID != "" {
@@ -521,17 +593,20 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 	return map[byte]string{
 		'B': areaTag,
 		'T': msg.Subject,
-		'F': msg.From,
-		'S': toStr,
-		'U': "", // Status - not available in JAM
-		'L': "", // Post level - not available
-		'R': "", // Real name - not available in JAM
+		'F': fromStr,                    // From with FidoNet address
+		'S': toStr,                      // To with FidoNet address
+		'U': userNote,                   // User note from user profile
+		'M': msgStatusStr,               // Message status (LOCAL, PRIVATE, ECHOMAIL, NETMAIL)
+		'L': strconv.Itoa(userLevel),    // User level/access level
+		'R': "",                         // Real name - not available in JAM
 		'#': strconv.Itoa(msgNum),
 		'N': strconv.Itoa(totalMsgs),
 		'D': msg.DateTime.Format("01/02/06"),
 		'W': msg.DateTime.Format("3:04 pm"),
 		'P': replyStr,
-		'E': "0", // Replies count - not tracked in JAM
+		'E': "0",                        // Replies count - not tracked in JAM
+		'O': msg.OrigAddr,               // Origin address
+		'A': msg.DestAddr,               // Destination address
 	}
 }
 
@@ -907,8 +982,9 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			'T': "ViSiON/3 Rocks!",
 			'F': currentUser.Handle,
 			'S': "Everybody",
-			'U': "User Note",
-			'L': "100",
+			'U': "",                                 // User note disabled until proper UI implemented
+			'M': "LOCAL",
+			'L': strconv.Itoa(currentUser.AccessLevel),
 			'R': currentUser.RealName,
 			'#': "1",
 			'N': "42",
@@ -916,6 +992,8 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			'W': time.Now().Format("3:04 pm"),
 			'P': "None",
 			'E': "0",
+			'O': "",
+			'A': "",
 		}
 		processedPreview := processDataFile(hdrBytes, sampleSubs)
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)

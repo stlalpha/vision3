@@ -366,8 +366,8 @@ type FTNNetworkConfig struct {
 // FTNConfig holds all FTN (FidoNet Technology Network) echomail settings.
 // Loaded from configs/ftn.json.
 type FTNConfig struct {
-	DupeDBPath string                       `json:"dupe_db_path"` // e.g., "data/ftn/dupes.json"
-	Networks   map[string]FTNNetworkConfig   `json:"networks"`
+	DupeDBPath string                      `json:"dupe_db_path"` // e.g., "data/ftn/dupes.json"
+	Networks   map[string]FTNNetworkConfig `json:"networks"`
 }
 
 // ServerConfig defines server-wide settings
@@ -377,6 +377,7 @@ type ServerConfig struct {
 	SysOpLevel       int    `json:"sysOpLevel"`
 	CoSysLevel       int    `json:"coSysLevel"`
 	LogonLevel       int    `json:"logonLevel"`
+	AnonymousLevel   int    `json:"anonymousLevel"`
 	SSHPort          int    `json:"sshPort"`
 	SSHHost          string `json:"sshHost"`
 	SSHEnabled       bool   `json:"sshEnabled"`
@@ -397,6 +398,7 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		SysOpLevel:       255,
 		CoSysLevel:       250,
 		LogonLevel:       100,
+		AnonymousLevel:   5,
 		SSHPort:          2222,
 		SSHHost:          "0.0.0.0",
 		SSHEnabled:       true,

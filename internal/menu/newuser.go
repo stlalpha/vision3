@@ -20,6 +20,13 @@ import (
 	"golang.org/x/term"
 )
 
+const (
+	newUserHandleMaxLen   = 30
+	newUserRealNameMaxLen = 30
+	newUserNoteMaxLen     = 30
+	newUserLocationMaxLen = 30
+)
+
 // handleNewUserApplication runs the new user signup form.
 // Flow matches the original ViSiON/2 Pascal NewUser() in GETLOGIN.PAS.
 func (e *MenuExecutor) handleNewUserApplication(
@@ -214,7 +221,7 @@ func (e *MenuExecutor) promptForHandle(
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-		input, err := terminal.ReadLine()
+		input, err := styledInput(terminal, s, outputMode, newUserHandleMaxLen, "")
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return "", io.EOF
@@ -347,7 +354,7 @@ func (e *MenuExecutor) promptForRealName(
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+prompt)), outputMode)
 
-		input, err := terminal.ReadLine()
+		input, err := styledInput(terminal, s, outputMode, newUserRealNameMaxLen, "")
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return "", io.EOF
@@ -387,7 +394,7 @@ func (e *MenuExecutor) promptForLocation(
 	prompt := "|08G|07r|15oup|08/|07L|15ocation |09: "
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+prompt)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := styledInput(terminal, s, outputMode, newUserLocationMaxLen, "")
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return "", io.EOF
@@ -412,7 +419,7 @@ func (e *MenuExecutor) promptForUserNote(
 
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+prompt)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := styledInput(terminal, s, outputMode, newUserNoteMaxLen, "")
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return "", io.EOF
@@ -439,7 +446,7 @@ func (e *MenuExecutor) promptYesNoInline(s ssh.Session, terminal *term.Terminal,
 	highlightColor := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
 	regularColor := colorCodeToAnsi(e.Theme.YesNoRegularColor)
 
-	selectedIndex := 1 // 1=Yes (default)
+	selectedIndex := 0 // 0=No (default)
 
 	// Hide cursor during selection, restore on exit
 	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)

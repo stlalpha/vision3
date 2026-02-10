@@ -3,6 +3,7 @@
     "boardPhoneNumber": "555-555-5555",
     "coSysLevel": 250,
     "logonLevel": 100,
+    "anonymousLevel": 5,
     "sshEnabled": true,
     "sshHost": "0.0.0.0",
     "sshPort": 2222,

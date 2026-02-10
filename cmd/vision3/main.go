@@ -16,14 +16,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gliderlabs/ssh"          // Keep for type compatibility
+	"github.com/gliderlabs/ssh" // Keep for type compatibility
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 
 	// Local packages (Update paths)
 	"github.com/robbiew/vision3/internal/ansi"
-	"github.com/robbiew/vision3/internal/config"
 	"github.com/robbiew/vision3/internal/conference"
+	"github.com/robbiew/vision3/internal/config"
 	"github.com/robbiew/vision3/internal/file"
 	"github.com/robbiew/vision3/internal/menu"
 	"github.com/robbiew/vision3/internal/message"
@@ -757,8 +757,8 @@ func main() {
 		confMgr = nil
 	}
 
-	// Initialize MenuExecutor with new paths, loaded theme, and message manager
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, messageMgr, fileMgr, confMgr)
+	// Initialize MenuExecutor with new paths, loaded theme, server config, and message manager
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr)
 
 	// Initialize FTN tossers from ftn.json (one per enabled network)
 	ftnConfig, err := config.LoadFTNConfig(rootConfigPath)

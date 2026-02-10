@@ -10,6 +10,7 @@ type MessageArea struct {
 	Description  string `json:"description"`              // Longer description
 	ACSRead      string `json:"acs_read"`                 // ACS string required to read
 	ACSWrite     string `json:"acs_write"`                // ACS string required to post
+	AllowAnon    *bool  `json:"allow_anonymous,omitempty"` // Optional: allow anonymous posts (nil defaults to true)
 	ConferenceID int    `json:"conference_id,omitempty"`  // Conference this area belongs to (0=ungrouped)
 	BasePath     string `json:"base_path"`                // Relative path to JAM base (e.g., "msgbases/general")
 	AreaType     string `json:"area_type"`                // "local", "echomail", "netmail"
@@ -22,18 +23,20 @@ type MessageArea struct {
 // It wraps the JAM binary data into a form suitable for display and
 // interaction in the message reader/composer.
 type DisplayMessage struct {
-	MsgNum    int       // 1-based message number in the JAM base
-	From      string
-	To        string
-	Subject   string
-	DateTime  time.Time
-	Body      string // Decoded message body for display
-	MsgID     string // FTN MSGID (for reply linking)
-	ReplyID   string // FTN REPLYID (message this replies to)
-	OrigAddr  string // FTN origin address
-	IsPrivate bool
-	IsDeleted bool
-	AreaID    int // Area this message belongs to
+	MsgNum     int       // 1-based message number in the JAM base
+	From       string
+	To         string
+	Subject    string
+	DateTime   time.Time
+	Body       string // Decoded message body for display
+	MsgID      string // FTN MSGID (for reply linking)
+	ReplyID    string // FTN REPLYID (message this replies to)
+	OrigAddr   string // FTN origin address
+	DestAddr   string // FTN destination address
+	Attributes uint32 // JAM message attribute flags
+	IsPrivate  bool
+	IsDeleted  bool
+	AreaID     int // Area this message belongs to
 }
 
 // Constants for standard message fields.

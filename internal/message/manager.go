@@ -223,18 +223,20 @@ func (mm *MessageManager) GetMessage(areaID, msgNum int) (*DisplayMessage, error
 	}
 
 	return &DisplayMessage{
-		MsgNum:    msgNum,
-		From:      msg.From,
-		To:        msg.To,
-		Subject:   msg.Subject,
-		DateTime:  msg.DateTime,
-		Body:      normalizeLineEndings(msg.Text),
-		MsgID:     msg.MsgID,
-		ReplyID:   msg.ReplyID,
-		OrigAddr:  msg.OrigAddr,
-		IsPrivate: msg.IsPrivate(),
-		IsDeleted: msg.IsDeleted(),
-		AreaID:    areaID,
+		MsgNum:     msgNum,
+		From:       msg.From,
+		To:         msg.To,
+		Subject:    msg.Subject,
+		DateTime:   msg.DateTime,
+		Body:       normalizeLineEndings(msg.Text),
+		MsgID:      msg.MsgID,
+		ReplyID:    msg.ReplyID,
+		OrigAddr:   msg.OrigAddr,
+		DestAddr:   msg.DestAddr,
+		Attributes: msg.GetAttribute(),
+		IsPrivate:  msg.IsPrivate(),
+		IsDeleted:  msg.IsDeleted(),
+		AreaID:     areaID,
 	}, nil
 }
 
