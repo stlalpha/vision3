@@ -1,6 +1,7 @@
 package menu
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -40,7 +41,7 @@ var scanAreaOptions = []MsgLightbarOption{
 }
 
 // runGetScanType displays the Pascal-style scan configuration menu.
-func runGetScanType(s ssh.Session, terminal *term.Terminal,
+func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 	outputMode ansi.OutputMode, numMsgs int, currentOnly bool,
 	hiColor int, loColor int) (*ScanConfig, error) {
 
@@ -125,7 +126,7 @@ func runGetScanType(s ssh.Session, terminal *term.Terminal,
 	for {
 		showMenu()
 
-		key, err := readSingleKey(s)
+		key, err := readSingleKey(reader)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, io.EOF
@@ -143,7 +144,7 @@ func runGetScanType(s ssh.Session, terminal *term.Terminal,
 		case 'D': // Date
 			prompt := "\r\n|07Scan From; |15A|07ll, |15N|07ew Messages, or Enter |15Date|07: |15"
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
-			input, readErr := readLineInput(s, terminal, outputMode, 10)
+			input, readErr := readLineInput(reader, terminal, outputMode, 10)
 			if readErr != nil {
 				continue
 			}
@@ -165,7 +166,7 @@ func runGetScanType(s ssh.Session, terminal *term.Terminal,
 		case 'T': // To
 			prompt := "\r\n|07\"To\" string to Search for (Cr/cancel): |15"
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
-			input, readErr := readLineInput(s, terminal, outputMode, 30)
+			input, readErr := readLineInput(reader, terminal, outputMode, 30)
 			if readErr != nil {
 				continue
 			}
@@ -174,7 +175,7 @@ func runGetScanType(s ssh.Session, terminal *term.Terminal,
 		case 'F': // From
 			prompt := "\r\n|07\"From\" string to Search for: |15"
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
-			input, readErr := readLineInput(s, terminal, outputMode, 30)
+			input, readErr := readLineInput(reader, terminal, outputMode, 30)
 			if readErr != nil {
 				continue
 			}
@@ -183,7 +184,7 @@ func runGetScanType(s ssh.Session, terminal *term.Terminal,
 		case 'R': // Range
 			prompt := fmt.Sprintf("\r\n|07Range Start (|151-%d|07) : |15", numMsgs)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
-			startInput, readErr := readLineInput(s, terminal, outputMode, 6)
+			startInput, readErr := readLineInput(reader, terminal, outputMode, 6)
 			if readErr != nil {
 				continue
 			}
@@ -197,7 +198,7 @@ func runGetScanType(s ssh.Session, terminal *term.Terminal,
 
 			prompt = fmt.Sprintf("\r\n|07Range End (|15%d-%d|07) : |15", startNum, numMsgs)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
-			endInput, readErr := readLineInput(s, terminal, outputMode, 6)
+			endInput, readErr := readLineInput(reader, terminal, outputMode, 6)
 			if readErr != nil {
 				continue
 			}
@@ -214,7 +215,7 @@ func runGetScanType(s ssh.Session, terminal *term.Terminal,
 		case 'S': // Scan which areas
 			prompt := "\r\n|15M|07arked Areas, |15A|07ll Areas, |15C|07urrent Area : |15"
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
-			aKey, aErr := readSingleKey(s)
+			aKey, aErr := readSingleKey(reader)
 			if aErr != nil {
 				continue
 			}
@@ -247,6 +248,8 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
+	reader := bufio.NewReader(s)
+
 	// Get total message count for current area (for range display in setup)
 	currentAreaID := currentUser.CurrentMessageAreaID
 	numMsgs := 0
@@ -259,7 +262,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	loColor := e.Theme.YesNoRegularColor
 
 	// Show scan setup menu
-	scanCfg, err := runGetScanType(s, terminal, outputMode, numMsgs, currentOnly, hiColor, loColor)
+	scanCfg, err := runGetScanType(reader, terminal, outputMode, numMsgs, currentOnly, hiColor, loColor)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -346,7 +349,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		if !nonStop {
 			// Show per-area lightbar: Read/Post/Jump/Skip/Quit/NonStop
 			scanSuffix := fmt.Sprintf(" [%d/%d]", startMsg, totalCount)
-			selectedKey, lbErr := runMsgLightbar(s, terminal, scanAreaOptions, outputMode,
+			selectedKey, lbErr := runMsgLightbar(reader, terminal, scanAreaOptions, outputMode,
 				hiColor, loColor, scanSuffix, 0)
 			if lbErr != nil {
 				if errors.Is(lbErr, io.EOF) {
@@ -363,7 +366,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					sessionStartTime, "", outputMode)
 				continue
 			case 'J': // Jump to message #
-				handleJump(s, terminal, outputMode, &startMsg, totalCount)
+				handleJump(reader, terminal, outputMode, &startMsg, totalCount)
 			case 'S': // Skip this area
 				continue
 			case 'Q': // Quit scanning

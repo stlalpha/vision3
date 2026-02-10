@@ -10,7 +10,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/gliderlabs/ssh"
 	"github.com/robbiew/vision3/internal/ansi"
 	"github.com/robbiew/vision3/internal/terminalio"
 	"golang.org/x/term"
@@ -101,7 +100,7 @@ func drawMsgLightbarStatic(terminal *term.Terminal, options []MsgLightbarOption,
 // Enter selects the currently highlighted option.
 //
 // initialDirection: 0=none, -1=left (move to previous), 1=right (move to next)
-func runMsgLightbar(s ssh.Session, terminal *term.Terminal,
+func runMsgLightbar(reader *bufio.Reader, terminal *term.Terminal,
 	options []MsgLightbarOption, outputMode ansi.OutputMode,
 	hiColor int, loColor int, suffix string, initialDirection int) (byte, error) {
 
@@ -109,7 +108,6 @@ func runMsgLightbar(s ssh.Session, terminal *term.Terminal,
 		return 0, fmt.Errorf("no lightbar options provided")
 	}
 
-	reader := bufio.NewReader(s)
 	currentIdx := 0
 
 	// Apply initial direction if provided
@@ -205,16 +203,14 @@ func runMsgLightbar(s ssh.Session, terminal *term.Terminal,
 
 // readSingleKey reads a single keypress using the session's reader.
 // It does NOT handle escape sequences - use readKeyWithEscapeHandling for that.
-func readSingleKey(s ssh.Session) (rune, error) {
-	reader := bufio.NewReader(s)
+func readSingleKey(reader *bufio.Reader) (rune, error) {
 	r, _, err := reader.ReadRune()
 	return r, err
 }
 
 // readLineInput reads a line of text input, echoing characters.
 // Returns the entered string (trimmed). Empty string on just Enter.
-func readLineInput(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, maxLen int) (string, error) {
-	reader := bufio.NewReader(s)
+func readLineInput(reader *bufio.Reader, terminal *term.Terminal, outputMode ansi.OutputMode, maxLen int) (string, error) {
 	var buf strings.Builder
 
 	for {
@@ -244,14 +240,14 @@ func readLineInput(s ssh.Session, terminal *term.Terminal, outputMode ansi.Outpu
 
 // promptSingleChar shows a prompt and waits for a single keypress.
 // Returns the uppercase character pressed.
-func promptSingleChar(s ssh.Session, terminal *term.Terminal, prompt string, outputMode ansi.OutputMode) (rune, error) {
+func promptSingleChar(reader *bufio.Reader, terminal *term.Terminal, prompt string, outputMode ansi.OutputMode) (rune, error) {
 	processedPrompt := ansi.ReplacePipeCodes([]byte(prompt))
 	wErr := terminalio.WriteProcessedBytes(terminal, processedPrompt, outputMode)
 	if wErr != nil {
 		log.Printf("ERROR: Failed writing prompt: %v", wErr)
 	}
 
-	r, err := readSingleKey(s)
+	r, err := readSingleKey(reader)
 	if err != nil {
 		return 0, err
 	}
@@ -261,82 +257,55 @@ func promptSingleChar(s ssh.Session, terminal *term.Terminal, prompt string, out
 
 // readKeySequence reads a key sequence, handling escape sequences for arrow keys, page up/down, etc.
 // Returns the complete sequence as a string for switch handling.
-func readKeySequence(s ssh.Session, timeout time.Duration) (string, error) {
-	reader := bufio.NewReader(s)
-
-	// Create a channel for the result
-	type result struct {
-		seq string
-		err error
+func readKeySequence(reader *bufio.Reader) (string, error) {
+	// Read first byte
+	firstByte, err := reader.ReadByte()
+	if err != nil {
+		return "", err
 	}
-	resultCh := make(chan result, 1)
 
-	// Read in a goroutine with timeout
-	go func() {
-		// Read first byte
-		firstByte, err := reader.ReadByte()
-		if err != nil {
-			resultCh <- result{"", err}
-			return
-		}
+	// Check if it's an escape sequence
+	if firstByte == 0x1B { // ESC
+		// Try to read next byte(s) quickly - check if buffered
+		time.Sleep(25 * time.Millisecond) // Small delay for escape sequence
 
-		// Check if it's an escape sequence
-		if firstByte == 0x1B { // ESC
-			// Try to read next byte(s) quickly - check if buffered
-			time.Sleep(25 * time.Millisecond) // Small delay for escape sequence
-
-			if reader.Buffered() > 0 {
-				secondByte, err := reader.ReadByte()
-				if err == nil && secondByte == '[' {
-					// ANSI escape sequence - read until we get a letter or tilde
-					seq := []byte{0x1B, '['}
-					for {
-						if reader.Buffered() == 0 {
-							time.Sleep(10 * time.Millisecond)
-						}
-						if reader.Buffered() > 0 {
-							b, err := reader.ReadByte()
-							if err != nil {
-								break
-							}
-							seq = append(seq, b)
-							// End of sequence is typically a letter or tilde
-							if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || b == '~' {
-								break
-							}
-							if len(seq) > 8 { // Safety limit
-								break
-							}
-						} else {
+		if reader.Buffered() > 0 {
+			secondByte, err := reader.ReadByte()
+			if err == nil && secondByte == '[' {
+				// ANSI escape sequence - read until we get a letter or tilde
+				seq := []byte{0x1B, '['}
+				for {
+					if reader.Buffered() == 0 {
+						time.Sleep(10 * time.Millisecond)
+					}
+					if reader.Buffered() > 0 {
+						b, err := reader.ReadByte()
+						if err != nil {
 							break
 						}
+						seq = append(seq, b)
+						// End of sequence is typically a letter or tilde
+						if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || b == '~' {
+							break
+						}
+						if len(seq) > 8 { // Safety limit
+							break
+						}
+					} else {
+						break
 					}
-					resultCh <- result{string(seq), nil}
-					return
-				} else if err == nil {
-					// ESC followed by something else
-					resultCh <- result{string([]byte{0x1B, secondByte}), nil}
-					return
 				}
+				return string(seq), nil
 			}
-			// Just ESC by itself
-			resultCh <- result{"\x1b", nil}
-			return
+			if err == nil {
+				// ESC followed by something else
+				return string([]byte{0x1B, secondByte}), nil
+			}
 		}
-
-		// Single character
-		resultCh <- result{string(firstByte), nil}
-	}()
-
-	// Wait for result or timeout
-	select {
-	case res := <-resultCh:
-		return res.seq, res.err
-	case <-time.After(timeout):
-		return "", fmt.Errorf("timeout")
+		// Just ESC by itself
+		return "\x1b", nil
 	}
-}
 
-// Compile-time check to suppress unused import warnings
-var _ = time.Second
-var _ = log.Printf
+	// Single character
+	return string(firstByte), nil
+}

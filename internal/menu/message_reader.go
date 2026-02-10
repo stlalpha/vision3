@@ -95,6 +95,8 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		termHeight = ptyReq.Window.Height
 	}
 
+	reader := bufio.NewReader(s)
+
 	// Lightbar colors from theme
 	hiColor := e.Theme.YesNoHighlightColor
 	loColor := e.Theme.YesNoRegularColor
@@ -231,12 +233,11 @@ readerLoop:
 			}
 
 			// Read key sequence (handles escape sequences for arrow keys, page up/down)
-			keySeq, keyErr := readKeySequence(s, 3*time.Second)
+			keySeq, keyErr := readKeySequence(reader)
 			if keyErr != nil {
 				if errors.Is(keyErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF
 				}
-				// Timeout is acceptable, just continue
 				continue
 			}
 
@@ -318,7 +319,7 @@ readerLoop:
 					initialDir = 1 // Right arrow
 				}
 
-				selKey, lbErr := runMsgLightbar(s, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, initialDir)
+				selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, initialDir)
 				if lbErr != nil {
 					if errors.Is(lbErr, io.EOF) {
 						return nil, "LOGOFF", io.EOF
@@ -330,20 +331,56 @@ readerLoop:
 				// Don't continue here - fall through to handle the selected command
 			}
 
-			// If not a scrolling key, show the lightbar for command selection
-			// First handle simple single-key commands that bypass the lightbar
-			if len(keySeq) == 1 {
-				singleKey := rune(keySeq[0])
-				// Check if it's a direct command key
-				switch unicode.ToUpper(singleKey) {
-				case 'N', 'R', 'A', 'S', 'T', 'P', 'J', 'M', 'L', 'Q', '?':
-					selectedKey = unicode.ToUpper(singleKey)
-				case '\r', '\n':
-					selectedKey = 'N' // Enter = Next
-				case '\x1b': // ESC = Quit
-					selectedKey = 'Q'
-				default:
-					// Not a recognized command, show lightbar
+			if selectedKey == 0 {
+				// If not a scrolling key, show the lightbar for command selection
+				// First handle simple single-key commands that bypass the lightbar
+				if len(keySeq) == 1 {
+					singleKey := rune(keySeq[0])
+					// Check if it's a direct command key
+					switch unicode.ToUpper(singleKey) {
+					case 'N', 'R', 'A', 'S', 'T', 'P', 'J', 'M', 'L', 'Q', '?':
+						selectedKey = unicode.ToUpper(singleKey)
+					case '\r', '\n':
+						selectedKey = 'N' // Enter = Next
+					case '\x1b': // ESC = Quit
+						selectedKey = 'Q'
+					default:
+						// Not a recognized command, show lightbar
+						var suffixText string
+						if isNewScan {
+							suffixText = " (NewScan)"
+						} else {
+							suffixText = " (Reading)"
+						}
+
+						// Add scroll info to suffix
+						if totalBodyLines > bodyAvailHeight {
+							maxScroll := totalBodyLines - bodyAvailHeight
+							scrollPercent := 0
+							if maxScroll > 0 {
+								scrollPercent = (scrollOffset * 100) / maxScroll
+								if scrollPercent > 100 {
+									scrollPercent = 100
+								}
+							}
+							suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
+						}
+
+						// Position cursor at last row for lightbar
+						terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
+
+						selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
+						if lbErr != nil {
+							if errors.Is(lbErr, io.EOF) {
+								return nil, "LOGOFF", io.EOF
+							}
+							log.Printf("ERROR: Node %d: Lightbar error: %v", nodeNumber, lbErr)
+							break readerLoop
+						}
+						selectedKey = rune(selKey)
+					}
+				} else {
+					// Multi-byte sequence that wasn't handled as scrolling - show lightbar
 					var suffixText string
 					if isNewScan {
 						suffixText = " (NewScan)"
@@ -351,7 +388,6 @@ readerLoop:
 						suffixText = " (Reading)"
 					}
 
-					// Add scroll info to suffix
 					if totalBodyLines > bodyAvailHeight {
 						maxScroll := totalBodyLines - bodyAvailHeight
 						scrollPercent := 0
@@ -364,10 +400,9 @@ readerLoop:
 						suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
 					}
 
-					// Position cursor at last row for lightbar
 					terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
-					selKey, lbErr := runMsgLightbar(s, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
+					selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
 					if lbErr != nil {
 						if errors.Is(lbErr, io.EOF) {
 							return nil, "LOGOFF", io.EOF
@@ -377,38 +412,6 @@ readerLoop:
 					}
 					selectedKey = rune(selKey)
 				}
-			} else {
-				// Multi-byte sequence that wasn't handled as scrolling - show lightbar
-				var suffixText string
-				if isNewScan {
-					suffixText = " (NewScan)"
-				} else {
-					suffixText = " (Reading)"
-				}
-
-				if totalBodyLines > bodyAvailHeight {
-					maxScroll := totalBodyLines - bodyAvailHeight
-					scrollPercent := 0
-					if maxScroll > 0 {
-						scrollPercent = (scrollOffset * 100) / maxScroll
-						if scrollPercent > 100 {
-							scrollPercent = 100
-						}
-					}
-					suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
-				}
-
-				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
-
-				selKey, lbErr := runMsgLightbar(s, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
-				if lbErr != nil {
-					if errors.Is(lbErr, io.EOF) {
-						return nil, "LOGOFF", io.EOF
-					}
-					log.Printf("ERROR: Node %d: Lightbar error: %v", nodeNumber, lbErr)
-					break readerLoop
-				}
-				selectedKey = rune(selKey)
 			}
 
 			// Handle command from lightbar or direct key
@@ -462,13 +465,13 @@ readerLoop:
 				break readerLoop
 
 			case 'T': // Thread
-				handleThread(e, s, terminal, outputMode, currentAreaID,
+				handleThread(reader, e, terminal, outputMode, currentAreaID,
 					&currentMsgNum, totalMsgCount, currentMsg.Subject)
 				// Exit scroll loop to load new message if thread changed it
 				break scrollLoop
 
 			case 'J': // Jump to message number
-				handleJump(s, terminal, outputMode, &currentMsgNum, totalMsgCount)
+				handleJump(reader, terminal, outputMode, &currentMsgNum, totalMsgCount)
 				// Exit scroll loop to load new message
 				break scrollLoop
 
@@ -764,7 +767,7 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 }
 
 // handleThread prompts for forward/backward and searches for matching subject.
-func handleThread(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
+func handleThread(reader *bufio.Reader, e *MenuExecutor, terminal *term.Terminal,
 	outputMode ansi.OutputMode, areaID int,
 	currentMsgNum *int, totalMsgs int, subject string) {
 
@@ -772,7 +775,7 @@ func handleThread(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	key, err := readSingleKey(s)
+	key, err := readSingleKey(reader)
 	if err != nil {
 		return
 	}
@@ -845,14 +848,14 @@ func subjectMatchesThread(msgSubject, searchSubject string) bool {
 }
 
 // handleJump prompts the user for a message number to jump to.
-func handleJump(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode,
+func handleJump(reader *bufio.Reader, terminal *term.Terminal, outputMode ansi.OutputMode,
 	currentMsgNum *int, totalMsgs int) {
 
 	prompt := fmt.Sprintf("|09Jump to message # |01(|131|05/|13%d|01) : |15", totalMsgs)
 	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	input, err := readLineInput(s, terminal, outputMode, 6)
+	input, err := readLineInput(reader, terminal, outputMode, 6)
 	if err != nil {
 		return
 	}
@@ -909,6 +912,8 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
+	reader := bufio.NewReader(s)
+
 	// Find the input field position (last ESC[row;colH in the file)
 	inputRow, inputCol := findLastCursorPos(selectionBytes)
 	if inputRow == 0 {
@@ -926,7 +931,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[1;37;42m"), outputMode) // bright white on green bg
 
 		// Read selection number
-		input, readErr := readLineInput(s, terminal, outputMode, 2)
+		input, readErr := readLineInput(reader, terminal, outputMode, 2)
 		// Reset colors after input
 		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
 		if readErr != nil {
@@ -1001,6 +1006,3 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	return nil, "", nil
 }
-
-// Compile-time reference to suppress unused import
-var _ = bufio.NewReader
