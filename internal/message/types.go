@@ -15,6 +15,7 @@ type MessageArea struct {
 	AreaType     string `json:"area_type"`                // "local", "echomail", "netmail"
 	EchoTag      string `json:"echo_tag,omitempty"`       // FTN echo tag (e.g., "FSX_GEN")
 	OriginAddr   string `json:"origin_addr,omitempty"`    // FTN origin address (e.g., "21:3/110")
+	Network      string `json:"network,omitempty"`        // FTN network name (e.g., "fsxnet")
 }
 
 // DisplayMessage is a high-level message view for the UI layer.

@@ -352,32 +352,37 @@ type FTNLinkConfig struct {
 	EchoAreas []string `json:"echo_areas"` // Echo tags routed to this link
 }
 
-// FTNConfig holds FTN (FidoNet Technology Network) echomail settings.
-type FTNConfig struct {
+// FTNNetworkConfig holds settings for a single FTN network (e.g., FSXNet, FidoNet).
+type FTNNetworkConfig struct {
 	Enabled      bool            `json:"enabled"`
 	OwnAddress   string          `json:"own_address"`           // e.g., "21:3/110"
-	InboundPath  string          `json:"inbound_path"`          // e.g., "data/ftn/inbound"
-	OutboundPath string          `json:"outbound_path"`         // e.g., "data/ftn/outbound"
-	TempPath     string          `json:"temp_path"`             // e.g., "data/ftn/temp"
-	DupeDBPath   string          `json:"dupe_db_path"`          // e.g., "data/ftn/dupes.json"
+	InboundPath  string          `json:"inbound_path"`          // e.g., "data/ftn/fsxnet/inbound"
+	OutboundPath string          `json:"outbound_path"`         // e.g., "data/ftn/fsxnet/outbound"
+	TempPath     string          `json:"temp_path"`             // e.g., "data/ftn/fsxnet/temp"
 	PollSeconds  int             `json:"poll_interval_seconds"` // 0 = manual only
 	Links        []FTNLinkConfig `json:"links"`
 }
 
+// FTNConfig holds all FTN (FidoNet Technology Network) echomail settings.
+// Loaded from configs/ftn.json.
+type FTNConfig struct {
+	DupeDBPath string                       `json:"dupe_db_path"` // e.g., "data/ftn/dupes.json"
+	Networks   map[string]FTNNetworkConfig   `json:"networks"`
+}
+
 // ServerConfig defines server-wide settings
 type ServerConfig struct {
-	BoardName        string    `json:"boardName"`
-	BoardPhoneNumber string    `json:"boardPhoneNumber"`
-	SysOpLevel       int       `json:"sysOpLevel"`
-	CoSysLevel       int       `json:"coSysLevel"`
-	LogonLevel       int       `json:"logonLevel"`
-	SSHPort          int       `json:"sshPort"`
-	SSHHost          string    `json:"sshHost"`
-	SSHEnabled       bool      `json:"sshEnabled"`
-	TelnetPort       int       `json:"telnetPort"`
-	TelnetHost       string    `json:"telnetHost"`
-	TelnetEnabled    bool      `json:"telnetEnabled"`
-	FTN              FTNConfig `json:"ftn"`
+	BoardName        string `json:"boardName"`
+	BoardPhoneNumber string `json:"boardPhoneNumber"`
+	SysOpLevel       int    `json:"sysOpLevel"`
+	CoSysLevel       int    `json:"coSysLevel"`
+	LogonLevel       int    `json:"logonLevel"`
+	SSHPort          int    `json:"sshPort"`
+	SSHHost          string `json:"sshHost"`
+	SSHEnabled       bool   `json:"sshEnabled"`
+	TelnetPort       int    `json:"telnetPort"`
+	TelnetHost       string `json:"telnetHost"`
+	TelnetEnabled    bool   `json:"telnetEnabled"`
 }
 
 // LoadServerConfig loads the server configuration from config.json
@@ -422,4 +427,44 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 	return config, nil
 }
 
-// Add other shared config structs here later if needed.
+// LoadFTNConfig loads FTN network configuration from ftn.json.
+// Returns an empty config (no networks) if the file does not exist.
+func LoadFTNConfig(configPath string) (FTNConfig, error) {
+	filePath := filepath.Join(configPath, "ftn.json")
+	log.Printf("INFO: Loading FTN configuration from %s", filePath)
+
+	defaultConfig := FTNConfig{
+		Networks: make(map[string]FTNNetworkConfig),
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("INFO: ftn.json not found at %s. FTN disabled.", filePath)
+			return defaultConfig, nil
+		}
+		return defaultConfig, fmt.Errorf("failed to read FTN config file %s: %w", filePath, err)
+	}
+
+	var config FTNConfig
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		log.Printf("ERROR: Failed to parse FTN config JSON from %s: %v", filePath, err)
+		return defaultConfig, fmt.Errorf("failed to parse FTN config JSON from %s: %w", filePath, err)
+	}
+
+	if config.Networks == nil {
+		config.Networks = make(map[string]FTNNetworkConfig)
+	}
+
+	enabledCount := 0
+	for name, net := range config.Networks {
+		if net.Enabled {
+			enabledCount++
+			log.Printf("INFO: FTN network %q enabled: address=%s", name, net.OwnAddress)
+		}
+	}
+	log.Printf("INFO: Loaded FTN configuration: %d network(s), %d enabled", len(config.Networks), enabledCount)
+
+	return config, nil
+}

@@ -31,6 +31,7 @@ type areaConfig struct {
 	AreaType     string `json:"area_type"`
 	EchoTag      string `json:"echo_tag,omitempty"`
 	OriginAddr   string `json:"origin_addr,omitempty"`
+	Network      string `json:"network,omitempty"`
 }
 
 type conferenceConfig struct {
@@ -42,12 +43,16 @@ type conferenceConfig struct {
 }
 
 type ftnConfig struct {
+	DupeDBPath string                       `json:"dupe_db_path"`
+	Networks   map[string]ftnNetworkConfig  `json:"networks"`
+}
+
+type ftnNetworkConfig struct {
 	Enabled      bool         `json:"enabled"`
 	OwnAddress   string       `json:"own_address"`
 	InboundPath  string       `json:"inbound_path"`
 	OutboundPath string       `json:"outbound_path"`
 	TempPath     string       `json:"temp_path"`
-	DupeDBPath   string       `json:"dupe_db_path"`
 	PollSeconds  int          `json:"poll_interval_seconds"`
 	Links        []linkConfig `json:"links"`
 }
@@ -108,7 +113,7 @@ func cmdFTNSetup(args []string) {
 	fs.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage: helper ftnsetup [options]\n\n")
 		fmt.Fprintf(os.Stderr, "Import FTN echo areas from a FIDONET.NA file.\n")
-		fmt.Fprintf(os.Stderr, "Updates config.json, message_areas.json, and conferences.json.\n\n")
+		fmt.Fprintf(os.Stderr, "Updates ftn.json, message_areas.json, and conferences.json.\n\n")
 		fmt.Fprintf(os.Stderr, "Options:\n")
 		fs.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExample:\n")
@@ -146,13 +151,13 @@ func cmdFTNSetup(args []string) {
 	}
 
 	// 2. Load existing configs
-	configPath := filepath.Join(*configDir, "config.json")
+	ftnPath := filepath.Join(*configDir, "ftn.json")
 	areasPath := filepath.Join(*configDir, "message_areas.json")
 	confsPath := filepath.Join(*configDir, "conferences.json")
 
-	serverCfg, err := loadServerConfig(configPath)
+	ftn, err := loadFTNConfig(ftnPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", configPath, err)
+		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", ftnPath, err)
 		os.Exit(1)
 	}
 
@@ -223,10 +228,11 @@ func cmdFTNSetup(args []string) {
 		}
 	}
 
-	// 6. Check for existing link
-	ftn := extractFTN(serverCfg)
+	// 6. Check for existing link in the target network
+	networkKey := strings.ToLower(strings.ReplaceAll(*network, " ", "_"))
+	netCfg := ftn.Networks[networkKey] // zero value if new network
 	existingLinkIdx := -1
-	for i, link := range ftn.Links {
+	for i, link := range netCfg.Links {
 		if link.Address == *hub {
 			existingLinkIdx = i
 			break
@@ -235,7 +241,7 @@ func cmdFTNSetup(args []string) {
 
 	// 7. Print summary
 	fmt.Println()
-	fmt.Printf("Network:     %s\n", *network)
+	fmt.Printf("Network:     %s (key: %s)\n", *network, networkKey)
 	if confIsNew {
 		fmt.Printf("Conference:  %s (id: %d) [NEW]\n", *network, confID)
 	} else {
@@ -261,19 +267,19 @@ func cmdFTNSetup(args []string) {
 		}
 	}
 
-	fmt.Println("\nConfig changes:")
-	if !ftn.Enabled {
-		fmt.Println("  ftn.enabled: false -> true")
+	fmt.Println("\nConfig changes (ftn.json):")
+	if !netCfg.Enabled {
+		fmt.Printf("  networks.%s.enabled: false -> true\n", networkKey)
 	}
-	if ftn.OwnAddress == "" {
-		fmt.Printf("  ftn.own_address: \"\" -> %q\n", *address)
-	} else if ftn.OwnAddress != *address {
-		fmt.Printf("  ftn.own_address: %q (unchanged)\n", ftn.OwnAddress)
+	if netCfg.OwnAddress == "" {
+		fmt.Printf("  networks.%s.own_address: \"\" -> %q\n", networkKey, *address)
+	} else if netCfg.OwnAddress != *address {
+		fmt.Printf("  networks.%s.own_address: %q (unchanged)\n", networkKey, netCfg.OwnAddress)
 	}
 	if existingLinkIdx >= 0 {
-		fmt.Printf("  ftn.links: merge %d echo areas into existing link %s\n", len(newAreas), *hub)
+		fmt.Printf("  networks.%s.links: merge %d echo areas into existing link %s\n", networkKey, len(newAreas), *hub)
 	} else {
-		fmt.Printf("  ftn.links: +1 link (%s, %d echo areas)\n", *hub, len(newAreas))
+		fmt.Printf("  networks.%s.links: +1 link (%s, %d echo areas)\n", networkKey, *hub, len(newAreas))
 	}
 
 	if len(newAreas) == 0 {
@@ -316,44 +322,42 @@ func cmdFTNSetup(args []string) {
 			AreaType:     "echomail",
 			EchoTag:      a.Tag,
 			OriginAddr:   *address,
+			Network:      networkKey,
 		})
 		echoTags = append(echoTags, a.Tag)
 		nextID++
 	}
 
-	// 8c. Update FTN config
-	ftn.Enabled = true
-	if ftn.OwnAddress == "" {
-		ftn.OwnAddress = *address
+	// 8c. Update FTN network config
+	netCfg.Enabled = true
+	if netCfg.OwnAddress == "" {
+		netCfg.OwnAddress = *address
 	}
-	if ftn.InboundPath == "" {
-		ftn.InboundPath = "data/ftn/inbound"
+	if netCfg.InboundPath == "" {
+		netCfg.InboundPath = fmt.Sprintf("data/ftn/%s/inbound", networkKey)
 	}
-	if ftn.OutboundPath == "" {
-		ftn.OutboundPath = "data/ftn/outbound"
+	if netCfg.OutboundPath == "" {
+		netCfg.OutboundPath = fmt.Sprintf("data/ftn/%s/outbound", networkKey)
 	}
-	if ftn.TempPath == "" {
-		ftn.TempPath = "data/ftn/temp"
+	if netCfg.TempPath == "" {
+		netCfg.TempPath = fmt.Sprintf("data/ftn/%s/temp", networkKey)
 	}
-	if ftn.DupeDBPath == "" {
-		ftn.DupeDBPath = "data/ftn/dupes.json"
-	}
-	if ftn.PollSeconds == 0 {
-		ftn.PollSeconds = 300
+	if netCfg.PollSeconds == 0 {
+		netCfg.PollSeconds = 300
 	}
 
 	if existingLinkIdx >= 0 {
 		existing := make(map[string]bool)
-		for _, t := range ftn.Links[existingLinkIdx].EchoAreas {
+		for _, t := range netCfg.Links[existingLinkIdx].EchoAreas {
 			existing[strings.ToUpper(t)] = true
 		}
 		for _, t := range echoTags {
 			if !existing[strings.ToUpper(t)] {
-				ftn.Links[existingLinkIdx].EchoAreas = append(ftn.Links[existingLinkIdx].EchoAreas, t)
+				netCfg.Links[existingLinkIdx].EchoAreas = append(netCfg.Links[existingLinkIdx].EchoAreas, t)
 			}
 		}
 	} else {
-		ftn.Links = append(ftn.Links, linkConfig{
+		netCfg.Links = append(netCfg.Links, linkConfig{
 			Address:   *hub,
 			Password:  *hubPassword,
 			Name:      *hubName,
@@ -361,7 +365,10 @@ func cmdFTNSetup(args []string) {
 		})
 	}
 
-	setFTN(serverCfg, ftn)
+	ftn.Networks[networkKey] = netCfg
+	if ftn.DupeDBPath == "" {
+		ftn.DupeDBPath = "data/ftn/dupes.json"
+	}
 
 	// 9. Write files
 	if err := writeJSON(confsPath, conferences); err != nil {
@@ -380,12 +387,12 @@ func cmdFTNSetup(args []string) {
 		fmt.Printf("Wrote %s\n", areasPath)
 	}
 
-	if err := writeJSON(configPath, serverCfg); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", configPath, err)
+	if err := writeJSON(ftnPath, ftn); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing %s: %v\n", ftnPath, err)
 		os.Exit(1)
 	}
 	if !*quiet {
-		fmt.Printf("Wrote %s\n", configPath)
+		fmt.Printf("Wrote %s\n", ftnPath)
 	}
 
 	fmt.Printf("\nDone. Added %d echo areas for %s.\n", len(newAreas), *network)
@@ -446,31 +453,23 @@ func isValidEchoTag(tag string) bool {
 
 // --- Config I/O ---
 
-func loadServerConfig(path string) (map[string]json.RawMessage, error) {
+func loadFTNConfig(path string) (ftnConfig, error) {
+	var cfg ftnConfig
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, err
+		if os.IsNotExist(err) {
+			cfg.Networks = make(map[string]ftnNetworkConfig)
+			return cfg, nil // Fresh config
+		}
+		return cfg, err
 	}
-	var m map[string]json.RawMessage
-	if err := json.Unmarshal(data, &m); err != nil {
-		return nil, err
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return cfg, err
 	}
-	return m, nil
-}
-
-func extractFTN(cfg map[string]json.RawMessage) ftnConfig {
-	var ftn ftnConfig
-	raw, ok := cfg["ftn"]
-	if !ok {
-		return ftn
+	if cfg.Networks == nil {
+		cfg.Networks = make(map[string]ftnNetworkConfig)
 	}
-	json.Unmarshal(raw, &ftn) //nolint: zero-valued on error is fine
-	return ftn
-}
-
-func setFTN(cfg map[string]json.RawMessage, ftn ftnConfig) {
-	data, _ := json.Marshal(ftn)
-	cfg["ftn"] = json.RawMessage(data)
+	return cfg, nil
 }
 
 func loadAreas(path string) ([]areaConfig, error) {

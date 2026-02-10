@@ -28,6 +28,11 @@ func (t *Tosser) ScanAndExport() TossResult {
 			continue
 		}
 
+		// Only export areas belonging to this network
+		if !strings.EqualFold(area.Network, t.networkName) {
+			continue
+		}
+
 		base, err := t.msgMgr.GetBase(area.ID)
 		if err != nil {
 			log.Printf("WARN: Export: cannot get base for area %d (%s): %v", area.ID, area.Tag, err)
@@ -105,7 +110,7 @@ func (t *Tosser) ScanAndExport() TossResult {
 }
 
 // findLink looks up a link config by address.
-func (t *Tosser) findLink(address string) *LinkConfig {
+func (t *Tosser) findLink(address string) *linkConfig {
 	for i := range t.config.Links {
 		if t.config.Links[i].Address == address {
 			return &t.config.Links[i]
@@ -121,7 +126,7 @@ type pendingMsg struct {
 }
 
 // createOutboundPacket creates a .PKT file in the outbound directory.
-func (t *Tosser) createOutboundPacket(link *LinkConfig, msgs []pendingMsg) (int, error) {
+func (t *Tosser) createOutboundPacket(link *linkConfig, msgs []pendingMsg) (int, error) {
 	destAddr, err := jam.ParseAddress(link.Address)
 	if err != nil {
 		return 0, fmt.Errorf("parse link address %q: %w", link.Address, err)

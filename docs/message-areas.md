@@ -197,38 +197,46 @@ Message display templates are in `menus/v3/templates/`:
 
 ## FTN Echomail Configuration
 
-ViSiON/3 includes a built-in FTN tosser for echomail. Configure it in `configs/config.json`:
+ViSiON/3 includes a built-in FTN tosser for echomail with support for multiple networks.
+Configure it in `configs/ftn.json` (separate from the main `config.json`):
 
 ```json
 {
-  "ftn": {
-    "enabled": true,
-    "own_address": "21:3/110",
-    "inbound_path": "data/ftn/inbound",
-    "outbound_path": "data/ftn/outbound",
-    "temp_path": "data/ftn/temp",
-    "dupe_db_path": "data/ftn/dupes.json",
-    "poll_interval_seconds": 300,
-    "links": [
-      {
-        "address": "21:1/100",
-        "password": "secret",
-        "name": "Hub Node",
-        "echo_areas": ["FSX_GEN", "FSX_BOT", "FSX_MYS"]
-      }
-    ]
+  "dupe_db_path": "data/ftn/dupes.json",
+  "networks": {
+    "fsxnet": {
+      "enabled": true,
+      "own_address": "21:3/110",
+      "inbound_path": "data/ftn/fsxnet/inbound",
+      "outbound_path": "data/ftn/fsxnet/outbound",
+      "temp_path": "data/ftn/fsxnet/temp",
+      "poll_interval_seconds": 300,
+      "links": [
+        {
+          "address": "21:1/100",
+          "password": "secret",
+          "name": "FSXNet Hub",
+          "echo_areas": ["FSX_GEN", "FSX_BOT", "FSX_MYS"]
+        }
+      ]
+    }
   }
 }
 ```
 
-### FTN Settings
+### Top-Level Settings
 
-- `enabled` - Set to `true` to activate the tosser
-- `own_address` - Your FTN address (e.g., `"21:3/110"`)
+- `dupe_db_path` - JSON file for MSGID dupe tracking (shared across all networks)
+- `networks` - Map of network name to network configuration
+
+### Per-Network Settings
+
+Each network key (e.g., `"fsxnet"`) contains:
+- `enabled` - Set to `true` to activate the tosser for this network
+- `own_address` - Your FTN address on this network (e.g., `"21:3/110"`)
 - `inbound_path` - Directory for incoming .PKT files
 - `outbound_path` - Directory for outgoing .PKT files
 - `temp_path` - Temp directory for failed packets
-- `dupe_db_path` - JSON file for MSGID dupe tracking
 - `poll_interval_seconds` - How often to scan for packets (0 = manual only)
 
 ### Link Configuration
@@ -238,6 +246,23 @@ Each link defines a connected FTN node:
 - `password` - Packet password (shared secret)
 - `name` - Human-readable label
 - `echo_areas` - List of echo tags to route to this link (use `"*"` for all)
+
+### Message Area Network Field
+
+Echomail areas in `message_areas.json` must include a `"network"` field matching
+the network key in `ftn.json`:
+
+```json
+{
+  "area_type": "echomail",
+  "echo_tag": "FSX_GEN",
+  "origin_addr": "21:3/110",
+  "network": "fsxnet"
+}
+```
+
+This ties each area to a specific FTN network, allowing the same BBS to
+participate in multiple networks (e.g., FSXNet and FidoNet) simultaneously.
 
 ### Echomail Flow
 

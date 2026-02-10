@@ -22,33 +22,36 @@ type TossResult struct {
 	Errors           []string
 }
 
-// Tosser handles importing and exporting FTN echomail packets.
+// Tosser handles importing and exporting FTN echomail packets for a single network.
 type Tosser struct {
-	config  Config
-	msgMgr  *message.MessageManager
-	dupeDB  *DupeDB
-	ownAddr *jam.FidoAddress
+	networkName string
+	config      networkConfig
+	msgMgr      *message.MessageManager
+	dupeDB      *DupeDB
+	ownAddr     *jam.FidoAddress
 }
 
-// New creates a new Tosser instance.
-func New(cfg Config, msgMgr *message.MessageManager) (*Tosser, error) {
+// New creates a new Tosser instance for a single FTN network.
+// The dupeDB is shared across networks (MSGIDs are globally unique).
+func New(networkName string, cfg networkConfig, dupeDB *DupeDB, msgMgr *message.MessageManager) (*Tosser, error) {
 	addr, err := jam.ParseAddress(cfg.OwnAddress)
 	if err != nil {
-		return nil, fmt.Errorf("tosser: invalid own_address %q: %w", cfg.OwnAddress, err)
-	}
-
-	maxAge := 30 * 24 * time.Hour // 30 day dupe history
-	dupeDB, err := NewDupeDB(cfg.DupeDBPath, maxAge)
-	if err != nil {
-		return nil, fmt.Errorf("tosser: failed to open dupe DB: %w", err)
+		return nil, fmt.Errorf("tosser[%s]: invalid own_address %q: %w", networkName, cfg.OwnAddress, err)
 	}
 
 	return &Tosser{
-		config:  cfg,
-		msgMgr:  msgMgr,
-		dupeDB:  dupeDB,
-		ownAddr: addr,
+		networkName: networkName,
+		config:      cfg,
+		msgMgr:      msgMgr,
+		dupeDB:      dupeDB,
+		ownAddr:     addr,
 	}, nil
+}
+
+// NewDupeDBFromPath creates a shared DupeDB for use across multiple tossers.
+func NewDupeDBFromPath(dupeDBPath string) (*DupeDB, error) {
+	maxAge := 30 * 24 * time.Hour // 30 day dupe history
+	return NewDupeDB(dupeDBPath, maxAge)
 }
 
 // ProcessInbound scans the inbound directory for .PKT files and tosses them.
@@ -189,7 +192,7 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage) error {
 	jamMsg.DateTime = dt
 
 	// Set origin address from the packet message
-	origAddr := fmt.Sprintf("%d:%d/%d", t.config.origZone(msg), msg.OrigNet, msg.OrigNode)
+	origAddr := fmt.Sprintf("%d:%d/%d", origZone(t.ownAddr), msg.OrigNet, msg.OrigNode)
 	jamMsg.OrigAddr = origAddr
 
 	// Set MSGID if we have one
@@ -224,12 +227,9 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage) error {
 	return nil
 }
 
-// origZone extracts the originating zone from the packet context.
-func (c Config) origZone(msg *ftn.PackedMessage) uint16 {
-	// The zone comes from the packet header, not the individual message.
-	// For now, parse from our own address as default for the zone context.
-	addr, err := jam.ParseAddress(c.OwnAddress)
-	if err != nil {
+// origZone extracts the zone from the tosser's own address for packet context.
+func origZone(addr *jam.FidoAddress) uint16 {
+	if addr == nil {
 		return 1
 	}
 	return uint16(addr.Zone)

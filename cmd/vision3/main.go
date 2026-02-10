@@ -760,43 +760,46 @@ func main() {
 	// Initialize MenuExecutor with new paths, loaded theme, and message manager
 	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, messageMgr, fileMgr, confMgr)
 
-	// Initialize FTN tosser if enabled
-	if serverConfig.FTN.Enabled {
-		ftnCfg := tosser.Config{
-			Enabled:      serverConfig.FTN.Enabled,
-			OwnAddress:   serverConfig.FTN.OwnAddress,
-			InboundPath:  serverConfig.FTN.InboundPath,
-			OutboundPath: serverConfig.FTN.OutboundPath,
-			TempPath:     serverConfig.FTN.TempPath,
-			DupeDBPath:   serverConfig.FTN.DupeDBPath,
-			PollSeconds:  serverConfig.FTN.PollSeconds,
-		}
-		for _, link := range serverConfig.FTN.Links {
-			ftnCfg.Links = append(ftnCfg.Links, tosser.LinkConfig{
-				Address:   link.Address,
-				Password:  link.Password,
-				Name:      link.Name,
-				EchoAreas: link.EchoAreas,
-			})
-		}
-
-		// Create FTN directories
-		for _, dir := range []string{ftnCfg.InboundPath, ftnCfg.OutboundPath, ftnCfg.TempPath} {
-			if dir != "" {
-				if err := os.MkdirAll(dir, 0755); err != nil {
-					log.Printf("WARN: Failed to create FTN directory %s: %v", dir, err)
-				}
+	// Initialize FTN tossers from ftn.json (one per enabled network)
+	ftnConfig, err := config.LoadFTNConfig(rootConfigPath)
+	if err != nil {
+		log.Printf("ERROR: Failed to load FTN config: %v. Echomail disabled.", err)
+	} else if len(ftnConfig.Networks) > 0 {
+		// Create shared dupe DB
+		var dupeDB *tosser.DupeDB
+		if ftnConfig.DupeDBPath != "" {
+			dupeDB, err = tosser.NewDupeDBFromPath(ftnConfig.DupeDBPath)
+			if err != nil {
+				log.Printf("ERROR: Failed to open FTN dupe DB: %v. Echomail disabled.", err)
 			}
 		}
 
-		ftnTosser, err := tosser.New(ftnCfg, messageMgr)
-		if err != nil {
-			log.Printf("ERROR: Failed to initialize FTN tosser: %v. Echomail disabled.", err)
-		} else {
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-			go ftnTosser.Start(ctx)
-			log.Printf("INFO: FTN tosser initialized for %s", serverConfig.FTN.OwnAddress)
+		if dupeDB != nil {
+			ftnCtx, ftnCancel := context.WithCancel(context.Background())
+			defer ftnCancel()
+
+			for netName, netCfg := range ftnConfig.Networks {
+				if !netCfg.Enabled {
+					continue
+				}
+
+				// Create FTN directories for this network
+				for _, dir := range []string{netCfg.InboundPath, netCfg.OutboundPath, netCfg.TempPath} {
+					if dir != "" {
+						if err := os.MkdirAll(dir, 0755); err != nil {
+							log.Printf("WARN: Failed to create FTN directory %s: %v", dir, err)
+						}
+					}
+				}
+
+				ftnTosser, err := tosser.New(netName, netCfg, dupeDB, messageMgr)
+				if err != nil {
+					log.Printf("ERROR: Failed to initialize FTN tosser for %s: %v", netName, err)
+					continue
+				}
+				go ftnTosser.Start(ftnCtx)
+				log.Printf("INFO: FTN tosser[%s] initialized for %s", netName, netCfg.OwnAddress)
+			}
 		}
 	}
 

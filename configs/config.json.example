@@ -2,16 +2,6 @@
     "boardName": "My BBS",
     "boardPhoneNumber": "555-555-5555",
     "coSysLevel": 250,
-    "ftn": {
-        "enabled": false,
-        "own_address": "",
-        "inbound_path": "data/ftn/inbound",
-        "outbound_path": "data/ftn/outbound",
-        "temp_path": "data/ftn/temp",
-        "dupe_db_path": "data/ftn/dupes.json",
-        "poll_interval_seconds": 300,
-        "links": []
-    },
     "logonLevel": 100,
     "sshEnabled": true,
     "sshHost": "0.0.0.0",
