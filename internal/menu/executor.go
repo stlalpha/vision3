@@ -442,6 +442,9 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTFILEAR"] = runListFileAreas                        // <-- ADDED: Register file area list runnable
 	registry["SELECTFILEAREA"] = runSelectFileArea                   // <-- ADDED: Register file area selection runnable
 	registry["SELECTMSGAREA"] = runSelectMessageArea                // Register message area selection runnable
+	registry["CHANGEMSGCONF"] = runChangeMsgConference              // Change message conference
+	registry["NEXTMSGAREA"] = runNextMsgArea                        // Navigate to next message area
+	registry["PREVMSGAREA"] = runPrevMsgArea                        // Navigate to previous message area
 	registry["NEWUSER"] = runNewUser                                 // Register new user application runnable
 }
 
@@ -3062,7 +3065,12 @@ func displayMessageAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running LISTMSGAR", nodeNumber)
 
-	if err := displayMessageAreaList(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime); err != nil {
+	// Filter to current conference if user is logged in, otherwise show all
+	filterConfID := -1
+	if currentUser != nil {
+		filterConfID = currentUser.CurrentMsgConferenceID
+	}
+	if err := displayMessageAreaListFiltered(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime, filterConfID); err != nil {
 		return nil, "", err
 	}
 
@@ -5087,8 +5095,9 @@ func runSelectMessageArea(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		return nil, "", nil
 	}
 
-	// Display the list
-	if err := displayMessageAreaList(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime); err != nil {
+	// Display areas filtered to current conference
+	filterConfID := currentUser.CurrentMsgConferenceID
+	if err := displayMessageAreaListFiltered(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime, filterConfID); err != nil {
 		return currentUser, "", err
 	}
 	terminal.Write([]byte("\r\n"))

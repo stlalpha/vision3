@@ -63,7 +63,7 @@
   "getInfoPrompt": "|15File(s) to get |08[|09Info|08] |15On |08(|09Cr/|DE|08): ",
   "msgNewScanPrompt": "",
   "typeFilePrompt": "|15File(s) to |08[|09Type|08] (|09Cr/|DE|08): ",
-  "confPrompt": "|@ 25|13Conferences |05[|15?|08/|15List |07or |15Cr|08/|15|DE|05] :",
+  "confPrompt": "\r\n|13Conference |05[|15#|08/|15Tag|07, |15Q|08=|15Quit|05] |07: |15",
   "fileListPrompt": "",
   "uploadFileStr": "|05File Name |08[|13|NU|08] |09: ",
   "downloadStr": "|05File(s) Download - |13e(|14X|13)it, (|14A|13)dd, (|14Cr|13) Continue |09:",
