@@ -1,8 +1,10 @@
+> **Note:** This repository was originally forked from [stlalpha/vision3](https://github.com/stlalpha/vision3), which no longer exists. I am continuing to maintain this fork and welcome any involvement from the community.
+
 # ViSiON/3 BBS Software
 
 ![ViSiON/3](ViSiON3.png)
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/stlalpha/vision3)](https://goreportcard.com/report/github.com/stlalpha/vision3)
+[![Go Report Card](https://goreportcard.com/badge/github.com/robbiew/vision3)](https://goreportcard.com/report/github.com/robbiew/vision3)
 
 ## Overview
 
@@ -14,52 +16,50 @@ This version uses **libssh** (via CGO) for SSH server functionality, providing f
 
 ## STUFF WE NEED
 
-### 🎯 Project Lead - Yes, You
+### 🎯 Contributors - Yes, You
 
 **What This Is:** A moderately amusing, functional anachronism.
 
 Are you the kind of person who can wrangle a Go codebase while arguing about why HSLINK was underrated? Do you have strong opinions about ANSI art but also know when to use a mutex? We need someone to lead this glorious mess.
 
 **Technical Chops:**
-- Strong Go experience (not just "I did the tour once")
+
+- Strong Go experience (not just "I vibe coded and apparently it works")
 - Deep understanding of terminal emulation, ANSI/VT100, character encodings
-- Network programming experience (SSH, raw sockets)
+- Bonus: Network programming experience (SSH, raw sockets)
 - Comfortable with legacy protocol implementation (ZMODEM, etc.)
 - Can read Pascal/C when needed to understand the original implementations
 
 **Cultural Fit:**
+
 - Either lived through the BBS era OR has become genuinely obsessed with it
 - Gets why pipe codes matter and what makes a good door game
 - Understands this isn't about making money or padding a resume
 - Has opinions about which transfer protocol was best
 - Won't try to "modernize" it into a web app
 
-**Working Relationship:**
+**Working Team:**
 
-**I will provide:**
-- Funding when we need something specific
-- Cover any actual costs so nobody's out of pocket
-- Keep the lights on while you focus on the code
-
-**You will provide:**
 - Wrangling this wacko codebase into something proper
 - Help building a community of contributors
 - Make technical decisions when we need them
 - Keep the codebase from turning into spaghetti
 
 **What we won't do:**
+
 - Rewrite this in Rust/JavaScript/whatever
 - Add a REST API and React frontend
 - Turn it into a web app
-- Modernize away what makes it a BBS
+- Modernize away what makes it a BBS 
 
-If this sounds like your particular flavor of madness, email: **spaceman@vision3bbs.com**
+If this sounds like your particular flavor of madness, email: **robbiew at gmail.com**
 
 ### 🎨 Period-Correct ANSI Artists & Art
 
 Are you a 40+ old school ANSi artist (are you younger and infatuated for some reason with that time-period and style)? Do you need one more goddamn thing to do? Consider spending valuable free-time, compensated by nothing more than unyielding appreciation and thanks from the people that enjoy this kind of thing. There's at least 12 of us!
 
 **What we need:**
+
 - **Menu screens** - Main, Message, File, Door menus with that classic warez BBS aesthetic
 - **Login/Logoff screens** - Welcome screens, new user applications, goodbye screens
 - **Headers and prompts** - Message headers, file listings, user stats displays
@@ -67,6 +67,7 @@ Are you a 40+ old school ANSi artist (are you younger and infatuated for some re
 - **Special effects** - Matrix rain, plasma effects, classic BBS animations
 
 **Style we're after:**
+
 - Authentic early 90s underground/warez BBS aesthetic
 - Classic color schemes (cyan/magenta highlights, ice colors)
 - Scene-style fonts and logos
@@ -81,6 +82,7 @@ Do you write Go? Do you have fond memories of waiting 3 minutes for a single GIF
 If you aren't old enough to have experienced it first-hand, have you read a weird text file or listened to some wild-eyed GenX nutjob ramble on about how much we enjoyed it and decided "I need me some of that?"
 
 **Areas where we need help:**
+
 - File transfer protocols (ZMODEM upload support, XMODEM, YMODEM)
 - Message threading and advanced message base features
 - Performance optimization and scalability
@@ -97,7 +99,7 @@ Your reward? The satisfaction of knowing that somewhere, someone is reliving the
 
 Do we need a Discord? Do you want to host it? Contact me!
 
-**spaceman@vision3bbs.com**
+**robbiew at gmail.com**
 
 ## Current Status
 
@@ -106,17 +108,14 @@ Do we need a Discord? Do you want to host it? Contact me!
 *   SSH Server with PTY support (via libssh CGO wrapper)
     *   Full SyncTerm and retro terminal compatibility
     *   SSH authentication bypass (auto-login for SSH-authenticated users)
-    *   Modern SSH algorithms (no legacy crypto needed)
-*   User Authentication (bcrypt hashed passwords)
+    *   Modern SSH algorithms
+*   Telnet Server (because who doesn't want to telnet into their BBS insecurely in 2024?)
+*   User Signup and Authentication (bcrypt hashed passwords)
 *   User Persistence (`data/users/users.json`)
 *   Menu System Loading & Execution (`.MNU`, `.CFG`, `.ANS` files)
 *   Access Control System (ACS) Evaluation with basic operators (`!`, `&`, `|`, `()`)
 *   Menu Password Protection
-*   Message Areas (basic implementation):
-    *   List message areas
-    *   Compose messages
-    *   Read messages
-    *   Newscan functionality
+*   Message Areas: JAM format (echomail/netmail ready), conferences, full-screen reader with scrolling/lightbar menu, 14 customizable header styles, thread searching, replies with quoting, vi-style editor, newscan, last read tracking
 *   File Areas (basic implementation):
     *   List files
     *   List file areas
@@ -130,11 +129,11 @@ Do we need a Discord? Do you want to host it? Contact me!
 
 ### In Development / TODO
 
-*   Full Message Base Implementation (threading, replies, etc.)
-*   File Transfer Protocols (upload/download)
-*   Complete SysOp Tools
-*   User Editor
-*   Full File Base Implementation
+*   File Transfer Protocols (ZMODEM upload/download)
+*   Message list view (titles/scan)
+*   Complete SysOp Tools (user editor, system configuration)
+*   Full File Base Implementation (tagging, batch downloads, upload processing)
+*   Mail system (private messages)
 *   Comprehensive Testing
 *   Complete Documentation
 
@@ -142,51 +141,65 @@ See `docs/status.md` for detailed progress and `tasks/tasks.md` for specific dev
 
 ## Technology Stack
 
-*   **Language:** Go 1.24.2
+*   **Language:** Go 1.24+
 *   **SSH Server:** libssh (via CGO) - native C library for SSH protocol
 *   **Interface Adapter:** `github.com/gliderlabs/ssh` (types only)
 *   **Terminal Handling:** `golang.org/x/term`
 *   **Password Hashing:** `golang.org/x/crypto/bcrypt`
-*   **Data Format:** JSON (for users, configuration, and message storage)
+*   **Message Base:** JAM format (echomail/netmail compatible)
+*   **Data Format:** JSON (for users and configuration)
 
 ## Project Structure
 
 ```
 vision3/
 ├── cmd/
-│   ├── ansitest/        # ANSI color test utility
-│   └── vision3/         # Main BBS server application
-├── configs/             # Global configuration files
-│   ├── config.json      
-│   ├── doors.json       # Door/external program configurations
-│   ├── file_areas.json  # File area definitions
-│   ├── strings.json     # BBS string customizations
-│   └── ssh_host_rsa_key # SSH host key
-├── data/                # Runtime data
-│   ├── users/           # User database and call history
-│   ├── files/           # File areas
-│   ├── logs/            # Application logs
-│   └── message_*.jsonl  # Message base files
-├── internal/            # Internal packages
-│   ├── ansi/            # ANSI/pipe code processing
-│   ├── config/          # Configuration loading
-│   ├── editor/          # Text editor
-│   ├── file/            # File area management
-│   ├── menu/            # Menu system
-│   ├── message/         # Message base system
-│   ├── session/         # Session management
-│   ├── sshserver/       # libssh CGO wrapper and adapter
-│   ├── terminalio/      # Terminal I/O handling
-│   ├── transfer/        # File transfer protocols
-│   ├── types/           # Shared types
-│   └── user/            # User management
-├── menus/v3/            # Menu set files
-│   ├── ansi/            # ANSI art files
-│   ├── cfg/             # Menu configuration files
-│   ├── mnu/             # Menu definition files
-│   └── templates/       # Display templates
-├── docs/                # Documentation
-└── tasks/               # Development task tracking
+│   ├── ansitest/           # ANSI color test utility
+│   ├── helper/             # FTN setup utility (import echomail areas)
+│   ├── jamutil/            # JAM message base utility (stats, pack, purge, fix)
+│   └── vision3/            # Main BBS server application
+├── configs/                # Global configuration files
+│   ├── config.json         # Main BBS configuration
+│   ├── conferences.json    # Message/file conference definitions
+│   ├── doors.json          # Door/external program configurations
+│   ├── file_areas.json     # File area definitions
+│   ├── message_areas.json  # Message area definitions
+│   ├── strings.json        # BBS string customizations
+│   ├── theme.json          # Color theme configuration
+│   ├── ftn.json            # FidoNet/FTN network configuration
+│   └── ssh_host_rsa_key    # SSH host key
+├── data/                   # Runtime data
+│   ├── users/              # User database and call history
+│   ├── msgbases/           # JAM format message bases
+│   │   ├── general/        # General discussion area
+│   │   └── sysop/          # Sysop area
+│   ├── files/              # File areas
+│   └── logs/               # Application logs
+├── internal/               # Internal packages
+│   ├── ansi/               # ANSI/pipe code processing
+│   ├── config/             # Configuration loading
+│   ├── conference/         # Conference management
+│   ├── editor/             # Full-screen text editor
+│   ├── file/               # File area management
+│   ├── ftn/                # FidoNet/echomail support
+│   ├── jam/                # JAM message base format
+│   ├── menu/               # Menu system & lightbar UI
+│   ├── message/            # Message base management
+│   ├── session/            # Session management
+│   ├── sshserver/          # libssh CGO wrapper and adapter
+│   ├── telnet/             # Telnet server
+│   ├── terminalio/         # Terminal I/O handling
+│   ├── transfer/           # File transfer protocols
+│   ├── types/              # Shared types
+│   └── user/               # User management
+├── menus/v3/               # Menu set files
+│   ├── ansi/               # ANSI art files
+│   ├── cfg/                # Menu configuration files
+│   ├── mnu/                # Menu definition files
+│   └── templates/          # Display templates
+│       └── message_headers/ # 14 customizable message header styles
+├── docs/                   # Documentation
+└── tasks/                  # Development task tracking
 ```
 
 ## Setup & Installation
@@ -210,7 +223,7 @@ brew install libssh
 
 1. **Clone the repository:**
     ```bash
-    git clone https://github.com/stlalpha/vision3.git
+    git clone https://github.com/robbiew/vision3.git
     cd vision3
     ```
 
@@ -254,7 +267,7 @@ If you prefer to set up manually:
 
 5. **Create directories:**
     ```bash
-    mkdir -p data/users data/files/general data/logs
+    mkdir -p data/users data/files/general data/logs data/msgbases
     ```
 
 6. **Run the server:**

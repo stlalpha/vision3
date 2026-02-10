@@ -60,10 +60,6 @@ func readKeyWithEscapeHandling(reader *bufio.Reader) (rune, error) {
 			return arrowLeft, nil
 		case 'C': // Right arrow
 			return arrowRight, nil
-		case 'A': // Up arrow - treat as left
-			return arrowLeft, nil
-		case 'B': // Down arrow - treat as right
-			return arrowRight, nil
 		default:
 			// Unknown escape sequence, ignore
 			return 0, nil
@@ -71,6 +67,28 @@ func readKeyWithEscapeHandling(reader *bufio.Reader) (rune, error) {
 	}
 
 	return r, nil
+}
+
+// drawMsgLightbarStatic draws the lightbar menu without waiting for input.
+// This is used to display the menu during screen redraws.
+// selectedIdx can be -1 for no highlight, or 0-9 to highlight a specific option.
+func drawMsgLightbarStatic(terminal *term.Terminal, options []MsgLightbarOption,
+	outputMode ansi.OutputMode, hiColor int, loColor int, suffix string, selectedIdx int) {
+
+	// Move to beginning of line
+	terminalio.WriteProcessedBytes(terminal, []byte("\r"), outputMode)
+
+	for i, opt := range options {
+		var colorSeq string
+		if i == selectedIdx {
+			colorSeq = colorCodeToAnsi(hiColor)
+		} else {
+			colorSeq = colorCodeToAnsi(loColor)
+		}
+		terminalio.WriteProcessedBytes(terminal, []byte(colorSeq+opt.Label), outputMode)
+	}
+	// Reset and write suffix
+	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"+suffix), outputMode)
 }
 
 // runMsgLightbar displays a horizontal lightbar and returns the selected hotkey.
@@ -81,9 +99,11 @@ func readKeyWithEscapeHandling(reader *bufio.Reader) (rune, error) {
 // with hiColor, others with loColor. Arrow keys move the highlight.
 // Direct key presses (matching HotKey) select immediately.
 // Enter selects the currently highlighted option.
+//
+// initialDirection: 0=none, -1=left (move to previous), 1=right (move to next)
 func runMsgLightbar(s ssh.Session, terminal *term.Terminal,
 	options []MsgLightbarOption, outputMode ansi.OutputMode,
-	hiColor int, loColor int, suffix string) (byte, error) {
+	hiColor int, loColor int, suffix string, initialDirection int) (byte, error) {
 
 	if len(options) == 0 {
 		return 0, fmt.Errorf("no lightbar options provided")
@@ -91,6 +111,18 @@ func runMsgLightbar(s ssh.Session, terminal *term.Terminal,
 
 	reader := bufio.NewReader(s)
 	currentIdx := 0
+
+	// Apply initial direction if provided
+	if initialDirection < 0 {
+		// Left arrow pressed initially - move to previous (wrap to end)
+		currentIdx = len(options) - 1
+	} else if initialDirection > 0 {
+		// Right arrow pressed initially - move to next
+		currentIdx = 1
+		if currentIdx >= len(options) {
+			currentIdx = 0
+		}
+	}
 
 	// Build a map of hotkeys to indices for direct selection
 	hotkeyMap := make(map[byte]int)
@@ -109,20 +141,7 @@ func runMsgLightbar(s ssh.Session, terminal *term.Terminal,
 
 	// Function to draw the bar
 	drawBar := func(selectedIdx int) {
-		// Move to beginning of line
-		terminalio.WriteProcessedBytes(terminal, []byte("\r"), outputMode)
-
-		for i, opt := range options {
-			var colorSeq string
-			if i == selectedIdx {
-				colorSeq = colorCodeToAnsi(hiColor)
-			} else {
-				colorSeq = colorCodeToAnsi(loColor)
-			}
-			terminalio.WriteProcessedBytes(terminal, []byte(colorSeq+opt.Label), outputMode)
-		}
-		// Reset and write suffix
-		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"+suffix), outputMode)
+		drawMsgLightbarStatic(terminal, options, outputMode, hiColor, loColor, suffix, selectedIdx)
 	}
 
 	drawBar(currentIdx)
@@ -238,6 +257,84 @@ func promptSingleChar(s ssh.Session, terminal *term.Terminal, prompt string, out
 	}
 
 	return unicode.ToUpper(r), nil
+}
+
+// readKeySequence reads a key sequence, handling escape sequences for arrow keys, page up/down, etc.
+// Returns the complete sequence as a string for switch handling.
+func readKeySequence(s ssh.Session, timeout time.Duration) (string, error) {
+	reader := bufio.NewReader(s)
+
+	// Create a channel for the result
+	type result struct {
+		seq string
+		err error
+	}
+	resultCh := make(chan result, 1)
+
+	// Read in a goroutine with timeout
+	go func() {
+		// Read first byte
+		firstByte, err := reader.ReadByte()
+		if err != nil {
+			resultCh <- result{"", err}
+			return
+		}
+
+		// Check if it's an escape sequence
+		if firstByte == 0x1B { // ESC
+			// Try to read next byte(s) quickly - check if buffered
+			time.Sleep(25 * time.Millisecond) // Small delay for escape sequence
+
+			if reader.Buffered() > 0 {
+				secondByte, err := reader.ReadByte()
+				if err == nil && secondByte == '[' {
+					// ANSI escape sequence - read until we get a letter or tilde
+					seq := []byte{0x1B, '['}
+					for {
+						if reader.Buffered() == 0 {
+							time.Sleep(10 * time.Millisecond)
+						}
+						if reader.Buffered() > 0 {
+							b, err := reader.ReadByte()
+							if err != nil {
+								break
+							}
+							seq = append(seq, b)
+							// End of sequence is typically a letter or tilde
+							if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || b == '~' {
+								break
+							}
+							if len(seq) > 8 { // Safety limit
+								break
+							}
+						} else {
+							break
+						}
+					}
+					resultCh <- result{string(seq), nil}
+					return
+				} else if err == nil {
+					// ESC followed by something else
+					resultCh <- result{string([]byte{0x1B, secondByte}), nil}
+					return
+				}
+			}
+			// Just ESC by itself
+			resultCh <- result{"\x1b", nil}
+			return
+		}
+
+		// Single character
+		resultCh <- result{string(firstByte), nil}
+	}()
+
+	// Wait for result or timeout
+	select {
+	case res := <-resultCh:
+		return res.seq, res.err
+	case <-time.After(timeout):
+		return "", fmt.Errorf("timeout")
+	}
 }
 
 // Compile-time check to suppress unused import warnings

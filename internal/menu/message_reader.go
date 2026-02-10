@@ -51,6 +51,18 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	currentAreaID := currentUser.CurrentMessageAreaID
 	currentAreaTag := currentUser.CurrentMessageAreaTag
 
+	// Get conference and area names for display
+	confName := "Local"
+	areaName := currentAreaTag
+	if currentUser.CurrentMsgConferenceID != 0 && e.ConferenceMgr != nil {
+		if conf, found := e.ConferenceMgr.GetByID(currentUser.CurrentMsgConferenceID); found {
+			confName = conf.Name
+		}
+	}
+	if area, found := e.MessageMgr.GetAreaByID(currentAreaID); found {
+		areaName = area.Name
+	}
+
 	// Determine message header style
 	hdrStyle := currentUser.MsgHdr
 	if hdrStyle < 1 || hdrStyle > 14 {
@@ -118,175 +130,367 @@ readerLoop:
 		// Process template with substitutions
 		processedHeader := processDataFile(hdrTemplateBytes, substitutions)
 
-		// Process message body
+		// Process message body and pre-format all lines
 		processedBodyStr := string(ansi.ReplacePipeCodes([]byte(currentMsg.Body)))
 		wrappedBodyLines := wrapAnsiString(processedBodyStr, termWidth)
+
+		// Add origin line for echo messages to the body lines
+		area, _ := e.MessageMgr.GetAreaByID(currentAreaID)
+		if area != nil && (area.AreaType == "echomail" || area.AreaType == "netmail") {
+			if currentMsg.OrigAddr != "" {
+				originLine := fmt.Sprintf("|08 * Origin: %s", currentMsg.OrigAddr)
+				wrappedBodyLines = append(wrappedBodyLines, string(ansi.ReplacePipeCodes([]byte(originLine))))
+			}
+		}
 
 		// Calculate available body height
 		// Find the actual bottom row of the header using ANSI cursor tracking
 		headerEndRow := findHeaderEndRow(processedHeader)
 		bodyStartRow := headerEndRow
-		barLines := 2 // Current board line + lightbar
+		barLines := 3 // Horizontal line + board info line + lightbar
 		bodyAvailHeight := termHeight - bodyStartRow - barLines
 		if bodyAvailHeight < 1 {
 			bodyAvailHeight = 5
 		}
 
-		// Display: Clear screen + Header
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-		terminalio.WriteProcessedBytes(terminal, processedHeader, outputMode)
+		// Initialize scroll state for this message
+		scrollOffset := 0
+		totalBodyLines := len(wrappedBodyLines)
+		needsRedraw := true
 
-		// Position cursor below the header for body text
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(bodyStartRow, 1)), outputMode)
-
-		// Display message body with pagination
-		linesDisplayed := 0
-		quitReading := false
-		for lineIdx, line := range wrappedBodyLines {
-			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"+line), outputMode)
-			linesDisplayed++
-
-			// Check if pause is needed
-			if linesDisplayed >= bodyAvailHeight && lineIdx < len(wrappedBodyLines)-1 {
-				pausePrompt := e.LoadedStrings.PauseString
-				if pausePrompt == "" {
-					pausePrompt = "|07-- More -- (|15Enter|07=Continue, |15Q|07=Quit) : |15"
-				}
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-				processedPause := ansi.ReplacePipeCodes([]byte(pausePrompt))
-				writeProcessedStringWithManualEncoding(terminal, processedPause, outputMode)
-
-				pauseKey, pauseErr := readSingleKey(s)
-				if pauseErr != nil {
-					if errors.Is(pauseErr, io.EOF) {
-						return nil, "LOGOFF", io.EOF
-					}
-					break readerLoop
-				}
-				terminalio.WriteProcessedBytes(terminal, []byte("\r"), outputMode)
-
-				if unicode.ToUpper(pauseKey) == 'Q' {
-					quitReading = true
-					break
-				}
-				linesDisplayed = 0
-			}
-		}
-
-		// Display origin lines for echo messages
-		if !quitReading {
-			area, _ := e.MessageMgr.GetAreaByID(currentAreaID)
-			if area != nil && (area.AreaType == "echomail" || area.AreaType == "netmail") {
-				if currentMsg.OrigAddr != "" {
-					originLine := fmt.Sprintf("\r\n|08 * Origin: %s", currentMsg.OrigAddr)
-					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(originLine)), outputMode)
-				}
-			}
-		}
-
-		// Update lastread
+		// Update lastread when first displaying message
 		if lrErr := e.MessageMgr.SetLastRead(currentAreaID, currentUser.Handle, currentMsgNum); lrErr != nil {
 			log.Printf("ERROR: Node %d: Failed to update last read: %v", nodeNumber, lrErr)
 		}
 
-		if quitReading {
-			break readerLoop
-		}
+		// Inner loop for scrolling and command handling
+	scrollLoop:
+		for {
+			var selectedKey rune // Declare here so it's available in all code paths
 
-		// Display current board info and lightbar anchored to bottom of terminal
-		var suffixText string
-		if isNewScan {
-			suffixText = " (NewScan)"
-		} else {
-			suffixText = " (Reading)"
-		}
+			// Redraw screen if needed
+			if needsRedraw {
+				// Clear screen and display header
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+				terminalio.WriteProcessedBytes(terminal, processedHeader, outputMode)
 
-		// Position cursor at second-to-last row for board info line
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)), outputMode)
-		boardLine := fmt.Sprintf("|09Current |01(|13%s|01) [|13%d|05/|13%d|01]",
-			currentAreaTag, currentMsgNum, totalMsgCount)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardLine)), outputMode)
+				// Display visible portion of message body using explicit cursor positioning
+				for i := 0; i < bodyAvailHeight; i++ {
+					lineNum := bodyStartRow + i
+					// Position cursor at specific line
+					terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(lineNum, 1)), outputMode)
+					// Clear line
+					terminalio.WriteProcessedBytes(terminal, []byte("\x1b[K"), outputMode)
+					// Display line if available
+					lineIdx := scrollOffset + i
+					if lineIdx < totalBodyLines {
+						terminalio.WriteProcessedBytes(terminal, []byte(wrappedBodyLines[lineIdx]), outputMode)
+					}
+				}
 
-		// Position cursor at last row for lightbar
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
+				// Display footer: board info and lightbar anchored to bottom
+				var suffixText string
+				if isNewScan {
+					suffixText = " (NewScan)"
+				} else {
+					suffixText = " (Reading)"
+				}
 
-		// Show lightbar
-		selectedKey, lbErr := runMsgLightbar(s, terminal, msgReaderOptions, outputMode,
-			hiColor, loColor, suffixText)
-		if lbErr != nil {
-			if errors.Is(lbErr, io.EOF) {
-				return nil, "LOGOFF", io.EOF
+				// Add scroll percentage if message is longer than display area
+				if totalBodyLines > bodyAvailHeight {
+					maxScroll := totalBodyLines - bodyAvailHeight
+					scrollPercent := 0
+					if maxScroll > 0 {
+						scrollPercent = (scrollOffset * 100) / maxScroll
+						if scrollPercent > 100 {
+							scrollPercent = 100
+						}
+					}
+					suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
+				}
+
+				// Draw horizontal line above footer (CP437 character 196)
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-2, 1)), outputMode)
+				horizontalLine := "|08" + strings.Repeat("\xC4", termWidth-1) + "|07" // CP437 horizontal line character
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(horizontalLine)), outputMode)
+
+				// Position cursor at second-to-last row for board info line
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)), outputMode)
+				boardLine := fmt.Sprintf("|13%s |09> |15%s |01[|13%d|05/|13%d|01]",
+					confName, areaName, currentMsgNum, totalMsgCount)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardLine)), outputMode)
+
+				// Position cursor at last row for lightbar
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
+
+				// Draw the lightbar menu
+				drawMsgLightbarStatic(terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
+
+				needsRedraw = false
 			}
-			log.Printf("ERROR: Node %d: Lightbar error: %v", nodeNumber, lbErr)
-			break readerLoop
-		}
 
-		// Handle the selected command
-		switch selectedKey {
-		case 'N': // Next message
-			if currentMsgNum < totalMsgCount {
-				currentMsgNum++
+			// Read key sequence (handles escape sequences for arrow keys, page up/down)
+			keySeq, keyErr := readKeySequence(s, 3*time.Second)
+			if keyErr != nil {
+				if errors.Is(keyErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+				// Timeout is acceptable, just continue
+				continue
+			}
+
+			// Handle scrolling keys first
+			switch keySeq {
+			case "\x1b[A": // Up arrow - scroll up one line
+				if scrollOffset > 0 {
+					scrollOffset--
+					needsRedraw = true
+				}
+				continue
+
+			case "\x1b[B": // Down arrow - scroll down one line
+				if totalBodyLines > bodyAvailHeight && scrollOffset < totalBodyLines-bodyAvailHeight {
+					scrollOffset++
+					needsRedraw = true
+				}
+				continue
+
+			case "\x1b[5~": // Page Up
+				pageSize := bodyAvailHeight - 2
+				if pageSize < 5 {
+					pageSize = 5
+				}
+				scrollOffset -= pageSize
+				if scrollOffset < 0 {
+					scrollOffset = 0
+				}
+				needsRedraw = true
+				continue
+
+			case "\x1b[6~": // Page Down
+				pageSize := bodyAvailHeight - 2
+				if pageSize < 5 {
+					pageSize = 5
+				}
+				scrollOffset += pageSize
+				maxScroll := totalBodyLines - bodyAvailHeight
+				if maxScroll < 0 {
+					maxScroll = 0
+				}
+				if scrollOffset > maxScroll {
+					scrollOffset = maxScroll
+				}
+				needsRedraw = true
+				continue
+
+			case "\x1b[D", "\x1b[C": // Left or Right arrow - activate interactive lightbar
+				var suffixText string
+				if isNewScan {
+					suffixText = " (NewScan)"
+				} else {
+					suffixText = " (Reading)"
+				}
+
+				if totalBodyLines > bodyAvailHeight {
+					maxScroll := totalBodyLines - bodyAvailHeight
+					scrollPercent := 0
+					if maxScroll > 0 {
+						scrollPercent = (scrollOffset * 100) / maxScroll
+						if scrollPercent > 100 {
+							scrollPercent = 100
+						}
+					}
+					suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
+				}
+
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
+
+				// Determine initial direction based on which arrow was pressed
+				initialDir := 0
+				if keySeq == "\x1b[D" {
+					initialDir = -1 // Left arrow
+				} else if keySeq == "\x1b[C" {
+					initialDir = 1 // Right arrow
+				}
+
+				selKey, lbErr := runMsgLightbar(s, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, initialDir)
+				if lbErr != nil {
+					if errors.Is(lbErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					log.Printf("ERROR: Node %d: Lightbar error: %v", nodeNumber, lbErr)
+					break readerLoop
+				}
+				selectedKey = rune(selKey)
+				// Don't continue here - fall through to handle the selected command
+			}
+
+			// If not a scrolling key, show the lightbar for command selection
+			// First handle simple single-key commands that bypass the lightbar
+			if len(keySeq) == 1 {
+				singleKey := rune(keySeq[0])
+				// Check if it's a direct command key
+				switch unicode.ToUpper(singleKey) {
+				case 'N', 'R', 'A', 'S', 'T', 'P', 'J', 'M', 'L', 'Q', '?':
+					selectedKey = unicode.ToUpper(singleKey)
+				case '\r', '\n':
+					selectedKey = 'N' // Enter = Next
+				case '\x1b': // ESC = Quit
+					selectedKey = 'Q'
+				default:
+					// Not a recognized command, show lightbar
+					var suffixText string
+					if isNewScan {
+						suffixText = " (NewScan)"
+					} else {
+						suffixText = " (Reading)"
+					}
+
+					// Add scroll info to suffix
+					if totalBodyLines > bodyAvailHeight {
+						maxScroll := totalBodyLines - bodyAvailHeight
+						scrollPercent := 0
+						if maxScroll > 0 {
+							scrollPercent = (scrollOffset * 100) / maxScroll
+							if scrollPercent > 100 {
+								scrollPercent = 100
+							}
+						}
+						suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
+					}
+
+					// Position cursor at last row for lightbar
+					terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
+
+					selKey, lbErr := runMsgLightbar(s, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
+					if lbErr != nil {
+						if errors.Is(lbErr, io.EOF) {
+							return nil, "LOGOFF", io.EOF
+						}
+						log.Printf("ERROR: Node %d: Lightbar error: %v", nodeNumber, lbErr)
+						break readerLoop
+					}
+					selectedKey = rune(selKey)
+				}
 			} else {
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07End of messages.|07")), outputMode)
-				time.Sleep(500 * time.Millisecond)
+				// Multi-byte sequence that wasn't handled as scrolling - show lightbar
+				var suffixText string
+				if isNewScan {
+					suffixText = " (NewScan)"
+				} else {
+					suffixText = " (Reading)"
+				}
+
+				if totalBodyLines > bodyAvailHeight {
+					maxScroll := totalBodyLines - bodyAvailHeight
+					scrollPercent := 0
+					if maxScroll > 0 {
+						scrollPercent = (scrollOffset * 100) / maxScroll
+						if scrollPercent > 100 {
+							scrollPercent = 100
+						}
+					}
+					suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
+				}
+
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
+
+				selKey, lbErr := runMsgLightbar(s, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
+				if lbErr != nil {
+					if errors.Is(lbErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					log.Printf("ERROR: Node %d: Lightbar error: %v", nodeNumber, lbErr)
+					break readerLoop
+				}
+				selectedKey = rune(selKey)
+			}
+
+			// Handle command from lightbar or direct key
+			if selectedKey == 0 {
+				continue
+			}
+
+			// Now handle message navigation commands
+			// Handle the selected command
+			switch selectedKey {
+			case 'N': // Next message
+				if currentMsgNum < totalMsgCount {
+					currentMsgNum++
+					break scrollLoop // Exit scroll loop to load next message
+				} else {
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07End of messages.|07")), outputMode)
+					time.Sleep(500 * time.Millisecond)
+					break readerLoop
+				}
+
+			case 'A': // Again - redisplay current message
+				// Reset scroll and redraw
+				scrollOffset = 0
+				needsRedraw = true
+				continue
+
+			case 'R': // Reply
+				replyResult := handleReply(e, s, terminal, userManager, currentUser, nodeNumber,
+					outputMode, currentMsg, currentAreaID, &totalMsgCount, &currentMsgNum)
+				if replyResult == "LOGOFF" {
+					return nil, "LOGOFF", io.EOF
+				}
+				// Redraw message after reply
+				needsRedraw = true
+				continue
+
+			case 'P': // Post new message
+				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+				_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
+					sessionStartTime, "", outputMode)
+				// Refresh total count
+				newTotal, _ := e.MessageMgr.GetMessageCountForArea(currentAreaID)
+				if newTotal > 0 {
+					totalMsgCount = newTotal
+				}
+				// Redraw message after posting
+				needsRedraw = true
+				continue
+
+			case 'S': // Skip - exit current area, return to caller
 				break readerLoop
+
+			case 'T': // Thread
+				handleThread(e, s, terminal, outputMode, currentAreaID,
+					&currentMsgNum, totalMsgCount, currentMsg.Subject)
+				// Exit scroll loop to load new message if thread changed it
+				break scrollLoop
+
+			case 'J': // Jump to message number
+				handleJump(s, terminal, outputMode, &currentMsgNum, totalMsgCount)
+				// Exit scroll loop to load new message
+				break scrollLoop
+
+			case 'M': // Mail reply (deferred)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Mail reply not yet implemented.|07")), outputMode)
+				time.Sleep(1 * time.Second)
+				needsRedraw = true
+				continue
+
+			case 'L': // List titles (deferred)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Message list not yet implemented.|07")), outputMode)
+				time.Sleep(1 * time.Second)
+				needsRedraw = true
+				continue
+
+			case 'Q': // Quit
+				quitNewscan = true
+				break readerLoop
+
+			case '?': // Help
+				displayReaderHelp(terminal, outputMode)
+				needsRedraw = true
+				continue
+
+			default:
+				continue
 			}
-
-		case 'A': // Again - redisplay current message
-			// Just loop again without changing currentMsgNum
-			continue
-
-		case 'R': // Reply
-			replyResult := handleReply(e, s, terminal, userManager, currentUser, nodeNumber,
-				outputMode, currentMsg, currentAreaID, &totalMsgCount, &currentMsgNum)
-			if replyResult == "LOGOFF" {
-				return nil, "LOGOFF", io.EOF
-			}
-			continue // Redisplay after reply
-
-		case 'P': // Post new message
-			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-			_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
-				sessionStartTime, "", outputMode)
-			// Refresh total count
-			newTotal, _ := e.MessageMgr.GetMessageCountForArea(currentAreaID)
-			if newTotal > 0 {
-				totalMsgCount = newTotal
-			}
-			continue
-
-		case 'S': // Skip - exit current area, return to caller
-			break readerLoop
-
-		case 'T': // Thread
-			handleThread(e, s, terminal, outputMode, currentAreaID,
-				&currentMsgNum, totalMsgCount, currentMsg.Subject)
-			continue // Redisplay after thread navigation
-
-		case 'J': // Jump to message number
-			handleJump(s, terminal, outputMode, &currentMsgNum, totalMsgCount)
-			continue
-
-		case 'M': // Mail reply (deferred)
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Mail reply not yet implemented.|07")), outputMode)
-			time.Sleep(1 * time.Second)
-			continue
-
-		case 'L': // List titles (deferred)
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Message list not yet implemented.|07")), outputMode)
-			time.Sleep(1 * time.Second)
-			continue
-
-		case 'Q': // Quit
-			quitNewscan = true
-			break readerLoop
-
-		case '?': // Help
-			displayReaderHelp(terminal, outputMode)
-			continue
-
-		default:
-			continue
 		}
 	}
 

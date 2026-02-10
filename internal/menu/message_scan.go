@@ -347,7 +347,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			// Show per-area lightbar: Read/Post/Jump/Skip/Quit/NonStop
 			scanSuffix := fmt.Sprintf(" [%d/%d]", startMsg, totalCount)
 			selectedKey, lbErr := runMsgLightbar(s, terminal, scanAreaOptions, outputMode,
-				hiColor, loColor, scanSuffix)
+				hiColor, loColor, scanSuffix, 0)
 			if lbErr != nil {
 				if errors.Is(lbErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF
