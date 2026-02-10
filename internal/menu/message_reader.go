@@ -700,38 +700,16 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	outputMode ansi.OutputMode, currentMsg *message.DisplayMessage,
 	currentAreaID int, totalMsgCount *int, currentMsgNum *int) string {
 
-	// Get quote prefix
-	quotePrefix := e.LoadedStrings.QuotePrefix
-	if quotePrefix == "" {
-		quotePrefix = "> "
-	}
+	// Prepare quote data for /Q command
+	// Split message body into lines for quoting
+	quoteLines := strings.Split(currentMsg.Body, "\n")
 
-	// Format quoted text
-	quotedBody := formatQuote(currentMsg, quotePrefix)
+	// Format date/time from message
+	quoteDate := currentMsg.DateTime.Format("01/02/2006")
+	quoteTime := currentMsg.DateTime.Format("3:04 PM")
 
-	// Get subject
-	defaultSubject := generateReplySubject(currentMsg.Subject)
-	subjectPromptStr := e.LoadedStrings.MsgTitleStr
-	if subjectPromptStr == "" {
-		subjectPromptStr = "|08[|15Title|08] : "
-	}
-
-	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(subjectPromptStr)), outputMode)
-	terminalio.WriteProcessedBytes(terminal, []byte(defaultSubject), outputMode)
-
-	rawInput, err := terminal.ReadLine()
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return "LOGOFF"
-		}
-		log.Printf("ERROR: Node %d: Failed getting subject input: %v", nodeNumber, err)
-		return ""
-	}
-	newSubject := strings.TrimSpace(rawInput)
-	if newSubject == "" {
-		newSubject = defaultSubject
-	}
+	// Auto-generate subject with "RE: " prefix (no prompt needed)
+	newSubject := generateReplySubject(currentMsg.Subject)
 	if strings.TrimSpace(newSubject) == "" {
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\nSubject cannot be empty. Reply cancelled.\r\n"), outputMode)
 		time.Sleep(1 * time.Second)
@@ -749,7 +727,10 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	terminalio.WriteProcessedBytes(terminal, []byte("\r\nLaunching editor...\r\n"), outputMode)
 
-	replyBody, saved, editErr := editor.RunEditor(quotedBody, s, s, termType)
+	// Start with empty editor - user will use /Q command to quote if desired
+	// Pass message metadata for quoting (from, title, date, time, isAnon, lines)
+	replyBody, saved, editErr := editor.RunEditorWithMetadata("", s, s, termType, newSubject, currentMsg.To, false,
+		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines)
 	if editErr != nil {
 		log.Printf("ERROR: Node %d: Editor failed: %v", nodeNumber, editErr)
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\nEditor encountered an error.\r\n"), outputMode)
@@ -765,7 +746,7 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Save reply
 	replyMsgID := currentMsg.MsgID
-	_, err = e.MessageMgr.AddMessage(currentAreaID, currentUser.Handle, currentMsg.From,
+	_, err := e.MessageMgr.AddMessage(currentAreaID, currentUser.Handle, currentMsg.From,
 		newSubject, replyBody, replyMsgID)
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to save reply: %v", nodeNumber, err)

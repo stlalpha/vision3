@@ -119,22 +119,22 @@ var UnicodeToCP437 = map[rune]byte{
 
 // Common pipe code replacements map - Based on ViSiON/2 GenTypes.pas VColor array
 var pipeCodeReplacements = map[string]string{
-	// ViSiON/2 Color Codes (|00 - |15)
+	// ViSiON/2 Color Codes (|00 - |15) - Standard DOS/CGA palette
 	"|00": "\x1B[0;30m", // Black
-	"|01": "\x1B[0;31m", // Red
+	"|01": "\x1B[0;34m", // Blue
 	"|02": "\x1B[0;32m", // Green
-	"|03": "\x1B[0;33m", // Brown
-	"|04": "\x1B[0;34m", // Blue
+	"|03": "\x1B[0;36m", // Cyan
+	"|04": "\x1B[0;31m", // Red
 	"|05": "\x1B[0;35m", // Magenta
-	"|06": "\x1B[0;36m", // Cyan
-	"|07": "\x1B[0;37m", // Gray (Standard White)
+	"|06": "\x1B[0;33m", // Brown/Yellow
+	"|07": "\x1B[0;37m", // Light Gray
 	"|08": "\x1B[1;30m", // Dark Gray (Bright Black)
-	"|09": "\x1B[1;31m", // Bright Red
-	"|10": "\x1B[1;32m", // Bright Green
-	"|11": "\x1B[1;33m", // Yellow (Bright Yellow)
-	"|12": "\x1B[1;34m", // Bright Blue
-	"|13": "\x1B[1;35m", // Bright Magenta
-	"|14": "\x1B[1;36m", // Bright Cyan
+	"|09": "\x1B[1;34m", // Light Blue (Bright Blue)
+	"|10": "\x1B[1;32m", // Light Green (Bright Green)
+	"|11": "\x1B[1;36m", // Light Cyan (Bright Cyan)
+	"|12": "\x1B[1;31m", // Light Red (Bright Red)
+	"|13": "\x1B[1;35m", // Light Magenta (Bright Magenta)
+	"|14": "\x1B[1;33m", // Yellow (Bright Yellow)
 	"|15": "\x1B[1;37m", // White (Bright White)
 
 	// Background Colors (|B0 - |B7)

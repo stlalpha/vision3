@@ -3293,10 +3293,11 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 			break
 		}
 	}
-	log.Printf("DEBUG: Node %d: Passing TERM=%s to editor.RunEditor", nodeNumber, termType)
+	log.Printf("DEBUG: Node %d: Passing TERM=%s to editor.RunEditorWithMetadata", nodeNumber, termType)
 
-	body, saved, err := editor.RunEditor("", s, s, termType)
-	log.Printf("DEBUG: Node %d: editor.RunEditor returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
+	// No quote data for new messages
+	body, saved, err := editor.RunEditorWithMetadata("", s, s, termType, subject, toUser, isAnonymous, "", "", "", "", false, nil)
+	log.Printf("DEBUG: Node %d: editor.RunEditorWithMetadata returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
 
 	if err != nil {
 		log.Printf("ERROR: Node %d: Editor failed for user %s: %v", nodeNumber, currentUser.Handle, err)
@@ -3330,14 +3331,16 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	msgNum, err := e.MessageMgr.AddMessage(area.ID, fromName, toUser, subject, body, "")
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to save message from user %s to area %s: %v", nodeNumber, currentUser.Handle, area.Tag, err)
-		terminal.Write([]byte("\r\n|01Error saving message!|07\r\n"))
+		errorMsg := ansi.ReplacePipeCodes([]byte("\r\n|01Error saving message!|07\r\n"))
+		terminalio.WriteProcessedBytes(terminal, errorMsg, outputMode)
 		time.Sleep(2 * time.Second)
 		return nil, "", fmt.Errorf("failed saving message: %w", err)
 	}
 
 	// 8. Confirmation
 	log.Printf("INFO: Node %d: User %s successfully posted message #%d to area %s", nodeNumber, currentUser.Handle, msgNum, area.Tag)
-	terminal.Write([]byte("\r\n|02Message Posted!|07\r\n"))
+	confirmMsg := ansi.ReplacePipeCodes([]byte("\r\n|02Message Posted!|07\r\n"))
+	terminalio.WriteProcessedBytes(terminal, confirmMsg, outputMode)
 	time.Sleep(1 * time.Second)
 
 	return nil, "", nil
@@ -3394,7 +3397,8 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.T
 
 	if len(areas) == 0 {
 		log.Printf("DEBUG: Node %d: No message areas available to post in.", nodeNumber)
-		terminal.Write([]byte("\r\n|07No message areas available.|07\r\n"))
+		noAreasMsg := ansi.ReplacePipeCodes([]byte("\r\n|07No message areas available.|07\r\n"))
+		terminalio.WriteProcessedBytes(terminal, noAreasMsg, outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil // Return to menu
 	}
