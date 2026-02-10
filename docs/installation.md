@@ -62,6 +62,7 @@ Ensure these directories exist (they should be included in the repository):
 - `configs/` - Configuration files
 - `data/` - Runtime data
 - `data/users/` - User database
+- `data/msgbases/` - JAM message base files (created automatically)
 - `data/logs/` - Log files
 - `menus/v3/` - Menu system files
 
@@ -71,7 +72,8 @@ The system includes default configuration files in the `configs/` directory:
 - `strings.json` - BBS text strings and prompts
 - `doors.json` - External door program configurations
 - `file_areas.json` - File area definitions
-- `config.json` - General BBS settings
+- `config.json` - General BBS settings (includes FTN tosser configuration)
+- `message_areas.json` - Message area definitions (JAM base paths, area types)
 
 Review and modify these as needed for your setup.
 
@@ -122,9 +124,13 @@ vision3/
 ├── data/                  # Runtime data (created automatically)
 │   ├── users/
 │   │   └── users.json    # User database
-│   ├── logs/
-│   │   └── vision3.log   # Application log
-│   └── message_*.jsonl   # Message bases
+│   ├── msgbases/         # JAM message bases (.jhr/.jdt/.jdx/.jlr)
+│   ├── ftn/              # FTN echomail data (if enabled)
+│   │   ├── inbound/      # Incoming .PKT files
+│   │   ├── outbound/     # Outgoing .PKT files
+│   │   └── dupes.json    # MSGID dupe database
+│   └── logs/
+│       └── vision3.log   # Application log
 └── menus/v3/             # Menu system files
 ```
 

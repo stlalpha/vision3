@@ -344,19 +344,40 @@ func LoadThemeConfig(menuSetPath string) (ThemeConfig, error) {
 	return theme, nil
 }
 
+// FTNLinkConfig defines an FTN link (uplink/downlink node).
+type FTNLinkConfig struct {
+	Address   string   `json:"address"`    // e.g., "21:1/100"
+	Password  string   `json:"password"`   // Packet password
+	Name      string   `json:"name"`       // Human-readable name
+	EchoAreas []string `json:"echo_areas"` // Echo tags routed to this link
+}
+
+// FTNConfig holds FTN (FidoNet Technology Network) echomail settings.
+type FTNConfig struct {
+	Enabled      bool            `json:"enabled"`
+	OwnAddress   string          `json:"own_address"`           // e.g., "21:3/110"
+	InboundPath  string          `json:"inbound_path"`          // e.g., "data/ftn/inbound"
+	OutboundPath string          `json:"outbound_path"`         // e.g., "data/ftn/outbound"
+	TempPath     string          `json:"temp_path"`             // e.g., "data/ftn/temp"
+	DupeDBPath   string          `json:"dupe_db_path"`          // e.g., "data/ftn/dupes.json"
+	PollSeconds  int             `json:"poll_interval_seconds"` // 0 = manual only
+	Links        []FTNLinkConfig `json:"links"`
+}
+
 // ServerConfig defines server-wide settings
 type ServerConfig struct {
-	BoardName        string `json:"boardName"`
-	BoardPhoneNumber string `json:"boardPhoneNumber"`
-	SysOpLevel       int    `json:"sysOpLevel"`
-	CoSysLevel       int    `json:"coSysLevel"`
-	LogonLevel       int    `json:"logonLevel"`
-	SSHPort          int    `json:"sshPort"`
-	SSHHost          string `json:"sshHost"`
-	SSHEnabled       bool   `json:"sshEnabled"`
-	TelnetPort       int    `json:"telnetPort"`
-	TelnetHost       string `json:"telnetHost"`
-	TelnetEnabled    bool   `json:"telnetEnabled"`
+	BoardName        string    `json:"boardName"`
+	BoardPhoneNumber string    `json:"boardPhoneNumber"`
+	SysOpLevel       int       `json:"sysOpLevel"`
+	CoSysLevel       int       `json:"coSysLevel"`
+	LogonLevel       int       `json:"logonLevel"`
+	SSHPort          int       `json:"sshPort"`
+	SSHHost          string    `json:"sshHost"`
+	SSHEnabled       bool      `json:"sshEnabled"`
+	TelnetPort       int       `json:"telnetPort"`
+	TelnetHost       string    `json:"telnetHost"`
+	TelnetEnabled    bool      `json:"telnetEnabled"`
+	FTN              FTNConfig `json:"ftn"`
 }
 
 // LoadServerConfig loads the server configuration from config.json

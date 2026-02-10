@@ -46,12 +46,11 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 ### Currently Active Features
 
-*   **[DONE] Message System:**
-    *   [x] Define data structures for message areas (`MessageArea` struct).
+*   **[DONE] Message System (JAM Message Bases):**
+    *   [x] Define data structures for message areas (`MessageArea` struct with JAM/FTN fields).
     *   [x] Implement persistence for message area definitions (`message_areas.json`).
     *   [x] Implement listing/navigation of message areas (`ListAreas`, `MSGMAIM` menu, `RUN:LISTMSGAR`).
-    *   [x] Define data structures for messages (`Message` struct).
-    *   [x] Implement persistence for message data (JSONL files per area).
+    *   [x] Implement JAM binary message base (`internal/jam/`) with random-access read/write, CRC32 indexing, per-user lastread tracking.
     *   [x] Implement message posting command (`RUN:COMPOSEMSG`):
         *   [x] Create custom TUI editor (`internal/editor`) using `bubbletea`.
             *   Full-screen editor supporting multi-line input.
@@ -59,9 +58,19 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
             *   Preserves raw `|XX` codes in the final saved message text.
             *   Basic editor commands (Save, Abort).
         *   [x] Prompt for message subject after editor exits.
-        *   [x] Save message using `MessageManager`.
-    *   [x] Implement message reading command (`RUN:READMSGS`) with full pagination and navigation.
-    *   [x] Implement newscan command (`RUN:NEWSCAN`) to check all areas for new messages.
+        *   [x] Save message using `MessageManager.AddMessage()` (JAM-backed).
+    *   [x] Implement message reading command (`RUN:READMSGS`) with random-access navigation and JAM lastread.
+    *   [x] Implement newscan command (`RUN:NEWSCAN`) using JAM per-user lastread tracking.
+    *   [x] Implement message area selection (`RUN:SELECTMSGAREA`).
+    *   [x] Implement prompt-and-compose (`RUN:PROMPTANDCOMPOSEMESSAGE`).
+*   **[DONE] FTN Echomail System:**
+    *   [x] Implement FTN Type-2+ packet library (`internal/ftn/`) - read/write .PKT files.
+    *   [x] Implement built-in tosser (`internal/tosser/`) with inbound/outbound processing.
+    *   [x] MSGID dupe checking with JSON-persisted dupe database.
+    *   [x] SEEN-BY/PATH management with net compression.
+    *   [x] Background polling at configurable interval.
+    *   [x] Echomail-aware message composition (MSGID, tearline, origin line).
+    *   [x] FTN configuration in `config.json` (address, links, paths).
 *   **[DONE] File Areas:**
     *   [x] Define data structures for file areas (`FileArea` struct).
     *   [x] Implement persistence for file area definitions (`file_areas.json`).
@@ -110,6 +119,12 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
     *   [ ] User editor
     *   [ ] System configuration editor
     *   [ ] File/Message area managers
+*   **JAM Utilities (`cmd/jamutil`):**
+    *   [ ] Base info/stats display
+    *   [ ] Message packing/defragmentation
+    *   [ ] Orphan cleanup and integrity checking
+    *   [ ] Lastread reset/management
+    *   [ ] Message purge by age/count
 *   **Additional Protocols:**
     *   [ ] Xmodem
     *   [ ] Ymodem
@@ -126,6 +141,7 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 - [ ] String Editor (`cmd/json-string-editor`): Create TUI tool to edit `config/strings.json`.
 - [x] String Decoder (`cmd/strings-decoder`): Created tool to decode STRINGS.DAT.
+- [ ] JAM Utility (`cmd/jamutil`): Command-line tool for JAM base maintenance (pack, fix, purge, stats).
 
 ## Documentation
 
@@ -154,6 +170,11 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 *   [x] Oneliner system
 *   [x] User list display
 *   [x] Message area foundations
+*   [x] JAM binary message base implementation (`internal/jam/`)
+*   [x] FTN packet library (`internal/ftn/`)
+*   [x] Built-in FTN echomail tosser (`internal/tosser/`)
+*   [x] Migration from JSONL to JAM message storage
+*   [x] Per-user lastread tracking via JAM `.jlr` files (replaces UUID-based tracking)
 *   [x] File area foundations
 *   [x] Door/external program support
 *   [x] ZMODEM file transfers

@@ -1,0 +1,198 @@
+package tosser
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestDupeDB(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dupes.json")
+
+	db, err := NewDupeDB(path, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("NewDupeDB: %v", err)
+	}
+
+	// First add should not be a dupe
+	if db.Add("1:103/705 12345678") {
+		t.Error("first Add should return false")
+	}
+
+	// Second add of same MSGID should be a dupe
+	if !db.Add("1:103/705 12345678") {
+		t.Error("second Add should return true (dupe)")
+	}
+
+	// IsDupe should work
+	if !db.IsDupe("1:103/705 12345678") {
+		t.Error("IsDupe should return true")
+	}
+	if db.IsDupe("1:103/705 99999999") {
+		t.Error("IsDupe should return false for unknown MSGID")
+	}
+
+	// Empty MSGID should not be a dupe
+	if db.IsDupe("") {
+		t.Error("empty MSGID should not be a dupe")
+	}
+	if db.Add("") {
+		t.Error("empty MSGID Add should return false")
+	}
+
+	if db.Count() != 1 {
+		t.Errorf("Count: got %d, want 1", db.Count())
+	}
+
+	// Save and reload
+	if err := db.Save(); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	db2, err := NewDupeDB(path, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("NewDupeDB reload: %v", err)
+	}
+	if !db2.IsDupe("1:103/705 12345678") {
+		t.Error("entry should persist across reload")
+	}
+}
+
+func TestDupeDBPurge(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dupes.json")
+
+	db, err := NewDupeDB(path, 1*time.Hour)
+	if err != nil {
+		t.Fatalf("NewDupeDB: %v", err)
+	}
+
+	// Manually insert old entries with timestamps in the past
+	db.mu.Lock()
+	db.entries["old-msg-1"] = time.Now().Add(-2 * time.Hour).Unix()
+	db.entries["old-msg-2"] = time.Now().Add(-2 * time.Hour).Unix()
+	db.mu.Unlock()
+
+	// Add a fresh entry
+	db.Add("new-msg-1")
+
+	if err := db.Purge(); err != nil {
+		t.Fatalf("Purge: %v", err)
+	}
+
+	if db.Count() != 1 {
+		t.Errorf("after purge: Count=%d, want 1", db.Count())
+	}
+	if !db.IsDupe("new-msg-1") {
+		t.Error("new entry should survive purge")
+	}
+	if db.IsDupe("old-msg-1") {
+		t.Error("old entry should be purged")
+	}
+}
+
+func TestDupeDBCorruptFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dupes.json")
+
+	// Write corrupt data
+	os.WriteFile(path, []byte("not valid json{{{"), 0644)
+
+	db, err := NewDupeDB(path, 24*time.Hour)
+	if err != nil {
+		t.Fatalf("NewDupeDB should handle corrupt file: %v", err)
+	}
+	if db.Count() != 0 {
+		t.Error("corrupt file should result in empty DB")
+	}
+}
+
+func TestParseSeenByLine(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected []netNode
+	}{
+		{
+			"103/705 104/56",
+			[]netNode{{103, 705}, {104, 56}},
+		},
+		{
+			"103/705 706 707",
+			[]netNode{{103, 705}, {103, 706}, {103, 707}},
+		},
+		{
+			"103/705 104/56 100",
+			[]netNode{{103, 705}, {104, 56}, {104, 100}},
+		},
+		{
+			"",
+			nil,
+		},
+	}
+
+	for _, tt := range tests {
+		nodes := ParseSeenByLine(tt.input)
+		if len(nodes) != len(tt.expected) {
+			t.Errorf("ParseSeenByLine(%q): got %d nodes, want %d", tt.input, len(nodes), len(tt.expected))
+			continue
+		}
+		for i, n := range nodes {
+			if n.Net != tt.expected[i].Net || n.Node != tt.expected[i].Node {
+				t.Errorf("ParseSeenByLine(%q)[%d]: got %d/%d, want %d/%d",
+					tt.input, i, n.Net, n.Node, tt.expected[i].Net, tt.expected[i].Node)
+			}
+		}
+	}
+}
+
+func TestFormatSeenByLine(t *testing.T) {
+	nodes := []netNode{{103, 705}, {103, 706}, {104, 56}}
+	result := FormatSeenByLine(nodes)
+
+	// Should be sorted and compressed
+	expected := "103/705 706 104/56"
+	if result != expected {
+		t.Errorf("FormatSeenByLine: got %q, want %q", result, expected)
+	}
+}
+
+func TestMergeSeenBy(t *testing.T) {
+	existing := []string{"103/705 104/56"}
+	result := MergeSeenBy(existing, "3/110")
+
+	if len(result) != 1 {
+		t.Fatalf("MergeSeenBy: got %d lines, want 1", len(result))
+	}
+
+	// Should contain all three addresses
+	nodes := ParseSeenByLine(result[0])
+	if len(nodes) != 3 {
+		t.Errorf("MergeSeenBy result has %d nodes, want 3", len(nodes))
+	}
+}
+
+func TestAppendPath(t *testing.T) {
+	existing := []string{"103/705"}
+	result := AppendPath(existing, "3/110")
+
+	if len(result) != 1 {
+		t.Fatalf("AppendPath: got %d lines, want 1", len(result))
+	}
+
+	nodes := ParseSeenByLine(result[0])
+	if len(nodes) != 2 {
+		t.Errorf("AppendPath result has %d nodes, want 2", len(nodes))
+	}
+}
+
+func TestMergeSeenByNoDuplicates(t *testing.T) {
+	existing := []string{"103/705"}
+	result := MergeSeenBy(existing, "103/705")
+
+	nodes := ParseSeenByLine(result[0])
+	if len(nodes) != 1 {
+		t.Errorf("MergeSeenBy should not add duplicates: got %d nodes, want 1", len(nodes))
+	}
+}

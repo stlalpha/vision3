@@ -1,45 +1,41 @@
 package message
 
-import (
-	"time"
-
-	"github.com/google/uuid"
-)
+import "time"
 
 // MessageArea defines the structure for a message base/forum.
 type MessageArea struct {
-	ID            int    `json:"id"`                        // Unique local ID for the area
-	Tag           string `json:"tag"`                       // Short, unique tag (e.g., "GENERAL", "SYSOP", "NETWORK_TAG")
-	Name          string `json:"name"`                      // Display name of the area
-	Description   string `json:"description"`               // Longer description
-	ACSRead       string `json:"acs_read"`                  // ACS string required to read messages
-	ACSWrite      string `json:"acs_write"`                 // ACS string required to post messages
-	IsNetworked   bool   `json:"is_networked"`              // Flag indicating if this area is networked (echomail)
-	OriginNodeID  string `json:"origin_node_id"`            // ID of the node where this networked area originated
-	LastMessageID string `json:"last_message_id,omitempty"` // Optional: ID of the last message posted (for high water mark)
-	ConferenceID  int    `json:"conference_id,omitempty"`   // Conference this area belongs to (0=ungrouped)
+	ID           int    `json:"id"`                       // Unique local ID for the area
+	Tag          string `json:"tag"`                      // Short, unique tag (e.g., "GENERAL", "FSX_GEN")
+	Name         string `json:"name"`                     // Display name
+	Description  string `json:"description"`              // Longer description
+	ACSRead      string `json:"acs_read"`                 // ACS string required to read
+	ACSWrite     string `json:"acs_write"`                // ACS string required to post
+	ConferenceID int    `json:"conference_id,omitempty"`  // Conference this area belongs to (0=ungrouped)
+	BasePath     string `json:"base_path"`                // Relative path to JAM base (e.g., "msgbases/general")
+	AreaType     string `json:"area_type"`                // "local", "echomail", "netmail"
+	EchoTag      string `json:"echo_tag,omitempty"`       // FTN echo tag (e.g., "FSX_GEN")
+	OriginAddr   string `json:"origin_addr,omitempty"`    // FTN origin address (e.g., "21:3/110")
 }
 
-// Message defines the structure for a single message, usable for both public posts and private mail.
-type Message struct {
-	ID           uuid.UUID `json:"id"`                     // Globally unique identifier (UUID)
-	AreaID       int       `json:"area_id"`                // Local ID of the MessageArea this belongs to
-	FromUserName string    `json:"from_user_name"`         // Handle of the sender
-	FromNodeID   string    `json:"from_node_id"`           // Node ID where the message originated
-	ToUserName   string    `json:"to_user_name,omitempty"` // Target user handle (used for private mail)
-	ToNodeID     string    `json:"to_node_id,omitempty"`   // Target node ID (used for private mail)
-	Subject      string    `json:"subject"`                // Message subject
-	Body         string    `json:"body"`                   // Message content
-	PostedAt     time.Time `json:"posted_at"`              // Timestamp when the message was originally posted
-	MsgID        string    `json:"msg_id,omitempty"`       // Optional: FidoNet-style MSGID (OriginID + Serial) - may be redundant with ID
-	ReplyToID    uuid.UUID `json:"reply_to_id,omitempty"`  // ID (UUID) of the message this is a reply to (use uuid.Nil for no reply)
-	Path         []string  `json:"path,omitempty"`         // List of node IDs this message traversed (for network loop prevention)
-	IsPrivate    bool      `json:"is_private"`             // True for private mail, False for public posts
-	ReadBy       []int     `json:"read_by,omitempty"`      // Optional: List of User IDs who have read this (for tracking new mail/posts) - can get large!
-	Attributes   []string  `json:"attributes,omitempty"`   // Optional: FidoNet-style attributes (e.g., "PVT", "CRASH", "RCVD")
+// DisplayMessage is a high-level message view for the UI layer.
+// It wraps the JAM binary data into a form suitable for display and
+// interaction in the message reader/composer.
+type DisplayMessage struct {
+	MsgNum    int       // 1-based message number in the JAM base
+	From      string
+	To        string
+	Subject   string
+	DateTime  time.Time
+	Body      string // Decoded message body for display
+	MsgID     string // FTN MSGID (for reply linking)
+	ReplyID   string // FTN REPLYID (message this replies to)
+	OrigAddr  string // FTN origin address
+	IsPrivate bool
+	IsDeleted bool
+	AreaID    int // Area this message belongs to
 }
 
-// Constants for standard message fields
+// Constants for standard message fields.
 const (
-	MsgToUserAll = "All" // Standard ToUserName for public messages
+	MsgToUserAll = "All" // Standard To value for public messages
 )

@@ -3256,34 +3256,17 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		subject = "(no subject)" // Default subject
 	}
 
-	// 4. Construct the Message (Subject is already set)
-	currentNodeID := "1:1/100" // Placeholder - get from config or session
-
-	newMessage := message.Message{
-		ID:           uuid.New(),
-		AreaID:       area.ID,
-		FromUserName: currentUser.Handle,
-		FromNodeID:   currentNodeID,        // TODO: Get actual node ID
-		ToUserName:   message.MsgToUserAll, // Public message
-		Subject:      subject,
-		Body:         body,
-		PostedAt:     time.Now(), // Set creation time
-		IsPrivate:    false,
-		// ReplyToID, Path, Attributes, ReadBy can be added later
-	}
-
-	// 5. Save the Message
-	err = e.MessageMgr.AddMessage(area.ID, newMessage)
+	// 4. Save the Message via JAM backend
+	msgNum, err := e.MessageMgr.AddMessage(area.ID, currentUser.Handle, message.MsgToUserAll, subject, body, "")
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to save message from user %s to area %s: %v", nodeNumber, currentUser.Handle, area.Tag, err)
-		// TODO: Display user-friendly error
 		terminal.Write([]byte("\r\n|01Error saving message!|07\r\n"))
 		time.Sleep(2 * time.Second)
-		return nil, "", fmt.Errorf("failed saving message: %w", err) // Return error for now
+		return nil, "", fmt.Errorf("failed saving message: %w", err)
 	}
 
-	// 6. Confirmation
-	log.Printf("INFO: Node %d: User %s successfully posted message %s to area %s", nodeNumber, currentUser.Handle, newMessage.ID, area.Tag)
+	// 5. Confirmation
+	log.Printf("INFO: Node %d: User %s successfully posted message #%d to area %s", nodeNumber, currentUser.Handle, msgNum, area.Tag)
 	// TODO: Use string config for confirmation message
 	terminal.Write([]byte("\r\n|02Message Posted!|07\r\n"))
 	time.Sleep(1 * time.Second)
@@ -3489,48 +3472,22 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 		return nil, "", nil // Return to menu
 	}
 
-	// 3. Check for New Messages
-	lastReadID := "" // Default to empty (fetch all if no record)
-	if currentUser.LastReadMessageIDs != nil {
-		lastReadID = currentUser.LastReadMessageIDs[currentAreaID]
-	}
-	newCount, err := e.MessageMgr.GetNewMessageCount(currentAreaID, lastReadID)
+	// 3. Check for new messages via JAM lastread
+	newCount, err := e.MessageMgr.GetNewMessageCount(currentAreaID, currentUser.Handle)
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to get new message count for area %d: %v", nodeNumber, currentAreaID, err)
-		msg := fmt.Sprintf("\r\n|01Error checking for new messages in area %s.|07\r\n", currentAreaTag)
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
-		time.Sleep(1 * time.Second)
-		return nil, "", err
+		newCount = 0
 	}
 
-	var messages []message.Message
-	currentMessageIndex := 0
-	totalMessages := 0 // Will be set based on context (new or all)
-
-	var readingNewMessages bool // Flag to track if we started by reading new messages
+	var currentMsgNum int // 1-based message number for navigation
 
 	if newCount > 0 {
-		// 4a. Load Only New Messages
-		readingNewMessages = true // <<< SET FLAG
-		log.Printf("INFO: Node %d: Found %d new messages in area %d since ID '%s'. Loading new.", nodeNumber, newCount, currentAreaID, lastReadID)
-		messages, err = e.MessageMgr.GetMessagesForArea(currentAreaID, lastReadID)
-		if err != nil {
-			log.Printf("ERROR: Node %d: Failed to load new messages for area %d: %v", nodeNumber, currentAreaID, err)
-			msg := fmt.Sprintf("\r\n|01Error loading new messages for area %s.|07\r\n", currentAreaTag)
-			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-			if wErr != nil { /* Log? */
-			}
-			time.Sleep(1 * time.Second)
-			return nil, "", err
-		}
-		totalMessages = len(messages) // Total for the reader loop is just the new ones
-		currentMessageIndex = 0       // Start at the first new message
+		// Start at first unread message
+		currentMsgNum = totalMessageCount - newCount + 1
+		log.Printf("INFO: Node %d: %d new messages in area %d. Starting at message %d.", nodeNumber, newCount, currentAreaID, currentMsgNum)
 	} else {
-		// 4b. No New Messages - Prompt for specific message
-		readingNewMessages = false // <<< SET FLAG
-		log.Printf("INFO: Node %d: No new messages in area %d since ID '%s'. Prompting for specific message.", nodeNumber, currentAreaID, lastReadID)
+		// No new messages - prompt for specific message number
+		log.Printf("INFO: Node %d: No new messages in area %d. Prompting for specific message.", nodeNumber, currentAreaID)
 		noNewMsg := fmt.Sprintf("\r\n|07No new messages in area |15%s|07.", currentAreaTag)
 		totalMsg := fmt.Sprintf(" |07Total messages: |15%d|07.", totalMessageCount)
 		promptMsg := fmt.Sprintf("\r\n|07Read message # (|151-%d|07, |15Enter|07=Cancel): |15", totalMessageCount)
@@ -3542,16 +3499,16 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				log.Printf("INFO: Node %d: User disconnected during message number input.", nodeNumber)
-				return nil, "LOGOFF", io.EOF // Signal logoff
+				return nil, "LOGOFF", io.EOF
 			}
 			log.Printf("ERROR: Node %d: Failed reading message number input: %v", nodeNumber, readErr)
-			return nil, "", readErr // Return error
+			return nil, "", readErr
 		}
 
 		selectedNumStr := strings.TrimSpace(input)
 		if selectedNumStr == "" {
 			log.Printf("INFO: Node %d: User cancelled message reading.", nodeNumber)
-			return nil, "", nil // Return to menu
+			return nil, "", nil
 		}
 
 		selectedNum, parseErr := strconv.Atoi(selectedNumStr)
@@ -3560,27 +3517,11 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 			msg := fmt.Sprintf("\r\n|01Invalid message number: %s|07\r\n", selectedNumStr)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(1 * time.Second)
-			return nil, "", nil // Return to menu
+			return nil, "", nil
 		}
 
-		// Load all messages for reading the specific one
-		log.Printf("DEBUG: Node %d: Loading all %d messages to read #%d", nodeNumber, totalMessageCount, selectedNum)
-		allMessages, err := e.MessageMgr.GetMessagesForArea(currentAreaID, "") // Load all
-		if err != nil {
-			log.Printf("ERROR: Node %d: Failed to load all messages for area %d: %v", nodeNumber, currentAreaID, err)
-			msg := fmt.Sprintf("\r\n|01Error loading messages for area %s.|07\r\n", currentAreaTag)
-			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-			if wErr != nil { /* Log? */
-			}
-			time.Sleep(1 * time.Second)
-			return nil, "", err
-		}
-		messages = allMessages                // Use all messages for the reader
-		totalMessages = len(messages)         // Total for loop is all messages
-		currentMessageIndex = selectedNum - 1 // Set index to the chosen message
+		currentMsgNum = selectedNum
 	}
-
-	// --- NEW LOGIC END ---
 
 	// 4. Load Templates (Load once before loop)
 	templateDir := filepath.Join(e.MenuSetPath, "templates")
@@ -3629,32 +3570,24 @@ readerLoop:
 		}
 		log.Printf("DEBUG: [runReadMsgs] HeaderLines: %d, PromptLines: %d, Available Body Height: %d", headerLines, promptLines, bodyAvailableHeight)
 
-		// 5.1 Get Current Message
-		currentMsg := messages[currentMessageIndex]
-
-		// --- Determine Absolute Message Number ---
-		absoluteMessageNumber := 0
-		if readingNewMessages {
-			// Calculate the number of messages *before* the new ones
-			// Note: totalMessageCount and newCount were fetched earlier
-			numOldMessages := totalMessageCount - newCount
-			absoluteMessageNumber = numOldMessages + 1 + currentMessageIndex // 1-based index
-		} else {
-			// When not reading new, currentMessageIndex is relative to the *full* list
-			absoluteMessageNumber = currentMessageIndex + 1 // 1-based index
+		// 5.1 Get Current Message from JAM base
+		currentMsg, msgErr := e.MessageMgr.GetMessage(currentAreaID, currentMsgNum)
+		if msgErr != nil {
+			log.Printf("ERROR: Node %d: Failed to read message %d in area %d: %v", nodeNumber, currentMsgNum, currentAreaID, msgErr)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n|01Error reading message.|07\r\n"), outputMode)
+			time.Sleep(1 * time.Second)
+			break readerLoop
 		}
-		// --- End Absolute Message Number ---
 
 		// 5.2 Create Placeholders
 		placeholders := map[string]string{
 			"|CA":     currentAreaTag,
-			"|MNUM":   strconv.Itoa(absoluteMessageNumber), // Use absolute number
-			"|MTOTAL": strconv.Itoa(totalMessageCount),     // Use total count for the area
-			"|MFROM":  string(ansi.ReplacePipeCodes([]byte(currentMsg.FromUserName))),
-			"|MTO":    string(ansi.ReplacePipeCodes([]byte(currentMsg.ToUserName))),
+			"|MNUM":   strconv.Itoa(currentMsgNum),
+			"|MTOTAL": strconv.Itoa(totalMessageCount),
+			"|MFROM":  string(ansi.ReplacePipeCodes([]byte(currentMsg.From))),
+			"|MTO":    string(ansi.ReplacePipeCodes([]byte(currentMsg.To))),
 			"|MSUBJ":  string(ansi.ReplacePipeCodes([]byte(currentMsg.Subject))),
-			"|MDATE":  currentMsg.PostedAt.Format(time.RFC822), // Use a standard format like RFC822
-			// Add more placeholders from message struct if needed by templates
+			"|MDATE":  currentMsg.DateTime.Format(time.RFC822),
 		}
 
 		// 5.3 Substitute into Templates (Explicit Order)
@@ -3767,19 +3700,10 @@ readerLoop:
 
 				if unicode.ToUpper(pauseInputRune) == 'Q' {
 					log.Printf("DEBUG: Node %d: User quit message reader during pagination.", nodeNumber)
-					// --- Update Last Read only if reading new ---
-					if readingNewMessages && len(messages) > 0 {
-						lastViewedID := messages[currentMessageIndex].ID.String()
-						log.Printf("DEBUG: Node %d: Updating last read ID (pagination quit) for user %s, area %d to %s", nodeNumber, currentUser.Handle, currentAreaID, lastViewedID)
-						if currentUser.LastReadMessageIDs == nil {
-							currentUser.LastReadMessageIDs = make(map[int]string)
-						}
-						currentUser.LastReadMessageIDs[currentAreaID] = lastViewedID
-						if err := userManager.SaveUsers(); err != nil {
-							log.Printf("ERROR: Node %d: Failed to save user data (pagination quit): %v", nodeNumber, err)
-						}
+					// Update lastread in JAM base
+					if lrErr := e.MessageMgr.SetLastRead(currentAreaID, currentUser.Handle, currentMsgNum); lrErr != nil {
+						log.Printf("ERROR: Node %d: Failed to update last read (pagination quit): %v", nodeNumber, lrErr)
 					}
-					// --- End Update ---
 					break readerLoop // Exit outer reader loop
 				}
 				// Otherwise (Enter, Space, etc.), reset counter and continue display loop
@@ -3821,42 +3745,27 @@ readerLoop:
 
 		switch upperInput {
 		case "", " ": // Next message (Enter or Space defaults to Next)
-			if currentMessageIndex < totalMessages-1 {
-				currentMessageIndex++
+			if currentMsgNum < totalMessageCount {
+				currentMsgNum++
 			} else {
-				// Optionally wrap around or stay at last message
-				// For now, stay at last message and indicate
 				terminalio.WriteProcessedBytes(terminal, []byte("\r\n|07Last message.|07"), outputMode)
 				time.Sleep(500 * time.Millisecond)
 			}
 		case "N": // Explicit 'N' - Do nothing now, or maybe show help?
-			// Currently does nothing, just loops back
 			log.Printf("DEBUG: Node %d: 'N' pressed, doing nothing.", nodeNumber)
 		case "P": // Previous message
-			if currentMessageIndex > 0 {
-				currentMessageIndex--
+			if currentMsgNum > 1 {
+				currentMsgNum--
 			} else {
-				// TODO: Display "First message" indicator?
 				terminalio.WriteProcessedBytes(terminal, []byte("\r\n|07First message.|07"), outputMode)
 				time.Sleep(500 * time.Millisecond)
 			}
 		case "Q":
 			log.Printf("DEBUG: Node %d: User quit message reader ('Q' pressed).", nodeNumber)
-			// --- Update Last Read only if reading new ---
-			if readingNewMessages && len(messages) > 0 {
-				lastViewedID := messages[currentMessageIndex].ID.String()
-				log.Printf("DEBUG: Node %d: Updating last read ID ('Q') for user %s, area %d to %s", nodeNumber, currentUser.Handle, currentAreaID, lastViewedID)
-				if currentUser.LastReadMessageIDs == nil {
-					currentUser.LastReadMessageIDs = make(map[int]string)
-				}
-				currentUser.LastReadMessageIDs[currentAreaID] = lastViewedID
-				if err := userManager.SaveUsers(); err != nil {
-					log.Printf("ERROR: Node %d: Failed to save user data ('Q'): %v", nodeNumber, err)
-				}
-			} else {
-				log.Printf("DEBUG: Node %d: Skipping last read ID update because readingNewMessages is false or no messages.", nodeNumber)
+			// Update lastread in JAM base
+			if lrErr := e.MessageMgr.SetLastRead(currentAreaID, currentUser.Handle, currentMsgNum); lrErr != nil {
+				log.Printf("ERROR: Node %d: Failed to update last read ('Q'): %v", nodeNumber, lrErr)
 			}
-			// --- End Update ---
 			break readerLoop // Exit the labeled loop
 		case "R": // Reply
 			// 1. Get Quote Prefix from config
@@ -3866,7 +3775,7 @@ readerLoop:
 			}
 
 			// 2. Format quoted text
-			quotedBody := formatQuote(&currentMsg, quotePrefix)
+			quotedBody := formatQuote(currentMsg, quotePrefix)
 
 			// 3. Run Editor
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\nLaunching editor...\r\n"), outputMode)
@@ -3939,20 +3848,9 @@ readerLoop:
 				continue
 			}
 
-			// 5. Construct Message (Subject 'newSubject' already obtained)
-			replyMsg := message.Message{
-				ID:           uuid.New(), // Use uuid.New()
-				AreaID:       currentAreaID,
-				FromUserName: currentUser.Handle,
-				ToUserName:   currentMsg.FromUserName, // Reply goes back to original sender
-				Subject:      newSubject,              // Use subject from before editor
-				Body:         replyBody,
-				PostedAt:     time.Now(),    // Use PostedAt field
-				ReplyToID:    currentMsg.ID, // Link to the original message
-			}
-
-			// 6. Save Message
-			err = e.MessageMgr.AddMessage(currentAreaID, replyMsg) // Pass value, not pointer
+			// 5. Save reply via JAM backend
+			replyMsgID := currentMsg.MsgID // Link to original message's MSGID
+			_, err = e.MessageMgr.AddMessage(currentAreaID, currentUser.Handle, currentMsg.From, newSubject, replyBody, replyMsgID)
 			if err != nil {
 				log.Printf("ERROR: Node %d: Failed to save reply message: %v", nodeNumber, err)
 				terminalio.WriteProcessedBytes(terminal, []byte("\r\nError saving reply message.\r\n"), outputMode)
@@ -3960,18 +3858,10 @@ readerLoop:
 			} else {
 				terminalio.WriteProcessedBytes(terminal, []byte("\r\nReply posted successfully!\r\n"), outputMode)
 				time.Sleep(1 * time.Second)
-				// --- Update Counters and Slice ---
-				totalMessages++         // Increment count of messages loaded in the *current slice*
-				totalMessageCount++     // Increment the *overall* area count
-				if readingNewMessages { // <<< ADDED Check
-					newCount++ // <<< ADDED: Increment newCount if we started by reading new
-				}
-				messages = append(messages, replyMsg) // Add reply to the *current slice*
-				// --- End Update ---
-
-				// -->> Advance to the next message after replying <<--
-				if currentMessageIndex < totalMessages-1 { // Check bounds just in case, though append should make it safe
-					currentMessageIndex++
+				totalMessageCount++ // Increment total count
+				// Advance to the newly posted reply
+				if currentMsgNum < totalMessageCount {
+					currentMsgNum++
 				}
 			}
 			continue
@@ -4164,13 +4054,8 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMan
 			continue
 		}
 
-		lastReadID := ""
-		if currentUser.LastReadMessageIDs != nil {
-			lastReadID = currentUser.LastReadMessageIDs[area.ID]
-		}
-
-		// Get the count of new messages (Corrected function call)
-		newCount, err := e.MessageMgr.GetNewMessageCount(area.ID, lastReadID)
+		// Get the count of new messages via JAM lastread
+		newCount, err := e.MessageMgr.GetNewMessageCount(area.ID, currentUser.Handle)
 		if err != nil {
 			log.Printf("ERROR: Node %d: Error checking new message count in area %d ('%s'): %v", nodeNumber, area.ID, area.Tag, err)
 			continue // Skip area on error
@@ -4321,7 +4206,7 @@ func generateReplySubject(originalSubject string) string {
 
 // formatQuote formats the body of an original message for quoting in a reply.
 // It prepends each line with the specified quotePrefix.
-func formatQuote(originalMsg *message.Message, quotePrefix string) string {
+func formatQuote(originalMsg *message.DisplayMessage, quotePrefix string) string {
 	if originalMsg == nil || originalMsg.Body == "" {
 		return ""
 	}

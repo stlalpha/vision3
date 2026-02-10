@@ -45,28 +45,51 @@ The system is designed as a single Go application that listens for incoming SSH 
 5. **Message Manager (`internal/message/manager.go`)**
    * Manages message areas and individual messages
    * Configuration loaded from `configs/message_areas.json`
-   * Messages stored as JSONL files in `data/` directory (e.g., `messages_area_1.jsonl`)
-   * Supports private and public message areas
+   * Messages stored in JAM (Joaquim-Andrew-Mats) binary message bases under `data/msgbases/`
+   * Each area has 4 files: `.jhr` (headers), `.jdt` (text), `.jdx` (index), `.jlr` (lastread)
+   * Supports local, echomail, and netmail area types
+   * Per-user lastread tracking via JAM `.jlr` files
+   * Thread-safe with `sync.RWMutex` for concurrent SSH/telnet sessions
 
-6. **File Manager (`internal/file/manager.go`)**
+6. **JAM Message Base (`internal/jam/`)**
+   * Binary message base implementation following the JAM specification
+   * Random access by message number via index file
+   * CRC32 indexing for fast lookups
+   * Subfield-based message headers (MSGID, REPLY, sender, receiver, etc.)
+   * Automatic base creation on first access
+
+7. **FTN Packet Library (`internal/ftn/`)**
+   * FidoNet Technology Network Type-2+ packet (.PKT) reader/writer
+   * Packed message body parser/formatter (AREA, kludges, SEEN-BY, PATH)
+   * FTN datetime formatting and parsing
+
+8. **FTN Tosser (`internal/tosser/`)**
+   * Built-in echomail tosser for FTN message exchange
+   * Inbound processing: scans .PKT files, dupe-checks via MSGID, writes to JAM bases
+   * Outbound export: scans for unprocessed messages (DateProcessed=0), creates .PKT files per link
+   * SEEN-BY/PATH management with net compression
+   * Background polling at configurable interval
+   * JSON-based dupe database with automatic purge
+
+9. **File Manager (`internal/file/manager.go`)**
    * Manages file areas and file listings
    * Configuration loaded from `configs/file_areas.json`
    * File metadata stored in `data/files/` directory
    * Handles file uploads/downloads and descriptions
 
-7. **Conference Manager (`internal/conference/conference.go`)**
+10. **Conference Manager (`internal/conference/conference.go`)**
    * Groups message areas and file areas into named conferences
    * Configuration loaded from `configs/conferences.json`
    * Provides conference ACS filtering for area visibility
    * Optional — system operates with flat area listings if conferences.json is missing
 
-8. **ANSI Handler (`internal/ansi/ansi.go`)**
+11. **ANSI Handler (`internal/ansi/ansi.go`)**
    * Parses ViSiON/2 specific pipe codes (`|00`-`|15`, `|B0`-`|B7`, etc.)
    * Converts CP437 characters to UTF-8 or VT100 line drawing
    * Supports multiple output modes (UTF-8, CP437, Auto)
    * Handles ANSI screen processing and display
 
-9. **Configuration (`configs/` directory)**
+12. **Configuration (`configs/` directory)**
    * `strings.json` - Externalized UI strings and prompts
    * `config.json` - General system configuration
    * `doors.json` - External door program configurations
@@ -96,6 +119,12 @@ vision3/
 ├── data/               # Persistent data
 │   ├── users/          # User accounts and call history
 │   ├── files/          # File area directories and metadata
+│   ├── msgbases/       # JAM message base files (.jhr/.jdt/.jdx/.jlr)
+│   ├── ftn/            # FTN echomail data
+│   │   ├── inbound/    # Incoming .PKT files
+│   │   ├── outbound/   # Outgoing .PKT files
+│   │   ├── temp/       # Temp for failed packets
+│   │   └── dupes.json  # MSGID dupe database
 │   └── logs/           # Application logs
 ├── internal/           # Internal packages
 │   ├── ansi/           # ANSI/CP437 handling
@@ -103,12 +132,15 @@ vision3/
 │   ├── config/         # Configuration loading
 │   ├── editor/         # Text editor (placeholder)
 │   ├── file/           # File area management
+│   ├── ftn/            # FTN packet (.PKT) library
+│   ├── jam/            # JAM message base implementation
 │   ├── menu/           # Menu system
-│   ├── message/        # Message area management
+│   ├── message/        # Message area management (JAM-backed)
 │   ├── session/        # Session management
 │   ├── sshserver/      # SSH server (libssh via CGO)
 │   ├── telnetserver/   # Telnet server (native Go)
 │   ├── terminalio/     # Terminal I/O utilities
+│   ├── tosser/         # FTN echomail tosser
 │   ├── transfer/       # File transfer protocols
 │   ├── types/          # Shared types
 │   └── user/           # User management
@@ -129,11 +161,14 @@ vision3/
 * `internal/conference`: Conference grouping for message and file areas
 * `internal/config`: Configuration file loading and parsing
 * `internal/menu`: Menu loading, display, command execution
-* `internal/message`: Message area management and persistence
+* `internal/jam`: JAM binary message base (read/write/index/lastread)
+* `internal/ftn`: FTN Type-2+ packet parsing and creation
+* `internal/message`: Message area management, JAM-backed storage
+* `internal/tosser`: FTN echomail import/export, dupe checking, SEEN-BY/PATH
 * `internal/file`: File area management and metadata
 * `internal/session`: Session state tracking (currently minimal)
 * `menus/v3`: Static menu resources (ANSI art, menu definitions)
-* `data`: Persisted application data
+* `data`: Persisted application data (users, JAM bases, FTN packets, logs)
 
 ## Key Design Decisions
 
@@ -142,4 +177,6 @@ vision3/
 3. **Menu-Driven**: All functionality is accessed through a hierarchical menu system
 4. **Pipe Code Compatibility**: Maintains compatibility with ViSiON/2 pipe codes for colors
 5. **Multiple Output Modes**: Supports both UTF-8 and CP437 output for compatibility
-6. **JSON Configuration**: Uses JSON for all configuration files for easy editing 
+6. **JSON Configuration**: Uses JSON for all configuration files for easy editing
+7. **JAM Message Bases**: Industry-standard binary message format with indexed random access and per-user lastread tracking
+8. **Built-in FTN Tosser**: Native echomail support without external tools (HPT, etc.)

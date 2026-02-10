@@ -129,11 +129,6 @@ func (um *UserMgr) loadUsers() error { // Receiver uses renamed type
 		if user == nil { // Safety check for nil entries in JSON array
 			continue
 		}
-		// Ensure LastReadMessageIDs map is initialized if it's nil (e.g., for older user records)
-		if user.LastReadMessageIDs == nil {
-			user.LastReadMessageIDs = make(map[int]string)
-			log.Printf("TRACE: Initialized nil LastReadMessageIDs map for user %s", user.Username)
-		}
 		lowerUsername := strings.ToLower(user.Username)
 		if _, exists := um.users[lowerUsername]; exists {
 			log.Printf("WARN: Duplicate username found in users.json: %s. Skipping subsequent entry.", user.Username)

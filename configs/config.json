@@ -9,5 +9,15 @@
   "sshEnabled": true,
   "telnetPort": 2323,
   "telnetHost": "0.0.0.0",
-  "telnetEnabled": true
+  "telnetEnabled": true,
+  "ftn": {
+    "enabled": false,
+    "own_address": "",
+    "inbound_path": "data/ftn/inbound",
+    "outbound_path": "data/ftn/outbound",
+    "temp_path": "data/ftn/temp",
+    "dupe_db_path": "data/ftn/dupes.json",
+    "poll_interval_seconds": 300,
+    "links": []
+  }
 } 

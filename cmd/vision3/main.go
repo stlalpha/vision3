@@ -29,6 +29,7 @@ import (
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/sshserver"
 	"github.com/stlalpha/vision3/internal/telnetserver"
+	"github.com/stlalpha/vision3/internal/tosser"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -737,10 +738,11 @@ func main() {
 	}
 
 	// Initialize MessageManager (areas config from configs/, message data from data/)
-	messageMgr, err = message.NewMessageManager(dataPath, rootConfigPath)
+	messageMgr, err = message.NewMessageManager(dataPath, rootConfigPath, serverConfig.BoardName)
 	if err != nil {
 		log.Fatalf("Failed to initialize message manager: %v", err)
 	}
+	defer messageMgr.Close() // Ensure JAM bases are closed on shutdown
 
 	// Initialize FileManager (using dataPath)
 	fileMgr, err = file.NewFileManager(dataPath, rootConfigPath)
@@ -757,6 +759,46 @@ func main() {
 
 	// Initialize MenuExecutor with new paths, loaded theme, and message manager
 	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, messageMgr, fileMgr, confMgr)
+
+	// Initialize FTN tosser if enabled
+	if serverConfig.FTN.Enabled {
+		ftnCfg := tosser.Config{
+			Enabled:      serverConfig.FTN.Enabled,
+			OwnAddress:   serverConfig.FTN.OwnAddress,
+			InboundPath:  serverConfig.FTN.InboundPath,
+			OutboundPath: serverConfig.FTN.OutboundPath,
+			TempPath:     serverConfig.FTN.TempPath,
+			DupeDBPath:   serverConfig.FTN.DupeDBPath,
+			PollSeconds:  serverConfig.FTN.PollSeconds,
+		}
+		for _, link := range serverConfig.FTN.Links {
+			ftnCfg.Links = append(ftnCfg.Links, tosser.LinkConfig{
+				Address:   link.Address,
+				Password:  link.Password,
+				Name:      link.Name,
+				EchoAreas: link.EchoAreas,
+			})
+		}
+
+		// Create FTN directories
+		for _, dir := range []string{ftnCfg.InboundPath, ftnCfg.OutboundPath, ftnCfg.TempPath} {
+			if dir != "" {
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					log.Printf("WARN: Failed to create FTN directory %s: %v", dir, err)
+				}
+			}
+		}
+
+		ftnTosser, err := tosser.New(ftnCfg, messageMgr)
+		if err != nil {
+			log.Printf("ERROR: Failed to initialize FTN tosser: %v. Echomail disabled.", err)
+		} else {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			go ftnTosser.Start(ctx)
+			log.Printf("INFO: FTN tosser initialized for %s", serverConfig.FTN.OwnAddress)
+		}
+	}
 
 	// Host key path for libssh
 	hostKeyPath := filepath.Join(rootConfigPath, "ssh_host_rsa_key")

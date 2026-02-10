@@ -1,6 +1,8 @@
 # Plan: Implementing the Message Reader (`runReadMsgs`)
 
-This document outlines the steps required to implement the message reading functionality triggered by `RUN:READMSGS` from the `MSGMENU`.
+> **Note:** This plan has been fully implemented. The message system now uses JAM binary message bases instead of JSONL files. See [message-areas.md](message-areas.md) for current documentation.
+
+This document outlines the original steps used to implement the message reading functionality triggered by `RUN:READMSGS` from the `MSGMENU`.
 
 **Goal:** Allow users to read messages sequentially within their currently selected message area, with basic navigation.
 
@@ -11,8 +13,8 @@ This document outlines the steps required to implement the message reading funct
 ### Prerequisites: [COMPLETED]
 
 1.  **User State:** The `currentUser *user.User` object must have `CurrentMessageAreaID` and `CurrentMessageAreaTag` populated correctly upon entering the `MSGMENU` (implemented).
-2.  **Message Storage:** Messages for area `X` are expected to be stored in `data/messages_area_X.jsonl`.
-3.  **Message Manager Method:** The `internal/message/manager.go:MessageManager` needs a method to retrieve messages for a specific area ID (e.g., `GetMessagesForArea(areaID int) ([]Message, error)`). This method has been implemented.
+2.  **Message Storage:** Messages are stored in JAM binary message bases under `data/msgbases/`.
+3.  **Message Manager Method:** The `internal/message/manager.go:MessageManager` provides `GetMessage(areaID, msgNum int)` for random-access by message number, backed by JAM index files.
 4.  **Display Templates:** Create necessary display templates within the active menu set's `templates` directory (e.g., `menus/v3/templates/`). Templates `MSGHEAD.TPL` and `MSGREAD.PROMPT` have been created.
     *   `MSGHEAD.TPL`: For displaying message header information (From, To, Subject, Date, Msg #, etc.).
     *   `MSGBODY.TPL`: (Optional) A simple container if needed, or just display the body directly.
@@ -51,23 +53,12 @@ This document outlines the steps required to implement the message reading funct
 7.  **Return:** [COMPLETED]
     *   Returns `nil, "", nil` after the loop breaks to continue in `MSGMENU`.
 
-## Phase 2: Enhancements (Future Work)
+## Phase 2: Enhancements
 
-*   **Word Wrapping/Pagination:** [COMPLETED] Implement logic to break long lines in the message body and pause display (`-- More --`) if the message exceeds terminal height.
-*   **New Scan Logic:** [COMPLETED] Implemented new scan for current area ('R') and all areas ('N').
-    *   [COMPLETED] Requires adding `LastReadMessageID` map to `user.User`.
-    *   [COMPLETED] Modify data fetching to filter messages based on `LastReadMessageID`.
-    *   [COMPLETED] Update the `LastReadMessageID` when the user quits the reader.
-*   **Reply Functionality (`R`):**
-    *   Call `editor.RunEditor`, potentially pre-filling the editor buffer with quoted text from `currentMsg`.
-    *   Prompt for subject (perhaps defaulting to "Re: " + original subject).
-    *   Construct and save the new reply message using `MessageManager.AddMessage`, linking it via `ReplyToID`.
-*   **Jump Functionality (`J`):**
-    *   Prompt user for a message number.
-    *   Validate the number and update `currentMessageIndex`.
-*   **Delete Functionality (`D`):**
-    *   Check user permissions (e.g., SysOp level or message author).
-    *   Implement message deletion/flagging in `MessageManager`.
-*   **Change Area (`A`):** Prompt the user for a new Area ID/Tag, validate access, and restart the reader loop for the new area without returning to `MSGMENU`.
-*   **Display Message Attributes:** Handle FidoNet-style attributes if present.
-*   **More Robust Templating:** Use a more powerful templating engine if needed. 
+*   **Word Wrapping/Pagination:** [COMPLETED] Breaks long lines and pauses display if message exceeds terminal height.
+*   **New Scan Logic:** [COMPLETED] Per-user lastread tracking via JAM `.jlr` files. No more UUID-based tracking.
+*   **Reply Functionality (`R`):** [COMPLETED] Quote original message, compose reply, link via MSGID/REPLY.
+*   **Echomail Support:** [COMPLETED] Messages in echomail areas get MSGID, tearline, origin line, SEEN-BY/PATH automatically.
+*   **FTN Tosser:** [COMPLETED] Built-in import/export of .PKT files for FidoNet echomail.
+*   **Delete Functionality (`D`):** Not yet implemented.
+*   **Change Area (`A`):** Not yet implemented.

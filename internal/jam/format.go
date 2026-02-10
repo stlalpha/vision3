@@ -1,0 +1,40 @@
+package jam
+
+import (
+	"fmt"
+	"runtime"
+	"strings"
+)
+
+// Version is the Vision3 version string. Set via build flags:
+//
+//	-ldflags "-X github.com/user/vision3/internal/jam.Version=1.0.0"
+var Version = "0.1.0"
+
+// AddTearline appends a tearline to the message text.
+// Format: "--- Vision3 0.1.0/darwin"
+func AddTearline(text string) string {
+	if !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	return text + fmt.Sprintf("--- Vision3 %s/%s\n", Version, runtime.GOOS)
+}
+
+// AddOriginLine appends an origin line to the message text.
+// Format: " * Origin: BBS Name (1:103/705)"
+func AddOriginLine(text, systemName, address string) string {
+	if !strings.HasSuffix(text, "\n") {
+		text += "\n"
+	}
+	return text + fmt.Sprintf(" * Origin: %s (%s)\n", systemName, address)
+}
+
+// FormatPID returns the PID kludge value.
+func FormatPID() string {
+	return fmt.Sprintf("Vision3 %s/%s", Version, runtime.GOOS)
+}
+
+// FormatTID returns the TID kludge value.
+func FormatTID() string {
+	return FormatPID()
+}
