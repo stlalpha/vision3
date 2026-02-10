@@ -1,9 +1,23 @@
 {
-  "boardName": "PiRATE MiND STATiON",
-  "boardPhoneNumber": "314-567-3833",
-  "sysOpLevel": 255,
-  "coSysLevel": 250,
-  "logonLevel": 100,
-  "sshPort": 2222,
-  "sshHost": "0.0.0.0"
-} 
+    "boardName": "My BBS",
+    "boardPhoneNumber": "555-555-5555",
+    "coSysLevel": 250,
+    "ftn": {
+        "enabled": false,
+        "own_address": "",
+        "inbound_path": "data/ftn/inbound",
+        "outbound_path": "data/ftn/outbound",
+        "temp_path": "data/ftn/temp",
+        "dupe_db_path": "data/ftn/dupes.json",
+        "poll_interval_seconds": 300,
+        "links": []
+    },
+    "logonLevel": 100,
+    "sshEnabled": true,
+    "sshHost": "0.0.0.0",
+    "sshPort": 2222,
+    "sysOpLevel": 255,
+    "telnetEnabled": true,
+    "telnetHost": "0.0.0.0",
+    "telnetPort": 2323
+}

@@ -1,0 +1,11 @@
+[
+    {
+        "name": "LORD",
+        "command": "lord.exe",
+        "args": ["/N{NODE}", "/P{PORT}", "/T{TIMELEFT}"],
+        "working_directory": "/path/to/doors/lord",
+        "dropfile_type": "DOOR.SYS",
+        "io_mode": "STDIO",
+        "requires_raw_terminal": true
+    }
+]

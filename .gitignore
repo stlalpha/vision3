@@ -35,6 +35,14 @@ go.work.sum
 /cmd/vision3/vision3
 /cmd/ansitest/ansitest
 /cmd/strings-decoder/strings-decoder
+/jamutil
+/helper
+tmp/
+/tmp/*
+
+# Config files (contain site-specific settings, FTN addresses, passwords)
+configs/*.json
+!configs/*.json.example
 
 # SSH host keys (all of them, including public keys)
 configs/ssh_host_*
