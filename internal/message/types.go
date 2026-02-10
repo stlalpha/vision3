@@ -17,7 +17,7 @@ type MessageArea struct {
 	IsNetworked   bool   `json:"is_networked"`              // Flag indicating if this area is networked (echomail)
 	OriginNodeID  string `json:"origin_node_id"`            // ID of the node where this networked area originated
 	LastMessageID string `json:"last_message_id,omitempty"` // Optional: ID of the last message posted (for high water mark)
-	// Could add fields like ModeratorUserID, etc. later
+	ConferenceID  int    `json:"conference_id,omitempty"`   // Conference this area belongs to (0=ungrouped)
 }
 
 // Message defines the structure for a single message, usable for both public posts and private mail.

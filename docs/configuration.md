@@ -10,6 +10,8 @@ Configuration files are split between two directories:
 - `strings.json` - Customizable text strings and prompts
 - `doors.json` - External door program configurations
 - `file_areas.json` - File area definitions
+- `message_areas.json` - Message area definitions
+- `conferences.json` - Conference grouping definitions
 - `config.json` - General BBS configuration
 - SSH host keys (`ssh_host_rsa_key`, etc.)
 
@@ -20,7 +22,6 @@ Configuration files are split between two directories:
 - `ansi/PRELOGON.ANS` (or `PRELOGON.1`, `PRELOGON.2`, ...) - Pre-login ANSI screens shown before LOGIN (see [Menu System Guide](menu-system.md#pre-login-ansi-files-prelogon))
 
 **In `data/` directory:**
-- `message_areas.json` - Message area definitions
 - `oneliners.json` - One-liner messages (JSON array)
 - `oneliners.dat` - Legacy one-liner format (plain text, optional)
 
@@ -137,7 +138,8 @@ Defines file areas available on the BBS. The file contains an array of file area
     "path": "general",
     "acs_list": "",
     "acs_upload": "",
-    "acs_download": ""
+    "acs_download": "",
+    "conference_id": 1
   }
 ]
 ```
@@ -152,6 +154,7 @@ Defines file areas available on the BBS. The file contains an array of file area
 - `acs_list` - ACS string required to list files
 - `acs_upload` - ACS string required to upload
 - `acs_download` - ACS string required to download
+- `conference_id` - Conference this area belongs to (0 or omitted = ungrouped)
 
 ### Access Control Strings (ACS)
 
@@ -204,9 +207,69 @@ General BBS configuration settings.
 
 ## message_areas.json
 
-Located in the `data/` directory (not `configs/`). Defines message areas available on the BBS.
+Located in the `configs/` directory. Defines message areas available on the BBS.
 
 See [Message Areas Guide](message-areas.md) for detailed configuration.
+
+## conferences.json
+
+Located in the `configs/` directory. Defines conferences that group message areas and file areas together for organized display.
+
+### Conference Structure
+
+```json
+[
+  {
+    "id": 1,
+    "tag": "LOCAL",
+    "name": "Local Areas",
+    "description": "Local BBS discussion and file areas",
+    "acs": ""
+  }
+]
+```
+
+### Field Descriptions
+
+- `id` - Unique numeric identifier (must be > 0; areas with `conference_id` of 0 or omitted are ungrouped)
+- `tag` - Short tag name (uppercase)
+- `name` - Display name shown in area listings
+- `description` - Conference description
+- `acs` - ACS string required to see this conference's areas (empty = visible to all)
+
+### How Conference Grouping Works
+
+Message areas and file areas each have an optional `conference_id` field that links them to a conference. When listing areas:
+
+1. Areas with `conference_id` of 0 (or omitted) appear first as ungrouped
+2. Areas belonging to conferences are grouped under a conference header
+3. Conference ACS is checked — if a user doesn't meet the ACS requirement, the entire conference group is hidden
+4. Individual area ACS still applies independently within each conference
+
+### Conference Header Templates
+
+Conference headers displayed in area listings use templates in `menus/v3/templates/`:
+
+- `MSGCONF.HDR` - Header shown before each conference group in message area listings
+- `FILECONF.HDR` - Header shown before each conference group in file area listings
+
+Template placeholders:
+
+- `^CN` - Conference name
+- `^CT` - Conference tag
+
+### ACS Codes for Conferences
+
+Two ACS condition codes reference the user's current conference:
+
+- `C` - Message conference (e.g., `C1` = user is in message conference 1)
+- `X` - File conference (e.g., `X1` = user is in file conference 1)
+
+The user's current conference is set automatically when they select an area.
+
+### Graceful Degradation
+
+If `conferences.json` is missing or empty, the system operates as before — area listings are flat with no conference headers.
 
 ## Menu Configuration
 

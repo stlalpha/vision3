@@ -8,7 +8,7 @@ The message system allows users to post and read messages in different topic are
 
 ## Message Area Configuration
 
-Message areas are defined in `data/message_areas.json` as an array:
+Message areas are defined in `configs/message_areas.json` as an array:
 
 ```json
 [
@@ -20,7 +20,8 @@ Message areas are defined in `data/message_areas.json` as an array:
     "acs_read": "",
     "acs_write": "",
     "is_networked": false,
-    "origin_node_id": ""
+    "origin_node_id": "",
+    "conference_id": 1
   }
 ]
 ```
@@ -36,6 +37,7 @@ Message areas are defined in `data/message_areas.json` as an array:
 - `is_networked` - Whether this area is networked (echomail)
 - `origin_node_id` - ID of the node where this networked area originated
 - `last_message_id` - Optional: ID of the last message posted
+- `conference_id` - Conference this area belongs to (0 or omitted = ungrouped; see [Configuration Guide](configuration.md#conferencesjson))
 
 Note: Fields like moderation, anonymous posting, and message limits are not yet implemented.
 
@@ -86,9 +88,20 @@ Messages are stored in `data/messages_area_X.jsonl` where X is the area ID. Each
 ### Listing Message Areas
 
 Users can list available areas with the `LISTMSGAR` function:
+
 - Shows areas user has read access to
 - Displays area ID, tag, name, and description
-- Uses templates: `MSGAREA.TOP`, `MSGAREA.MID`, `MSGAREA.BOT`
+- Groups areas by conference with conference headers (if conferences are configured)
+- Uses templates: `MSGAREA.TOP`, `MSGAREA.MID`, `MSGAREA.BOT`, `MSGCONF.HDR`
+
+### Selecting a Message Area
+
+Users can select a message area with the `SELECTMSGAREA` function:
+
+- Displays the message area list (same as `LISTMSGAR`)
+- Prompts for area tag or ID
+- Validates read access ACS
+- Updates the user's current message area and conference
 
 ### Reading Messages
 
@@ -174,7 +187,7 @@ Message display templates are in `menus/v3/templates/`:
 
 ## Creating a New Message Area
 
-1. Edit `data/message_areas.json`
+1. Edit `configs/message_areas.json`
 2. Add new area object to the array:
 ```json
 {
@@ -185,7 +198,8 @@ Message display templates are in `menus/v3/templates/`:
   "acs_read": "",
   "acs_write": "s10",
   "is_networked": false,
-  "origin_node_id": ""
+  "origin_node_id": "",
+  "conference_id": 1
 }
 ```
 3. Restart BBS (areas are loaded at startup)

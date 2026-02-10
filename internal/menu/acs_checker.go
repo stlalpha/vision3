@@ -404,15 +404,25 @@ func evaluateCondition(condition string, u *user.User, s ssh.Session, terminal *
 	case "B":
 		log.Printf("WARN: ACS 'B' (Baud Rate) check is not supported and will always pass.")
 		result = true
-	case "C":
-		log.Printf("WARN: ACS 'C' (Message Conference) check is not yet implemented (requires state tracking) and will always fail.")
-		result = false
+	case "C": // Message Conference == value
+		confID, err := strconv.Atoi(value)
+		if err != nil {
+			log.Printf("WARN: Invalid conference ID in ACS condition '%s': %v", condition, err)
+			result = false
+		} else {
+			result = u.CurrentMsgConferenceID == confID
+		}
 	case "I":
 		log.Printf("WARN: ACS 'I' (Last Input) check is not implementable in the current context (check occurs before input) and will always fail.")
 		result = false
-	case "X":
-		log.Printf("WARN: ACS 'X' (File Conference) check is not yet implemented (requires state tracking) and will always fail.")
-		result = false
+	case "X": // File Conference == value
+		confID, err := strconv.Atoi(value)
+		if err != nil {
+			log.Printf("WARN: Invalid conference ID in ACS condition '%s': %v", condition, err)
+			result = false
+		} else {
+			result = u.CurrentFileConferenceID == confID
+		}
 	default:
 		log.Printf("WARN: Unknown ACS code '%s' in condition '%s'", code, condition)
 		result = false

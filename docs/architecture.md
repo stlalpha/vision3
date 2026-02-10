@@ -44,7 +44,7 @@ The system is designed as a single Go application that listens for incoming SSH 
 
 5. **Message Manager (`internal/message/manager.go`)**
    * Manages message areas and individual messages
-   * Configuration loaded from `data/message_areas.json`
+   * Configuration loaded from `configs/message_areas.json`
    * Messages stored as JSONL files in `data/` directory (e.g., `messages_area_1.jsonl`)
    * Supports private and public message areas
 
@@ -54,17 +54,25 @@ The system is designed as a single Go application that listens for incoming SSH 
    * File metadata stored in `data/files/` directory
    * Handles file uploads/downloads and descriptions
 
-7. **ANSI Handler (`internal/ansi/ansi.go`)**
+7. **Conference Manager (`internal/conference/conference.go`)**
+   * Groups message areas and file areas into named conferences
+   * Configuration loaded from `configs/conferences.json`
+   * Provides conference ACS filtering for area visibility
+   * Optional — system operates with flat area listings if conferences.json is missing
+
+8. **ANSI Handler (`internal/ansi/ansi.go`)**
    * Parses ViSiON/2 specific pipe codes (`|00`-`|15`, `|B0`-`|B7`, etc.)
    * Converts CP437 characters to UTF-8 or VT100 line drawing
    * Supports multiple output modes (UTF-8, CP437, Auto)
    * Handles ANSI screen processing and display
 
-8. **Configuration (`configs/` directory)**
+9. **Configuration (`configs/` directory)**
    * `strings.json` - Externalized UI strings and prompts
    * `config.json` - General system configuration
    * `doors.json` - External door program configurations
    * `file_areas.json` - File area definitions
+   * `message_areas.json` - Message area definitions
+   * `conferences.json` - Conference grouping definitions
    * SSH host keys (`ssh_host_rsa_key`, etc.)
 
 ## Data Flow
@@ -91,6 +99,7 @@ vision3/
 │   └── logs/           # Application logs
 ├── internal/           # Internal packages
 │   ├── ansi/           # ANSI/CP437 handling
+│   ├── conference/     # Conference grouping
 │   ├── config/         # Configuration loading
 │   ├── editor/         # Text editor (placeholder)
 │   ├── file/           # File area management
@@ -117,6 +126,7 @@ vision3/
 * `internal/telnetserver`: Telnet server with IAC protocol handling
 * `internal/user`: User data structures, persistence, authentication, ACS logic
 * `internal/ansi`: ViSiON/2 pipe code parsing and character encoding
+* `internal/conference`: Conference grouping for message and file areas
 * `internal/config`: Configuration file loading and parsing
 * `internal/menu`: Menu loading, display, command execution
 * `internal/message`: Message area management and persistence

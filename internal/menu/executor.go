@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,6 +26,7 @@ import (
 	"github.com/stlalpha/vision3/internal/ansi"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/editor"
+	"github.com/stlalpha/vision3/internal/conference"
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/terminalio" // <-- Added import
@@ -55,15 +57,16 @@ type MenuExecutor struct {
 	OneLiners      []string                     // Loaded oneliners (Consider if these should be menu-set specific)
 	LoadedStrings  config.StringsConfig         // Loaded global strings configuration
 	Theme          config.ThemeConfig           // Loaded theme configuration
-	MessageMgr     *message.MessageManager      // <-- ADDED FIELD
-	FileMgr        *file.FileManager            // <-- ADDED FIELD: File manager instance
+	MessageMgr     *message.MessageManager          // <-- ADDED FIELD
+	FileMgr        *file.FileManager                // <-- ADDED FIELD: File manager instance
+	ConferenceMgr  *conference.ConferenceManager    // Conference grouping manager
 }
 
 // NewExecutor creates a new MenuExecutor.
 // Added oneLiners, loadedStrings, theme, messageMgr, and fileMgr parameters
 // Updated paths to use new structure
 // << UPDATED Signature with msgMgr and fileMgr
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager) *MenuExecutor {
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -81,6 +84,29 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		Theme:          theme,         // Store loaded theme
 		MessageMgr:     msgMgr,        // <-- ASSIGN FIELD
 		FileMgr:        fileMgr,       // <-- ASSIGN FIELD
+		ConferenceMgr:  confMgr,       // Conference grouping manager
+	}
+}
+
+// setUserMsgConference updates the user's current message conference based on a conference ID.
+func (e *MenuExecutor) setUserMsgConference(u *user.User, conferenceID int) {
+	u.CurrentMsgConferenceID = conferenceID
+	u.CurrentMsgConferenceTag = ""
+	if conferenceID != 0 && e.ConferenceMgr != nil {
+		if conf, ok := e.ConferenceMgr.GetByID(conferenceID); ok {
+			u.CurrentMsgConferenceTag = conf.Tag
+		}
+	}
+}
+
+// setUserFileConference updates the user's current file conference based on a conference ID.
+func (e *MenuExecutor) setUserFileConference(u *user.User, conferenceID int) {
+	u.CurrentFileConferenceID = conferenceID
+	u.CurrentFileConferenceTag = ""
+	if conferenceID != 0 && e.ConferenceMgr != nil {
+		if conf, ok := e.ConferenceMgr.GetByID(conferenceID); ok {
+			u.CurrentFileConferenceTag = conf.Tag
+		}
 	}
 }
 
@@ -415,6 +441,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTFILES"] = runListFiles                             // <-- ADDED: Register file list runnable
 	registry["LISTFILEAR"] = runListFileAreas                        // <-- ADDED: Register file area list runnable
 	registry["SELECTFILEAREA"] = runSelectFileArea                   // <-- ADDED: Register file area selection runnable
+	registry["SELECTMSGAREA"] = runSelectMessageArea                // Register message area selection runnable
 	registry["NEWUSER"] = runNewUser                                 // Register new user application runnable
 }
 
@@ -975,7 +1002,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						if checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
 							log.Printf("INFO: Setting default message area for user %s to Area ID %d (%s)", currentUser.Handle, area.ID, area.Tag)
 							currentUser.CurrentMessageAreaID = area.ID
-							currentUser.CurrentMessageAreaTag = area.Tag // Store tag too
+							currentUser.CurrentMessageAreaTag = area.Tag
+							e.setUserMsgConference(currentUser, area.ConferenceID)
 							foundDefaultArea = true
 							break // Found the first accessible area
 						} else {
@@ -1002,7 +1030,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						if checkACS(area.ACSList, currentUser, s, terminal, sessionStartTime) { // Use ACSList
 							log.Printf("INFO: Setting default file area for user %s to Area ID %d (%s)", currentUser.Handle, area.ID, area.Tag)
 							currentUser.CurrentFileAreaID = area.ID
-							currentUser.CurrentFileAreaTag = area.Tag // Store tag too
+							currentUser.CurrentFileAreaTag = area.Tag
+							e.setUserFileConference(currentUser, area.ConferenceID)
 							foundDefaultFileArea = true
 							break // Found the first accessible area
 						} else {
@@ -2887,138 +2916,141 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	return nil, "", nil // Return to the current menu
 }
 
-// runListMessageAreas displays a list of message areas using templates.
-func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running LISTMSGAR", nodeNumber)
+// displayMessageAreaList is an internal helper to display the list of accessible message areas
+// grouped by conference. It does not include a pause prompt.
+func displayMessageAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, outputMode ansi.OutputMode, nodeNumber int, sessionStartTime time.Time) error {
+	log.Printf("DEBUG: Node %d: Displaying message area list (helper)", nodeNumber)
 
-	// 1. Define Template filenames and paths
-	topTemplateFilename := "MSGAREA.TOP"
-	midTemplateFilename := "MSGAREA.MID"
-	botTemplateFilename := "MSGAREA.BOT"
+	// 1. Load templates
 	templateDir := filepath.Join(e.MenuSetPath, "templates")
-	topTemplatePath := filepath.Join(templateDir, topTemplateFilename)
-	midTemplatePath := filepath.Join(templateDir, midTemplateFilename)
-	botTemplatePath := filepath.Join(templateDir, botTemplateFilename)
-
-	// 2. Load Template Files
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := os.ReadFile(filepath.Join(templateDir, "MSGAREA.TOP"))
+	midTemplateBytes, errMid := os.ReadFile(filepath.Join(templateDir, "MSGAREA.MID"))
+	botTemplateBytes, errBot := os.ReadFile(filepath.Join(templateDir, "MSGAREA.BOT"))
 
 	if errTop != nil || errMid != nil || errBot != nil {
-		log.Printf("ERROR: Node %d: Failed to load one or more MSGAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
+		log.Printf("ERROR: Node %d: Failed to load MSGAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := "\r\n|01Error loading Message Area screen templates.|07\r\n"
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
-		return nil, "", fmt.Errorf("failed loading MSGAREA templates")
+		return fmt.Errorf("failed loading MSGAREA templates")
 	}
 
-	// 3. Process Pipe Codes in Templates FIRST
+	// Conference header template (optional)
+	confHdrBytes, errConf := os.ReadFile(filepath.Join(templateDir, "MSGCONF.HDR"))
+	confHdrTemplate := ""
+	if errConf == nil {
+		confHdrTemplate = string(ansi.ReplacePipeCodes(confHdrBytes))
+	}
+
 	processedTopTemplate := ansi.ReplacePipeCodes(topTemplateBytes)
 	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
 	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
 
-	// 4. Get message area list data from MessageManager
-	// TODO: Apply ACS filtering here based on currentUser
+	// 2. Get areas and group by conference
 	areas := e.MessageMgr.ListAreas()
 
-	// 5. Build the output string using processed templates and data
-	var outputBuffer bytes.Buffer
-	outputBuffer.Write(processedTopTemplate) // Write processed top template
-
-	if len(areas) == 0 {
-		log.Printf("DEBUG: Node %d: No message areas to display.", nodeNumber)
-		// Optional: Add a message like "|07No message areas available.\r\n" if template doesn't handle it
-	} else {
-		// Iterate through areas and format using processed MSGAREA.MID
-		for _, area := range areas {
-			line := processedMidTemplate // Start with the pipe-code-processed mid template
-
-			// Process pipe codes in area data
-			name := string(ansi.ReplacePipeCodes([]byte(area.Name)))
-			desc := string(ansi.ReplacePipeCodes([]byte(area.Description)))
-			idStr := strconv.Itoa(area.ID)
-			tag := string(ansi.ReplacePipeCodes([]byte(area.Tag))) // Tag might have codes?
-
-			// Replace placeholders in the MID template
-			// Expected placeholders: ^ID, ^TAG, ^NA, ^DS (adjust if different)
-			line = strings.ReplaceAll(line, "^ID", idStr)
-			line = strings.ReplaceAll(line, "^TAG", tag)
-			line = strings.ReplaceAll(line, "^NA", name)
-			line = strings.ReplaceAll(line, "^DS", desc)
-
-			outputBuffer.WriteString(line) // Add the fully substituted and processed line
+	// Build conference groups: conferenceID -> []*MessageArea (ACS-filtered)
+	groups := make(map[int][]*message.MessageArea)
+	confIDs := make(map[int]bool)
+	for _, area := range areas {
+		if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
+			continue
 		}
+		groups[area.ConferenceID] = append(groups[area.ConferenceID], area)
+		confIDs[area.ConferenceID] = true
 	}
 
-	outputBuffer.Write(processedBotTemplate) // Write processed bottom template
-
-	// 6. Clear screen and display the assembled content
-	_, writeErr := terminal.Write([]byte(ansi.ClearScreen()))
-	if writeErr != nil {
-		log.Printf("ERROR: Node %d: Failed clearing screen for LISTMSGAR: %v", nodeNumber, writeErr)
-		return nil, "", writeErr
+	// Sort conference IDs (0/ungrouped first)
+	var sortedConfIDs []int
+	if e.ConferenceMgr != nil {
+		sortedConfIDs = e.ConferenceMgr.GetSortedConferenceIDs(confIDs)
+	} else {
+		for cid := range confIDs {
+			sortedConfIDs = append(sortedConfIDs, cid)
+		}
+		sort.Ints(sortedConfIDs)
 	}
 
-	// Use WriteProcessedBytes for the assembled template content
-	processedContent := outputBuffer.Bytes() // Contains already-processed ANSI bytes
-	wErr := terminalio.WriteProcessedBytes(terminal, processedContent, outputMode)
-	if wErr != nil {
-		log.Printf("ERROR: Node %d: Failed writing LISTMSGAR output: %v", nodeNumber, wErr)
-		return nil, "", wErr
-	}
+	// 3. Build output
+	var outputBuffer bytes.Buffer
+	outputBuffer.Write(processedTopTemplate)
 
-	// 7. Wait for Enter using configured PauseString
-	pausePrompt := e.LoadedStrings.PauseString
-	if pausePrompt == "" {
-		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... " // Fallback
-	}
+	areasDisplayed := 0
+	for _, cid := range sortedConfIDs {
+		areasInConf := groups[cid]
+		if len(areasInConf) == 0 {
+			continue
+		}
 
-	var pauseBytesToWrite []byte
-	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-	if outputMode == ansi.OutputModeCP437 {
-		var cp437Buf bytes.Buffer
-		for _, r := range string(processedPausePrompt) {
-			if r < 128 {
-				cp437Buf.WriteByte(byte(r))
-			} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
-				cp437Buf.WriteByte(cp437Byte)
-			} else {
-				cp437Buf.WriteByte('?')
+		// Check conference ACS
+		if cid != 0 && e.ConferenceMgr != nil {
+			conf, found := e.ConferenceMgr.GetByID(cid)
+			if found && !checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
+				continue
+			}
+			// Write conference header
+			if found && confHdrTemplate != "" {
+				hdr := confHdrTemplate
+				hdr = strings.ReplaceAll(hdr, "^CN", conf.Name)
+				hdr = strings.ReplaceAll(hdr, "^CT", conf.Tag)
+				hdr = strings.ReplaceAll(hdr, "^CD", conf.Description)
+				hdr = strings.ReplaceAll(hdr, "^CI", strconv.Itoa(conf.ID))
+				outputBuffer.WriteString(hdr)
 			}
 		}
-		pauseBytesToWrite = cp437Buf.Bytes()
-	} else {
-		pauseBytesToWrite = processedPausePrompt
+
+		for _, area := range areasInConf {
+			line := processedMidTemplate
+			line = strings.ReplaceAll(line, "^ID", strconv.Itoa(area.ID))
+			line = strings.ReplaceAll(line, "^TAG", string(ansi.ReplacePipeCodes([]byte(area.Tag))))
+			line = strings.ReplaceAll(line, "^NA", string(ansi.ReplacePipeCodes([]byte(area.Name))))
+			line = strings.ReplaceAll(line, "^DS", string(ansi.ReplacePipeCodes([]byte(area.Description))))
+			outputBuffer.WriteString(line)
+			areasDisplayed++
+		}
 	}
 
-	log.Printf("DEBUG: Node %d: Writing LISTMSGAR pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
-	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing LISTMSGAR pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
-	wErr = terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
-	if wErr != nil {
-		log.Printf("ERROR: Node %d: Failed writing LISTMSGAR pause prompt: %v", nodeNumber, wErr)
+	if areasDisplayed == 0 {
+		outputBuffer.WriteString("\r\n|07   No accessible message areas found.   \r\n")
 	}
+
+	outputBuffer.Write(processedBotTemplate)
+
+	// 4. Display
+	terminal.Write([]byte(ansi.ClearScreen()))
+	return terminalio.WriteProcessedBytes(terminal, outputBuffer.Bytes(), outputMode)
+}
+
+// runListMessageAreas displays a list of message areas using templates, then pauses.
+func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running LISTMSGAR", nodeNumber)
+
+	if err := displayMessageAreaList(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime); err != nil {
+		return nil, "", err
+	}
+
+	// Wait for Enter using configured PauseString
+	pausePrompt := e.LoadedStrings.PauseString
+	if pausePrompt == "" {
+		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
+	}
+	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(pausePrompt)), outputMode)
 
 	bufioReader := bufio.NewReader(s)
 	for {
 		r, _, err := bufioReader.ReadRune()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				log.Printf("INFO: Node %d: User disconnected during LISTMSGAR pause.", nodeNumber)
 				return nil, "LOGOFF", io.EOF
 			}
-			log.Printf("ERROR: Node %d: Failed reading input during LISTMSGAR pause: %v", nodeNumber, err)
 			return nil, "", err
 		}
-		if r == '\r' || r == '\n' { // Check for CR or LF
+		if r == '\r' || r == '\n' {
 			break
 		}
 	}
 
-	return nil, "", nil // Success
+	return nil, "", nil
 }
 
 // runComposeMessage handles the process of composing and saving a new message.
@@ -4174,6 +4206,7 @@ func runNewscan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMan
 				// Update user's current area
 				currentUser.CurrentMessageAreaID = firstArea.ID
 				currentUser.CurrentMessageAreaTag = firstArea.Tag
+				e.setUserMsgConference(currentUser, firstArea.ConferenceID)
 				log.Printf("INFO: Node %d: Set current message area for user %s to %d (%s)", nodeNumber, currentUser.Handle, firstArea.ID, firstArea.Tag)
 
 				// Save the user state *before* calling runReadMsgs
@@ -4805,21 +4838,67 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal
 	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
 	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
 
-	// 4. Get file area list data from FileManager
+	// Conference header template (optional)
+	confHdrBytes, errConf := os.ReadFile(filepath.Join(templateDir, "FILECONF.HDR"))
+	confHdrTemplate := ""
+	if errConf == nil {
+		confHdrTemplate = string(ansi.ReplacePipeCodes(confHdrBytes))
+	}
+
+	// 4. Get file area list data and group by conference
 	areas := e.FileMgr.ListAreas()
+
+	// Build conference groups: conferenceID -> []file.FileArea (ACS-filtered)
+	groups := make(map[int][]file.FileArea)
+	confIDs := make(map[int]bool)
+	for _, area := range areas {
+		if !checkACS(area.ACSList, currentUser, s, terminal, sessionStartTime) {
+			log.Printf("TRACE: Node %d: User %s denied list access to file area %d (%s) due to ACS '%s'", nodeNumber, currentUser.Handle, area.ID, area.Tag, area.ACSList)
+			continue
+		}
+		groups[area.ConferenceID] = append(groups[area.ConferenceID], area)
+		confIDs[area.ConferenceID] = true
+	}
+
+	// Sort conference IDs (0/ungrouped first)
+	var sortedConfIDs []int
+	if e.ConferenceMgr != nil {
+		sortedConfIDs = e.ConferenceMgr.GetSortedConferenceIDs(confIDs)
+	} else {
+		for cid := range confIDs {
+			sortedConfIDs = append(sortedConfIDs, cid)
+		}
+		sort.Ints(sortedConfIDs)
+	}
 
 	// 5. Build the output string using processed templates and data
 	var outputBuffer bytes.Buffer
-	outputBuffer.Write(processedTopTemplate) // Write processed top template
+	outputBuffer.Write(processedTopTemplate)
 
 	areasDisplayed := 0
-	if len(areas) > 0 {
-		for _, area := range areas {
-			if !checkACS(area.ACSList, currentUser, s, terminal, sessionStartTime) {
-				log.Printf("TRACE: Node %d: User %s denied list access to file area %d (%s) due to ACS '%s'", nodeNumber, currentUser.Handle, area.ID, area.Tag, area.ACSList)
+	for _, cid := range sortedConfIDs {
+		areasInConf := groups[cid]
+		if len(areasInConf) == 0 {
+			continue
+		}
+
+		// Check conference ACS and write header
+		if cid != 0 && e.ConferenceMgr != nil {
+			conf, found := e.ConferenceMgr.GetByID(cid)
+			if found && !checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
 				continue
 			}
+			if found && confHdrTemplate != "" {
+				hdr := confHdrTemplate
+				hdr = strings.ReplaceAll(hdr, "^CN", conf.Name)
+				hdr = strings.ReplaceAll(hdr, "^CT", conf.Tag)
+				hdr = strings.ReplaceAll(hdr, "^CD", conf.Description)
+				hdr = strings.ReplaceAll(hdr, "^CI", strconv.Itoa(conf.ID))
+				outputBuffer.WriteString(hdr)
+			}
+		}
 
+		for _, area := range areasInConf {
 			line := processedMidTemplate
 			name := string(ansi.ReplacePipeCodes([]byte(area.Name)))
 			desc := string(ansi.ReplacePipeCodes([]byte(area.Description)))
@@ -5050,11 +5129,11 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	// Success! Update user state
 	currentUser.CurrentFileAreaID = area.ID
 	currentUser.CurrentFileAreaTag = area.Tag
+	e.setUserFileConference(currentUser, area.ConferenceID)
 
 	// Save the user state (important!)
 	if err := userManager.SaveUsers(); err != nil {
 		log.Printf("ERROR: Node %d: Failed to save user data after updating file area: %v", nodeNumber, err)
-		// Should we inform the user? Proceed anyway?
 		msg := "\r\n|01Error: Could not save area selection.|07\r\n"
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil { /* Log? */
@@ -5073,4 +5152,95 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	time.Sleep(1 * time.Second)
 
 	return currentUser, "", nil // Success, return to previous menu/state
+}
+
+// runSelectMessageArea displays message areas and prompts the user to select one.
+func runSelectMessageArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running SELECTMSGAREA", nodeNumber)
+
+	if currentUser == nil {
+		msg := "\r\n|01Error: You must be logged in to select a message area.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Display the list
+	if err := displayMessageAreaList(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime); err != nil {
+		return currentUser, "", err
+	}
+	terminal.Write([]byte("\r\n"))
+
+	// Prompt for area tag/ID
+	prompt := e.LoadedStrings.ChangeBoardStr
+	if prompt == "" {
+		prompt = "|07Message Area Tag (?=List, Q=Quit): |15"
+	}
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+
+	inputTag, err := terminal.ReadLine()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return currentUser, "", err
+	}
+
+	inputClean := strings.TrimSpace(inputTag)
+	upperInput := strings.ToUpper(inputClean)
+
+	if upperInput == "" || upperInput == "Q" {
+		terminal.Write([]byte("\r\n"))
+		return currentUser, "", nil
+	}
+
+	if upperInput == "?" {
+		return currentUser, "", nil // Re-run will redisplay list
+	}
+
+	// Try parsing as ID first, then fallback to Tag
+	var area *message.MessageArea
+	var exists bool
+
+	if inputID, parseErr := strconv.Atoi(inputClean); parseErr == nil {
+		area, exists = e.MessageMgr.GetAreaByID(inputID)
+		if !exists {
+			msg := fmt.Sprintf("\r\n|01Error: Message area ID '%d' not found.|07\r\n", inputID)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			return currentUser, "", nil
+		}
+	} else {
+		area, exists = e.MessageMgr.GetAreaByTag(upperInput)
+		if !exists {
+			msg := fmt.Sprintf("\r\n|01Error: Message area tag '%s' not found.|07\r\n", upperInput)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			return currentUser, "", nil
+		}
+	}
+
+	// Check read ACS
+	if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
+		msg := fmt.Sprintf("\r\n|01Error: Access denied to message area '%s'.|07\r\n", area.Tag)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
+	// Update user state
+	currentUser.CurrentMessageAreaID = area.ID
+	currentUser.CurrentMessageAreaTag = area.Tag
+	e.setUserMsgConference(currentUser, area.ConferenceID)
+
+	if err := userManager.SaveUsers(); err != nil {
+		log.Printf("ERROR: Node %d: Failed to save user data after updating message area: %v", nodeNumber, err)
+	}
+
+	log.Printf("INFO: Node %d: User %s changed message area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)
+	msg := fmt.Sprintf("\r\n|07Current message area set to: |15%s|07\r\n", area.Name)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+	time.Sleep(1 * time.Second)
+
+	return currentUser, "", nil
 }

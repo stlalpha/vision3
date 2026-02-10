@@ -20,19 +20,20 @@ const (
 // MessageManager handles loading, saving, and accessing message areas and messages.
 type MessageManager struct {
 	mu        sync.RWMutex
-	dataPath  string // Base path for data files (e.g., "data")
-	areasPath string // Full path to message_areas.json
+	dataPath  string // Base path for message data files (e.g., "data")
+	areasPath string // Full path to message_areas.json (in configs/)
 	// In-memory storage
 	areasByID  map[int]*MessageArea
 	areasByTag map[string]*MessageArea
-	// Add fields for message storage/indexing later
 }
 
 // NewMessageManager creates and initializes a new MessageManager.
-func NewMessageManager(dataPath string) (*MessageManager, error) {
+// configPath is the directory containing message_areas.json (e.g., "configs").
+// dataPath is the directory for message JSONL files (e.g., "data").
+func NewMessageManager(dataPath, configPath string) (*MessageManager, error) {
 	mm := &MessageManager{
 		dataPath:   dataPath,
-		areasPath:  filepath.Join(dataPath, messageAreaFile),
+		areasPath:  filepath.Join(configPath, messageAreaFile),
 		areasByID:  make(map[int]*MessageArea),
 		areasByTag: make(map[string]*MessageArea),
 	}

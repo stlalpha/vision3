@@ -35,7 +35,11 @@ type User struct {
 	// NumLogons is TimesCalled
 	TimeLimit   int    `json:"timeLimit"`   // Added for T (in minutes)
 	PrivateNote string `json:"privateNote"` // Added for Z
-	// TODO: Add fields for current message/file conference if C/X needed
+	// Conference tracking for ACS codes C (message conference) and X (file conference)
+	CurrentMsgConferenceID   int    `json:"current_msg_conference_id,omitempty"`
+	CurrentMsgConferenceTag  string `json:"current_msg_conference_tag,omitempty"`
+	CurrentFileConferenceID  int    `json:"current_file_conference_id,omitempty"`
+	CurrentFileConferenceTag string `json:"current_file_conference_tag,omitempty"`
 	GroupLocation         string         `json:"group_location,omitempty"`           // Added Group / Location field
 	CurrentMessageAreaID  int            `json:"current_message_area_id,omitempty"`  // Added for default area tracking
 	CurrentMessageAreaTag string         `json:"current_message_area_tag,omitempty"` // Added for default area tracking

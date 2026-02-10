@@ -23,6 +23,7 @@ import (
 	// Local packages (Update paths)
 	"github.com/stlalpha/vision3/internal/ansi"
 	"github.com/stlalpha/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/conference"
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/menu"
 	"github.com/stlalpha/vision3/internal/message"
@@ -36,6 +37,7 @@ var (
 	userMgr      *user.UserMgr
 	messageMgr   *message.MessageManager
 	fileMgr      *file.FileManager
+	confMgr      *conference.ConferenceManager
 	menuExecutor *menu.MenuExecutor
 	// globalConfig *config.GlobalConfig // Still commented out
 	nodeCounter         int32
@@ -697,8 +699,8 @@ func main() {
 		log.Fatalf("Failed to initialize user manager: %v", err)
 	}
 
-	// Initialize MessageManager (using dataPath)
-	messageMgr, err = message.NewMessageManager(dataPath) // Pass the base data directory
+	// Initialize MessageManager (areas config from configs/, message data from data/)
+	messageMgr, err = message.NewMessageManager(dataPath, rootConfigPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize message manager: %v", err)
 	}
@@ -709,8 +711,15 @@ func main() {
 		log.Fatalf("Failed to initialize file manager: %v", err)
 	}
 
+	// Initialize ConferenceManager (non-fatal if conferences.json is missing)
+	confMgr, err = conference.NewConferenceManager(rootConfigPath)
+	if err != nil {
+		log.Printf("WARN: Failed to initialize conference manager: %v. Conferences disabled.", err)
+		confMgr = nil
+	}
+
 	// Initialize MenuExecutor with new paths, loaded theme, and message manager
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, messageMgr, fileMgr)
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, messageMgr, fileMgr, confMgr)
 
 	// Host key path for libssh
 	hostKeyPath := filepath.Join(rootConfigPath, "ssh_host_rsa_key")
