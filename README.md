@@ -22,7 +22,7 @@ Are you the kind of person who can wrangle a Go codebase while arguing about why
 
 **Technical Chops:**
 
-- Strong Go experience (not just "I vibe coded and apparently it works")
+- Strong Go experience (not just "I vibe coded an app and apparently it works")
 - Deep understanding of terminal emulation, ANSI/VT100, character encodings
 - Bonus: Network programming experience (SSH, raw sockets)
 - Comfortable with legacy protocol implementation (ZMODEM, etc.)
@@ -48,13 +48,13 @@ Are you the kind of person who can wrangle a Go codebase while arguing about why
 - Rewrite this in Rust/JavaScript/whatever
 - Add a REST API and React frontend
 - Turn it into a web app
-- Modernize away what makes it a BBS 
+- Modernize away what makes it a BBS
 
 If this sounds like your particular flavor of madness, email: **robbiew at gmail.com**
 
 ### 🎨 Period-Correct ANSI Artists & Art
 
-Are you a 40+ old school ANSi artist (are you younger and infatuated for some reason with that time-period and style)? Do you need one more goddamn thing to do? Consider spending valuable free-time, compensated by nothing more than unyielding appreciation and thanks from the people that enjoy this kind of thing. There's at least 12 of us!
+Are you an old school ANSi artist (are you younger and infatuated for some reason with that time-period and style)? Do you need one more goddamn thing to do? Consider spending valuable free-time, compensated by nothing more than unyielding appreciation and thanks from the people that enjoy this kind of thing. There's at least 12 of us!
 
 **What we need:**
 
@@ -71,7 +71,7 @@ Are you a 40+ old school ANSi artist (are you younger and infatuated for some re
 - Scene-style fonts and logos
 - Period-appropriate group shoutouts and "greetz"
 
-If you have TheDraw skills, old .ANS files gathering dust, or just love the aesthetic of the golden age of BBSing, we want to hear from you! Contact us via GitHub issues or pull requests.
+If you have skills, old .ANS files gathering dust, or just love the aesthetic of the golden age of BBSing, we want to hear from you! Contact us via GitHub issues or pull requests.
 
 ### 💻 Go Developers Who Give a Damn
 
@@ -82,7 +82,9 @@ If you aren't old enough to have experienced it first-hand, have you read a weir
 **Areas where we need help:**
 
 - File transfer protocols (ZMODEM upload support, XMODEM, YMODEM)
-- Message threading and advanced message base features
+- File base management (tagging, batch downloads, upload processing)
+- QWK networking support
+- TUI/console app creation for admin tools (user editor, system configuration)
 - Performance optimization and scalability
 - Terminal emulation improvements
 - Modern features while maintaining the classic feel
@@ -107,7 +109,7 @@ Do we need a Discord? Do you want to host it? Contact me!
     *   Full SyncTerm and retro terminal compatibility
     *   SSH authentication bypass (auto-login for SSH-authenticated users)
     *   Modern SSH algorithms
-*   Telnet Server (because who doesn't want to telnet into their BBS insecurely in 2024?)
+*   Telnet Server (because who doesn't want to telnet into their BBS insecurely in 2026?)
 *   User Signup and Authentication (bcrypt hashed passwords)
 *   User Persistence (`data/users/users.json`)
 *   Menu System Loading & Execution (`.MNU`, `.CFG`, `.ANS` files)
@@ -129,7 +131,7 @@ Do we need a Discord? Do you want to host it? Contact me!
 
 *   File Transfer Protocols (ZMODEM upload/download)
 *   Message list view (titles/scan)
-*   Complete SysOp Tools (user editor, system configuration)
+*   Complete SysOp Tools (user editor, system configuration, TUI admin tools)
 *   Full File Base Implementation (tagging, batch downloads, upload processing)
 *   Mail system (private messages)
 *   Comprehensive Testing
@@ -315,12 +317,32 @@ Download SyncTerm: https://syncterm.bbsdev.net/
 
 Configuration files are located in the `configs/` directory:
 
-- `config.json`: General BBS configuration (copy from `config.json.example`)
-- `strings.json`: Customize BBS prompts and messages
-- `doors.json`: Configure external door programs
-- `file_areas.json`: Define file areas
+### Core Configuration
 
-**Note:** The `config.json` file is not tracked in git. Copy `config.json.example` to `config.json` and customize for your BBS.
+- **`config.json`**: Main BBS configuration (BBS name, ports, paths, node settings)
+  - **Note:** Not tracked in git. Copy from `config.json.example` and customize for your BBS
+- **`theme.json`**: Color theme configuration (lightbar colors, prompt colors, ANSI codes)
+- **`strings.json`**: Customizable BBS prompts and messages
+
+### Message System
+
+- **`message_areas.json`**: Message area definitions (local, echomail, netmail areas)
+- **`conferences.json`**: Conference groupings for message and file areas
+- **`ftn.json`**: FidoNet/FTN network configuration (addresses, uplinks, packet passwords)
+
+### File System
+
+- **`file_areas.json`**: File area definitions (paths, descriptions, access levels)
+
+### External Programs
+
+- **`doors.json`**: Door/external program configurations (paths, dropfile types, pause settings)
+
+### Security
+
+- **`ssh_host_rsa_key`**: SSH host key (auto-generated on first run if missing)
+
+All configuration files use JSON format and support comments for documentation.
 
 ## Documentation
 
@@ -332,7 +354,7 @@ Configuration files are located in the `configs/` directory:
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
 
-## Acknowledgments
+## Acknowledgments (from the original ViSiON/2 BBS project by stlalpha)
 
 This project is built in tribute to ViSiON/2 and my friend Crimson Blade.
 
