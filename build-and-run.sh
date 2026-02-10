@@ -27,20 +27,24 @@ if [ ! -f "configs/ssh_host_rsa_key" ] || [ ! -f "data/users/users.json" ]; then
 fi
 
 echo "=== Building ViSiON/3 BBS ==="
-cd cmd/vision3
-go build -o ../../vision3
-
-if [ $? -eq 0 ]; then
-    echo "Build successful!"
-    echo
-    echo "=== Starting ViSiON/3 BBS ==="
-    echo
-    echo "Press Ctrl+C to stop the server"
-    echo "=========================================="
-    echo
-    cd ../..
-    ./vision3
-else
+if ! go build -o vision3 ./cmd/vision3; then
     echo "Build failed!"
     exit 1
 fi
+if ! go build -o helper ./cmd/helper; then
+    echo "Build failed!"
+    exit 1
+fi
+if ! go build -o jamutil ./cmd/jamutil; then
+    echo "Build failed!"
+    exit 1
+fi
+
+echo "Build successful!"
+echo
+echo "=== Starting ViSiON/3 BBS ==="
+echo
+echo "Press Ctrl+C to stop the server"
+echo "=========================================="
+echo
+./vision3

@@ -15,7 +15,7 @@ func TestWriteMessageExtEchomail(t *testing.T) {
 	msg.Text = "Testing echomail support"
 	msg.OrigAddr = "21:3/110"
 
-	msgNum, err := b.WriteMessageExt(msg, MsgTypeEchomailMsg, "FSX_GEN", "Test BBS")
+	msgNum, err := b.WriteMessageExt(msg, MsgTypeEchomailMsg, "FSX_GEN", "Test BBS", "")
 	if err != nil {
 		t.Fatalf("WriteMessageExt: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestWriteMessageExtLocal(t *testing.T) {
 	msg.Subject = "Local"
 	msg.Text = "Local message"
 
-	msgNum, err := b.WriteMessageExt(msg, MsgTypeLocalMsg, "", "Test BBS")
+	msgNum, err := b.WriteMessageExt(msg, MsgTypeLocalMsg, "", "Test BBS", "")
 	if err != nil {
 		t.Fatalf("WriteMessageExt local: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestWriteMessageExtWithReply(t *testing.T) {
 	orig.Subject = "Original"
 	orig.Text = "Original message"
 	orig.OrigAddr = "1:103/705"
-	b.WriteMessageExt(orig, MsgTypeEchomailMsg, "TEST", "BBS")
+	b.WriteMessageExt(orig, MsgTypeEchomailMsg, "TEST", "BBS", "")
 
 	// Write reply
 	reply := NewMessage()
@@ -148,7 +148,7 @@ func TestWriteMessageExtWithReply(t *testing.T) {
 	reply.OrigAddr = "1:103/705"
 	reply.ReplyID = orig.MsgID // MsgID was set by WriteMessageExt
 
-	_, err := b.WriteMessageExt(reply, MsgTypeEchomailMsg, "TEST", "BBS")
+	_, err := b.WriteMessageExt(reply, MsgTypeEchomailMsg, "TEST", "BBS", "")
 	if err != nil {
 		t.Fatalf("WriteMessageExt reply: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestMSGIDUniqueness(t *testing.T) {
 		msg.Subject = "Test"
 		msg.Text = "Body"
 		msg.OrigAddr = "1:103/705"
-		b.WriteMessageExt(msg, MsgTypeEchomailMsg, "TEST", "BBS")
+		b.WriteMessageExt(msg, MsgTypeEchomailMsg, "TEST", "BBS", "")
 
 		if seen[msg.MsgID] {
 			t.Fatalf("duplicate MSGID at iteration %d: %s", i, msg.MsgID)

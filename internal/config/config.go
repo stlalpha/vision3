@@ -360,6 +360,7 @@ type FTNNetworkConfig struct {
 	OutboundPath string          `json:"outbound_path"`         // e.g., "data/ftn/fsxnet/outbound"
 	TempPath     string          `json:"temp_path"`             // e.g., "data/ftn/fsxnet/temp"
 	PollSeconds  int             `json:"poll_interval_seconds"` // 0 = manual only
+	Tearline     string          `json:"tearline,omitempty"`    // Custom tearline text for echomail (optional)
 	Links        []FTNLinkConfig `json:"links"`
 }
 

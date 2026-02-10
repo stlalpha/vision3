@@ -4,26 +4,27 @@ import "time"
 
 // MessageArea defines the structure for a message base/forum.
 type MessageArea struct {
-	ID           int    `json:"id"`                       // Unique local ID for the area
-	Tag          string `json:"tag"`                      // Short, unique tag (e.g., "GENERAL", "FSX_GEN")
-	Name         string `json:"name"`                     // Display name
-	Description  string `json:"description"`              // Longer description
-	ACSRead      string `json:"acs_read"`                 // ACS string required to read
-	ACSWrite     string `json:"acs_write"`                // ACS string required to post
+	ID           int    `json:"id"`                        // Unique local ID for the area
+	Tag          string `json:"tag"`                       // Short, unique tag (e.g., "GENERAL", "FSX_GEN")
+	Name         string `json:"name"`                      // Display name
+	Description  string `json:"description"`               // Longer description
+	ACSRead      string `json:"acs_read"`                  // ACS string required to read
+	ACSWrite     string `json:"acs_write"`                 // ACS string required to post
 	AllowAnon    *bool  `json:"allow_anonymous,omitempty"` // Optional: allow anonymous posts (nil defaults to true)
-	ConferenceID int    `json:"conference_id,omitempty"`  // Conference this area belongs to (0=ungrouped)
-	BasePath     string `json:"base_path"`                // Relative path to JAM base (e.g., "msgbases/general")
-	AreaType     string `json:"area_type"`                // "local", "echomail", "netmail"
-	EchoTag      string `json:"echo_tag,omitempty"`       // FTN echo tag (e.g., "FSX_GEN")
-	OriginAddr   string `json:"origin_addr,omitempty"`    // FTN origin address (e.g., "21:3/110")
-	Network      string `json:"network,omitempty"`        // FTN network name (e.g., "fsxnet")
+	RealNameOnly bool   `json:"real_name_only,omitempty"`  // Require real name for posts in this area
+	ConferenceID int    `json:"conference_id,omitempty"`   // Conference this area belongs to (0=ungrouped)
+	BasePath     string `json:"base_path"`                 // Relative path to JAM base (e.g., "msgbases/general")
+	AreaType     string `json:"area_type"`                 // "local", "echomail", "netmail"
+	EchoTag      string `json:"echo_tag,omitempty"`        // FTN echo tag (e.g., "FSX_GEN")
+	OriginAddr   string `json:"origin_addr,omitempty"`     // FTN origin address (e.g., "21:3/110")
+	Network      string `json:"network,omitempty"`         // FTN network name (e.g., "fsxnet")
 }
 
 // DisplayMessage is a high-level message view for the UI layer.
 // It wraps the JAM binary data into a form suitable for display and
 // interaction in the message reader/composer.
 type DisplayMessage struct {
-	MsgNum     int       // 1-based message number in the JAM base
+	MsgNum     int // 1-based message number in the JAM base
 	From       string
 	To         string
 	Subject    string

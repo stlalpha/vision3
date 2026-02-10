@@ -11,7 +11,7 @@ import (
 // origin line. DateProcessed is set to 0 so the tosser knows to export it.
 //
 // For local messages this behaves identically to WriteMessage.
-func (b *Base) WriteMessageExt(msg *Message, msgType MessageType, echoTag, bbsName string) (int, error) {
+func (b *Base) WriteMessageExt(msg *Message, msgType MessageType, echoTag, bbsName, tearline string) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -82,7 +82,7 @@ func (b *Base) WriteMessageExt(msg *Message, msgType MessageType, echoTag, bbsNa
 		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldFTSKludge, "TID: "+FormatTID()))
 
 		if bbsName != "" && msg.OrigAddr != "" {
-			msg.Text = AddTearline(msg.Text)
+			msg.Text = AddCustomTearline(msg.Text, tearline)
 			msg.Text = AddOriginLine(msg.Text, bbsName, msg.OrigAddr)
 		}
 		// SEEN-BY and PATH are NOT added here — that is the tosser's job.

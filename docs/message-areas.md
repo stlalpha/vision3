@@ -211,6 +211,7 @@ Configure it in `configs/ftn.json` (separate from the main `config.json`):
       "outbound_path": "data/ftn/fsxnet/outbound",
       "temp_path": "data/ftn/fsxnet/temp",
       "poll_interval_seconds": 300,
+      "tearline": "My BBS 1.0",
       "links": [
         {
           "address": "21:1/100",
@@ -238,6 +239,7 @@ Each network key (e.g., `"fsxnet"`) contains:
 - `outbound_path` - Directory for outgoing .PKT files
 - `temp_path` - Temp directory for failed packets
 - `poll_interval_seconds` - How often to scan for packets (0 = manual only)
+- `tearline` - Optional tearline text for new echomail posts (prefix `--- ` is added unless you include it)
 
 ### Link Configuration
 

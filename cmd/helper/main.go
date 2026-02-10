@@ -26,6 +26,8 @@ type areaConfig struct {
 	Description  string `json:"description"`
 	ACSRead      string `json:"acs_read"`
 	ACSWrite     string `json:"acs_write"`
+	AllowAnon    bool   `json:"allow_anonymous"`
+	RealNameOnly bool   `json:"real_name_only"`
 	ConferenceID int    `json:"conference_id,omitempty"`
 	BasePath     string `json:"base_path"`
 	AreaType     string `json:"area_type"`
@@ -43,8 +45,8 @@ type conferenceConfig struct {
 }
 
 type ftnConfig struct {
-	DupeDBPath string                       `json:"dupe_db_path"`
-	Networks   map[string]ftnNetworkConfig  `json:"networks"`
+	DupeDBPath string                      `json:"dupe_db_path"`
+	Networks   map[string]ftnNetworkConfig `json:"networks"`
 }
 
 type ftnNetworkConfig struct {
@@ -54,6 +56,7 @@ type ftnNetworkConfig struct {
 	OutboundPath string       `json:"outbound_path"`
 	TempPath     string       `json:"temp_path"`
 	PollSeconds  int          `json:"poll_interval_seconds"`
+	Tearline     string       `json:"tearline,omitempty"`
 	Links        []linkConfig `json:"links"`
 }
 
@@ -317,6 +320,8 @@ func cmdFTNSetup(args []string) {
 			Description:  a.Description,
 			ACSRead:      *acsRead,
 			ACSWrite:     *acsWrite,
+			AllowAnon:    false,
+			RealNameOnly: false,
 			ConferenceID: confID,
 			BasePath:     basePath,
 			AreaType:     "echomail",

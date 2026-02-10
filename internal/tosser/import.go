@@ -218,7 +218,7 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage) error {
 
 	// Write to JAM base with echomail handling
 	msgType := jam.DetermineMessageType(area.AreaType, area.EchoTag)
-	_, err = base.WriteMessageExt(jamMsg, msgType, area.EchoTag, "")
+	_, err = base.WriteMessageExt(jamMsg, msgType, area.EchoTag, "", "")
 	if err != nil {
 		return fmt.Errorf("write to JAM: %w", err)
 	}

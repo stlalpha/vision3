@@ -19,26 +19,30 @@ const messageAreaFile = "message_areas.json"
 // MessageManager handles message areas backed by JAM message bases.
 type MessageManager struct {
 	mu         sync.RWMutex
-	dataPath   string                // Base data directory (e.g., "data")
-	areasPath  string                // Full path to message_areas.json
+	dataPath   string // Base data directory (e.g., "data")
+	areasPath  string // Full path to message_areas.json
 	areasByID  map[int]*MessageArea
 	areasByTag map[string]*MessageArea
 	bases      map[int]*jam.Base // Open JAM bases keyed by area ID
 	boardName  string            // BBS name for echomail origin lines
+	// networkTearlines maps network key -> custom tearline text.
+	networkTearlines map[string]string
 }
 
 // NewMessageManager creates and initializes a new MessageManager.
 // dataPath is the directory where JAM base files are stored.
 // configPath is the directory containing message_areas.json.
 // boardName is the BBS name used in echomail origin lines.
-func NewMessageManager(dataPath, configPath, boardName string) (*MessageManager, error) {
+// networkTearlines maps network name -> custom tearline text for echomail.
+func NewMessageManager(dataPath, configPath, boardName string, networkTearlines map[string]string) (*MessageManager, error) {
 	mm := &MessageManager{
-		dataPath:   dataPath,
-		areasPath:  filepath.Join(configPath, messageAreaFile),
-		areasByID:  make(map[int]*MessageArea),
-		areasByTag: make(map[string]*MessageArea),
-		bases:      make(map[int]*jam.Base),
-		boardName:  boardName,
+		dataPath:         dataPath,
+		areasPath:        filepath.Join(configPath, messageAreaFile),
+		areasByID:        make(map[int]*MessageArea),
+		areasByTag:       make(map[string]*MessageArea),
+		bases:            make(map[int]*jam.Base),
+		boardName:        boardName,
+		networkTearlines: normalizeNetworkTearlines(networkTearlines),
 	}
 
 	if err := mm.loadMessageAreas(); err != nil {
@@ -55,6 +59,35 @@ func NewMessageManager(dataPath, configPath, boardName string) (*MessageManager,
 
 	log.Printf("INFO: MessageManager initialized. Loaded %d areas.", len(mm.areasByID))
 	return mm, nil
+}
+
+func normalizeNetworkTearlines(input map[string]string) map[string]string {
+	if len(input) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(input))
+	for k, v := range input {
+		key := strings.ToLower(strings.TrimSpace(k))
+		if key == "" {
+			continue
+		}
+		out[key] = strings.TrimSpace(v)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func (mm *MessageManager) tearlineForNetwork(network string) string {
+	if mm.networkTearlines == nil {
+		return ""
+	}
+	key := strings.ToLower(strings.TrimSpace(network))
+	if key == "" {
+		return ""
+	}
+	return mm.networkTearlines[key]
 }
 
 // Close closes all open JAM bases. Call this during server shutdown.
@@ -201,7 +234,7 @@ func (mm *MessageManager) AddMessage(areaID int, from, to, subject, body, replyT
 
 	if msgType.IsEchomail() || msgType.IsNetmail() {
 		msg.OrigAddr = area.OriginAddr
-		return b.WriteMessageExt(msg, msgType, area.EchoTag, mm.boardName)
+		return b.WriteMessageExt(msg, msgType, area.EchoTag, mm.boardName, mm.tearlineForNetwork(area.Network))
 	}
 
 	return b.WriteMessage(msg)

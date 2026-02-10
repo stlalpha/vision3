@@ -722,6 +722,24 @@ func main() {
 		log.Fatalf("Failed to load door configuration: %v", err)
 	}
 
+	// Load FTN configuration early so message manager can use per-network tearlines.
+	ftnConfig, ftnErr := config.LoadFTNConfig(rootConfigPath)
+	if ftnErr != nil {
+		log.Printf("ERROR: Failed to load FTN config: %v. Echomail disabled.", ftnErr)
+	}
+	networkTearlines := make(map[string]string)
+	if ftnErr == nil {
+		for name, netCfg := range ftnConfig.Networks {
+			if strings.TrimSpace(netCfg.Tearline) == "" {
+				continue
+			}
+			networkTearlines[strings.ToLower(strings.TrimSpace(name))] = netCfg.Tearline
+		}
+	}
+	if len(networkTearlines) == 0 {
+		networkTearlines = nil
+	}
+
 	// Load oneliners (Assuming they are still global for now, adjust if needed)
 	// oneliners, err := config.LoadOneLiners(filepath.Join(dataPath, "oneliners.dat")) // Example path
 	// if err != nil {
@@ -738,7 +756,7 @@ func main() {
 	}
 
 	// Initialize MessageManager (areas config from configs/, message data from data/)
-	messageMgr, err = message.NewMessageManager(dataPath, rootConfigPath, serverConfig.BoardName)
+	messageMgr, err = message.NewMessageManager(dataPath, rootConfigPath, serverConfig.BoardName, networkTearlines)
 	if err != nil {
 		log.Fatalf("Failed to initialize message manager: %v", err)
 	}
@@ -761,10 +779,7 @@ func main() {
 	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr)
 
 	// Initialize FTN tossers from ftn.json (one per enabled network)
-	ftnConfig, err := config.LoadFTNConfig(rootConfigPath)
-	if err != nil {
-		log.Printf("ERROR: Failed to load FTN config: %v. Echomail disabled.", err)
-	} else if len(ftnConfig.Networks) > 0 {
+	if ftnErr == nil && len(ftnConfig.Networks) > 0 {
 		// Create shared dupe DB
 		var dupeDB *tosser.DupeDB
 		if ftnConfig.DupeDBPath != "" {

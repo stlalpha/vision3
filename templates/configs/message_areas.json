@@ -7,6 +7,7 @@
         "acs_read": "",
         "acs_write": "",
         "allow_anonymous": false,
+        "real_name_only": false,
         "conference_id": 1,
         "base_path": "msgbases/general",
         "area_type": "local"
@@ -19,6 +20,7 @@
         "acs_read": "s10",
         "acs_write": "s10",
         "allow_anonymous": false,
+        "real_name_only": false,
         "conference_id": 1,
         "base_path": "msgbases/sysop",
         "area_type": "local"

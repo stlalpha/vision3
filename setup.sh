@@ -90,12 +90,14 @@ if [ ! -f "data/users/callnumber.json" ]; then
     echo "1" > data/users/callnumber.json
 fi
 
-# Build the BBS
+# Build binaries
 echo
 echo "Building ViSiON/3..."
-cd cmd/vision3
-go build
-cd ../..
+go build -o vision3 ./cmd/vision3
+echo "Building helper..."
+go build -o helper ./cmd/helper
+echo "Building jamutil..."
+go build -o jamutil ./cmd/jamutil
 
 echo
 echo "=== Setup Complete ==="

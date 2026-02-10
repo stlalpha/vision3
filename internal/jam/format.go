@@ -14,10 +14,24 @@ var Version = "0.1.0"
 // AddTearline appends a tearline to the message text.
 // Format: "--- Vision3 0.1.0/darwin"
 func AddTearline(text string) string {
+	return AddCustomTearline(text, "")
+}
+
+// AddCustomTearline appends a tearline to the message text.
+// If tearline is empty, it uses the default Vision3 tearline.
+// If tearline already starts with "---", it is used as-is.
+func AddCustomTearline(text, tearline string) string {
 	if !strings.HasSuffix(text, "\n") {
 		text += "\n"
 	}
-	return text + fmt.Sprintf("--- Vision3 %s/%s\n", Version, runtime.GOOS)
+	trimmed := strings.TrimSpace(tearline)
+	if trimmed == "" {
+		trimmed = fmt.Sprintf("Vision3 %s/%s", Version, runtime.GOOS)
+	}
+	if strings.HasPrefix(trimmed, "---") {
+		return text + trimmed + "\n"
+	}
+	return text + fmt.Sprintf("--- %s\n", trimmed)
 }
 
 // AddOriginLine appends an origin line to the message text.
