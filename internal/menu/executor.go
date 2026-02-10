@@ -446,6 +446,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["NEXTMSGAREA"] = runNextMsgArea                        // Navigate to next message area
 	registry["PREVMSGAREA"] = runPrevMsgArea                        // Navigate to previous message area
 	registry["NEWUSER"] = runNewUser                                 // Register new user application runnable
+	registry["GETHEADERTYPE"] = runGetHeaderType                     // Message header style selection
 }
 
 // runShowStats displays the user statistics screen (YOURSTAT.ANS).
@@ -3427,465 +3428,94 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.T
 }
 
 // runReadMsgs handles reading messages from the user's current area.
+// Delegates to runMessageReader which uses Pascal-style MSGHDR templates and lightbar navigation.
 func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running READMSGS", nodeNumber)
 
-	// 1. Check User and Area
 	if currentUser == nil {
-		log.Printf("WARN: Node %d: READMSGS called without logged in user.", nodeNumber)
 		msg := "\r\n|01Error: You must be logged in to read messages.|07\r\n"
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
-		return nil, "", nil // Return to menu
+		return nil, "", nil
 	}
 
 	currentAreaID := currentUser.CurrentMessageAreaID
 	currentAreaTag := currentUser.CurrentMessageAreaTag
 
 	if currentAreaID <= 0 || currentAreaTag == "" {
-		log.Printf("WARN: Node %d: User %s has no current message area set (ID: %d, Tag: %s).", nodeNumber, currentUser.Handle, currentAreaID, currentAreaTag)
 		msg := "\r\n|01Error: No message area selected.|07\r\n"
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
-		return nil, "", nil // Return to menu
+		return nil, "", nil
 	}
 
-	log.Printf("INFO: Node %d: User %s checking messages for Area ID %d (%s)", nodeNumber, currentUser.Handle, currentAreaID, currentAreaTag)
+	// Prompt for header selection if not yet set
+	if currentUser.MsgHdr < 1 || currentUser.MsgHdr > 14 {
+		// Check if MSGHDR.ANS exists for selection screen
+		selPath := filepath.Join(e.MenuSetPath, "templates", "message_headers", "MSGHDR.ANS")
+		if _, statErr := os.Stat(selPath); statErr == nil {
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Please select a message header style.|07\r\n")), outputMode)
+			time.Sleep(500 * time.Millisecond)
+			runGetHeaderType(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode)
+		}
+	}
 
-	// --- NEW LOGIC START ---
-
-	// 2. Fetch total message count first
 	totalMessageCount, err := e.MessageMgr.GetMessageCountForArea(currentAreaID)
 	if err != nil {
-		log.Printf("ERROR: Node %d: Failed to get total message count for area %d: %v", nodeNumber, currentAreaID, err)
 		msg := fmt.Sprintf("\r\n|01Error loading message info for area %s.|07\r\n", currentAreaTag)
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", err
 	}
 
 	if totalMessageCount == 0 {
-		log.Printf("INFO: Node %d: No messages found in area %s (%d).", nodeNumber, currentAreaTag, currentAreaID)
 		msg := fmt.Sprintf("\r\n|07No messages in area |15%s|07.\r\n", currentAreaTag)
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
-		return nil, "", nil // Return to menu
+		return nil, "", nil
 	}
 
-	// 3. Check for new messages via JAM lastread
+	// Determine starting message
 	newCount, err := e.MessageMgr.GetNewMessageCount(currentAreaID, currentUser.Handle)
 	if err != nil {
-		log.Printf("ERROR: Node %d: Failed to get new message count for area %d: %v", nodeNumber, currentAreaID, err)
 		newCount = 0
 	}
 
-	var currentMsgNum int // 1-based message number for navigation
-
+	var currentMsgNum int
 	if newCount > 0 {
-		// Start at first unread message
 		currentMsgNum = totalMessageCount - newCount + 1
-		log.Printf("INFO: Node %d: %d new messages in area %d. Starting at message %d.", nodeNumber, newCount, currentAreaID, currentMsgNum)
 	} else {
 		// No new messages - prompt for specific message number
-		log.Printf("INFO: Node %d: No new messages in area %d. Prompting for specific message.", nodeNumber, currentAreaID)
 		noNewMsg := fmt.Sprintf("\r\n|07No new messages in area |15%s|07.", currentAreaTag)
 		totalMsg := fmt.Sprintf(" |07Total messages: |15%d|07.", totalMessageCount)
 		promptMsg := fmt.Sprintf("\r\n|07Read message # (|151-%d|07, |15Enter|07=Cancel): |15", totalMessageCount)
-
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(noNewMsg+totalMsg)), outputMode)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(promptMsg)), outputMode)
 
 		input, readErr := terminal.ReadLine()
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
-				log.Printf("INFO: Node %d: User disconnected during message number input.", nodeNumber)
 				return nil, "LOGOFF", io.EOF
 			}
-			log.Printf("ERROR: Node %d: Failed reading message number input: %v", nodeNumber, readErr)
 			return nil, "", readErr
 		}
-
 		selectedNumStr := strings.TrimSpace(input)
 		if selectedNumStr == "" {
-			log.Printf("INFO: Node %d: User cancelled message reading.", nodeNumber)
 			return nil, "", nil
 		}
-
 		selectedNum, parseErr := strconv.Atoi(selectedNumStr)
 		if parseErr != nil || selectedNum < 1 || selectedNum > totalMessageCount {
-			log.Printf("WARN: Node %d: Invalid message number input: '%s'", nodeNumber, selectedNumStr)
 			msg := fmt.Sprintf("\r\n|01Invalid message number: %s|07\r\n", selectedNumStr)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(1 * time.Second)
 			return nil, "", nil
 		}
-
 		currentMsgNum = selectedNum
 	}
 
-	// 4. Load Templates (Load once before loop)
-	templateDir := filepath.Join(e.MenuSetPath, "templates")
-	headTemplatePath := filepath.Join(templateDir, "MSGHEAD.TPL")
-	promptTemplatePath := filepath.Join(templateDir, "MSGREAD.PROMPT")
-
-	headTemplateBytes, errHead := os.ReadFile(headTemplatePath)
-	promptTemplateBytes, errPrompt := os.ReadFile(promptTemplatePath)
-
-	if errHead != nil || errPrompt != nil {
-		log.Printf("ERROR: Node %d: Failed to load MSGHEAD/MSGREAD templates: Head(%v), Prompt(%v)", nodeNumber, errHead, errPrompt)
-		msg := "\r\n|01Error loading message display templates.|07\r\n"
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
-		time.Sleep(1 * time.Second)
-		return nil, "", fmt.Errorf("failed loading message templates")
-	}
-	processedHeadTemplate := string(ansi.ReplacePipeCodes(headTemplateBytes))
-	processedPromptTemplate := string(ansi.ReplacePipeCodes(promptTemplateBytes))
-
-	// 5. Main Reader Loop
-readerLoop:
-	for {
-		// --- Get Terminal Dimensions ---
-		termWidth := 80  // Default width
-		termHeight := 24 // Default height
-		ptyReq, _, isPty := s.Pty()
-		if isPty && ptyReq.Window.Width > 0 && ptyReq.Window.Height > 0 {
-			termWidth = ptyReq.Window.Width
-			termHeight = ptyReq.Window.Height
-			log.Printf("DEBUG: [runReadMsgs] Terminal dimensions: %d x %d", termWidth, termHeight)
-		} else {
-			log.Printf("WARN: [runReadMsgs] Could not get PTY dimensions, using default %d x %d", termWidth, termHeight)
-		}
-
-		// --- Calculate Available Height (Estimate) ---
-		// Count lines in header and prompt templates (simple newline count)
-		headerLines := strings.Count(processedHeadTemplate, "\n") + 1 // +1 because template might not end with newline
-		promptLines := strings.Count(processedPromptTemplate, "\n") + 1
-		// Add extra lines for spacing (e.g., CRLF before body, CRLF before prompt)
-		headerAndPromptLines := headerLines + promptLines + 2
-		bodyAvailableHeight := termHeight - headerAndPromptLines
-		if bodyAvailableHeight < 1 {
-			bodyAvailableHeight = 1 // Ensure at least one line is available
-		}
-		log.Printf("DEBUG: [runReadMsgs] HeaderLines: %d, PromptLines: %d, Available Body Height: %d", headerLines, promptLines, bodyAvailableHeight)
-
-		// 5.1 Get Current Message from JAM base
-		currentMsg, msgErr := e.MessageMgr.GetMessage(currentAreaID, currentMsgNum)
-		if msgErr != nil {
-			log.Printf("ERROR: Node %d: Failed to read message %d in area %d: %v", nodeNumber, currentMsgNum, currentAreaID, msgErr)
-			terminalio.WriteProcessedBytes(terminal, []byte("\r\n|01Error reading message.|07\r\n"), outputMode)
-			time.Sleep(1 * time.Second)
-			break readerLoop
-		}
-
-		// 5.2 Create Placeholders
-		placeholders := map[string]string{
-			"|CA":     currentAreaTag,
-			"|MNUM":   strconv.Itoa(currentMsgNum),
-			"|MTOTAL": strconv.Itoa(totalMessageCount),
-			"|MFROM":  string(ansi.ReplacePipeCodes([]byte(currentMsg.From))),
-			"|MTO":    string(ansi.ReplacePipeCodes([]byte(currentMsg.To))),
-			"|MSUBJ":  string(ansi.ReplacePipeCodes([]byte(currentMsg.Subject))),
-			"|MDATE":  currentMsg.DateTime.Format(time.RFC822),
-		}
-
-		// 5.3 Substitute into Templates (Explicit Order)
-		displayHeader := processedHeadTemplate
-		displayPrompt := processedPromptTemplate
-
-		// Replace known placeholders in a fixed order
-		displayHeader = strings.ReplaceAll(displayHeader, "|CA", placeholders["|CA"])
-		displayHeader = strings.ReplaceAll(displayHeader, "|MNUM", placeholders["|MNUM"])
-		displayHeader = strings.ReplaceAll(displayHeader, "|MTOTAL", placeholders["|MTOTAL"])
-		displayHeader = strings.ReplaceAll(displayHeader, "|MFROM", placeholders["|MFROM"])
-		displayHeader = strings.ReplaceAll(displayHeader, "|MTO", placeholders["|MTO"])
-		displayHeader = strings.ReplaceAll(displayHeader, "|MSUBJ", placeholders["|MSUBJ"])
-		displayHeader = strings.ReplaceAll(displayHeader, "|MDATE", placeholders["|MDATE"])
-
-		displayPrompt = strings.ReplaceAll(displayPrompt, "|MNUM", placeholders["|MNUM"])
-		displayPrompt = strings.ReplaceAll(displayPrompt, "|MTOTAL", placeholders["|MTOTAL"])
-		// Add other placeholders needed by displayPrompt here if any
-
-		// --- Remove Old Substitution Loop ---
-		// for key, val := range placeholders {
-		// 	displayHeader = strings.ReplaceAll(displayHeader, key, val)
-		// 	displayPrompt = strings.ReplaceAll(displayPrompt, key, val)
-		// }
-
-		// +++ DEBUG LOGGING (Keep temporarily) +++
-		log.Printf("DEBUG: [runReadMsgs] Placeholders Map: %+v", placeholders)
-		log.Printf("DEBUG: [runReadMsgs] Final Display Prompt String: %q", displayPrompt)
-		// +++ END DEBUG LOGGING +++
-
-		// 5.4 Process Message Body Pipe Codes
-		processedBodyString := string(ansi.ReplacePipeCodes([]byte(currentMsg.Body)))
-		// 5.4.1 Word Wrap the Processed Body
-		wrappedBodyLines := wrapAnsiString(processedBodyString, termWidth)
-
-		// 5.5 Display Output (with Pagination)
-		wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-		if wErr != nil {
-			log.Printf("ERROR: Node %d: Failed clearing screen: %v", nodeNumber, wErr)
-		}
-
-		wErr = terminalio.WriteProcessedBytes(terminal, []byte(displayHeader), outputMode)
-		if wErr != nil {
-			log.Printf("ERROR: Node %d: Failed writing message header: %v", nodeNumber, wErr)
-		}
-
-		// -- Display Body with Pagination --
-		linesDisplayedThisPage := 0
-		for lineIdx, line := range wrappedBodyLines {
-			if linesDisplayedThisPage == 0 {
-				// Add CRLF before the first line of the body (or first line of a new page)
-				wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-				if wErr != nil {
-					log.Printf("ERROR: Node %d: Failed writing CRLF before body line: %v", nodeNumber, wErr)
-				}
-			}
-
-			wErr = terminalio.WriteProcessedBytes(terminal, []byte(line), outputMode)
-			if wErr != nil {
-				log.Printf("ERROR: Node %d: Failed writing wrapped body line %d: %v", nodeNumber, lineIdx, wErr)
-			}
-			linesDisplayedThisPage++
-
-			// Check if pause is needed (if page is full AND it's not the last line)
-			if linesDisplayedThisPage >= bodyAvailableHeight && lineIdx < len(wrappedBodyLines)-1 {
-				// Display Pause Prompt using system setting
-				pausePrompt := e.LoadedStrings.PauseString
-				if pausePrompt == "" {
-					pausePrompt = "|07-- More -- (|15Enter|07=Continue, |15Q|07=Quit) : |15" // Basic fallback
-				}
-				// Add CRLF before pause prompt
-				wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode) // Still use WriteProcessedBytes for simple CRLF
-				if wErr != nil {
-					log.Printf("ERROR: Node %d: Failed writing CRLF before pause prompt: %v", nodeNumber, wErr)
-				}
-
-				// Process pipe codes first
-				processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-				// +++ DEBUG LOGGING +++
-				log.Printf("DEBUG: [runReadMsgs Pagination] OutputMode: %d (CP437=%d, UTF8=%d)", outputMode, ansi.OutputModeCP437, ansi.OutputModeUTF8)
-				log.Printf("DEBUG: [runReadMsgs Pagination] Processed Pause Prompt Bytes (hex): %x", processedPausePrompt)
-				// +++ END DEBUG LOGGING +++
-				// Use the new helper function for writing the prompt
-				wErr = writeProcessedStringWithManualEncoding(terminal, processedPausePrompt, outputMode)
-				if wErr != nil {
-					log.Printf("ERROR: Node %d: Failed writing pause prompt with manual encoding: %v", nodeNumber, wErr)
-				}
-
-				// Wait for input
-				bufioReader := bufio.NewReader(s)
-				pauseInputRune, _, pauseErr := bufioReader.ReadRune()
-				if pauseErr != nil {
-					if errors.Is(pauseErr, io.EOF) {
-						log.Printf("INFO: Node %d: User disconnected during message pagination pause.", nodeNumber)
-						return nil, "LOGOFF", io.EOF
-					}
-					log.Printf("ERROR: Node %d: Failed reading pagination pause input: %v", nodeNumber, pauseErr)
-					// Decide how to handle read error - maybe quit the reader?
-					break readerLoop // Exit reader on error
-				}
-
-				// Clear the pause prompt line before continuing
-				// Assuming prompt is on the last line. Move up, clear line, move back down?
-				// Or just rely on the next screen clear? Simpler: rely on next screen clear.
-				// For now, just write a CR to go to beginning of line for next write.
-				wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r"), outputMode)
-				if wErr != nil {
-					log.Printf("ERROR: Node %d: Failed writing CR after pause prompt: %v", nodeNumber, wErr)
-				}
-
-				if unicode.ToUpper(pauseInputRune) == 'Q' {
-					log.Printf("DEBUG: Node %d: User quit message reader during pagination.", nodeNumber)
-					// Update lastread in JAM base
-					if lrErr := e.MessageMgr.SetLastRead(currentAreaID, currentUser.Handle, currentMsgNum); lrErr != nil {
-						log.Printf("ERROR: Node %d: Failed to update last read (pagination quit): %v", nodeNumber, lrErr)
-					}
-					break readerLoop // Exit outer reader loop
-				}
-				// Otherwise (Enter, Space, etc.), reset counter and continue display loop
-				linesDisplayedThisPage = 0
-			} else if lineIdx < len(wrappedBodyLines)-1 {
-				// Add CRLF after lines that are not the last line and didn't trigger a pause
-				wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-				if wErr != nil {
-					log.Printf("ERROR: Node %d: Failed writing CRLF after body line: %v", nodeNumber, wErr)
-				}
-			}
-		} // -- End Body Display Loop --
-
-		// Write prompt (add CRLF before)
-		wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-		if wErr != nil {
-			log.Printf("ERROR: Node %d: Failed writing CRLF before prompt: %v", nodeNumber, wErr)
-		}
-		wErr = terminalio.WriteProcessedBytes(terminal, []byte(displayPrompt), outputMode)
-		if wErr != nil {
-			log.Printf("ERROR: Node %d: Failed writing message prompt: %v", nodeNumber, wErr)
-		}
-
-		// 6. Input Handling (Main Reader Commands)
-		input, err := terminal.ReadLine()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Printf("INFO: Node %d: User disconnected during message reading.", nodeNumber)
-				return nil, "LOGOFF", io.EOF
-			}
-			log.Printf("ERROR: Node %d: Failed reading message reader input: %v", nodeNumber, err)
-			// Maybe break loop on error? Or just retry?
-			terminalio.WriteProcessedBytes(terminal, []byte("\r\n|01Error reading input.|07\r\n"), outputMode)
-			time.Sleep(1 * time.Second)
-			continue // Retry reading input
-		}
-
-		upperInput := strings.ToUpper(strings.TrimSpace(input))
-
-		switch upperInput {
-		case "", " ": // Next message (Enter or Space defaults to Next)
-			if currentMsgNum < totalMessageCount {
-				currentMsgNum++
-			} else {
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\n|07Last message.|07"), outputMode)
-				time.Sleep(500 * time.Millisecond)
-			}
-		case "N": // Explicit 'N' - Do nothing now, or maybe show help?
-			log.Printf("DEBUG: Node %d: 'N' pressed, doing nothing.", nodeNumber)
-		case "P": // Previous message
-			if currentMsgNum > 1 {
-				currentMsgNum--
-			} else {
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\n|07First message.|07"), outputMode)
-				time.Sleep(500 * time.Millisecond)
-			}
-		case "Q":
-			log.Printf("DEBUG: Node %d: User quit message reader ('Q' pressed).", nodeNumber)
-			// Update lastread in JAM base
-			if lrErr := e.MessageMgr.SetLastRead(currentAreaID, currentUser.Handle, currentMsgNum); lrErr != nil {
-				log.Printf("ERROR: Node %d: Failed to update last read ('Q'): %v", nodeNumber, lrErr)
-			}
-			break readerLoop // Exit the labeled loop
-		case "R": // Reply
-			// 1. Get Quote Prefix from config
-			quotePrefix := e.LoadedStrings.QuotePrefix // Direct access
-			if quotePrefix == "" {                     // Default if empty
-				quotePrefix = "> "
-			}
-
-			// 2. Format quoted text
-			quotedBody := formatQuote(currentMsg, quotePrefix)
-
-			// 3. Run Editor
-			terminalio.WriteProcessedBytes(terminal, []byte("\r\nLaunching editor...\r\n"), outputMode)
-
-			// Get TERM env var
-			termType := "vt100" // Default TERM
-			for _, env := range s.Environ() {
-				if strings.HasPrefix(env, "TERM=") {
-					termType = strings.TrimPrefix(env, "TERM=")
-					break
-				}
-			}
-			log.Printf("DEBUG: Node %d: Launching editor with TERM=%s", nodeNumber, termType)
-
-			// === START: Moved Subject Logic ===
-			// 4. Get Subject
-			defaultSubject := generateReplySubject(currentMsg.Subject)
-			subjectPromptStr := e.LoadedStrings.MsgTitleStr // Direct access
-			if subjectPromptStr == "" {
-				subjectPromptStr = "|08[|15Title|08] : " // Default if empty
-			}
-			// Process pipe codes using correct function (assuming ReplacePipeCodes)
-			subjectPromptBytes := ansi.ReplacePipeCodes([]byte(subjectPromptStr)) // Use ReplacePipeCodes
-
-			// Display the prompt (clear line first?)
-			// TODO: Consider clearing a specific line if layout is fixed
-			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode) // Add newline before prompt
-			terminalio.WriteProcessedBytes(terminal, subjectPromptBytes, outputMode)
-			terminalio.WriteProcessedBytes(terminal, []byte(defaultSubject), outputMode)
-
-			// Read the input using standard ReadLine
-			rawInput, err := terminal.ReadLine()
-			if err != nil {
-				if errors.Is(err, io.EOF) {
-					log.Printf("INFO: Node %d: User disconnected during subject input.", nodeNumber)
-					return nil, "LOGOFF", io.EOF // Signal logoff
-				}
-				log.Printf("ERROR: Node %d: Failed getting subject input: %v", nodeNumber, err)
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\nError getting subject.\r\n"), outputMode)
-				time.Sleep(1 * time.Second)
-				continue // Abort reply, redraw reader
-			}
-			newSubject := strings.TrimSpace(rawInput)
-			if newSubject == "" {
-				newSubject = defaultSubject
-			}
-			// Ensure subject is not completely empty after defaulting
-			if strings.TrimSpace(newSubject) == "" {
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\nSubject cannot be empty. Reply cancelled.\r\n"), outputMode)
-				time.Sleep(1 * time.Second)
-				continue // Abort reply, redraw reader
-			}
-			// === END: Moved Subject Logic ===
-
-			// Call editor with correct signature
-			replyBody, saved, editErr := editor.RunEditor(quotedBody, s, s, termType)
-
-			if editErr != nil {
-				log.Printf("ERROR: Node %d: Editor failed: %v", nodeNumber, editErr)
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\nEditor encountered an error.\r\n"), outputMode)
-				time.Sleep(2 * time.Second)
-				// Screen needs redraw - continue will force it
-				continue
-			}
-
-			if !saved {
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\nReply cancelled.\r\n"), outputMode)
-				time.Sleep(1 * time.Second)
-				// Screen needs redraw - continue will force it
-				continue
-			}
-
-			// 5. Save reply via JAM backend
-			replyMsgID := currentMsg.MsgID // Link to original message's MSGID
-			_, err = e.MessageMgr.AddMessage(currentAreaID, currentUser.Handle, currentMsg.From, newSubject, replyBody, replyMsgID)
-			if err != nil {
-				log.Printf("ERROR: Node %d: Failed to save reply message: %v", nodeNumber, err)
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\nError saving reply message.\r\n"), outputMode)
-				time.Sleep(2 * time.Second)
-			} else {
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\nReply posted successfully!\r\n"), outputMode)
-				time.Sleep(1 * time.Second)
-				totalMessageCount++ // Increment total count
-				// Advance to the newly posted reply
-				if currentMsgNum < totalMessageCount {
-					currentMsgNum++
-				}
-			}
-			continue
-
-		default:
-			// Optional: Display invalid command message
-			log.Printf("DEBUG: Node %d: Invalid command '%s' in message reader.", nodeNumber, upperInput)
-			terminalio.WriteProcessedBytes(terminal, []byte("\r\n|01Invalid command.|07"), outputMode)
-			time.Sleep(500 * time.Millisecond)
-		}
-		// continue loop implicitly unless 'Q' was pressed
-	}
-
-	// 7. Return (after loop breaks)
-	log.Printf("DEBUG: Node %d: Exiting message reader function.", nodeNumber)
-	return nil, "", nil // Return to MSGMENU
+	// Delegate to the new message reader with MSGHDR templates and lightbar
+	return runMessageReader(e, s, terminal, userManager, currentUser, nodeNumber,
+		sessionStartTime, outputMode, currentMsgNum, totalMessageCount, false)
 }
 
 // wrapAnsiString wraps a string containing ANSI codes to a given width.
@@ -4032,174 +3662,15 @@ func writeProcessedStringWithManualEncoding(terminal *term.Terminal, processedBy
 	return err
 }
 
-// runNewscan checks all accessible message areas for new messages.
+// runNewscan handles the message newscan with Pascal-style GetScanType setup and multi-area flow.
 func runNewscan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running NEWSCAN for user %s", nodeNumber, currentUser.Handle)
 
-	if currentUser == nil {
-		log.Printf("WARN: Node %d: NEWSCAN called without logged in user.", nodeNumber)
-		msg := "\r\n|01Error: You must be logged in to scan for new messages.|07\r\n"
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
-		time.Sleep(1 * time.Second)
-		return nil, "", nil // Return to menu
-	}
+	// Determine if this is a "current area only" scan based on args
+	currentOnly := strings.ToUpper(strings.TrimSpace(args)) == "CURRENT"
 
-	allAreas := e.MessageMgr.ListAreas()
-	// Store results as a slice of structs to maintain order and store counts
-	type areaResult struct {
-		Tag   string
-		Count int
-	}
-	var resultsWithNew []areaResult // Changed variable name
-
-	log.Printf("DEBUG: Node %d: Scanning %d total areas for new messages.", nodeNumber, len(allAreas))
-
-	for _, area := range allAreas {
-		if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
-			log.Printf("TRACE: Node %d: Skipping area %d ('%s') due to read ACS '%s'", nodeNumber, area.ID, area.Tag, area.ACSRead)
-			continue
-		}
-
-		// Get the count of new messages via JAM lastread
-		newCount, err := e.MessageMgr.GetNewMessageCount(area.ID, currentUser.Handle)
-		if err != nil {
-			log.Printf("ERROR: Node %d: Error checking new message count in area %d ('%s'): %v", nodeNumber, area.ID, area.Tag, err)
-			continue // Skip area on error
-		}
-
-		if newCount > 0 {
-			log.Printf("DEBUG: Node %d: Found %d new messages in area %d ('%s')", nodeNumber, newCount, area.ID, area.Tag)
-			resultsWithNew = append(resultsWithNew, areaResult{Tag: area.Tag, Count: newCount}) // Correctly append
-		}
-	}
-
-	// 5. Display Results & Handle Actions
-	var outputBuffer bytes.Buffer
-	outputBuffer.WriteString("\r\n") // Start with a newline
-
-	if len(resultsWithNew) == 0 { // Use corrected variable name
-		// No new messages found
-		outputBuffer.WriteString("|07No new messages found in any accessible areas.\r\n")
-		log.Printf("INFO: Node %d: Newscan completed, no new messages found.", nodeNumber)
-
-		// Write the result message
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(outputBuffer.Bytes()), outputMode)
-		if wErr != nil {
-			log.Printf("ERROR: Node %d: Failed writing NEWSCAN (no new) results: %v", nodeNumber, wErr)
-		}
-		// Fall through to standard pause prompt
-
-	} else {
-		// New messages found - build summary and ask to read
-		var summaryParts []string
-		for _, res := range resultsWithNew { // Use corrected variable name
-			summaryParts = append(summaryParts, fmt.Sprintf("%s(%d)", res.Tag, res.Count))
-		}
-		summary := strings.Join(summaryParts, ", ")
-		outputBuffer.WriteString(fmt.Sprintf("|07New messages: |15%s|07\r\n", summary))
-		log.Printf("INFO: Node %d: Newscan completed, new messages found: %s", nodeNumber, summary)
-
-		// Write the summary message first
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(outputBuffer.Bytes()), outputMode)
-		if wErr != nil {
-			log.Printf("ERROR: Node %d: Failed writing NEWSCAN summary results: %v", nodeNumber, wErr)
-			// Fall through to pause anyway?
-		}
-
-		// Ask the user if they want to read
-		// TODO: Use configurable string
-		readNow, err := e.promptYesNoLightbar(s, terminal, "Read new messages now?", outputMode, nodeNumber)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Printf("INFO: Node %d: User disconnected during NEWSCAN read prompt.", nodeNumber)
-				return nil, "LOGOFF", io.EOF
-			}
-			log.Printf("ERROR: Failed getting Yes/No input for NEWSCAN read: %v", err)
-			// Don't pause if prompt failed, just return to menu
-			return nil, "", err
-		}
-
-		if readNow {
-			// User wants to read - jump to the first area with new messages
-			firstAreaTag := resultsWithNew[0].Tag // Use corrected variable name
-			log.Printf("DEBUG: Node %d: User chose to read. Jumping to first area: %s", nodeNumber, firstAreaTag)
-
-			// Get the Area ID for the tag
-			firstArea, found := e.MessageMgr.GetAreaByTag(firstAreaTag)
-			if !found {
-				// Should not happen if ListAreas and GetNewMessageCount worked
-				log.Printf("ERROR: Node %d: Could not find area details for tag '%s' after newscan.", nodeNumber, firstAreaTag)
-				// Fall through to pause prompt as a fallback
-			} else {
-				// Update user's current area
-				currentUser.CurrentMessageAreaID = firstArea.ID
-				currentUser.CurrentMessageAreaTag = firstArea.Tag
-				e.setUserMsgConference(currentUser, firstArea.ConferenceID)
-				log.Printf("INFO: Node %d: Set current message area for user %s to %d (%s)", nodeNumber, currentUser.Handle, firstArea.ID, firstArea.Tag)
-
-				// Save the user state *before* calling runReadMsgs
-				if err := userManager.SaveUsers(); err != nil {
-					log.Printf("ERROR: Node %d: Failed to save user data after setting current area in newscan: %v", nodeNumber, err)
-					// Proceed anyway, but state might be lost
-				}
-
-				// Directly call runReadMsgs. It will handle its own loop and return.
-				return runReadMsgs(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode)
-			}
-		} else {
-			// User chose not to read now - fall through to standard pause
-			log.Printf("DEBUG: Node %d: User chose not to read new messages now.", nodeNumber)
-		}
-	}
-
-	// 6. Wait for Enter (Standard Pause - only reached if no new messages or user chose 'No')
-	pausePrompt := e.LoadedStrings.PauseString
-	if pausePrompt == "" {
-		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... " // Fallback
-	}
-
-	var pauseBytesToWrite []byte
-	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-	if outputMode == ansi.OutputModeCP437 {
-		var cp437Buf bytes.Buffer
-		for _, r := range string(processedPausePrompt) {
-			if r < 128 {
-				cp437Buf.WriteByte(byte(r))
-			} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
-				cp437Buf.WriteByte(cp437Byte)
-			} else {
-				cp437Buf.WriteByte('?')
-			}
-		}
-		pauseBytesToWrite = cp437Buf.Bytes()
-	} else {
-		pauseBytesToWrite = processedPausePrompt
-	}
-
-	wErr := terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
-	if wErr != nil {
-		log.Printf("ERROR: Node %d: Failed writing NEWSCAN pause prompt: %v", nodeNumber, wErr)
-	}
-
-	bufioReader := bufio.NewReader(s)
-	for {
-		r, _, err := bufioReader.ReadRune()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Printf("INFO: Node %d: User disconnected during NEWSCAN pause.", nodeNumber)
-				return nil, "LOGOFF", io.EOF
-			}
-			log.Printf("ERROR: Node %d: Failed reading input during NEWSCAN pause: %v", nodeNumber, err)
-			return nil, "", err
-		}
-		if r == '\r' || r == '\n' { // Check for CR or LF
-			break
-		}
-	}
-
-	return nil, "", nil // Return to the current menu (MSGMENU)
+	return runNewScanAll(e, s, terminal, userManager, currentUser, nodeNumber,
+		sessionStartTime, outputMode, currentOnly)
 }
 
 // generateReplySubject creates a suitable subject line for a reply.

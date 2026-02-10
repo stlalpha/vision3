@@ -53,6 +53,7 @@ type User struct {
 	// Terminal Preferences
 	ScreenWidth  int `json:"screenWidth,omitempty"`  // Detected/preferred terminal width (default 80)
 	ScreenHeight int `json:"screenHeight,omitempty"` // Detected/preferred terminal height (default 25)
+	MsgHdr       int `json:"msgHdr,omitempty"`       // Selected message header style (1-14, 0=unset)
 }
 
 // CallRecord stores information about a single call session.
