@@ -937,8 +937,38 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		if currentMenuName == "LOGIN" {
 			if currentUser != nil {
 				log.Printf("WARN: Attempting to run LOGIN menu for already authenticated user %s. Skipping login, going to MAIN.", currentUser.Handle)
-				// Still need to decide the next step. Let's assume GOTO:MAIN is the intended default.
-				// This could eventually come from LOGIN.CFG's default action.
+
+				// Set default message area if not already set (e.g., SSH auto-login)
+				if currentUser.CurrentMessageAreaID == 0 && e.MessageMgr != nil {
+					for _, area := range e.MessageMgr.ListAreas() {
+						if checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
+							currentUser.CurrentMessageAreaID = area.ID
+							currentUser.CurrentMessageAreaTag = area.Tag
+							e.setUserMsgConference(currentUser, area.ConferenceID)
+							break
+						}
+					}
+				}
+
+				// Set default file area if not already set
+				if currentUser.CurrentFileAreaID == 0 && e.FileMgr != nil {
+					for _, area := range e.FileMgr.ListAreas() {
+						if checkACS(area.ACSList, currentUser, s, terminal, sessionStartTime) {
+							currentUser.CurrentFileAreaID = area.ID
+							currentUser.CurrentFileAreaTag = area.Tag
+							e.setUserFileConference(currentUser, area.ConferenceID)
+							break
+						}
+					}
+				}
+
+				// Persist defaults
+				if userManager != nil {
+					if saveErr := userManager.SaveUsers(); saveErr != nil {
+						log.Printf("ERROR: Failed to save user default area selections: %v", saveErr)
+					}
+				}
+
 				currentMenuName = "MAIN"
 				previousMenuName = "LOGIN" // Set previous explicitly here
 				continue
@@ -1047,6 +1077,13 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 					log.Printf("WARN: Cannot set default file area: currentUser (%v) or FileMgr (%v) is nil.", currentUser == nil, e.FileMgr == nil)
 				}
 				// --- END Set Default File Area ---
+
+				// Persist default area/conference selections to disk
+				if userManager != nil {
+					if saveErr := userManager.SaveUsers(); saveErr != nil {
+						log.Printf("ERROR: Failed to save user default area selections: %v", saveErr)
+					}
+				}
 
 				// --- BEGIN POST-AUTHENTICATION TRANSITION ---
 				// Load LOGIN.CFG to find the default action

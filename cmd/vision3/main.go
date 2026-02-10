@@ -454,6 +454,43 @@ func sessionHandler(s ssh.Session) {
 					log.Printf("ERROR: Node %d: Failed to save user screen preferences: %v", nodeID, saveErr)
 				}
 			}
+			// Set default message area if not already set
+			if authenticatedUser.CurrentMessageAreaID == 0 && messageMgr != nil {
+				for _, area := range messageMgr.ListAreas() {
+					if area.ACSRead == "" || authenticatedUser.AccessLevel > 0 {
+						authenticatedUser.CurrentMessageAreaID = area.ID
+						authenticatedUser.CurrentMessageAreaTag = area.Tag
+						authenticatedUser.CurrentMsgConferenceID = area.ConferenceID
+						if confMgr != nil {
+							if conf, ok := confMgr.GetByID(area.ConferenceID); ok {
+								authenticatedUser.CurrentMsgConferenceTag = conf.Tag
+							}
+						}
+						break
+					}
+				}
+			}
+			// Set default file area if not already set
+			if authenticatedUser.CurrentFileAreaID == 0 && fileMgr != nil {
+				for _, area := range fileMgr.ListAreas() {
+					if area.ACSList == "" || authenticatedUser.AccessLevel > 0 {
+						authenticatedUser.CurrentFileAreaID = area.ID
+						authenticatedUser.CurrentFileAreaTag = area.Tag
+						authenticatedUser.CurrentFileConferenceID = area.ConferenceID
+						if confMgr != nil {
+							if conf, ok := confMgr.GetByID(area.ConferenceID); ok {
+								authenticatedUser.CurrentFileConferenceTag = conf.Tag
+							}
+						}
+						break
+					}
+				}
+			}
+			// Persist defaults
+			if saveErr := userMgr.SaveUsers(); saveErr != nil {
+				log.Printf("ERROR: Node %d: Failed to save user default area selections: %v", nodeID, saveErr)
+			}
+
 			currentMenuName = "MAIN" // Skip LOGIN, go directly to MAIN menu
 			nextActionAfterLogin = "MAIN"
 		} else {
