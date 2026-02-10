@@ -43,13 +43,13 @@ type FSEditor struct {
 
 // NewFSEditor creates a new full-screen editor instance
 func NewFSEditor(session ssh.Session, terminal io.Writer, outputMode ansi.OutputMode,
-	termWidth, termHeight int, menuSetPath string) *FSEditor {
+	termWidth, termHeight int, menuSetPath, yesNoHi, yesNoLo string) *FSEditor {
 
 	buffer := NewMessageBuffer()
 	screen := NewScreen(terminal, outputMode, termWidth, termHeight)
 	input := NewInputHandler(session)
 	wordWrapper := NewWordWrapper(buffer)
-	commandHandler := NewCommandHandler(screen, buffer, menuSetPath)
+	commandHandler := NewCommandHandler(screen, buffer, menuSetPath, yesNoHi, yesNoLo)
 
 	return &FSEditor{
 		buffer:      buffer,

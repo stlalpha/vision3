@@ -72,10 +72,16 @@ func readKeyWithEscapeHandling(reader *bufio.Reader) (rune, error) {
 // This is used to display the menu during screen redraws.
 // selectedIdx can be -1 for no highlight, or 0-9 to highlight a specific option.
 func drawMsgLightbarStatic(terminal *term.Terminal, options []MsgLightbarOption,
-	outputMode ansi.OutputMode, hiColor int, loColor int, suffix string, selectedIdx int) {
+	outputMode ansi.OutputMode, hiColor int, loColor int, suffix string, selectedIdx int,
+	addBounds bool, boundsColor int) {
 
 	// Move to beginning of line
 	terminalio.WriteProcessedBytes(terminal, []byte("\r"), outputMode)
+
+	if addBounds {
+		boundSeq := colorCodeToAnsi(boundsColor)
+		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"+boundSeq+"\xB3"), outputMode)
+	}
 
 	for i, opt := range options {
 		var colorSeq string
@@ -86,8 +92,12 @@ func drawMsgLightbarStatic(terminal *term.Terminal, options []MsgLightbarOption,
 		}
 		terminalio.WriteProcessedBytes(terminal, []byte(colorSeq+opt.Label), outputMode)
 	}
+	if addBounds {
+		boundSeq := colorCodeToAnsi(boundsColor)
+		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"+boundSeq+"\xB3"), outputMode)
+	}
 	// Reset and write suffix
-	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"+suffix), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\x1b[0m"+suffix)), outputMode)
 }
 
 // runMsgLightbar displays a horizontal lightbar and returns the selected hotkey.
@@ -102,7 +112,8 @@ func drawMsgLightbarStatic(terminal *term.Terminal, options []MsgLightbarOption,
 // initialDirection: 0=none, -1=left (move to previous), 1=right (move to next)
 func runMsgLightbar(reader *bufio.Reader, terminal *term.Terminal,
 	options []MsgLightbarOption, outputMode ansi.OutputMode,
-	hiColor int, loColor int, suffix string, initialDirection int) (byte, error) {
+	hiColor int, loColor int, suffix string, initialDirection int,
+	addBounds bool, boundsColor int) (byte, error) {
 
 	if len(options) == 0 {
 		return 0, fmt.Errorf("no lightbar options provided")
@@ -139,7 +150,7 @@ func runMsgLightbar(reader *bufio.Reader, terminal *term.Terminal,
 
 	// Function to draw the bar
 	drawBar := func(selectedIdx int) {
-		drawMsgLightbarStatic(terminal, options, outputMode, hiColor, loColor, suffix, selectedIdx)
+		drawMsgLightbarStatic(terminal, options, outputMode, hiColor, loColor, suffix, selectedIdx, addBounds, boundsColor)
 	}
 
 	drawBar(currentIdx)

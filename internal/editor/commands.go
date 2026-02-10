@@ -38,14 +38,18 @@ type CommandHandler struct {
 	buffer      *MessageBuffer
 	quoteData   *QuoteData // Message data to quote when /Q is used
 	menuSetPath string     // Path to menu files
+	yesNoHi     string     // ANSI sequence for highlighted Yes/No
+	yesNoLo     string     // ANSI sequence for regular Yes/No
 }
 
 // NewCommandHandler creates a new command handler
-func NewCommandHandler(screen *Screen, buffer *MessageBuffer, menuSetPath string) *CommandHandler {
+func NewCommandHandler(screen *Screen, buffer *MessageBuffer, menuSetPath, yesNoHi, yesNoLo string) *CommandHandler {
 	return &CommandHandler{
 		screen:      screen,
 		buffer:      buffer,
 		menuSetPath: menuSetPath,
+		yesNoHi:     yesNoHi,
+		yesNoLo:     yesNoLo,
 	}
 }
 
@@ -139,21 +143,54 @@ func (ch *CommandHandler) HandleSave() bool {
 func (ch *CommandHandler) HandleAbort(inputHandler *InputHandler) bool {
 	// Display confirmation prompt
 	ch.screen.GoXY(1, ch.screen.statusLineY)
-	ch.screen.WriteDirectProcessed("|14Abort message? (Y/N): ")
-
-	// Wait for confirmation
-	key, err := inputHandler.ReadKey()
-	if err != nil {
-		return false
-	}
-
-	if key == 'Y' || key == 'y' {
-		return true
-	}
-
-	// Not confirmed - redisplay status line
 	ch.screen.ClearEOL()
-	return false
+	ch.screen.WriteDirectProcessed("|14Abort message?")
+
+	// Save cursor position, hide cursor, then render inline lightbar.
+	ch.screen.WriteDirect("\x1b[s")
+	ch.screen.WriteDirect("\x1b[?25l")
+	defer ch.screen.WriteDirect("\x1b[?25h")
+
+	selectedIndex := 0 // 0=No (default), 1=Yes
+
+	drawInline := func(sel int) {
+		ch.screen.WriteDirect("\x1b[u")
+		yesColor, noColor := ch.yesNoLo, ch.yesNoLo
+		if sel == 1 {
+			yesColor = ch.yesNoHi
+		} else {
+			noColor = ch.yesNoHi
+		}
+		ch.screen.WriteDirect(" " + yesColor + "Yes" + "\x1b[0m" + " " + noColor + "No!" + "\x1b[0m")
+	}
+
+	drawInline(selectedIndex)
+
+	for {
+		key, err := inputHandler.ReadKey()
+		if err != nil {
+			return false
+		}
+
+		switch key {
+		case 'Y', 'y':
+			return true
+		case 'N', 'n':
+			ch.screen.ClearEOL()
+			return false
+		case ' ', KeyEnter:
+			if selectedIndex == 1 {
+				return true
+			}
+			ch.screen.ClearEOL()
+			return false
+		case KeyArrowLeft, KeyArrowRight:
+			selectedIndex = 1 - selectedIndex
+			drawInline(selectedIndex)
+		default:
+			// Ignore other input until a selection is made.
+		}
+	}
 }
 
 // HandleQuote handles the /Q (quote) command

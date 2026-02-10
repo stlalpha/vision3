@@ -99,7 +99,8 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Lightbar colors from theme
 	hiColor := e.Theme.YesNoHighlightColor
-	loColor := e.Theme.YesNoRegularColor
+	loColor := 9 // Bright blue unselected items
+	boundsColor := 1
 
 	currentMsgNum := startMsg
 	quitNewscan := false
@@ -127,8 +128,7 @@ readerLoop:
 		}
 
 		// Build Pascal-style substitution map
-		// Note: User note is disabled until proper UI for setting it is implemented
-		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, "", currentUser.AccessLevel)
+		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel)
 
 		// Process template with substitutions
 		processedHeader := processDataFile(hdrTemplateBytes, substitutions)
@@ -194,9 +194,9 @@ readerLoop:
 				// Display footer: board info and lightbar anchored to bottom
 				var suffixText string
 				if isNewScan {
-					suffixText = " (NewScan)"
+					suffixText = " |11(NewScan)"
 				} else {
-					suffixText = " (Reading)"
+					suffixText = " |11(Reading)"
 				}
 
 				// Add scroll percentage if message is longer than display area
@@ -227,7 +227,7 @@ readerLoop:
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
 				// Draw the lightbar menu
-				drawMsgLightbarStatic(terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
+				drawMsgLightbarStatic(terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 
 				needsRedraw = false
 			}
@@ -292,9 +292,9 @@ readerLoop:
 			case "\x1b[D", "\x1b[C": // Left or Right arrow - activate interactive lightbar
 				var suffixText string
 				if isNewScan {
-					suffixText = " (NewScan)"
+					suffixText = " |11(NewScan)"
 				} else {
-					suffixText = " (Reading)"
+					suffixText = " |11(Reading)"
 				}
 
 				if totalBodyLines > bodyAvailHeight {
@@ -319,7 +319,7 @@ readerLoop:
 					initialDir = 1 // Right arrow
 				}
 
-				selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, initialDir)
+				selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, initialDir, true, boundsColor)
 				if lbErr != nil {
 					if errors.Is(lbErr, io.EOF) {
 						return nil, "LOGOFF", io.EOF
@@ -348,9 +348,9 @@ readerLoop:
 						// Not a recognized command, show lightbar
 						var suffixText string
 						if isNewScan {
-							suffixText = " (NewScan)"
+							suffixText = " |11(NewScan)"
 						} else {
-							suffixText = " (Reading)"
+							suffixText = " |11(Reading)"
 						}
 
 						// Add scroll info to suffix
@@ -369,7 +369,7 @@ readerLoop:
 						// Position cursor at last row for lightbar
 						terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
-						selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
+						selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 						if lbErr != nil {
 							if errors.Is(lbErr, io.EOF) {
 								return nil, "LOGOFF", io.EOF
@@ -383,9 +383,9 @@ readerLoop:
 					// Multi-byte sequence that wasn't handled as scrolling - show lightbar
 					var suffixText string
 					if isNewScan {
-						suffixText = " (NewScan)"
+						suffixText = " |11(NewScan)"
 					} else {
-						suffixText = " (Reading)"
+						suffixText = " |11(Reading)"
 					}
 
 					if totalBodyLines > bodyAvailHeight {
@@ -402,7 +402,7 @@ readerLoop:
 
 					terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
-					selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0)
+					selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 					if lbErr != nil {
 						if errors.Is(lbErr, io.EOF) {
 							return nil, "LOGOFF", io.EOF
@@ -968,7 +968,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			'T': "ViSiON/3 Rocks!",
 			'F': currentUser.Handle,
 			'S': "Everybody",
-			'U': "",                                 // User note disabled until proper UI implemented
+			'U': currentUser.PrivateNote,
 			'M': "LOCAL",
 			'L': strconv.Itoa(currentUser.AccessLevel),
 			'R': currentUser.RealName,

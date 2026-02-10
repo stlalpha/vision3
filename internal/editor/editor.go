@@ -8,6 +8,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/robbiew/vision3/internal/config"
 	"github.com/robbiew/vision3/internal/terminalio"
 )
 
@@ -65,8 +66,13 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, termTyp
 		}
 	}
 
+	// Load theme colors for Yes/No lightbar prompts
+	theme, _ := config.LoadThemeConfig(menuSetPath)
+	yesNoHi := colorCodeToAnsi(theme.YesNoHighlightColor)
+	yesNoLo := colorCodeToAnsi(theme.YesNoRegularColor)
+
 	// Create the full-screen editor
-	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath)
+	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo)
 
 	// Load initial content
 	if initialContent != "" {
@@ -141,8 +147,13 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 		}
 	}
 
+	// Load theme colors for Yes/No lightbar prompts
+	theme, _ := config.LoadThemeConfig(menuSetPath)
+	yesNoHi := colorCodeToAnsi(theme.YesNoHighlightColor)
+	yesNoLo := colorCodeToAnsi(theme.YesNoRegularColor)
+
 	// Create the full-screen editor
-	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath)
+	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo)
 
 	// Set metadata
 	editor.SetMetadata(subject, recipient, isAnon)
