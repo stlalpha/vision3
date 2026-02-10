@@ -14,10 +14,10 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/stlalpha/vision3/internal/ansi"
-	"github.com/stlalpha/vision3/internal/message"
-	"github.com/stlalpha/vision3/internal/terminalio"
-	"github.com/stlalpha/vision3/internal/user"
+	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/robbiew/vision3/internal/message"
+	"github.com/robbiew/vision3/internal/terminalio"
+	"github.com/robbiew/vision3/internal/user"
 	"golang.org/x/term"
 )
 

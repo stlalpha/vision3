@@ -1,4 +1,4 @@
-module github.com/stlalpha/vision3
+module github.com/robbiew/vision3
 
 go 1.24.2
 

@@ -21,17 +21,17 @@ import (
 	"golang.org/x/term"
 
 	// Local packages (Update paths)
-	"github.com/stlalpha/vision3/internal/ansi"
-	"github.com/stlalpha/vision3/internal/config"
-	"github.com/stlalpha/vision3/internal/conference"
-	"github.com/stlalpha/vision3/internal/file"
-	"github.com/stlalpha/vision3/internal/menu"
-	"github.com/stlalpha/vision3/internal/message"
-	"github.com/stlalpha/vision3/internal/sshserver"
-	"github.com/stlalpha/vision3/internal/telnetserver"
-	"github.com/stlalpha/vision3/internal/tosser"
-	"github.com/stlalpha/vision3/internal/types"
-	"github.com/stlalpha/vision3/internal/user"
+	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/robbiew/vision3/internal/config"
+	"github.com/robbiew/vision3/internal/conference"
+	"github.com/robbiew/vision3/internal/file"
+	"github.com/robbiew/vision3/internal/menu"
+	"github.com/robbiew/vision3/internal/message"
+	"github.com/robbiew/vision3/internal/sshserver"
+	"github.com/robbiew/vision3/internal/telnetserver"
+	"github.com/robbiew/vision3/internal/tosser"
+	"github.com/robbiew/vision3/internal/types"
+	"github.com/robbiew/vision3/internal/user"
 )
 
 var (

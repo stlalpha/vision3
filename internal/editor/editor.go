@@ -13,7 +13,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/stlalpha/vision3/internal/terminalio"
+	"github.com/robbiew/vision3/internal/terminalio"
 )
 
 // Setup debug file

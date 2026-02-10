@@ -4,7 +4,7 @@ import (
 	"io"
 	"unicode/utf8"
 
-	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/robbiew/vision3/internal/ansi"
 )
 
 // Helper to find the end of an ANSI sequence
