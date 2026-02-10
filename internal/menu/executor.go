@@ -1329,7 +1329,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 				// Initially draw with first option selected
 				selectedIndex := 0
-				drawErr := drawLightbarMenu(terminal, ansBackgroundBytes, lightbarOptions, selectedIndex, outputMode)
+				drawErr := drawLightbarMenu(terminal, ansBackgroundBytes, lightbarOptions, selectedIndex, outputMode, false)
 				if drawErr != nil {
 					log.Printf("ERROR: Failed to draw lightbar menu for %s: %v", currentMenuName, drawErr)
 					isLightbarMenu = false
@@ -1357,8 +1357,12 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 							// Direct selection by number
 							numIndex := int(r - '1') // Convert 1-9 to 0-8
 							if numIndex >= 0 && numIndex < len(lightbarOptions) {
+								prevIndex := selectedIndex
 								selectedIndex = numIndex
-								drawLightbarMenu(terminal, ansBackgroundBytes, lightbarOptions, selectedIndex, outputMode)
+								if prevIndex != selectedIndex {
+									_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false)
+									_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true)
+								}
 								lightbarResult = lightbarOptions[numIndex].HotKey
 								inputLoop = false
 							}
@@ -1380,13 +1384,17 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 								switch escSeq[1] {
 								case 65: // Up arrow
 									if selectedIndex > 0 {
+										prevIndex := selectedIndex
 										selectedIndex--
-										drawLightbarMenu(terminal, ansBackgroundBytes, lightbarOptions, selectedIndex, outputMode)
+										_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false)
+										_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true)
 									}
 								case 66: // Down arrow
 									if selectedIndex < len(lightbarOptions)-1 {
+										prevIndex := selectedIndex
 										selectedIndex++
-										drawLightbarMenu(terminal, ansBackgroundBytes, lightbarOptions, selectedIndex, outputMode)
+										_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false)
+										_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true)
 									}
 								}
 							}
@@ -2362,53 +2370,47 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 }
 
 // drawLightbarMenu draws the lightbar menu with the specified option selected
-func drawLightbarMenu(terminal *term.Terminal, backgroundBytes []byte, options []LightbarOption, selectedIndex int, outputMode ansi.OutputMode) error {
-	// Draw static background
-	// We might need to clear attributes before drawing background if it has colors
-	// _, err := terminal.Write([]byte(attrReset))
-	// if err != nil {
-	// 	return fmt.Errorf("failed resetting attributes before background: %w", err)
-	// }
-	_, err := terminal.Write(backgroundBytes)
+func drawLightbarOption(terminal *term.Terminal, opt LightbarOption, selected bool) error {
+	posCmd := fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X)
+	_, err := terminal.Write([]byte(posCmd))
 	if err != nil {
-		return fmt.Errorf("failed writing lightbar background: %w", err)
+		return fmt.Errorf("failed positioning cursor for lightbar option: %w", err)
 	}
 
-	// Draw each option, highlighting the selected one
+	colorCode := opt.RegularColor
+	if selected {
+		colorCode = opt.HighlightColor
+	}
+	ansiColorSequence := colorCodeToAnsi(colorCode)
+	_, err = terminal.Write([]byte(ansiColorSequence))
+	if err != nil {
+		return fmt.Errorf("failed setting color for lightbar option: %w", err)
+	}
+
+	_, err = terminal.Write([]byte(opt.Text))
+	if err != nil {
+		return fmt.Errorf("failed writing lightbar option text: %w", err)
+	}
+
+	_, err = terminal.Write([]byte(attrReset))
+	if err != nil {
+		return fmt.Errorf("failed resetting attributes after lightbar option: %w", err)
+	}
+
+	return nil
+}
+
+func drawLightbarMenu(terminal *term.Terminal, backgroundBytes []byte, options []LightbarOption, selectedIndex int, outputMode ansi.OutputMode, drawBackground bool) error {
+	if drawBackground {
+		_, err := terminal.Write(backgroundBytes)
+		if err != nil {
+			return fmt.Errorf("failed writing lightbar background: %w", err)
+		}
+	}
+
 	for i, opt := range options {
-		// Position cursor
-		posCmd := fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X)
-		_, err := terminal.Write([]byte(posCmd))
-		if err != nil {
-			return fmt.Errorf("failed positioning cursor for lightbar option: %w", err)
-		}
-
-		// Apply correct color based on selection
-		var colorCode int
-		if i == selectedIndex {
-			colorCode = opt.HighlightColor
-		} else {
-			colorCode = opt.RegularColor
-		}
-		ansiColorSequence := colorCodeToAnsi(colorCode)
-		_, err = terminal.Write([]byte(ansiColorSequence))
-
-		if err != nil {
-			return fmt.Errorf("failed setting color for lightbar option: %w", err)
-		}
-
-		// Write the option text
-		// Ensure text fits, potentially pad/truncate based on some assumed width?
-		// For now, just write the text.
-		_, err = terminal.Write([]byte(opt.Text))
-		if err != nil {
-			return fmt.Errorf("failed writing lightbar option text: %w", err)
-		}
-
-		// Always reset attributes after each option to ensure clean display
-		_, err = terminal.Write([]byte(attrReset))
-		if err != nil {
-			return fmt.Errorf("failed resetting attributes after lightbar option: %w", err)
+		if err := drawLightbarOption(terminal, opt, i == selectedIndex); err != nil {
+			return err
 		}
 	}
 
