@@ -65,14 +65,15 @@ Message areas are defined in `configs/message_areas.json` as an array:
 
 Each message area is backed by a JAM message base consisting of 4 files:
 
-| File | Extension | Contents |
-|------|-----------|----------|
-| Header | `.jhr` | 1024-byte fixed header + variable-length message headers with subfields |
-| Text | `.jdt` | Raw message text (CP437, CR line endings) |
-| Index | `.jdx` | 8-byte index records (ToCRC + header offset) per message |
-| Lastread | `.jlr` | 16-byte records tracking per-user lastread pointers |
+| File     | Extension | Contents                                                                |
+| -------- | --------- | ----------------------------------------------------------------------- |
+| Header   | `.jhr`    | 1024-byte fixed header + variable-length message headers with subfields |
+| Text     | `.jdt`    | Raw message text (CP437, CR line endings)                               |
+| Index    | `.jdx`    | 8-byte index records (ToCRC + header offset) per message                |
+| Lastread | `.jlr`    | 16-byte records tracking per-user lastread pointers                     |
 
 JAM bases are stored under `data/msgbases/` (or the path specified by `base_path`). For example, area `GENERAL` with `base_path: "msgbases/general"` creates:
+
 ```
 data/msgbases/general.jhr
 data/msgbases/general.jdt
@@ -114,6 +115,7 @@ Users can select a message area with the `SELECTMSGAREA` function:
 ### Reading Messages
 
 The `READMSGS` function allows reading messages:
+
 - Random-access by message number (no need to load all messages)
 - If there are unread messages, starts at the first unread
 - If all messages are read, prompts for a specific message number
@@ -124,6 +126,7 @@ The `READMSGS` function allows reading messages:
 ### Composing Messages
 
 The `COMPOSEMSG` function for writing new messages:
+
 - Built-in editor for message composition
 - Subject line required
 - Messages addressed to "All" by default (public)
@@ -132,6 +135,7 @@ The `COMPOSEMSG` function for writing new messages:
 ### Prompt and Compose
 
 The `PROMPTANDCOMPOSEMESSAGE` function:
+
 - Lists all message areas
 - Prompts user to select an area
 - Checks write permissions
@@ -140,6 +144,7 @@ The `PROMPTANDCOMPOSEMESSAGE` function:
 ### New Message Scan
 
 The `NEWSCAN` function scans for new messages:
+
 - Checks all accessible areas
 - Shows count of new messages per area
 - Uses JAM lastread tracking (per-user, per-area)
@@ -148,11 +153,13 @@ The `NEWSCAN` function scans for new messages:
 ## Access Control
 
 ### Reading Messages
+
 - Empty `acs_read` means public access
 - Use ACS strings to restrict: `s10`, `fA`, etc.
 - Checked when listing areas and reading messages
 
 ### Posting Messages
+
 - Empty `acs_write` means all users can post
 - Typically requires validation: `s10`
 - Can require specific flags: `s10&fM`
@@ -162,7 +169,9 @@ The `NEWSCAN` function scans for new messages:
 Message display templates are in `menus/v3/templates/`:
 
 ### Message Header Template
+
 `MSGHEAD.TPL`:
+
 ```
 |08-=[ |15Area |11|CA|08 ]=---=[ |15Msg |11|MNUM|07/|11|MTOTAL|08 ]=-
 |07From : |15|MFROM|07      To : |15|MTO|
@@ -172,17 +181,21 @@ Message display templates are in `menus/v3/templates/`:
 ```
 
 ### Message Prompt Template
+
 `MSGREAD.PROMPT`:
+
 ```
 [|MNUM/|MTOTAL] Command:
 ```
 
 ### Area List Templates
+
 - `MSGAREA.TOP` - Header
 - `MSGAREA.MID` - Row template
 - `MSGAREA.BOT` - Footer
 
 ### Template Placeholders
+
 - `|CA` - Current area tag
 - `|MNUM` - Current message number (1-based)
 - `|MTOTAL` - Total messages in area
@@ -233,17 +246,19 @@ Configure it in `configs/ftn.json` (separate from the main `config.json`):
 ### Per-Network Settings
 
 Each network key (e.g., `"fsxnet"`) contains:
+
 - `enabled` - Set to `true` to activate the tosser for this network
 - `own_address` - Your FTN address on this network (e.g., `"21:3/110"`)
 - `inbound_path` - Directory for incoming .PKT files
 - `outbound_path` - Directory for outgoing .PKT files
 - `temp_path` - Temp directory for failed packets
 - `poll_interval_seconds` - How often to scan for packets (0 = manual only)
-- `tearline` - Optional tearline text for new echomail posts (prefix `--- ` is added unless you include it)
+- `tearline` - Optional tearline text for new echomail posts (prefix `---` is added unless you include it)
 
 ### Link Configuration
 
 Each link defines a connected FTN node:
+
 - `address` - Node's FTN address
 - `password` - Packet password (shared secret)
 - `name` - Human-readable label
@@ -269,6 +284,7 @@ participate in multiple networks (e.g., FSXNet and FidoNet) simultaneously.
 ### Echomail Flow
 
 **Inbound (receiving):**
+
 1. External mailer (e.g., binkd) drops .PKT files in `inbound_path`
 2. Tosser polls at configured interval
 3. Each packet is parsed, messages extracted
@@ -278,6 +294,7 @@ participate in multiple networks (e.g., FSXNet and FidoNet) simultaneously.
 7. Message written to JAM base
 
 **Outbound (sending):**
+
 1. User posts message in echomail area
 2. Message written to JAM with `DateProcessed=0`
 3. Tosser scans for unprocessed messages
@@ -290,6 +307,7 @@ participate in multiple networks (e.g., FSXNet and FidoNet) simultaneously.
 
 1. Edit `configs/message_areas.json`
 2. Add new area object to the array:
+
 ```json
 {
   "id": 2,
@@ -303,14 +321,16 @@ participate in multiple networks (e.g., FSXNet and FidoNet) simultaneously.
   "area_type": "local"
 }
 ```
+
 3. Restart BBS (areas are loaded at startup)
-4. JAM base files will be created automatically on first access
+2. JAM base files will be created automatically on first access
 
 ## Message Management
 
 ### JAM Base Maintenance
 
 JAM bases are binary files that may need periodic maintenance:
+
 - **Backups**: Backup the `data/msgbases/` directory regularly
 - **Integrity**: If a base becomes corrupted, delete the 4 JAM files and the base will be recreated (messages will be lost)
 - **Growth**: JAM text files (.jdt) grow as messages are added. Deleted messages leave gaps that can be reclaimed by packing.
@@ -322,6 +342,7 @@ The FTN dupe database (`data/ftn/dupes.json`) tracks MSGIDs to prevent duplicate
 ## Current Limitations
 
 ### Not Yet Implemented
+
 - Message deletion/moderation UI
 - Anonymous posting
 - Message limits per area
@@ -331,24 +352,28 @@ The FTN dupe database (`data/ftn/dupes.json`) tracks MSGIDs to prevent duplicate
 - JAM base packing/defragmentation utility (jamutil)
 
 ### In Development
+
 - Network message support is functional (echomail tosser built in)
 - Message threading view
 
 ## Troubleshooting
 
 ### Messages Not Showing
+
 - Check user's access level vs `acs_read`
 - Verify JAM base files exist in `data/msgbases/`
 - Check BBS logs for JAM open errors
 - Ensure area ID matches configuration
 
 ### Can't Post Messages
+
 - Verify `acs_write` requirements are met
 - Check user is validated if required
 - Ensure area exists in configuration
 - Check write permissions on `data/msgbases/` directory
 
 ### Echomail Not Working
+
 - Verify `ftn.enabled` is `true` in config.json
 - Check `own_address` is set correctly
 - Ensure echo area tags match between config and message_areas.json
@@ -358,6 +383,7 @@ The FTN dupe database (`data/ftn/dupes.json`) tracks MSGIDs to prevent duplicate
 ## API Reference
 
 ### MessageManager Methods
+
 - `NewMessageManager(dataPath, configPath, boardName)` - Initialize with JAM bases
 - `Close()` - Close all JAM bases (call on shutdown)
 - `ListAreas()` - Returns all message areas sorted by ID

@@ -59,6 +59,7 @@ The original SSH server implementation using `golang.org/x/crypto/ssh` could not
 C preamble contains helper functions for callback struct allocation (since `ssh_callbacks_init` is a C macro inaccessible from Go). Go code manages the SSH server lifecycle and per-connection event loop.
 
 Key functions:
+
 ```go
 NewServer(config Config) (*Server, error)
 Listen() error
@@ -68,6 +69,7 @@ flushWrites(cs *connState)               // Drain write channel
 ```
 
 Key types:
+
 ```go
 connState   // Per-connection state bridging C callbacks to Go channels
 closeSignal // Thread-safe one-shot close notification (sync.Once + chan)
@@ -77,30 +79,33 @@ closeSignal // Thread-safe one-shot close notification (sync.Once + chan)
 
 Contains `//export` Go functions invoked by libssh during `ssh_event_dopoll()`:
 
-|Callback|Purpose|
-|---|---|
-|`go_auth_password_cb`|Password authentication|
-|`go_auth_none_cb`|None authentication|
-|`go_channel_open_cb`|Channel open + set channel callbacks|
-|`go_channel_data_cb`|Incoming data → Go read channel|
-|`go_channel_pty_request_cb`|PTY request (term, dimensions)|
-|`go_channel_shell_request_cb`|Shell request → start session|
-|`go_channel_pty_window_change_cb`|Window resize events|
-|`go_channel_close_cb` / `go_channel_eof_cb`|Connection close|
+| Callback                                    | Purpose                              |
+| ------------------------------------------- | ------------------------------------ |
+| `go_auth_password_cb`                       | Password authentication              |
+| `go_auth_none_cb`                           | None authentication                  |
+| `go_channel_open_cb`                        | Channel open + set channel callbacks |
+| `go_channel_data_cb`                        | Incoming data → Go read channel      |
+| `go_channel_pty_request_cb`                 | PTY request (term, dimensions)       |
+| `go_channel_shell_request_cb`               | Shell request → start session        |
+| `go_channel_pty_window_change_cb`           | Window resize events                 |
+| `go_channel_close_cb` / `go_channel_eof_cb` | Connection close                     |
 
 #### 3. **adapter.go** - Interface Compatibility Layer
+
 - Adapts libssh Session to `gliderlabs/ssh.Session` interface
 - Bridges `sshserver.Window` events to `ssh.Window` via goroutine
 - Provides context management
 - Maintains compatibility with existing BBS code
 
 Key types:
+
 ```go
 BBSSessionAdapter - Implements ssh.Session interface
 BBSSessionContext - Implements ssh.Context interface
 ```
 
 #### 4. **main.go** - Integration
+
 - SSH authentication bypass for users authenticated at SSH protocol level
 - Terminal type detection (CP437 for SyncTerm)
 - Session handler integration
@@ -150,6 +155,7 @@ Client ← ssh_channel_write ← flushWrites ← writeCh ← Session.Write() ←
 ## Configuration
 
 ### config.json
+
 ```json
 {
   "sshPort": 2222,
@@ -170,20 +176,24 @@ Client ← ssh_channel_write ← flushWrites ← writeCh ← Session.Write() ←
 ## Algorithm Support
 
 ### Modern Algorithms (Used by Default)
+
 libssh defaults provide secure modern algorithms that work with SyncTerm:
 
 **Ciphers:**
+
 - aes128-ctr, aes192-ctr, aes256-ctr
-- chacha20-poly1305@openssh.com
+- <chacha20-poly1305@openssh.com>
 
 **Key Exchange:**
+
 - ecdh-sha2-nistp256/384/521
 - diffie-hellman-group14/16/18-sha256/512
 - curve25519-sha256
 
 **MACs:**
+
 - hmac-sha2-256, hmac-sha2-512
-- hmac-sha2-256-etm@openssh.com, hmac-sha2-512-etm@openssh.com
+- <hmac-sha2-256-etm@openssh.com>, <hmac-sha2-512-etm@openssh.com>
 
 ## Testing Results
 
@@ -218,6 +228,7 @@ libssh defaults provide secure modern algorithms that work with SyncTerm:
 ## Build Requirements
 
 ### System Dependencies
+
 ```bash
 # Ubuntu/Debian
 apt-get install libssh-dev
@@ -230,7 +241,9 @@ brew install libssh
 ```
 
 ### Go Build
+
 No special flags needed - CGO picks up libssh via pkg-config:
+
 ```bash
 cd cmd/vision3
 go build -o ../../vision3
@@ -261,10 +274,10 @@ go build -o ../../vision3
 
 ## References
 
-- libssh documentation: https://www.libssh.org/
-- SyncTerm project: https://syncterm.bbsdev.net/
+- libssh documentation: <https://www.libssh.org/>
+- SyncTerm project: <https://syncterm.bbsdev.net/>
 - SSH Protocol RFC: RFC 4253 (SSH Transport Layer Protocol)
-- Go CGO documentation: https://pkg.go.dev/cmd/cgo
+- Go CGO documentation: <https://pkg.go.dev/cmd/cgo>
 
 ---
 *Document created: 2026-02-09*

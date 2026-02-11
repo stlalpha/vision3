@@ -7,6 +7,7 @@ This guide covers the configuration files used by ViSiON/3 BBS.
 Configuration files are split between two directories:
 
 **In `configs/` directory:**
+
 - `strings.json` - Customizable text strings and prompts
 - `doors.json` - External door program configurations
 - `file_areas.json` - File area definitions
@@ -22,6 +23,7 @@ Configuration files are split between two directories:
 - `ansi/PRELOGON.ANS` (or `PRELOGON.1`, `PRELOGON.2`, ...) - Pre-login ANSI screens shown before LOGIN (see [Menu System Guide](menu-system.md#pre-login-ansi-files-prelogon))
 
 **In `data/` directory:**
+
 - `oneliners.json` - One-liner messages (JSON array)
 - `oneliners.dat` - Legacy one-liner format (plain text, optional)
 
@@ -32,17 +34,20 @@ This file contains all the customizable text strings displayed by the BBS. You c
 ### Key String Categories
 
 **Login/Authentication Strings:**
+
 - `whatsYourAlias` - Login username prompt
 - `whatsYourPw` - Login password prompt
 - `systemPasswordStr` - System password prompt
 - `wrongPassword` - Invalid password message
 
 **User Interface Strings:**
+
 - `pauseString` - Pause prompt (e.g., "Press Enter to continue")
 - `defPrompt` - Default menu prompt
 - `continueStr` - More prompt for paginated displays
 
 **New User Strings:**
+
 - `newUserNameStr` - New user alias prompt
 - `createAPassword` - New user password creation
 - `enterRealName` - Real name prompt
@@ -50,12 +55,14 @@ This file contains all the customizable text strings displayed by the BBS. You c
 - `checkingUserBase` - Message shown while validating handle uniqueness
 
 **Message System Strings:**
+
 - `msgTitleStr` - Message title prompt
 - `msgToStr` - Message recipient prompt
 - `changeBoardStr` - Message area selection
 - `postOnBoardStr` - Post confirmation
 
 **File System Strings:**
+
 - `changeFileAreaStr` - File area selection
 - `downloadStr` - Download prompt
 - `uploadFileStr` - Upload prompt
@@ -72,6 +79,7 @@ This file contains all the customizable text strings displayed by the BBS. You c
 ### Pipe Color Codes
 
 The strings support pipe color codes:
+
 - `|00-|15` - Standard 16 colors
 - `|B0-|B7` - Background colors
 - Special codes: `|CR` (carriage return), `|DE` (clear to end)
@@ -189,6 +197,7 @@ General BBS configuration settings.
 ### Field Descriptions
 
 **BBS Settings:**
+
 - `boardName` - BBS name displayed to users
 - `boardPhoneNumber` - Phone number (historical/display purposes)
 - `sysOpLevel` - Security level for SysOp access
@@ -196,11 +205,13 @@ General BBS configuration settings.
 - `logonLevel` - Security level granted after successful login
 
 **SSH Server:**
+
 - `sshPort` - Port for SSH connections (default: 2222)
 - `sshHost` - Bind address for SSH listener (default: `0.0.0.0`)
 - `sshEnabled` - Enable or disable the SSH server
 
 **Telnet Server:**
+
 - `telnetPort` - Port for telnet connections (default: 2323)
 - `telnetHost` - Bind address for telnet listener (default: `0.0.0.0`)
 - `telnetEnabled` - Enable or disable the telnet server
@@ -276,9 +287,11 @@ If `conferences.json` is missing or empty, the system operates as before — are
 Menu files are located in `menus/v3/` with three components per menu:
 
 ### .MNU Files (Menu Definition)
+
 Located in `menus/v3/mnu/`
 
 Example `LOGIN.MNU`:
+
 ```
 RUN:FULL_LOGIN_SEQUENCE
 COND:LI:GOTO:MAIN
@@ -286,14 +299,17 @@ HOTKEY:A:RUN:AUTHENTICATE
 ```
 
 ### .CFG Files (Menu Configuration)
+
 Located in `menus/v3/cfg/`
 
 Contains menu settings like:
+
 - ACS requirements
 - Password protection
 - Display options
 
 ### .ANS Files (Menu Display)
+
 Located in `menus/v3/ansi/`
 
 ANSI art files displayed when the menu loads.
@@ -315,6 +331,7 @@ The `menus/v3/theme.json` file controls color schemes:
 - `yesNoRegularColor` - DOS color code for regular yes/no prompts
 
 Standard DOS color codes range from 0-255, where:
+
 - 0-15: Standard 16 colors
 - 16-231: Extended color palette
 - 232-255: Grayscale
@@ -341,6 +358,7 @@ Located in the `data/` directory. Stores user-submitted one-liner messages displ
 ```
 
 The file is a simple JSON array of strings. Each one-liner can include:
+
 - User messages
 - Pipe color codes (|00-|15)
 - Any text up to the configured line length
@@ -350,11 +368,13 @@ The system dynamically loads this file when displaying oneliners and saves new e
 ## SSH Host Keys
 
 The `configs/` directory contains SSH host keys:
+
 - `ssh_host_rsa_key` - RSA host key (required)
 - `ssh_host_ed25519_key` - Ed25519 host key (optional)
 - `ssh_host_dsa_key` - DSA host key (optional)
 
 The RSA host key must be generated before starting the BBS:
+
 ```bash
 cd configs
 ssh-keygen -t rsa -f ssh_host_rsa_key -N ""
@@ -372,13 +392,15 @@ The BBS will fail to start if the host key is missing.
 ## Applying Configuration Changes
 
 Most configuration changes take effect:
+
 - **Immediately**: String changes, theme changes
 - **On user login**: User-specific settings
 - **On restart**: Door configurations, file areas, general config
 
 Some changes may require a server restart:
+
 ```bash
 # Stop the server (Ctrl+C)
 # Start it again
 ./vision3
-``` 
+```

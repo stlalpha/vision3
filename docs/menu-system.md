@@ -5,11 +5,13 @@ The ViSiON/3 menu system is the core of the BBS user interface. This guide expla
 ## Menu System Overview
 
 Each menu consists of three files:
+
 1. `.MNU` file - Menu configuration (prompts, clear screen, access control)
 2. `.CFG` file - Command definitions (what happens when keys are pressed)
 3. `.ANS` file - ANSI art displayed when menu loads
 
 All menu files are located in `menus/v3/`:
+
 - `menus/v3/mnu/` - Menu configuration files
 - `menus/v3/cfg/` - Command definition files
 - `menus/v3/ansi/` - ANSI art files
@@ -88,25 +90,33 @@ Command files are JSON arrays that define what happens when users press keys.
 ### Command Actions
 
 #### Goto Command
+
 Navigate to another menu:
+
 ```json
 "CMD": "GOTO:MAIN"
 ```
 
 #### Run Command
+
 Execute a built-in function:
+
 ```json
 "CMD": "RUN:SHOWSTATS"
 ```
 
 #### Door Command
+
 Launch external program:
+
 ```json
 "CMD": "DOOR:TETRIS"
 ```
 
 #### Logoff Command
+
 Disconnect the user:
+
 ```json
 "CMD": "LOGOFF"
 ```
@@ -114,6 +124,7 @@ Disconnect the user:
 ## ANSI Art Files (.ANS)
 
 ANSI files contain the visual display for menus. They support:
+
 - Standard ANSI escape codes
 - Pipe color codes (|00-|15)
 - Special placeholder codes
@@ -134,6 +145,7 @@ ANSI files contain the visual display for menus. They support:
 ### Special Placeholder Codes
 
 Dynamic content placeholders in prompts and ANSI files:
+
 - `|UH` - User handle
 - `|TL` - Time left (in minutes)
 - `|CA` - Current area (message or file area tag)
@@ -146,12 +158,14 @@ Dynamic content placeholders in prompts and ANSI files:
 ### Coordinate Codes
 
 For interactive positioning (like login screens):
+
 - `|{P}` - Mark username input position
 - `|{O}` - Mark password input position
 
 ## Access Control Strings (ACS)
 
 Control who can access menus and commands:
+
 - `*` - All users (including unauthenticated)
 - `s10` - Security level 10+
 - `fA` - Must have flag A
@@ -164,6 +178,7 @@ Control who can access menus and commands:
 ### Step 1: Create Menu Configuration
 
 Create `menus/v3/mnu/MYMENU.MNU`:
+
 ```json
 {
   "CLR": true,
@@ -179,6 +194,7 @@ Create `menus/v3/mnu/MYMENU.MNU`:
 ### Step 2: Create Command Definitions
 
 Create `menus/v3/cfg/MYMENU.CFG`:
+
 ```json
 [
   {
@@ -209,6 +225,7 @@ Create `menus/v3/ansi/MYMENU.ANS` with your menu design.
 ### Step 4: Link to Menu
 
 Add a command in another menu to access it:
+
 ```json
 {
   "KEYS": "M",
@@ -233,6 +250,7 @@ The matrix uses the standard menu file system with three files:
 3. `menus/v3/mnu/PDMATRIX.MNU` — Menu settings (optional, for consistency)
 
 **PDMATRIX.BAR:**
+
 ```
 ; Pre-login matrix menu
 ; FORMAT: X,Y,HiLitedColor,RegularColor,HotKey,ReturnValue,DisplayText
@@ -243,6 +261,7 @@ The matrix uses the standard menu file system with three files:
 ```
 
 **PDMATRIX.CFG:**
+
 ```json
 [
     {"KEYS": "J", "CMD": "LOGIN", "ACS": "*", "HIDDEN": false},
@@ -274,12 +293,12 @@ Standard command definition format (see [Command Definition Files](#command-defi
 
 ### Available Actions
 
-| Action | Behavior |
-| --- | --- |
-| `LOGIN` | Displays a random PRELOGON ANSI file (if any exist), then proceeds to the LOGIN menu for authentication |
-| `NEWUSER` | Launches the new user registration form, then returns to the matrix |
-| `CHECKACCESS` | Prompts for a username and displays account validation status, then returns to the matrix |
-| `DISCONNECT` | Disconnects the session |
+| Action        | Behavior                                                                                                |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| `LOGIN`       | Displays a random PRELOGON ANSI file (if any exist), then proceeds to the LOGIN menu for authentication |
+| `NEWUSER`     | Launches the new user registration form, then returns to the matrix                                     |
+| `CHECKACCESS` | Prompts for a username and displays account validation status, then returns to the matrix               |
+| `DISCONNECT`  | Disconnects the session                                                                                 |
 
 ### Navigation
 
@@ -337,6 +356,7 @@ If no PRELOGON files exist in `menus/v3/ansi/`, the step is silently skipped and
 7. On failure: Stay at `LOGIN`
 
 ### Main Menu Flow
+
 1. Load `MAIN.MNU` configuration
 2. Execute auto-run commands (`//` once, `~~` always)
 3. Clear screen if `CLR` is true
@@ -349,7 +369,9 @@ If no PRELOGON files exist in `menus/v3/ansi/`, the step is silently skipped and
 ## Advanced Features
 
 ### Auto-Run Commands
+
 Commands that execute automatically:
+
 ```json
 {
   "KEYS": "//",
@@ -358,22 +380,28 @@ Commands that execute automatically:
   "HIDDEN": true
 }
 ```
+
 - `//` - Runs once per session per menu
 - `~~` - Runs every time the menu loads
 
 ### Menu Passwords
+
 Set password in .MNU file:
+
 ```json
 {
   "PASS": "secret"
 }
 ```
+
 Users must enter the password to access the menu.
 
 ### Lightbar Menus
+
 Enable cursor-driven selection by creating a `.BAR` file:
 
 `menus/v3/bar/MYMENU.BAR`:
+
 ```
 1,5,31,15,1,UNUSED,Normal Login
 1,6,31,15,2,UNUSED,New User Application
@@ -395,17 +423,20 @@ Functions available via `RUN:` command:
 - `LASTCALLERS` - Show recent callers
 
 ### Messaging System
+
 - `LISTMSGAR` - List message areas
 - `COMPOSEMSG` - Write new message
 - `READMSGS` - Read messages
 - `NEWSCAN` - Scan for new messages
 
 ### File System
+
 - `LISTFILES` - List files in current area
 - `LISTFILEAR` - List file areas
 - `SELECTFILEAREA` - Choose file area
 
 ### Other Functions
+
 - `ONELINER` - One-liner system
 - `SHOWVERSION` - Display BBS version
 - `READMAIL` - Read private mail (placeholder)
@@ -413,6 +444,7 @@ Functions available via `RUN:` command:
 ## Special Menu Names
 
 Some menu names have special behavior:
+
 - `LOGIN` - Uses coordinate codes for positioned input
 - `MAIN` - Typically the main menu after login
 - `FASTLOGN` - Fast login menu (often shows news/stats)
@@ -420,19 +452,22 @@ Some menu names have special behavior:
 ## Troubleshooting
 
 ### Menu Not Loading
+
 - Check file names match exactly (case-sensitive)
 - Verify .MNU and .CFG files are valid JSON
 - Ensure .ANS file exists if referenced
 - Review logs for error messages
 
 ### Commands Not Working
+
 - Verify command syntax in .CFG file
 - Check ACS requirements are met
 - Ensure function is registered for RUN commands
 - Check door configuration for DOOR commands
 
 ### Display Issues
+
 - Ensure ANSI file uses correct encoding
 - Test with different terminal types
 - Check for unmatched pipe codes
-- Verify placeholder codes are spelled correctly 
+- Verify placeholder codes are spelled correctly

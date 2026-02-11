@@ -9,11 +9,13 @@ Successfully implemented scrollable message reading in Vision3 while preserving 
 ### 1. Scrollable Body Region
 
 **New Function:** `readKeySequence()` in `internal/menu/message_lightbar.go`
+
 - Reads complete escape sequences for arrow keys and Page Up/Down
 - Handles multi-byte sequences with timeout protection
 - Returns string for easy switch statement handling
 
 **Supported Scrolling Keys:**
+
 - `↑` Up Arrow - Scroll up one line
 - `↓` Down Arrow - Scroll down one line
 - `Page Up` - Scroll up one page (bodyHeight - 2 lines)
@@ -22,10 +24,12 @@ Successfully implemented scrollable message reading in Vision3 while preserving 
 ### 2. Fixed Footer Region
 
 **Footer Always Anchored at Bottom:**
+
 - Line `termHeight - 1`: Board info showing current area and message count
 - Line `termHeight`: Lightbar menu with commands
 
 **Scroll Percentage Indicator:**
+
 - Shows percentage (e.g., `[45%]`) when message is longer than display area
 - Calculated as: `(scrollOffset * 100) / maxScroll`
 - Dynamically updates as user scrolls
@@ -50,6 +54,7 @@ Successfully implemented scrollable message reading in Vision3 while preserving 
 ### 4. Inner Scroll Loop
 
 **New Control Flow:**
+
 1. Outer loop (`readerLoop`): Iterates through messages
 2. Inner loop (`scrollLoop`): Handles scrolling within current message
 3. User can scroll up/down/pageup/pagedown without changing message
@@ -58,17 +63,20 @@ Successfully implemented scrollable message reading in Vision3 while preserving 
 ### 5. Efficient Rendering
 
 **Full Redraw** (only when needed):
+
 - New message loaded
 - After reply/post commands
 - After help display
 - When needsRedraw flag is set
 
 **Partial Redraw** (during scrolling):
+
 - Only message body lines are repositioned
 - Header stays in place
 - Footer updates with new scroll percentage
 
 **Explicit Cursor Positioning:**
+
 ```go
 for i := 0; i < bodyAvailHeight; i++ {
     lineNum := bodyStartRow + i
@@ -117,6 +125,7 @@ for i := 0; i < bodyAvailHeight; i++ {
 ## Key Improvements Over Previous Implementation
 
 ### Before (Pagination-Based)
+
 - User sees message in chunks
 - Must press Enter to continue reading
 - "More" prompts interrupt flow
@@ -125,6 +134,7 @@ for i := 0; i < bodyAvailHeight; i++ {
 - No indication of message length or position
 
 ### After (Scrollable)
+
 - See entire message (or scrollable portion)
 - No interruptions - read at your own pace
 - Smooth arrow key and page up/down scrolling
@@ -135,7 +145,9 @@ for i := 0; i < bodyAvailHeight; i++ {
 ## Technical Details
 
 ### Pre-formatted Message Lines
+
 All body lines are now formatted before display:
+
 ```go
 // Process message body and pre-format all lines
 processedBodyStr := string(ansi.ReplacePipeCodes([]byte(currentMsg.Body)))
@@ -151,6 +163,7 @@ if area != nil && (area.AreaType == "echomail" || area.AreaType == "netmail") {
 ```
 
 ### Scroll State Management
+
 ```go
 scrollOffset := 0              // Current scroll position (0 = top)
 totalBodyLines := len(wrappedBodyLines)  // Total lines in message
@@ -158,6 +171,7 @@ needsRedraw := true            // Flag to trigger full redraw
 ```
 
 ### Scroll Bounds Checking
+
 ```go
 // Page Down example
 scrollOffset += pageSize
@@ -173,11 +187,13 @@ if scrollOffset > maxScroll {
 ### Command Key Handling
 
 **Direct Command Keys** (bypass lightbar):
+
 - Single letters: N, R, A, S, T, P, J, M, L, Q, ?
 - Enter = Next message
 - ESC = Quit
 
 **Other Keys** (show lightbar):
+
 - Any unrecognized key displays the lightbar
 - User selects command from menu
 - Maintains familiar interface
@@ -187,11 +203,13 @@ if scrollOffset > maxScroll {
 ### 1. `/internal/menu/message_lightbar.go`
 
 **Added:**
+
 - `readKeySequence()` function for escape sequence handling
 
 ### 2. `/internal/menu/message_reader.go`
 
 **Modified:**
+
 - `runMessageReader()` function completely refactored
 - Removed pagination/"More" prompt logic
 - Added inner `scrollLoop` for scrolling
@@ -203,6 +221,7 @@ if scrollOffset > maxScroll {
 ## Usage
 
 ### For Users
+
 1. Read messages as before using the menu system
 2. Use arrow keys to scroll up/down one line
 3. Use Page Up/Down to scroll faster
@@ -210,6 +229,7 @@ if scrollOffset > maxScroll {
 5. Watch the percentage indicator for long messages
 
 ### For Developers
+
 The implementation maintains backward compatibility while adding new functionality. No configuration changes needed - it "just works" with existing Vision3 installations.
 
 ## Testing Recommendations

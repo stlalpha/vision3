@@ -78,25 +78,28 @@ The system is designed as a single Go application that listens for incoming SSH 
    * Handles file uploads/downloads and descriptions
 
 10. **Conference Manager (`internal/conference/conference.go`)**
-   * Groups message areas and file areas into named conferences
-   * Configuration loaded from `configs/conferences.json`
-   * Provides conference ACS filtering for area visibility
-   * Optional — system operates with flat area listings if conferences.json is missing
 
-11. **ANSI Handler (`internal/ansi/ansi.go`)**
-   * Parses ViSiON/2 specific pipe codes (`|00`-`|15`, `|B0`-`|B7`, etc.)
-   * Converts CP437 characters to UTF-8 or VT100 line drawing
-   * Supports multiple output modes (UTF-8, CP437, Auto)
-   * Handles ANSI screen processing and display
+* Groups message areas and file areas into named conferences
+* Configuration loaded from `configs/conferences.json`
+* Provides conference ACS filtering for area visibility
+* Optional — system operates with flat area listings if conferences.json is missing
 
-12. **Configuration (`configs/` directory)**
-   * `strings.json` - Externalized UI strings and prompts
-   * `config.json` - General system configuration
-   * `doors.json` - External door program configurations
-   * `file_areas.json` - File area definitions
-   * `message_areas.json` - Message area definitions
-   * `conferences.json` - Conference grouping definitions
-   * SSH host keys (`ssh_host_rsa_key`, etc.)
+1. **ANSI Handler (`internal/ansi/ansi.go`)**
+
+* Parses ViSiON/2 specific pipe codes (`|00`-`|15`, `|B0`-`|B7`, etc.)
+* Converts CP437 characters to UTF-8 or VT100 line drawing
+* Supports multiple output modes (UTF-8, CP437, Auto)
+* Handles ANSI screen processing and display
+
+1. **Configuration (`configs/` directory)**
+
+* `strings.json` - Externalized UI strings and prompts
+* `config.json` - General system configuration
+* `doors.json` - External door program configurations
+* `file_areas.json` - File area definitions
+* `message_areas.json` - Message area definitions
+* `conferences.json` - Conference grouping definitions
+* SSH host keys (`ssh_host_rsa_key`, etc.)
 
 ## Data Flow
 

@@ -40,12 +40,14 @@ ViSiON/3 includes a native telnet server alongside the SSH server. Both protocol
 Handles all telnet protocol concerns: IAC command parsing, option negotiation, NAWS window size detection, and ANSI cursor position reporting.
 
 Key types:
+
 ```go
 TelnetConn  // Wraps net.Conn with IAC-transparent Read/Write
 telnetState // IAC state machine state (9 states)
 ```
 
 Key functions:
+
 ```go
 NewTelnetConn(conn net.Conn) *TelnetConn
 Negotiate() error                                   // Send option negotiations
@@ -59,6 +61,7 @@ Write(p []byte) (int, error)                        // 0xFF-escaped write
 Adapts `TelnetConn` to the `gliderlabs/ssh.Session` interface so the existing `sessionHandler()` works unchanged for telnet connections.
 
 Key types:
+
 ```go
 TelnetSessionAdapter  // Implements ssh.Session interface
 TelnetSessionContext  // Implements context.Context + ssh.Context
@@ -69,6 +72,7 @@ TelnetSessionContext  // Implements context.Context + ssh.Context
 Manages TCP listener, connection acceptance, and per-connection goroutines.
 
 Key types:
+
 ```go
 Server         // TCP listener and connection dispatcher
 Config         // Port, Host, SessionHandler
@@ -81,13 +85,13 @@ SessionHandler // func(*TelnetSessionAdapter)
 
 On connection, the server sends the following telnet option negotiations:
 
-| Sequence | Meaning |
-|---|---|
-| `IAC WILL ECHO` | Server will echo input (character mode) |
-| `IAC WILL SGA` | Server suppresses go-ahead |
-| `IAC DO SGA` | Client should suppress go-ahead |
+| Sequence            | Meaning                                 |
+| ------------------- | --------------------------------------- |
+| `IAC WILL ECHO`     | Server will echo input (character mode) |
+| `IAC WILL SGA`      | Server suppresses go-ahead              |
+| `IAC DO SGA`        | Client should suppress go-ahead         |
 | `IAC DONT LINEMODE` | Disable line mode (character-at-a-time) |
-| `IAC DO NAWS` | Request window size from client |
+| `IAC DO NAWS`       | Request window size from client         |
 
 After sending negotiations, the server waits 500ms to drain client responses before proceeding.
 
@@ -100,20 +104,21 @@ stateData → stateIAC → stateWill/stateWont/stateDo/stateDont → stateData
           → stateIAC → stateSB → stateSBData → stateSBIAC → stateData
 ```
 
-| State | Description |
-|---|---|
-| `stateData` | Normal data — passes bytes through to caller |
-| `stateIAC` | Received IAC (0xFF) — next byte determines command |
-| `stateWill/Wont/Do/Dont` | Option negotiation — consumes option byte |
-| `stateSB` | Subnegotiation begin — captures option byte |
-| `stateSBData` | Accumulating subnegotiation data |
-| `stateSBIAC` | IAC inside subnegotiation — SE ends it, IAC escapes 0xFF |
+| State                    | Description                                              |
+| ------------------------ | -------------------------------------------------------- |
+| `stateData`              | Normal data — passes bytes through to caller             |
+| `stateIAC`               | Received IAC (0xFF) — next byte determines command       |
+| `stateWill/Wont/Do/Dont` | Option negotiation — consumes option byte                |
+| `stateSB`                | Subnegotiation begin — captures option byte              |
+| `stateSBData`            | Accumulating subnegotiation data                         |
+| `stateSBIAC`             | IAC inside subnegotiation — SE ends it, IAC escapes 0xFF |
 
 The state machine persists across `Read()` calls, correctly handling IAC sequences that span read boundaries.
 
 #### 0xFF Byte Escaping
 
 Since 0xFF is the IAC control byte in the telnet protocol:
+
 - **Read**: `IAC IAC` (0xFF 0xFF) is unescaped to a single `0xFF` byte
 - **Write**: Any `0xFF` in output data is escaped to `IAC IAC`
 - Write uses a fast path (direct write) when no 0xFF bytes are present
@@ -175,20 +180,20 @@ Hard defaults of 80 columns by 25 rows if neither CPR nor NAWS provides valid di
 
 The `TelnetSessionAdapter` implements every method of `gliderlabs/ssh.Session`:
 
-| Method | Telnet Behavior |
-|---|---|
-| `Read()` / `Write()` | Delegates to `TelnetConn` (IAC-filtered/escaped) |
-| `Close()` | Cancels context, closes TCP connection |
-| `Pty()` | Returns `Term="ansi"`, NAWS/CPR dimensions, window change channel |
-| `User()` | Returns `""` (forces manual login flow) |
-| `RemoteAddr()` / `LocalAddr()` | From underlying TCP connection |
-| `Context()` | Returns `TelnetSessionContext` |
-| `SessionID()` | Format: `telnet-{nanotime}-{counter}` |
-| `Stderr()` | Returns self (same stream as stdout for BBS) |
-| `Environ()` / `Command()` | Empty (shell session) |
-| `PublicKey()` / `Permissions()` | `nil` / empty (no SSH auth) |
-| `SendRequest()` | Returns error (not supported) |
-| `CloseWrite()` / `Signals()` / `Break()` | No-op |
+| Method                                   | Telnet Behavior                                                   |
+| ---------------------------------------- | ----------------------------------------------------------------- |
+| `Read()` / `Write()`                     | Delegates to `TelnetConn` (IAC-filtered/escaped)                  |
+| `Close()`                                | Cancels context, closes TCP connection                            |
+| `Pty()`                                  | Returns `Term="ansi"`, NAWS/CPR dimensions, window change channel |
+| `User()`                                 | Returns `""` (forces manual login flow)                           |
+| `RemoteAddr()` / `LocalAddr()`           | From underlying TCP connection                                    |
+| `Context()`                              | Returns `TelnetSessionContext`                                    |
+| `SessionID()`                            | Format: `telnet-{nanotime}-{counter}`                             |
+| `Stderr()`                               | Returns self (same stream as stdout for BBS)                      |
+| `Environ()` / `Command()`                | Empty (shell session)                                             |
+| `PublicKey()` / `Permissions()`          | `nil` / empty (no SSH auth)                                       |
+| `SendRequest()`                          | Returns error (not supported)                                     |
+| `CloseWrite()` / `Signals()` / `Break()` | No-op                                                             |
 
 ### SSH vs Telnet Authentication
 
@@ -209,11 +214,11 @@ A key difference between the two protocols:
 }
 ```
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `telnetPort` | int | 2323 | TCP port for telnet connections |
-| `telnetHost` | string | `0.0.0.0` | Bind address for telnet listener |
-| `telnetEnabled` | bool | true | Enable or disable the telnet server |
+| Field           | Type   | Default   | Description                         |
+| --------------- | ------ | --------- | ----------------------------------- |
+| `telnetPort`    | int    | 2323      | TCP port for telnet connections     |
+| `telnetHost`    | string | `0.0.0.0` | Bind address for telnet listener    |
+| `telnetEnabled` | bool   | true      | Enable or disable the telnet server |
 
 ### Command-Line Testing
 
@@ -230,12 +235,12 @@ nc localhost 2323
 
 ## Supported Telnet Options
 
-| Option | Code | Direction | Purpose |
-|---|---|---|---|
-| ECHO | 1 | `WILL` | Server echoes input (character mode) |
-| SGA | 3 | `WILL` + `DO` | Suppress go-ahead (full-duplex) |
-| LINEMODE | 34 | `DONT` | Disable line buffering |
-| NAWS | 31 | `DO` | Request terminal dimensions |
+| Option   | Code | Direction     | Purpose                              |
+| -------- | ---- | ------------- | ------------------------------------ |
+| ECHO     | 1    | `WILL`        | Server echoes input (character mode) |
+| SGA      | 3    | `WILL` + `DO` | Suppress go-ahead (full-duplex)      |
+| LINEMODE | 34   | `DONT`        | Disable line buffering               |
+| NAWS     | 31   | `DO`          | Request terminal dimensions          |
 
 ## Terminal Compatibility
 
@@ -271,8 +276,8 @@ nc localhost 2323
 - Telnet Protocol: RFC 854 (Telnet Protocol Specification)
 - NAWS: RFC 1073 (Telnet Window Size Option)
 - Linemode: RFC 1184 (Telnet Linemode Option)
-- SyncTerm: https://syncterm.bbsdev.net/
-- gliderlabs/ssh: https://github.com/gliderlabs/ssh
+- SyncTerm: <https://syncterm.bbsdev.net/>
+- gliderlabs/ssh: <https://github.com/gliderlabs/ssh>
 
 ---
 *Document created: 2026-02-09*

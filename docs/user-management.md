@@ -46,17 +46,20 @@ Users are stored as a JSON array. Each user account contains:
 ### User Fields
 
 #### Essential Fields
+
 - `id` - Unique numeric identifier
 - `username` - Login name (case-insensitive)
 - `passwordHash` - Bcrypt hashed password
 - `handle` - Display name/alias
 
 #### Access Control
+
 - `accessLevel` - Numeric access level (0-255)
 - `flags` - String of single-character flags (e.g., "ABC")
 - `validated` - Whether user is validated
 
 #### Statistics
+
 - `timesCalled` - Login count
 - `lastLogin` - Last login timestamp
 - `lastBulletinRead` - Last time bulletins were read
@@ -65,6 +68,7 @@ Users are stored as a JSON array. Each user account contains:
 - `timeLimit` - Time limit per call in minutes (0=unlimited)
 
 #### Personal Information
+
 - `realName` - User's real name
 - `phoneNumber` - Contact number
 - `createdAt` - Account creation timestamp
@@ -72,12 +76,14 @@ Users are stored as a JSON array. Each user account contains:
 - `privateNote` - SysOp note about user
 
 #### Terminal Preferences
+
 - `screen_width` - Preferred terminal width (0 = use detected PTY width)
 - `screen_height` - Preferred terminal height (0 = use detected PTY height)
 
 After authentication, the system applies these preferences: if a user's stored screen dimensions are smaller than the detected PTY size (or the PTY defaults to 80x25), the stored values cap the effective terminal dimensions. ANSI art is truncated to fit the effective height to prevent scrolling.
 
 #### System State
+
 - `current_message_area_id` - Current message area ID
 - `current_message_area_tag` - Current message area tag
 - `last_read_message_ids` - Map of area ID to last read message UUID
@@ -99,6 +105,7 @@ Access levels range from 0-255, with common levels being:
 ## User Flags
 
 Flags are single characters (A-Z) that grant specific permissions:
+
 - Used in ACS strings with the `f` prefix
 - Case-insensitive when checked
 - Example: Flag 'D' might mean "can download files"
@@ -109,6 +116,7 @@ Flags are single characters (A-Z) that grant specific permissions:
 ### Default User
 
 The system creates a default user on first run:
+
 - Username: `felonius`
 - Password: `password`
 - Access Level: 10
@@ -131,6 +139,7 @@ Users are added through:
 3. Future: In-BBS user editor
 
 When adding users manually, ensure:
+
 - Unique `id` number
 - Unique `username` (case-insensitive)
 - Unique `handle` (case-insensitive)
@@ -188,22 +197,22 @@ The application can also be invoked from a menu command via `RUN:NEWUSER`.
 
 All prompts are configurable in `configs/strings.json`:
 
-| String Key | Purpose |
-| ------------ | ------- |
-| `applyAsNewStr` | "Apply for Access?" prompt |
-| `newUserNameStr` | Handle/alias entry prompt |
-| `createAPassword` | Password creation prompt |
-| `reEnterPassword` | Password confirmation prompt |
-| `enterRealName` | Real name entry prompt |
-| `enterNumberHeader` | Phone number format hint |
-| `enterNumber` | Phone number entry prompt |
-| `enterUserNote` | User note entry prompt |
-| `yourUserNum` | "Your user # is" display (supports `\|UN` placeholder) |
-| `welcomeNewUser` | Welcome message after account creation |
-| `checkingUserBase` | "Finding a place for you" message shown during handle validation |
-| `nameAlreadyUsed` | Duplicate name error message |
-| `invalidUserName` | Invalid name error message |
-| `pauseString` | Press Enter to continue prompt |
+| String Key          | Purpose                                                          |
+| ------------------- | ---------------------------------------------------------------- |
+| `applyAsNewStr`     | "Apply for Access?" prompt                                       |
+| `newUserNameStr`    | Handle/alias entry prompt                                        |
+| `createAPassword`   | Password creation prompt                                         |
+| `reEnterPassword`   | Password confirmation prompt                                     |
+| `enterRealName`     | Real name entry prompt                                           |
+| `enterNumberHeader` | Phone number format hint                                         |
+| `enterNumber`       | Phone number entry prompt                                        |
+| `enterUserNote`     | User note entry prompt                                           |
+| `yourUserNum`       | "Your user # is" display (supports `\|UN` placeholder)           |
+| `welcomeNewUser`    | Welcome message after account creation                           |
+| `checkingUserBase`  | "Finding a place for you" message shown during handle validation |
+| `nameAlreadyUsed`   | Duplicate name error message                                     |
+| `invalidUserName`   | Invalid name error message                                       |
+| `pauseString`       | Press Enter to continue prompt                                   |
 
 ### ANSI Art
 
@@ -236,12 +245,14 @@ ACS strings control access to menus, areas, and functions.
 ### ACS Syntax
 
 Basic conditions:
+
 - `s10` - Security level 10 or higher
 - `fA` - Must have flag A
 - `v` - Must be validated
 - `u5` - Must be user ID 5
 
 Operators:
+
 - `&` - AND
 - `|` - OR
 - `!` - NOT
@@ -302,6 +313,7 @@ The system tracks user calls in `data/users/callhistory.json`:
 ```
 
 ### Call History Fields
+
 - `userID` - User's ID number
 - `handle` - User's handle at time of call
 - `groupLocation` - User's group/location
@@ -320,16 +332,19 @@ The system maintains the last 20 call records.
 ## Security Considerations
 
 ### Password Storage
+
 - Passwords are hashed using bcrypt with default cost
 - Never store plain text passwords
 - Hash includes salt automatically
 
 ### Session Management
+
 - Each login creates a new session
 - Sessions tracked by node number
 - Automatic logout on disconnect
 
 ### Access Control
+
 - Always use appropriate ACS strings
 - Test access levels thoroughly
 - Document what each flag means
@@ -345,6 +360,7 @@ Since passwords are hashed, you cannot recover them. To reset:
 3. Inform the user of their new password
 
 Example using Go:
+
 ```go
 password := "newpassword"
 hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -358,6 +374,7 @@ Change `validated` from `false` to `true` and set appropriate `accessLevel` (typ
 ### Banning Users
 
 Options:
+
 1. Set `accessLevel` to 0
 2. Set `validated` to false
 3. Add a ban flag (e.g., 'B') and use `!fB` in ACS strings
@@ -370,10 +387,12 @@ Increase `accessLevel` and/or add appropriate flags.
 ## File Management
 
 ### Call Number Tracking
+
 - Next call number stored in `data/users/callnumber.json`
 - Automatically increments with each connection
 
 ### File Locations
+
 - `data/users/users.json` - User database
 - `data/users/callhistory.json` - Recent calls
 - `data/users/callnumber.json` - Next call number
@@ -402,6 +421,7 @@ The following user management features are planned:
 ## Troubleshooting
 
 ### User Can't Login
+
 - Check username (case-insensitive)
 - Verify `validated` is true
 - Check `accessLevel` > 0
@@ -409,13 +429,15 @@ The following user management features are planned:
 - Check for duplicate usernames
 
 ### Access Denied
+
 - Check menu/area ACS requirements
 - Verify user's access level and flags
 - Check if user is validated
 - Review time restrictions
 
 ### Corrupted User File
+
 - Keep backups of all user data
 - Validate JSON syntax
 - Check for duplicate user IDs
-- Ensure array format (not object) 
+- Ensure array format (not object)

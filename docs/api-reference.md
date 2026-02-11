@@ -353,6 +353,7 @@ if err != nil {
 ## Logging
 
 The system uses Go's standard `log` package. Log entries include:
+
 - Node number
 - User information (when available)
 - Severity level (INFO, WARN, ERROR, DEBUG)
@@ -360,9 +361,10 @@ The system uses Go's standard `log` package. Log entries include:
 ## Session Context
 
 Sessions carry context including:
+
 - SSH session reference
 - Terminal instance
 - User reference (after authentication)
 - Node ID
 - Start time
-- Auto-run tracker 
+- Auto-run tracker
