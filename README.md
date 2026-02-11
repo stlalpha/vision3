@@ -153,6 +153,11 @@ See `docs/status.md` for detailed progress and `tasks/tasks.md` for specific dev
 
 ```
 vision3/
+├── bin/                    # Compiled binaries (not tracked in git)
+│   ├── vision3             # Main BBS server executable
+│   ├── helper              # FTN setup utility executable
+│   └── jamutil             # JAM message base utility executable
+├── scripts/                # Utility scripts
 ├── cmd/
 │   ├── ansitest/           # ANSI color test utility
 │   ├── helper/             # FTN setup utility (import echomail areas)
@@ -176,6 +181,7 @@ vision3/
 │   │   ├── general/        # General discussion area
 │   │   └── sysop/          # Sysop area
 │   ├── files/              # File areas
+│   ├── ftn/                # FidoNet/FTN data (packets, tosses, etc.)
 │   └── logs/               # Application logs
 ├── internal/               # Internal packages
 │   ├── ansi/               # ANSI/pipe code processing
