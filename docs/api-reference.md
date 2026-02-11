@@ -16,7 +16,6 @@ internal/
 ├── message/      # Message area management (JAM-backed)
 ├── session/      # Session state management
 ├── terminalio/   # Terminal I/O with encoding support
-├── tosser/       # FTN echomail tosser
 ├── transfer/     # File transfer protocols
 ├── types/        # Shared type definitions
 └── user/         # User management
@@ -146,26 +145,6 @@ func ParsePackedMessageBody(body string) *ParsedBody
 func FormatPackedMessageBody(parsed *ParsedBody) string
 func FormatFTNDateTime(t time.Time) string
 func ParseFTNDateTime(s string) (time.Time, error)
-```
-
-### tosser
-
-Built-in FTN echomail tosser.
-
-```go
-// Key types:
-type Tosser struct { /* config, msgMgr, dupeDB, ownAddr */ }
-type Config struct { Enabled bool; OwnAddress, InboundPath, OutboundPath, TempPath, DupeDBPath string; PollSeconds int; Links []LinkConfig }
-type LinkConfig struct { Address, Password, Name string; EchoAreas []string }
-type TossResult struct { MessagesImported, MessagesExported int; Errors []string }
-
-// Key methods:
-func New(cfg *Config, msgMgr *message.MessageManager) (*Tosser, error)
-func (t *Tosser) Start(ctx context.Context)
-func (t *Tosser) RunOnce() TossResult
-func (t *Tosser) ProcessInbound() TossResult
-func (t *Tosser) ScanAndExport() TossResult
-func (t *Tosser) PurgeDupes() error
 ```
 
 ### file
