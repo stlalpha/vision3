@@ -212,7 +212,21 @@ vision3/
 
 ## Setup & Installation
 
-### System Requirements
+### Docker Deployment (Recommended)
+
+The easiest way to run ViSiON/3 is using Docker:
+
+```bash
+git clone https://github.com/robbiew/vision3.git
+cd vision3
+docker-compose up -d
+```
+
+See [Docker Deployment Guide](docs/docker-deployment.md) for detailed instructions.
+
+### Manual Installation
+
+#### System Requirements
 
 **libssh development library** is required for SSH server functionality:
 
@@ -367,6 +381,7 @@ All configuration files use JSON format and support comments for documentation.
 
 ## Documentation
 
+- [Docker Deployment Guide](docs/docker-deployment.md) - Deploy using Docker and Docker Compose
 - [SSH Server Migration Guide](docs/ssh-server-migration.md) - Details about the libssh implementation
 - [Developer Guide](docs/developer-guide.md) - Guide for contributors
 - [Development Tasks](tasks/tasks.md) - Development history and completed features
