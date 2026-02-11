@@ -450,6 +450,9 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["NEWUSER"] = runNewUser                                 // Register new user application runnable
 	registry["GETHEADERTYPE"] = runGetHeaderType                     // Message header style selection
 	registry["LISTMSGS"] = runListMsgs                               // List messages in current area
+	registry["SENDPRIVMAIL"] = runSendPrivateMail                    // Send private mail to user
+	registry["READPRIVMAIL"] = runReadPrivateMail                    // Read private mail
+	registry["LISTPRIVMAIL"] = runListPrivateMail                    // List private mail
 	registry["NEWSCANCONFIG"] = runNewscanConfig                     // Configure newscan tagged areas
 }
 
@@ -4837,4 +4840,293 @@ func styledInput(terminal *term.Terminal, session ssh.Session, outputMode ansi.O
 			}
 		}
 	}
+}
+
+// runSendPrivateMail handles sending private mail to another user.
+// It validates the recipient exists and sets the MSG_PRIVATE flag.
+func runSendPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running SENDPRIVMAIL", nodeNumber)
+
+	if currentUser == nil {
+		msg := "\r\n|01Error: You must be logged in to send private mail.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Get PRIVMAIL area
+	privmailArea, exists := e.MessageMgr.GetAreaByTag("PRIVMAIL")
+	if !exists {
+		log.Printf("ERROR: Node %d: PRIVMAIL area not found", nodeNumber)
+		msg := "\r\n|01Error: Private mail area not configured.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Prompt for recipient username
+	terminal.Write([]byte("\r\n"))
+	recipientPrompt := "|07Send private mail to: |15"
+	wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(recipientPrompt)), outputMode)
+	if wErr != nil {
+		log.Printf("WARN: Node %d: Failed to write recipient prompt: %v", nodeNumber, wErr)
+	}
+
+	recipient, err := styledInput(terminal, s, outputMode, 24, "")
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during recipient input.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
+		}
+		log.Printf("ERROR: Node %d: Failed reading recipient input: %v", nodeNumber, err)
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading recipient.\r\n"), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+	recipient = strings.TrimSpace(recipient)
+	if recipient == "" {
+		msg := "\r\n|01Recipient cannot be empty.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Validate recipient user exists
+	recipientUser, found := userManager.GetUser(recipient)
+	if !found || recipientUser == nil {
+		msg := fmt.Sprintf("\r\n|01Error: User '%s' not found.|07\r\n", recipient)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Prompt for subject
+	titlePrompt := "|07Subject: |15"
+	wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(titlePrompt)), outputMode)
+	if wErr != nil {
+		log.Printf("WARN: Node %d: Failed to write subject prompt: %v", nodeNumber, wErr)
+	}
+
+	subject, err := styledInput(terminal, s, outputMode, 30, "")
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during subject input.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
+		}
+		log.Printf("ERROR: Node %d: Failed reading subject input: %v", nodeNumber, err)
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading subject.\r\n"), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+	subject = strings.TrimSpace(subject)
+	if subject == "" {
+		subject = "(no subject)"
+	}
+
+	// Launch editor
+	log.Printf("DEBUG: Node %d: Clearing screen before calling editor for private mail", nodeNumber)
+	terminal.Write([]byte(ansi.ClearScreen()))
+
+	// Get TERM env var
+	termType := "unknown"
+	for _, env := range s.Environ() {
+		if strings.HasPrefix(env, "TERM=") {
+			termType = strings.TrimPrefix(env, "TERM=")
+			break
+		}
+	}
+
+	// Launch editor for private mail (no anonymous option for private mail)
+	body, saved, err := editor.RunEditorWithMetadata("", s, s, termType, subject, recipientUser.Handle, false, "", "", "", "", false, nil)
+	log.Printf("DEBUG: Node %d: editor.RunEditorWithMetadata returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
+
+	if err != nil {
+		log.Printf("ERROR: Node %d: Editor failed for user %s: %v", nodeNumber, currentUser.Handle, err)
+		return nil, "", fmt.Errorf("editor error: %w", err)
+	}
+
+	// Clear screen after editor exits
+	terminal.Write([]byte(ansi.ClearScreen()))
+
+	if !saved {
+		log.Printf("INFO: Node %d: User %s aborted private mail composition.", nodeNumber, currentUser.Handle)
+		terminal.Write([]byte("\r\nMessage aborted.\r\n"))
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	if strings.TrimSpace(body) == "" {
+		log.Printf("INFO: Node %d: User %s saved empty private mail.", nodeNumber, currentUser.Handle)
+		terminal.Write([]byte("\r\nMessage body empty. Aborting.\r\n"))
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Save the private message with MSG_PRIVATE flag
+	msgNum, err := e.MessageMgr.AddPrivateMessage(privmailArea.ID, currentUser.Handle, recipientUser.Handle, subject, body, "")
+	if err != nil {
+		log.Printf("ERROR: Node %d: Failed to save private message from user %s to %s: %v", nodeNumber, currentUser.Handle, recipientUser.Handle, err)
+		errorMsg := ansi.ReplacePipeCodes([]byte("\r\n|01Error saving private message!|07\r\n"))
+		terminalio.WriteProcessedBytes(terminal, errorMsg, outputMode)
+		time.Sleep(2 * time.Second)
+		return nil, "", fmt.Errorf("failed saving private message: %w", err)
+	}
+
+	// Confirmation
+	log.Printf("INFO: Node %d: User %s successfully sent private message #%d to %s", nodeNumber, currentUser.Handle, msgNum, recipientUser.Handle)
+	confirmMsg := ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|02Private message sent to %s!|07\r\n", recipientUser.Handle)))
+	terminalio.WriteProcessedBytes(terminal, confirmMsg, outputMode)
+	time.Sleep(1 * time.Second)
+
+	return nil, "", nil
+}
+
+// runReadPrivateMail handles reading private mail for the current user.
+// It filters messages to only show those addressed to the current user with MSG_PRIVATE flag.
+func runReadPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running READPRIVMAIL", nodeNumber)
+
+	if currentUser == nil {
+		msg := "\r\n|01Error: You must be logged in to read private mail.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Get PRIVMAIL area
+	privmailArea, exists := e.MessageMgr.GetAreaByTag("PRIVMAIL")
+	if !exists {
+		log.Printf("ERROR: Node %d: PRIVMAIL area not found", nodeNumber)
+		msg := "\r\n|01Error: Private mail area not configured.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Get JAM base for PRIVMAIL area
+	base, err := e.MessageMgr.GetBase(privmailArea.ID)
+	if err != nil {
+		log.Printf("ERROR: Node %d: JAM base not open for PRIVMAIL area: %v", nodeNumber, err)
+		msg := "\r\n|01Error: Private mail base not available.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Get total message count
+	totalMessages, err := e.MessageMgr.GetMessageCountForArea(privmailArea.ID)
+	if err != nil {
+		log.Printf("ERROR: Node %d: Failed to get message count for PRIVMAIL: %v", nodeNumber, err)
+		msg := "\r\n|01Error loading private mail.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", err
+	}
+
+	if totalMessages == 0 {
+		msg := "\r\n|07No private mail found.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Scan all messages and filter for private messages addressed to current user
+	// CRITICAL SECURITY: Must check BOTH IsPrivate() AND To field matches current user
+	privateMessages := []int{}
+	for msgNum := 1; msgNum <= totalMessages; msgNum++ {
+		msg, err := base.ReadMessage(msgNum)
+		if err != nil {
+			log.Printf("WARN: Node %d: Failed to read message #%d in PRIVMAIL: %v", nodeNumber, msgNum, err)
+			continue
+		}
+
+		// Skip deleted messages
+		if msg.IsDeleted() {
+			continue
+		}
+
+		// Check if message is private AND addressed to current user (case-insensitive)
+		if msg.IsPrivate() && strings.EqualFold(msg.To, currentUser.Handle) {
+			privateMessages = append(privateMessages, msgNum)
+		}
+	}
+
+	if len(privateMessages) == 0 {
+		msg := "\r\n|07No private mail found for you.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Display count and read messages using the message reader
+	confirmMsg := fmt.Sprintf("\r\n|02Found %d private message(s) for you.|07\r\n", len(privateMessages))
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(confirmMsg)), outputMode)
+	time.Sleep(500 * time.Millisecond)
+
+	// Temporarily set current area to PRIVMAIL for the message reader
+	originalAreaID := currentUser.CurrentMessageAreaID
+	originalAreaTag := currentUser.CurrentMessageAreaTag
+	currentUser.CurrentMessageAreaID = privmailArea.ID
+	currentUser.CurrentMessageAreaTag = privmailArea.Tag
+
+	// Start reading from the first private message
+	startMsgNum := privateMessages[0]
+
+	// Call message reader with the filtered list
+	updatedUser, nextMenu, err := runMessageReader(e, s, terminal, userManager, currentUser, nodeNumber,
+		sessionStartTime, outputMode, startMsgNum, totalMessages, false)
+
+	// Restore original area
+	if updatedUser != nil {
+		updatedUser.CurrentMessageAreaID = originalAreaID
+		updatedUser.CurrentMessageAreaTag = originalAreaTag
+	} else if currentUser != nil {
+		currentUser.CurrentMessageAreaID = originalAreaID
+		currentUser.CurrentMessageAreaTag = originalAreaTag
+	}
+
+	return updatedUser, nextMenu, err
+}
+
+// runListPrivateMail handles listing private mail for the current user.
+// It temporarily switches to the PRIVMAIL area and calls the standard list function.
+func runListPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running LISTPRIVMAIL", nodeNumber)
+
+	if currentUser == nil {
+		msg := "\r\n|01Error: You must be logged in to list private mail.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Get PRIVMAIL area
+	privmailArea, exists := e.MessageMgr.GetAreaByTag("PRIVMAIL")
+	if !exists {
+		log.Printf("ERROR: Node %d: PRIVMAIL area not found", nodeNumber)
+		msg := "\r\n|01Error: Private mail area not configured.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Temporarily set current area to PRIVMAIL
+	originalAreaID := currentUser.CurrentMessageAreaID
+	originalAreaTag := currentUser.CurrentMessageAreaTag
+	currentUser.CurrentMessageAreaID = privmailArea.ID
+	currentUser.CurrentMessageAreaTag = privmailArea.Tag
+
+	// Call standard list function
+	updatedUser, nextMenu, err := runListMsgs(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode)
+
+	// Restore original area
+	if updatedUser != nil {
+		updatedUser.CurrentMessageAreaID = originalAreaID
+		updatedUser.CurrentMessageAreaTag = originalAreaTag
+	} else if currentUser != nil {
+		currentUser.CurrentMessageAreaID = originalAreaID
+		currentUser.CurrentMessageAreaTag = originalAreaTag
+	}
+
+	return updatedUser, nextMenu, err
 }

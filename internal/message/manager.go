@@ -256,6 +256,56 @@ func (mm *MessageManager) AddMessage(areaID int, from, to, subject, body, replyT
 	return msgNum, err
 }
 
+// AddPrivateMessage creates and writes a new private message to the specified area.
+// It sets the MSG_PRIVATE flag on the message to indicate it's private user-to-user mail.
+// Returns the 1-based message number assigned.
+func (mm *MessageManager) AddPrivateMessage(areaID int, from, to, subject, body, replyToMsgID string) (int, error) {
+	mm.mu.RLock()
+	area, exists := mm.areasByID[areaID]
+	b, baseExists := mm.bases[areaID]
+	mm.mu.RUnlock()
+
+	if !exists {
+		return 0, fmt.Errorf("message area %d not found", areaID)
+	}
+	if !baseExists {
+		return 0, fmt.Errorf("JAM base not open for area %d", areaID)
+	}
+
+	msg := jam.NewMessage()
+	msg.From = from
+	msg.To = to
+	msg.Subject = subject
+	msg.Text = body
+	msg.DateTime = time.Now()
+
+	// Initialize header to set the MSG_PRIVATE flag
+	msg.Header = &jam.MessageHeader{
+		Attribute: jam.MsgPrivate | jam.MsgLocal,
+	}
+
+	if replyToMsgID != "" {
+		msg.ReplyID = replyToMsgID
+	}
+
+	msgType := jam.DetermineMessageType(area.AreaType, area.EchoTag)
+
+	if msgType.IsEchomail() || msgType.IsNetmail() {
+		msg.OrigAddr = area.OriginAddr
+		msgNum, err := b.WriteMessageExt(msg, msgType, area.EchoTag, mm.boardName, mm.tearlineForNetwork(area.Network))
+		if err == nil {
+			mm.invalidateThreadIndex(areaID)
+		}
+		return msgNum, err
+	}
+
+	msgNum, err := b.WriteMessage(msg)
+	if err == nil {
+		mm.invalidateThreadIndex(areaID)
+	}
+	return msgNum, err
+}
+
 // GetMessage reads a single message by area ID and 1-based message number.
 func (mm *MessageManager) GetMessage(areaID, msgNum int) (*DisplayMessage, error) {
 	mm.mu.RLock()

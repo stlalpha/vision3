@@ -1,0 +1,15 @@
+{
+    "NAME": "EMAILM",
+    "PROMPT1": "|08[|07|TIME|08] |08[|15Email Menu|08] |07Command |08->|15 ",
+    "PROMPT2": "",
+    "PASSWORD": "",
+    "ACS": "*",
+    "MENUTYPE": "standard",
+    "USEPROMPT": true,
+    "CLRSCRA": false,
+    "CLRSCRB": true,
+    "USERDAT": "",
+    "SYSOPDAT": "",
+    "CLR": true,
+    "FALLBACK": "MAIN"
+}
