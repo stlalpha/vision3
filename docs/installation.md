@@ -117,7 +117,7 @@ Available output modes:
 
 ## Directory Structure After Installation
 
-```
+```text
 vision3/
 ├── cmd/vision3/vision3    # The compiled executable
 ├── configs/               # Configuration files

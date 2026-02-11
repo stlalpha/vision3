@@ -4,7 +4,7 @@ This document provides a reference for the main packages and interfaces in ViSiO
 
 ## Package Overview
 
-```
+```text
 internal/
 ├── ansi/         # ANSI and pipe code processing
 ├── config/       # Configuration loading and structures

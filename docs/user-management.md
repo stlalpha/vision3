@@ -52,7 +52,7 @@ Users are stored as a JSON array. Each user account contains:
 - `passwordHash` - Bcrypt hashed password
 - `handle` - Display name/alias
 
-#### Access Control
+#### Access 
 
 - `accessLevel` - Numeric access level (0-255)
 - `flags` - String of single-character flags (e.g., "ABC")
@@ -277,7 +277,7 @@ Operators:
 
 ### Common ACS Examples
 
-```
+```text
 ""              # No restrictions (public)
 "*"             # Wildcard - always allow
 "s10"           # Validated users (level 10+)

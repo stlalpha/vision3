@@ -172,19 +172,19 @@ File listings use templates in `menus/v3/templates/`:
 
 **FILEAREA.TOP** - Header before area list
 
-```
+```text
 |07--- File Area List ---
 ```
 
 **FILEAREA.MID** - Template for each area
 
-```
+```text
  |07[^ID] |15^TAG - ^NA |07(^NF files)
 ```
 
 **FILEAREA.BOT** - Footer after area list
 
-```
+```text
 |07--- End of List ---
 ```
 
@@ -192,19 +192,19 @@ File listings use templates in `menus/v3/templates/`:
 
 **FILELIST.TOP** - Header before file list
 
-```
+```text
 |07--- File List Top ---
 ```
 
 **FILELIST.MID** - Template for each file
 
-```
+```text
 |15^MARK|07^NUM |11^NAME |07^DATE ^SIZE ^DESC
 ```
 
 **FILELIST.BOT** - Footer with pagination
 
-```
+```text
 |07Page ^PAGE of ^TOTALPAGES
 ```
 

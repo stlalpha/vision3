@@ -6,7 +6,7 @@ ViSiON/3 includes a native telnet server alongside the SSH server. Both protocol
 
 ## Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    ViSiON/3 BBS                         │
 │                  (Go Application)                       │
@@ -99,7 +99,7 @@ After sending negotiations, the server waits 500ms to drain client responses bef
 
 All reads pass through a 9-state finite state machine that strips telnet commands transparently:
 
-```
+```text
 stateData → stateIAC → stateWill/stateWont/stateDo/stateDont → stateData
           → stateIAC → stateSB → stateSBData → stateSBIAC → stateData
 ```
@@ -127,7 +127,7 @@ Since 0xFF is the IAC control byte in the telnet protocol:
 
 When the client supports NAWS (option 31), it sends terminal dimensions via subnegotiation:
 
-```
+```text
 IAC SB NAWS [width_high] [width_low] [height_high] [height_low] IAC SE
 ```
 
@@ -144,7 +144,7 @@ Terminal size detection uses a three-tier strategy:
 
 The most reliable method because it detects the actual usable terminal area, accounting for status bars (e.g., SyncTerm's status row steals one row from the NAWS-reported size).
 
-```
+```text
 1. Save cursor position:     ESC[s
 2. Move to far corner:       ESC[999;999H  (clamped by terminal)
 3. Query cursor position:    ESC[6n
@@ -166,7 +166,7 @@ Hard defaults of 80 columns by 25 rows if neither CPR nor NAWS provides valid di
 
 ### Connection Lifecycle
 
-```
+```text
 1. TCP Accept          → net.Conn received
 2. NewTelnetConn()     → Wrap with IAC-aware reader/writer
 3. Negotiate()         → Send WILL/DO/DONT options, drain responses (500ms)
@@ -280,4 +280,4 @@ nc localhost 2323
 - gliderlabs/ssh: <https://github.com/gliderlabs/ssh>
 
 ---
-*Document created: 2026-02-09*
+Document created: 2026-02-09

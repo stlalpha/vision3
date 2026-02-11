@@ -36,18 +36,18 @@ Successfully implemented scrollable message reading in Vision3 while preserving 
 
 ### 3. Three-Region Display Architecture
 
-```
+```text
 ┌─────────────────────────────────────┐
 │   Header (MSGHDR template)          │ ← Fixed, never redraws during scroll
 │   Variable height (6-10 lines)      │
 ├─────────────────────────────────────┤
 │                                     │
 │   Scrollable Body Region            │ ← Redraws on scroll with new window
-│   termHeight - headerHeight - 2    │
+│   termHeight - headerHeight - 2     │
 │                                     │
 ├─────────────────────────────────────┤
-│ Current (AREA) [msg/total]         │ ← Fixed footer line 1
-│ Next Reply Again Skip... [25%]     │ ← Fixed footer line 2 (lightbar)
+│ Current (AREA) [msg/total]          │ ← Fixed footer line 1
+│ Next Reply Again Skip... [25%]      │ ← Fixed footer line 2 (lightbar)
 └─────────────────────────────────────┘
 ```
 

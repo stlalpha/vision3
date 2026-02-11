@@ -10,7 +10,7 @@ cd cmd/vision3 && go build
 
 ## Architecture
 
-```
+```bash
 cmd/vision3/main.go → SSH Server → Session Handler → Menu Executor → Runnable Functions
 ```
 
@@ -48,7 +48,7 @@ registry["MYFEATURE"] = runMyFeature
 
 1. Use in menu (.MNU file):
 
-```
+```ini
 HOTKEY:M:RUN:MYFEATURE
 ```
 

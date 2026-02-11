@@ -70,12 +70,12 @@ Dropfiles provide user/session information to door programs.
 
 Standard format used by many doors:
 
-```
+```ini
 1                    # COM port
 38400                # Baud rate
 N                    # Parity
 1                    # Node number
-Felonius            # User name
+Felonius             # User name
 10                   # Security level
 60                   # Time left
 ANSI                 # Emulation
@@ -86,8 +86,8 @@ ANSI                 # Emulation
 
 WWIV-style dropfile:
 
-```
-Felonius            # User name
+```ini
+Felonius             # User name
 10                   # Security level
 60                   # Time left
 1                    # User ID
@@ -130,7 +130,7 @@ Add to `configs/doors.json`:
 
 Edit menu file (e.g., `menus/v3/mnu/DOORS.MNU`):
 
-```
+```ini
 HOTKEY:M:DOOR:MYDOOR
 ```
 

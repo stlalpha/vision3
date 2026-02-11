@@ -152,7 +152,7 @@ Defines file areas available on the BBS. The file contains an array of file area
 ]
 ```
 
-### Field Descriptions
+### File Area Field Descriptions
 
 - `id` - Unique numeric identifier
 - `tag` - Short tag for the area (uppercase)
@@ -194,7 +194,7 @@ General BBS configuration settings.
 }
 ```
 
-### Field Descriptions
+### General Configuration Field Descriptions
 
 **BBS Settings:**
 
@@ -240,7 +240,7 @@ Located in the `configs/` directory. Defines conferences that group message area
 ]
 ```
 
-### Field Descriptions
+### Conference Field Descriptions
 
 - `id` - Unique numeric identifier (must be > 0; areas with `conference_id` of 0 or omitted are ungrouped)
 - `tag` - Short tag name (uppercase)

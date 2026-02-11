@@ -25,7 +25,7 @@ The original SSH server implementation using `golang.org/x/crypto/ssh` could not
 
 ### Architecture
 
-```
+```text
 ┌─────────────────────────────────────────────────────────┐
 │                    ViSiON/3 BBS                         │
 │                  (Go Application)                       │
@@ -114,7 +114,7 @@ BBSSessionContext - Implements ssh.Context interface
 
 The SSH connection lifecycle uses libssh's callback API with a single `ssh_event_dopoll()` event loop:
 
-```
+```text
 1. ssh_set_server_callbacks()     ← Register auth + channel open callbacks
 2. ssh_set_auth_methods()         ← Advertise PASSWORD | NONE
 3. ssh_handle_key_exchange()      ← Blocking key exchange

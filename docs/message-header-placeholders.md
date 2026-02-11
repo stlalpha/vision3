@@ -23,7 +23,7 @@ Vision3 replaces `|X` placeholders in message header templates (`menus/v3/templa
 | `\|O` | Origin FTN address (if present)                                                                                                         |
 | `\|A` | Destination FTN address (if present)                                                                                                    |
 
-**Notes**
+## Notes
 
 - Templates are raw ANSI with absolute cursor positioning. Use a binary-safe editor or placeholder round-trip when editing.
 - `&#124;U` only shows for local messages. FTN messages do not have a local user note.

@@ -74,7 +74,7 @@ Each message area is backed by a JAM message base consisting of 4 files:
 
 JAM bases are stored under `data/msgbases/` (or the path specified by `base_path`). For example, area `GENERAL` with `base_path: "msgbases/general"` creates:
 
-```
+```ini
 data/msgbases/general.jhr
 data/msgbases/general.jdt
 data/msgbases/general.jdx
@@ -152,7 +152,7 @@ The `NEWSCAN` function scans for new messages:
 
 ## Access Control
 
-### Reading Messages
+### Read Access
 
 - Empty `acs_read` means public access
 - Use ACS strings to restrict: `s10`, `fA`, etc.
@@ -172,7 +172,7 @@ Message display templates are in `menus/v3/templates/`:
 
 `MSGHEAD.TPL`:
 
-```
+```text
 |08-=[ |15Area |11|CA|08 ]=---=[ |15Msg |11|MNUM|07/|11|MTOTAL|08 ]=-
 |07From : |15|MFROM|07      To : |15|MTO|
 |07Subj : |15|MSUBJ|
@@ -184,7 +184,7 @@ Message display templates are in `menus/v3/templates/`:
 
 `MSGREAD.PROMPT`:
 
-```
+```text
 [|MNUM/|MTOTAL] Command:
 ```
 
@@ -323,7 +323,7 @@ participate in multiple networks (e.g., FSXNet and FidoNet) simultaneously.
 ```
 
 3. Restart BBS (areas are loaded at startup)
-2. JAM base files will be created automatically on first access
+4. JAM base files will be created automatically on first access
 
 ## Message Management
 

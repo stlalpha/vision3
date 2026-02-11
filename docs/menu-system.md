@@ -131,7 +131,7 @@ ANSI files contain the visual display for menus. They support:
 
 ### Pipe Color Codes
 
-```
+```text
 |00 - Black       |08 - Dark Gray
 |01 - Red         |09 - Light Red
 |02 - Green       |10 - Light Green
@@ -251,7 +251,7 @@ The matrix uses the standard menu file system with three files:
 
 **PDMATRIX.BAR:**
 
-```
+```ini
 ; Pre-login matrix menu
 ; FORMAT: X,Y,HiLitedColor,RegularColor,HotKey,ReturnValue,DisplayText
 49,10,31,5,J,UNUSED, Journey onward.
@@ -402,7 +402,7 @@ Enable cursor-driven selection by creating a `.BAR` file:
 
 `menus/v3/bar/MYMENU.BAR`:
 
-```
+```ini
 1,5,31,15,1,UNUSED,Normal Login
 1,6,31,15,2,UNUSED,New User Application
 ```

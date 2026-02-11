@@ -115,7 +115,7 @@ The system is designed as a single Go application that listens for incoming SSH 
 
 ## Directory Structure
 
-```
+```text
 vision3/
 ├── cmd/vision3/         # Main application entry point
 ├── configs/             # Configuration files
