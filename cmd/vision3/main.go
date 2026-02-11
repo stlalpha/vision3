@@ -46,8 +46,104 @@ var (
 	loadedStrings       config.StringsConfig
 	loadedTheme         config.ThemeConfig
 	// colorTestMode       bool   // Flag variable REMOVED
-	outputModeFlag string // Output mode flag (auto, utf8, cp437)
+	outputModeFlag  string             // Output mode flag (auto, utf8, cp437)
+	connectionTracker *ConnectionTracker // Global connection tracker
 )
+
+// ConnectionTracker manages active connections and enforces limits
+type ConnectionTracker struct {
+	mu                  sync.Mutex
+	activeConnections   map[string]int // IP address -> connection count
+	maxNodes            int
+	maxConnectionsPerIP int
+	totalConnections    int
+}
+
+// NewConnectionTracker creates a new connection tracker
+func NewConnectionTracker(maxNodes, maxConnectionsPerIP int) *ConnectionTracker {
+	return &ConnectionTracker{
+		activeConnections:   make(map[string]int),
+		maxNodes:            maxNodes,
+		maxConnectionsPerIP: maxConnectionsPerIP,
+	}
+}
+
+// CanAccept checks if a new connection from the given IP can be accepted
+func (ct *ConnectionTracker) CanAccept(remoteAddr net.Addr) (bool, string) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	// Extract IP from address (strip port)
+	ip := extractIP(remoteAddr)
+
+	// Check max nodes limit
+	if ct.maxNodes > 0 && ct.totalConnections >= ct.maxNodes {
+		return false, "maximum nodes reached"
+	}
+
+	// Check per-IP limit
+	if ct.maxConnectionsPerIP > 0 {
+		if count, exists := ct.activeConnections[ip]; exists && count >= ct.maxConnectionsPerIP {
+			return false, "maximum connections per IP reached"
+		}
+	}
+
+	return true, ""
+}
+
+// AddConnection registers a new connection from the given IP
+func (ct *ConnectionTracker) AddConnection(remoteAddr net.Addr) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	ip := extractIP(remoteAddr)
+	ct.activeConnections[ip]++
+	ct.totalConnections++
+
+	log.Printf("INFO: Connection added from %s. IP count: %d, Total: %d/%d",
+		ip, ct.activeConnections[ip], ct.totalConnections, ct.maxNodes)
+}
+
+// RemoveConnection unregisters a connection from the given IP
+func (ct *ConnectionTracker) RemoveConnection(remoteAddr net.Addr) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	ip := extractIP(remoteAddr)
+	if count, exists := ct.activeConnections[ip]; exists {
+		if count <= 1 {
+			delete(ct.activeConnections, ip)
+		} else {
+			ct.activeConnections[ip]--
+		}
+	}
+	if ct.totalConnections > 0 {
+		ct.totalConnections--
+	}
+
+	log.Printf("INFO: Connection removed from %s. IP count: %d, Total: %d/%d",
+		ip, ct.activeConnections[ip], ct.totalConnections, ct.maxNodes)
+}
+
+// GetStats returns current connection statistics
+func (ct *ConnectionTracker) GetStats() (totalConns, uniqueIPs int) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+	return ct.totalConnections, len(ct.activeConnections)
+}
+
+// extractIP extracts the IP address from a net.Addr, stripping the port
+func extractIP(addr net.Addr) string {
+	if tcpAddr, ok := addr.(*net.TCPAddr); ok {
+		return tcpAddr.IP.String()
+	}
+	// Fallback: parse string representation
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return addr.String() // Return as-is if parsing fails
+	}
+	return host
+}
 
 // --- SSH Session Types (golang.org/x/crypto/ssh adapter) ---
 // Use gliderlabs/ssh types for compatibility
@@ -280,6 +376,9 @@ func sessionHandler(s ssh.Session) {
 	activeSessions[s] = nodeID // Use session as key
 	activeSessionsMutex.Unlock()
 
+	// Register connection with tracker
+	connectionTracker.AddConnection(s.RemoteAddr())
+
 	// Capture start time and declare authenticatedUser *before* the defer
 	capturedStartTime := time.Now()        // Capture start time close to session start
 	var authenticatedUser *user.User = nil // Declare here so the closure can capture it
@@ -291,6 +390,9 @@ func sessionHandler(s ssh.Session) {
 		activeSessionsMutex.Lock()
 		delete(activeSessions, s) // Remove using session as key
 		activeSessionsMutex.Unlock()
+
+		// Unregister connection from tracker
+		connectionTracker.RemoveConnection(s.RemoteAddr())
 
 		// --- Record Call History ---
 		if authenticatedUser != nil {
@@ -634,6 +736,16 @@ func libsshSessionHandler(sess *sshserver.Session) error {
 	// Create adapter that implements ssh.Session interface
 	adapter := sshserver.NewBBSSessionAdapter(sess)
 
+	// Check connection limits before processing
+	canAccept, reason := connectionTracker.CanAccept(adapter.RemoteAddr())
+	if !canAccept {
+		log.Printf("INFO: Rejecting SSH connection from %s: %s", adapter.RemoteAddr(), reason)
+		fmt.Fprintf(adapter, "\r\nConnection rejected: %s\r\n", reason)
+		fmt.Fprintf(adapter, "Please try again later.\r\n")
+		time.Sleep(2 * time.Second) // Brief delay before closing
+		return fmt.Errorf("connection limit exceeded: %s", reason)
+	}
+
 	// Call the existing session handler with the adapter
 	sessionHandler(adapter)
 
@@ -642,6 +754,16 @@ func libsshSessionHandler(sess *sshserver.Session) error {
 
 // telnetSessionHandler adapts telnet sessions to the existing BBS session handler
 func telnetSessionHandler(adapter *telnetserver.TelnetSessionAdapter) {
+	// Check connection limits before processing
+	canAccept, reason := connectionTracker.CanAccept(adapter.RemoteAddr())
+	if !canAccept {
+		log.Printf("INFO: Rejecting Telnet connection from %s: %s", adapter.RemoteAddr(), reason)
+		fmt.Fprintf(adapter, "\r\nConnection rejected: %s\r\n", reason)
+		fmt.Fprintf(adapter, "Please try again later.\r\n")
+		time.Sleep(2 * time.Second) // Brief delay before closing
+		return
+	}
+
 	sessionHandler(adapter)
 }
 
@@ -702,6 +824,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load server configuration: %v", err)
 	}
+
+	// Initialize connection tracker with configured limits
+	connectionTracker = NewConnectionTracker(serverConfig.MaxNodes, serverConfig.MaxConnectionsPerIP)
+	log.Printf("INFO: Connection limits configured - Max Nodes: %d, Max Connections Per IP: %d",
+		serverConfig.MaxNodes, serverConfig.MaxConnectionsPerIP)
 
 	// Load global strings configuration from the new location
 	loadedStrings, err = config.LoadStrings(rootConfigPath)

@@ -79,7 +79,7 @@ ViSiON/3 **requires libssh via CGO** for SSH server functionality. The Dockerfil
 The following directories are mounted as volumes and persist across container restarts:
 
 - **`configs/`** - Configuration files (created from templates on first run)
-  - `config.json` - Main BBS configuration
+  - `config.json` - Main BBS configuration (ports, security levels, connection limits)
   - `message_areas.json` - Message area definitions (includes PRIVMAIL)
   - `file_areas.json` - File area definitions
   - `doors.json` - Door configurations
@@ -229,6 +229,10 @@ For production deployments:
 - Limit exposed ports (only expose 2222)
 - Consider running with a non-root user inside the container
 - Set up firewall rules on the host
+- Configure connection limits in `config.json`:
+  - `maxNodes`: Maximum simultaneous connections (default: 10)
+  - `maxConnectionsPerIP`: Maximum connections per IP address (default: 3)
+  - Set to 0 to disable limits (not recommended for public BBSes)
 
 ## Support
 

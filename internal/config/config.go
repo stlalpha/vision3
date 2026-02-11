@@ -373,18 +373,20 @@ type FTNConfig struct {
 
 // ServerConfig defines server-wide settings
 type ServerConfig struct {
-	BoardName        string `json:"boardName"`
-	BoardPhoneNumber string `json:"boardPhoneNumber"`
-	SysOpLevel       int    `json:"sysOpLevel"`
-	CoSysLevel       int    `json:"coSysLevel"`
-	LogonLevel       int    `json:"logonLevel"`
-	AnonymousLevel   int    `json:"anonymousLevel"`
-	SSHPort          int    `json:"sshPort"`
-	SSHHost          string `json:"sshHost"`
-	SSHEnabled       bool   `json:"sshEnabled"`
-	TelnetPort       int    `json:"telnetPort"`
-	TelnetHost       string `json:"telnetHost"`
-	TelnetEnabled    bool   `json:"telnetEnabled"`
+	BoardName           string `json:"boardName"`
+	BoardPhoneNumber    string `json:"boardPhoneNumber"`
+	SysOpLevel          int    `json:"sysOpLevel"`
+	CoSysOpLevel        int    `json:"coSysOpLevel"`
+	LogonLevel          int    `json:"logonLevel"`
+	AnonymousLevel      int    `json:"anonymousLevel"`
+	SSHPort             int    `json:"sshPort"`
+	SSHHost             string `json:"sshHost"`
+	SSHEnabled          bool   `json:"sshEnabled"`
+	TelnetPort          int    `json:"telnetPort"`
+	TelnetHost          string `json:"telnetHost"`
+	TelnetEnabled       bool   `json:"telnetEnabled"`
+	MaxNodes            int    `json:"maxNodes"`
+	MaxConnectionsPerIP int    `json:"maxConnectionsPerIP"`
 }
 
 // LoadServerConfig loads the server configuration from config.json
@@ -394,18 +396,20 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 
 	// Default config values
 	defaultConfig := ServerConfig{
-		BoardName:        "ViSiON/3 BBS",
-		BoardPhoneNumber: "",
-		SysOpLevel:       255,
-		CoSysLevel:       250,
-		LogonLevel:       100,
-		AnonymousLevel:   5,
-		SSHPort:          2222,
-		SSHHost:          "0.0.0.0",
-		SSHEnabled:       true,
-		TelnetPort:       2323,
-		TelnetHost:       "0.0.0.0",
-		TelnetEnabled:    false,
+		BoardName:           "ViSiON/3 BBS",
+		BoardPhoneNumber:    "",
+		SysOpLevel:          255,
+		CoSysOpLevel:        250,
+		LogonLevel:          100,
+		AnonymousLevel:      5,
+		SSHPort:             2222,
+		SSHHost:             "0.0.0.0",
+		SSHEnabled:          true,
+		TelnetPort:          2323,
+		TelnetHost:          "0.0.0.0",
+		TelnetEnabled:       false,
+		MaxNodes:            10,
+		MaxConnectionsPerIP: 3,
 	}
 
 	data, err := os.ReadFile(filePath)

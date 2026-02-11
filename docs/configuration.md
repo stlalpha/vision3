@@ -183,14 +183,16 @@ General BBS configuration settings.
   "boardName": "PiRATE MiND STATiON",
   "boardPhoneNumber": "314-567-3833",
   "sysOpLevel": 255,
-  "coSysLevel": 250,
+  "coSysOpLevel": 250,
   "logonLevel": 100,
   "sshPort": 2222,
   "sshHost": "0.0.0.0",
   "sshEnabled": true,
   "telnetPort": 2323,
   "telnetHost": "0.0.0.0",
-  "telnetEnabled": true
+  "telnetEnabled": true,
+  "maxNodes": 10,
+  "maxConnectionsPerIP": 3
 }
 ```
 
@@ -201,7 +203,7 @@ General BBS configuration settings.
 - `boardName` - BBS name displayed to users
 - `boardPhoneNumber` - Phone number (historical/display purposes)
 - `sysOpLevel` - Security level for SysOp access
-- `coSysLevel` - Security level for Co-SysOp access
+- `coSysOpLevel` - Security level for Co-SysOp access
 - `logonLevel` - Security level granted after successful login
 
 **SSH Server:**
@@ -215,6 +217,11 @@ General BBS configuration settings.
 - `telnetPort` - Port for telnet connections (default: 2323)
 - `telnetHost` - Bind address for telnet listener (default: `0.0.0.0`)
 - `telnetEnabled` - Enable or disable the telnet server
+
+**Connection Security:**
+
+- `maxNodes` - Maximum simultaneous connections allowed (default: 10, 0 = unlimited)
+- `maxConnectionsPerIP` - Maximum simultaneous connections per IP address (default: 3, 0 = unlimited)
 
 ## message_areas.json
 

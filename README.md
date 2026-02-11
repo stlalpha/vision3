@@ -354,8 +354,9 @@ Configuration files are located in the `configs/` directory:
 
 All configuration files are located in `configs/` and are generated from templates in `templates/configs/` during setup:
 
-- **`config.json`**: Main BBS configuration (BBS name, ports, paths, node settings)
+- **`config.json`**: Main BBS configuration (BBS name, ports, paths, connection limits)
   - **Note:** Not tracked in git. Copied from template during setup
+  - Includes connection security settings: `maxNodes` and `maxConnectionsPerIP`
 - **`theme.json`**: Color theme configuration (lightbar colors, prompt colors, ANSI codes)
 - **`strings.json`**: Customizable BBS prompts and messages
 

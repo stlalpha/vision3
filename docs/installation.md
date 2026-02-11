@@ -74,7 +74,11 @@ The system includes default configuration files in the `configs/` directory:
 - `strings.json` - BBS text strings and prompts
 - `doors.json` - External door program configurations
 - `file_areas.json` - File area definitions
-- `config.json` - General BBS settings (includes FTN tosser configuration)
+- `config.json` - General BBS settings (ports, security levels, connection limits)
+  - `maxNodes`: Maximum simultaneous connections (default: 10, 0 = unlimited)
+  - `maxConnectionsPerIP`: Maximum connections per IP (default: 3, 0 = unlimited)
+  - `sysOpLevel`: Security level for SysOp access (default: 255)
+  - `coSysOpLevel`: Security level for Co-SysOp access (default: 250)
 - `message_areas.json` - Message area definitions (JAM base paths, area types)
 
 Review and modify these as needed for your setup.
