@@ -8,6 +8,7 @@ This directory contains comprehensive documentation for the ViSiON/3 BBS system.
 
 - [Installation Guide](installation.md) - Step-by-step installation instructions
 - [Configuration Guide](configuration.md) - Detailed configuration options
+- [Security Guide](security.md) - Connection security, IP filtering, and best practices
 - [Menu System Guide](menu-system.md) - Understanding and customizing menus
 
 ### Development
@@ -44,4 +45,4 @@ This directory contains comprehensive documentation for the ViSiON/3 BBS system.
 
 - **Getting Started**: Start with the [Installation Guide](installation.md)
 - **For Developers**: See [Developer Guide](developer-guide.md) and [API Reference](api-reference.md)
-- **For SysOps**: Check [Configuration Guide](configuration.md) and operational guides
+- **For SysOps**: Check [Configuration Guide](configuration.md), [Security Guide](security.md), and operational guides

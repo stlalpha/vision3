@@ -192,7 +192,9 @@ General BBS configuration settings.
   "telnetHost": "0.0.0.0",
   "telnetEnabled": true,
   "maxNodes": 10,
-  "maxConnectionsPerIP": 3
+  "maxConnectionsPerIP": 3,
+  "ipBlocklistPath": "",
+  "ipAllowlistPath": ""
 }
 ```
 
@@ -222,6 +224,46 @@ General BBS configuration settings.
 
 - `maxNodes` - Maximum simultaneous connections allowed (default: 10, 0 = unlimited)
 - `maxConnectionsPerIP` - Maximum simultaneous connections per IP address (default: 3, 0 = unlimited)
+- `ipBlocklistPath` - Path to IP blocklist file (optional, leave empty to disable)
+- `ipAllowlistPath` - Path to IP allowlist file (optional, leave empty to disable)
+
+### IP Blocklist/Allowlist Files
+
+Both blocklist and allowlist files use the same format:
+
+```text
+# Comments start with #
+# One IP or CIDR range per line
+
+# Block specific IPs
+192.168.1.100
+10.0.0.50
+
+# Block entire subnets
+192.168.100.0/24
+172.16.0.0/16
+
+# IPv6 support
+2001:db8::1
+2001:db8::/32
+```
+
+**How it works:**
+
+1. **Allowlist takes precedence**: If an IP is on the allowlist, it bypasses all other checks (blocklist, max nodes, per-IP limits)
+2. **Blocklist checked next**: If an IP is on the blocklist, the connection is rejected
+3. **Other limits apply**: If not on either list, normal connection limits apply
+
+**Example setup:**
+
+```json
+{
+  "ipBlocklistPath": "configs/blocklist.txt",
+  "ipAllowlistPath": "configs/allowlist.txt"
+}
+```
+
+Leave paths empty (`""`) to disable the feature.
 
 ## message_areas.json
 

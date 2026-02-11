@@ -387,6 +387,8 @@ type ServerConfig struct {
 	TelnetEnabled       bool   `json:"telnetEnabled"`
 	MaxNodes            int    `json:"maxNodes"`
 	MaxConnectionsPerIP int    `json:"maxConnectionsPerIP"`
+	IPBlocklistPath     string `json:"ipBlocklistPath"`
+	IPAllowlistPath     string `json:"ipAllowlistPath"`
 }
 
 // LoadServerConfig loads the server configuration from config.json

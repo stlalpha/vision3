@@ -12,5 +12,7 @@
     "telnetHost": "0.0.0.0",
     "telnetPort": 2323,
     "maxNodes": 10,
-    "maxConnectionsPerIP": 3
+    "maxConnectionsPerIP": 3,
+    "ipBlocklistPath": "",
+    "ipAllowlistPath": ""
 }

@@ -383,6 +383,8 @@ All configuration files use JSON format and support comments for documentation.
 ## Documentation
 
 - [Docker Deployment Guide](docs/docker-deployment.md) - Deploy using Docker and Docker Compose
+- [Security Guide](docs/security.md) - Connection security, IP filtering, and best practices
+- [Configuration Guide](docs/configuration.md) - Detailed configuration options
 - [SSH Server Migration Guide](docs/ssh-server-migration.md) - Details about the libssh implementation
 - [Developer Guide](docs/developer-guide.md) - Guide for contributors
 - [Development Tasks](tasks/tasks.md) - Development history and completed features

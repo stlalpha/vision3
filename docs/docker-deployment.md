@@ -233,6 +233,10 @@ For production deployments:
   - `maxNodes`: Maximum simultaneous connections (default: 10)
   - `maxConnectionsPerIP`: Maximum connections per IP address (default: 3)
   - Set to 0 to disable limits (not recommended for public BBSes)
+- Configure IP filtering (optional):
+  - `ipBlocklistPath`: Path to file containing blocked IPs/CIDR ranges
+  - `ipAllowlistPath`: Path to file containing allowed IPs (bypasses all limits)
+  - File format: one IP or CIDR range per line, # for comments
 
 ## Support
 

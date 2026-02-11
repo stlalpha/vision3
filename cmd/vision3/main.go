@@ -50,6 +50,12 @@ var (
 	connectionTracker *ConnectionTracker // Global connection tracker
 )
 
+// IPList holds a list of IP addresses and CIDR ranges
+type IPList struct {
+	ips      map[string]bool   // Individual IP addresses
+	networks []*net.IPNet      // CIDR ranges
+}
+
 // ConnectionTracker manages active connections and enforces limits
 type ConnectionTracker struct {
 	mu                  sync.Mutex
@@ -57,6 +63,8 @@ type ConnectionTracker struct {
 	maxNodes            int
 	maxConnectionsPerIP int
 	totalConnections    int
+	blocklist           *IPList
+	allowlist           *IPList
 }
 
 // NewConnectionTracker creates a new connection tracker
@@ -65,7 +73,89 @@ func NewConnectionTracker(maxNodes, maxConnectionsPerIP int) *ConnectionTracker 
 		activeConnections:   make(map[string]int),
 		maxNodes:            maxNodes,
 		maxConnectionsPerIP: maxConnectionsPerIP,
+		blocklist:           nil,
+		allowlist:           nil,
 	}
+}
+
+// LoadIPList loads an IP list from a file
+// File format: one IP or CIDR range per line, # for comments
+func LoadIPList(filePath string) (*IPList, error) {
+	if filePath == "" {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // File doesn't exist, not an error
+		}
+		return nil, fmt.Errorf("failed to read IP list %s: %w", filePath, err)
+	}
+
+	list := &IPList{
+		ips:      make(map[string]bool),
+		networks: make([]*net.IPNet, 0),
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for lineNum, line := range lines {
+		// Trim whitespace
+		line = strings.TrimSpace(line)
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Check if it's a CIDR range
+		if strings.Contains(line, "/") {
+			_, network, err := net.ParseCIDR(line)
+			if err != nil {
+				log.Printf("WARN: Invalid CIDR in %s line %d: %s", filePath, lineNum+1, line)
+				continue
+			}
+			list.networks = append(list.networks, network)
+		} else {
+			// Individual IP address
+			ip := net.ParseIP(line)
+			if ip == nil {
+				log.Printf("WARN: Invalid IP in %s line %d: %s", filePath, lineNum+1, line)
+				continue
+			}
+			list.ips[ip.String()] = true
+		}
+	}
+
+	log.Printf("INFO: Loaded IP list from %s: %d IPs, %d CIDR ranges",
+		filePath, len(list.ips), len(list.networks))
+	return list, nil
+}
+
+// Contains checks if an IP address is in the list
+func (list *IPList) Contains(ipStr string) bool {
+	if list == nil {
+		return false
+	}
+
+	// Check individual IPs
+	if list.ips[ipStr] {
+		return true
+	}
+
+	// Check CIDR ranges
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+
+	for _, network := range list.networks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // CanAccept checks if a new connection from the given IP can be accepted
@@ -75,6 +165,17 @@ func (ct *ConnectionTracker) CanAccept(remoteAddr net.Addr) (bool, string) {
 
 	// Extract IP from address (strip port)
 	ip := extractIP(remoteAddr)
+
+	// Check allowlist first - if IP is on allowlist, skip all other checks
+	if ct.allowlist != nil && ct.allowlist.Contains(ip) {
+		log.Printf("DEBUG: IP %s is on allowlist, bypassing all checks", ip)
+		return true, ""
+	}
+
+	// Check blocklist
+	if ct.blocklist != nil && ct.blocklist.Contains(ip) {
+		return false, "IP address is blocked"
+	}
 
 	// Check max nodes limit
 	if ct.maxNodes > 0 && ct.totalConnections >= ct.maxNodes {
@@ -829,6 +930,28 @@ func main() {
 	connectionTracker = NewConnectionTracker(serverConfig.MaxNodes, serverConfig.MaxConnectionsPerIP)
 	log.Printf("INFO: Connection limits configured - Max Nodes: %d, Max Connections Per IP: %d",
 		serverConfig.MaxNodes, serverConfig.MaxConnectionsPerIP)
+
+	// Load IP blocklist if configured
+	if serverConfig.IPBlocklistPath != "" {
+		blocklist, err := LoadIPList(serverConfig.IPBlocklistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to load IP blocklist: %v", err)
+		} else if blocklist != nil {
+			connectionTracker.blocklist = blocklist
+			log.Printf("INFO: IP blocklist enabled from %s", serverConfig.IPBlocklistPath)
+		}
+	}
+
+	// Load IP allowlist if configured
+	if serverConfig.IPAllowlistPath != "" {
+		allowlist, err := LoadIPList(serverConfig.IPAllowlistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to load IP allowlist: %v", err)
+		} else if allowlist != nil {
+			connectionTracker.allowlist = allowlist
+			log.Printf("INFO: IP allowlist enabled from %s", serverConfig.IPAllowlistPath)
+		}
+	}
 
 	// Load global strings configuration from the new location
 	loadedStrings, err = config.LoadStrings(rootConfigPath)
