@@ -125,6 +125,19 @@ for template_file in templates/configs/*.json; do
     fi
 done
 
+# Copy template IP list files to configs/ if they don't exist
+for template_file in templates/configs/*.txt; do
+    if [ -f "$template_file" ]; then
+        target_file="configs/$(basename "$template_file")"
+        if [ ! -f "$target_file" ]; then
+            echo "  Creating $(basename "$target_file") from template..."
+            cp "$template_file" "$target_file"
+        else
+            echo "  $(basename "$target_file") already exists, skipping."
+        fi
+    fi
+done
+
 # Create initial data files if they don't exist
 if [ ! -f "data/oneliners.json" ]; then
     echo "Creating empty oneliners.json..."

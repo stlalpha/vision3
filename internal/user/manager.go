@@ -304,6 +304,7 @@ func (um *UserMgr) SaveUsers() error { // Receiver uses renamed type
 }
 
 // Authenticate checks username and compares password hash.
+// Returns: (user, success)
 func (um *UserMgr) Authenticate(username, password string) (*User, bool) { // Receiver uses renamed type
 	lowerUsername := strings.ToLower(username)
 
@@ -318,11 +319,11 @@ func (um *UserMgr) Authenticate(username, password string) (*User, bool) { // Re
 	// Compare hashed password
 	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
-		// Password does not match or other bcrypt error
+		// Password does not match
 		return nil, false
 	}
 
-	// Authentication successful, update LastLogin and TimesCalled
+	// Authentication successful - update LastLogin and TimesCalled
 	um.mu.Lock()                // Acquire write lock to update user fields
 	defer um.mu.Unlock()        // Ensure lock is released
 	user.LastLogin = time.Now() // Update last login time
@@ -486,3 +487,4 @@ func (um *UserMgr) GetAllUsers() []*User {
 	}
 	return usersSlice
 }
+

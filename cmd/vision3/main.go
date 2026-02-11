@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"github.com/gliderlabs/ssh" // Keep for type compatibility
 	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/term"
@@ -56,26 +57,71 @@ type IPList struct {
 	networks []*net.IPNet      // CIDR ranges
 }
 
+// IPLockoutTracker tracks failed login attempts per IP
+type IPLockoutTracker struct {
+	Attempts    int
+	LastAttempt time.Time
+	LockedUntil time.Time
+}
+
 // ConnectionTracker manages active connections and enforces limits
 type ConnectionTracker struct {
 	mu                  sync.Mutex
-	activeConnections   map[string]int // IP address -> connection count
+	activeConnections   map[string]int                // IP address -> connection count
+	failedLogins        map[string]*IPLockoutTracker  // IP address -> lockout tracker
 	maxNodes            int
 	maxConnectionsPerIP int
 	totalConnections    int
 	blocklist           *IPList
 	allowlist           *IPList
+	blocklistPath       string                        // Path to blocklist file for watching
+	allowlistPath       string                        // Path to allowlist file for watching
+	maxFailedLogins     int
+	lockoutMinutes      int
+	watcher             *fsnotify.Watcher             // File system watcher for auto-reload
+	watcherDone         chan bool                     // Signal to stop watcher
 }
 
 // NewConnectionTracker creates a new connection tracker
-func NewConnectionTracker(maxNodes, maxConnectionsPerIP int) *ConnectionTracker {
-	return &ConnectionTracker{
+func NewConnectionTracker(maxNodes, maxConnectionsPerIP, maxFailedLogins, lockoutMinutes int, blocklistPath, allowlistPath string) *ConnectionTracker {
+	ct := &ConnectionTracker{
 		activeConnections:   make(map[string]int),
+		failedLogins:        make(map[string]*IPLockoutTracker),
 		maxNodes:            maxNodes,
 		maxConnectionsPerIP: maxConnectionsPerIP,
 		blocklist:           nil,
 		allowlist:           nil,
+		blocklistPath:       blocklistPath,
+		allowlistPath:       allowlistPath,
+		maxFailedLogins:     maxFailedLogins,
+		lockoutMinutes:      lockoutMinutes,
 	}
+
+	// Load initial IP lists
+	if blocklistPath != "" {
+		blocklist, err := LoadIPList(blocklistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to load initial blocklist: %v", err)
+		} else {
+			ct.blocklist = blocklist
+		}
+	}
+
+	if allowlistPath != "" {
+		allowlist, err := LoadIPList(allowlistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to load initial allowlist: %v", err)
+		} else {
+			ct.allowlist = allowlist
+		}
+	}
+
+	// Start watching files for changes
+	if err := ct.startWatching(); err != nil {
+		log.Printf("ERROR: Failed to start file watcher: %v", err)
+	}
+
+	return ct
 }
 
 // LoadIPList loads an IP list from a file
@@ -244,6 +290,215 @@ func extractIP(addr net.Addr) string {
 		return addr.String() // Return as-is if parsing fails
 	}
 	return host
+}
+
+// IsIPLockedOut checks if an IP address is currently locked out due to failed login attempts.
+// Returns (isLocked, lockedUntil, remainingAttempts)
+func (ct *ConnectionTracker) IsIPLockedOut(ip string) (bool, time.Time, int) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	tracker, exists := ct.failedLogins[ip]
+	if !exists {
+		return false, time.Time{}, ct.maxFailedLogins
+	}
+
+	// Check if lockout has expired
+	if !tracker.LockedUntil.IsZero() && time.Now().Before(tracker.LockedUntil) {
+		return true, tracker.LockedUntil, 0
+	}
+
+	// Lockout expired, clear it
+	if !tracker.LockedUntil.IsZero() && time.Now().After(tracker.LockedUntil) {
+		delete(ct.failedLogins, ip)
+		return false, time.Time{}, ct.maxFailedLogins
+	}
+
+	remainingAttempts := ct.maxFailedLogins - tracker.Attempts
+	if remainingAttempts < 0 {
+		remainingAttempts = 0
+	}
+	return false, time.Time{}, remainingAttempts
+}
+
+// RecordFailedLoginAttempt records a failed login attempt from an IP address.
+// Returns true if the IP was just locked out.
+func (ct *ConnectionTracker) RecordFailedLoginAttempt(ip string) bool {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	// Don't track if feature is disabled
+	if ct.maxFailedLogins == 0 {
+		return false
+	}
+
+	tracker, exists := ct.failedLogins[ip]
+	if !exists {
+		tracker = &IPLockoutTracker{}
+		ct.failedLogins[ip] = tracker
+	}
+
+	tracker.Attempts++
+	tracker.LastAttempt = time.Now()
+
+	// Check if lockout threshold reached
+	if tracker.Attempts >= ct.maxFailedLogins {
+		tracker.LockedUntil = time.Now().Add(time.Duration(ct.lockoutMinutes) * time.Minute)
+		log.Printf("SECURITY: IP %s locked out after %d failed login attempts. Locked until %s",
+			ip, tracker.Attempts, tracker.LockedUntil.Format(time.RFC3339))
+		return true
+	}
+
+	log.Printf("SECURITY: Failed login attempt from IP %s (%d/%d)",
+		ip, tracker.Attempts, ct.maxFailedLogins)
+	return false
+}
+
+// ClearFailedLoginAttempts clears the failed login counter for an IP on successful authentication.
+func (ct *ConnectionTracker) ClearFailedLoginAttempts(ip string) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	if tracker, exists := ct.failedLogins[ip]; exists {
+		if tracker.Attempts > 0 {
+			log.Printf("INFO: Cleared failed login attempts for IP %s (%d attempts)",
+				ip, tracker.Attempts)
+		}
+		delete(ct.failedLogins, ip)
+	}
+}
+
+// reloadIPLists reloads the blocklist and allowlist from disk
+func (ct *ConnectionTracker) reloadIPLists() {
+	log.Printf("INFO: Reloading IP filter lists...")
+
+	// Load blocklist
+	if ct.blocklistPath != "" {
+		newBlocklist, err := LoadIPList(ct.blocklistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to reload blocklist from %s: %v", ct.blocklistPath, err)
+		} else {
+			ct.mu.Lock()
+			ct.blocklist = newBlocklist
+			ct.mu.Unlock()
+			if newBlocklist != nil {
+				log.Printf("INFO: Blocklist reloaded from %s", ct.blocklistPath)
+			} else {
+				log.Printf("INFO: Blocklist cleared (file empty or not found)")
+			}
+		}
+	}
+
+	// Load allowlist
+	if ct.allowlistPath != "" {
+		newAllowlist, err := LoadIPList(ct.allowlistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to reload allowlist from %s: %v", ct.allowlistPath, err)
+		} else {
+			ct.mu.Lock()
+			ct.allowlist = newAllowlist
+			ct.mu.Unlock()
+			if newAllowlist != nil {
+				log.Printf("INFO: Allowlist reloaded from %s", ct.allowlistPath)
+			} else {
+				log.Printf("INFO: Allowlist cleared (file empty or not found)")
+			}
+		}
+	}
+}
+
+// startWatching starts watching the IP list files for changes
+func (ct *ConnectionTracker) startWatching() error {
+	// Don't start watcher if no files to watch
+	if ct.blocklistPath == "" && ct.allowlistPath == "" {
+		log.Printf("DEBUG: No IP list files to watch, file watching disabled")
+		return nil
+	}
+
+	var err error
+	ct.watcher, err = fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("failed to create file watcher: %w", err)
+	}
+
+	ct.watcherDone = make(chan bool)
+
+	// Add files to watch
+	filesToWatch := []string{}
+	if ct.blocklistPath != "" {
+		if _, err := os.Stat(ct.blocklistPath); err == nil {
+			filesToWatch = append(filesToWatch, ct.blocklistPath)
+		} else {
+			log.Printf("WARN: Blocklist file %s does not exist, will not watch for changes", ct.blocklistPath)
+		}
+	}
+	if ct.allowlistPath != "" {
+		if _, err := os.Stat(ct.allowlistPath); err == nil {
+			filesToWatch = append(filesToWatch, ct.allowlistPath)
+		} else {
+			log.Printf("WARN: Allowlist file %s does not exist, will not watch for changes", ct.allowlistPath)
+		}
+	}
+
+	for _, file := range filesToWatch {
+		if err := ct.watcher.Add(file); err != nil {
+			log.Printf("ERROR: Failed to watch file %s: %v", file, err)
+		} else {
+			log.Printf("INFO: Watching %s for changes (auto-reload enabled)", file)
+		}
+	}
+
+	// Start watching in a goroutine
+	go ct.watchLoop()
+
+	return nil
+}
+
+// watchLoop handles file system events
+func (ct *ConnectionTracker) watchLoop() {
+	// Debounce timer to avoid reloading on rapid successive writes
+	var debounceTimer *time.Timer
+	debounceDuration := 500 * time.Millisecond
+
+	for {
+		select {
+		case event, ok := <-ct.watcher.Events:
+			if !ok {
+				return
+			}
+
+			// Only care about Write and Create events
+			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
+				log.Printf("DEBUG: File change detected: %s (%s)", event.Name, event.Op)
+
+				// Reset debounce timer
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				debounceTimer = time.AfterFunc(debounceDuration, func() {
+					ct.reloadIPLists()
+				})
+			}
+
+		case err, ok := <-ct.watcher.Errors:
+			if !ok {
+				return
+			}
+			log.Printf("ERROR: File watcher error: %v", err)
+
+		case <-ct.watcherDone:
+			log.Printf("INFO: Stopping IP list file watcher")
+			return
+		}
+	}
+}
+
+// StopWatching stops the file watcher
+func (ct *ConnectionTracker) StopWatching() {
+	if ct.watcher != nil {
+		close(ct.watcherDone)
+		ct.watcher.Close()
+	}
 }
 
 // --- SSH Session Types (golang.org/x/crypto/ssh adapter) ---
@@ -926,31 +1181,27 @@ func main() {
 		log.Fatalf("Failed to load server configuration: %v", err)
 	}
 
-	// Initialize connection tracker with configured limits
-	connectionTracker = NewConnectionTracker(serverConfig.MaxNodes, serverConfig.MaxConnectionsPerIP)
-	log.Printf("INFO: Connection limits configured - Max Nodes: %d, Max Connections Per IP: %d",
-		serverConfig.MaxNodes, serverConfig.MaxConnectionsPerIP)
+	// Initialize connection tracker with configured limits and IP filter file paths
+	// This will load the initial lists and start watching for file changes
+	connectionTracker = NewConnectionTracker(
+		serverConfig.MaxNodes,
+		serverConfig.MaxConnectionsPerIP,
+		serverConfig.MaxFailedLogins,
+		serverConfig.LockoutMinutes,
+		serverConfig.IPBlocklistPath,
+		serverConfig.IPAllowlistPath,
+	)
+	defer connectionTracker.StopWatching() // Ensure file watcher is stopped on shutdown
 
-	// Load IP blocklist if configured
+	log.Printf("INFO: Connection security configured - Max Nodes: %d, Max Connections Per IP: %d, Max Failed Logins: %d, Lockout: %d min",
+		serverConfig.MaxNodes, serverConfig.MaxConnectionsPerIP, serverConfig.MaxFailedLogins, serverConfig.LockoutMinutes)
+
+	// Log IP filter status
 	if serverConfig.IPBlocklistPath != "" {
-		blocklist, err := LoadIPList(serverConfig.IPBlocklistPath)
-		if err != nil {
-			log.Printf("ERROR: Failed to load IP blocklist: %v", err)
-		} else if blocklist != nil {
-			connectionTracker.blocklist = blocklist
-			log.Printf("INFO: IP blocklist enabled from %s", serverConfig.IPBlocklistPath)
-		}
+		log.Printf("INFO: IP blocklist enabled from %s (auto-reload on file change)", serverConfig.IPBlocklistPath)
 	}
-
-	// Load IP allowlist if configured
 	if serverConfig.IPAllowlistPath != "" {
-		allowlist, err := LoadIPList(serverConfig.IPAllowlistPath)
-		if err != nil {
-			log.Printf("ERROR: Failed to load IP allowlist: %v", err)
-		} else if allowlist != nil {
-			connectionTracker.allowlist = allowlist
-			log.Printf("INFO: IP allowlist enabled from %s", serverConfig.IPAllowlistPath)
-		}
+		log.Printf("INFO: IP allowlist enabled from %s (auto-reload on file change)", serverConfig.IPAllowlistPath)
 	}
 
 	// Load global strings configuration from the new location
@@ -1024,8 +1275,8 @@ func main() {
 		confMgr = nil
 	}
 
-	// Initialize MenuExecutor with new paths, loaded theme, server config, and message manager
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr)
+	// Initialize MenuExecutor with new paths, loaded theme, server config, message manager, and connection tracker
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker)
 
 	if ftnErr == nil && len(ftnConfig.Networks) > 0 {
 		log.Printf("INFO: Internal FTN tosser disabled; use external tosser (e.g., hpt).")

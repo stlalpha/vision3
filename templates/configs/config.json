@@ -13,6 +13,8 @@
     "telnetPort": 2323,
     "maxNodes": 10,
     "maxConnectionsPerIP": 3,
-    "ipBlocklistPath": "",
-    "ipAllowlistPath": ""
+    "ipBlocklistPath": "configs/blocklist.txt",
+    "ipAllowlistPath": "configs/allowlist.txt",
+    "maxFailedLogins": 5,
+    "lockoutMinutes": 30
 }

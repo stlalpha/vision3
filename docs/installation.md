@@ -79,6 +79,8 @@ The system includes default configuration files in the `configs/` directory:
   - `maxConnectionsPerIP`: Maximum connections per IP (default: 3, 0 = unlimited)
   - `ipBlocklistPath`: Path to IP blocklist file (optional)
   - `ipAllowlistPath`: Path to IP allowlist file (optional, bypasses all limits)
+  - `maxFailedLogins`: Failed login attempts before lockout (default: 5, 0 = disabled)
+  - `lockoutMinutes`: Account lockout duration in minutes (default: 30)
   - `sysOpLevel`: Security level for SysOp access (default: 255)
   - `coSysOpLevel`: Security level for Co-SysOp access (default: 250)
 - `message_areas.json` - Message area definitions (JAM base paths, area types)

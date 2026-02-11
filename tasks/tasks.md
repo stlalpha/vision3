@@ -169,6 +169,35 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 ## Recently Completed (Archive)
 
+### Security & Connection Management (February 2025)
+
+*   [x] **Connection Security System:**
+    *   Connection tracker with max nodes and per-IP connection limits
+    *   IP blocklist/allowlist support with CIDR range matching
+    *   Template files for blocklist.txt and allowlist.txt in `templates/configs/`
+    *   Integration with SSH and Telnet servers
+    *   Comprehensive logging of blocked/allowed connections
+*   [x] **IP-Based Authentication Lockout:**
+    *   Refactored from user-based to IP-based lockout (prevents DoS attacks)
+    *   Configurable failed login threshold and lockout duration
+    *   In-memory tracking with automatic expiration
+    *   Integration in authentication flow (both LOGIN and AUTHENTICATE)
+    *   Added `IPLockoutChecker` interface for dependency injection
+*   [x] **Auto-Reload for IP Filter Files:**
+    *   File system watching using fsnotify library
+    *   Automatic reload of blocklist.txt and allowlist.txt on file changes
+    *   500ms debouncing to handle rapid successive edits
+    *   Zero-downtime updates - no BBS restart required
+    *   Thread-safe reload with mutex protection
+    *   Comprehensive logging of reload events
+*   [x] **Security Documentation:**
+    *   Created comprehensive `docs/security.md` with examples and best practices
+    *   Updated `docs/configuration.md` with IP filter configuration
+    *   Updated `docs/installation.md` with security settings
+    *   Documented auto-reload feature with usage examples
+
+### Earlier Completed Features
+
 *   [x] SSH Server implementation with connection handling
 *   [x] User management with JSON persistence
 *   [x] Configuration loading from JSON files

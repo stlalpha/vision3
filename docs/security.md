@@ -194,7 +194,47 @@ fe80::/10
 - One IP or CIDR range per line
 - Whitespace is trimmed
 - Invalid entries are logged and skipped
-- Files are loaded at startup (restart required for changes)
+- Files are loaded at startup and **automatically reloaded** when changed (no restart required)
+
+### Auto-Reload Feature
+
+The BBS **automatically watches** blocklist.txt and allowlist.txt for changes and reloads them on the fly.
+
+**How it works:**
+
+1. Files are monitored using file system watching (fsnotify)
+2. When you save changes to either file, the BBS detects it within seconds
+3. Lists are reloaded automatically (with 500ms debounce to handle rapid edits)
+4. Changes take effect immediately for new connection attempts
+5. No BBS restart needed - zero downtime
+
+**Benefits:**
+
+- ✅ **Respond to attacks immediately** - block IPs without disrupting users
+- ✅ **No downtime** - no need to restart the BBS
+- ✅ **Easy testing** - edit, save, test immediately
+- ✅ **Safe updates** - existing connections remain active
+
+**Example workflow:**
+
+```bash
+# 1. Edit the blocklist
+vim configs/blocklist.txt
+# Add: 192.0.2.100
+
+# 2. Save the file
+# (Auto-reload happens within 500ms)
+
+# 3. Verify in logs
+tail -f data/logs/vision3.log
+# You'll see:
+# DEBUG: File change detected: configs/blocklist.txt (WRITE)
+# INFO: Reloading IP filter lists...
+# INFO: Blocklist reloaded from configs/blocklist.txt
+
+# 4. IP is now blocked immediately
+# New connections from 192.0.2.100 will be rejected
+```
 
 ### Priority Order
 
@@ -303,23 +343,22 @@ During an attack from `192.0.2.0/24`:
    echo "192.0.2.0/24" >> configs/blocklist.txt
    ```
 
-2. Restart BBS to apply:
+2. Changes apply **automatically within seconds** (no restart needed):
 
    ```bash
-   # If running with systemd
-   sudo systemctl restart vision3
-
-   # If running manually
-   # Ctrl+C and restart ./vision3
-
-   # If running with Docker
-   docker-compose restart
+   # Watch the logs to confirm reload
+   tail -f data/logs/vision3.log
+   # You'll see:
+   # INFO: Reloading IP filter lists...
+   # INFO: Blocklist reloaded from configs/blocklist.txt
    ```
 
-3. Monitor logs:
+3. Monitor blocked connections:
 
    ```bash
    tail -f data/logs/vision3.log | grep "192.0.2"
+   # You'll see:
+   # INFO: Rejecting SSH connection from 192.0.2.x: IP address is blocked
    ```
 
 ### Logging
@@ -327,19 +366,25 @@ During an attack from `192.0.2.0/24`:
 IP filtering actions are logged:
 
 ```
-INFO: IP blocklist enabled from configs/blocklist.txt
-INFO: Loaded IP list from configs/blocklist.txt: 5 IPs, 3 CIDR ranges
-INFO: IP allowlist enabled from configs/allowlist.txt
-INFO: Loaded IP list from configs/allowlist.txt: 2 IPs, 1 CIDR ranges
+INFO: IP blocklist enabled from configs/blocklist.txt (auto-reload on file change)
+INFO: Watching configs/blocklist.txt for changes (auto-reload enabled)
+INFO: IP allowlist enabled from configs/allowlist.txt (auto-reload on file change)
+INFO: Watching configs/allowlist.txt for changes (auto-reload enabled)
+DEBUG: File change detected: configs/blocklist.txt (WRITE)
+INFO: Reloading IP filter lists...
+INFO: Blocklist reloaded from configs/blocklist.txt
 INFO: Rejecting Telnet connection from 192.0.2.100: IP address is blocked
 DEBUG: IP 203.0.113.42 is on allowlist, bypassing all checks
 ```
 
 ### Troubleshooting
 
-**Problem:** Changes to blocklist/allowlist don't apply
+**Problem:** Changes to blocklist/allowlist don't apply immediately
 
-**Solution:** Restart the BBS. Lists are loaded at startup, not dynamically.
+**Solution:** Auto-reload should happen within seconds. Check the logs for "Reloading IP filter lists..." message. If you don't see it:
+- Ensure the file was saved properly
+- Check file permissions (must be readable by the BBS process)
+- Look for file watcher errors in the logs
 
 ---
 
@@ -348,8 +393,8 @@ DEBUG: IP 203.0.113.42 is on allowlist, bypassing all checks
 **Solution:** Check the logs. Ensure:
 
 - File path is correct in config.json
-- IP format is valid
-- BBS was restarted after changes
+- IP format is valid (no typos, valid CIDR notation)
+- Check for reload confirmation in logs
 
 ---
 
@@ -392,6 +437,70 @@ ViSiON/3 uses numeric security levels for access control:
 - **coSysOpLevel (250):** Co-SysOp privileges
 - **logonLevel (100):** Standard user after login
 - **anonymousLevel (5):** Guest/unvalidated users
+
+### Authentication Lockout
+
+Protect against brute-force attacks with automatic **IP-based** lockout after failed login attempts.
+
+**Configuration** (`configs/config.json`):
+
+```json
+{
+  "maxFailedLogins": 5,
+  "lockoutMinutes": 30
+}
+```
+
+- **maxFailedLogins:** Number of failed login attempts from a single IP before lockout (0 = disabled)
+- **lockoutMinutes:** Duration the IP remains locked after threshold is reached
+
+**How it works:**
+
+1. Each failed login attempt from an IP address is tracked in memory
+2. After reaching the threshold, the IP is locked out
+3. During lockout, login attempts from that IP show:
+   ```
+   Too many failed login attempts from your IP.
+   Please try again in X minutes.
+   ```
+4. Successful login from an IP clears the failed attempt counter for that IP
+5. Lockout automatically expires after the configured time
+
+**Why IP-based instead of user-based?**
+
+IP-based lockout prevents **Denial of Service (DoS)** attacks where an attacker repeatedly tries to log in to legitimate user accounts to lock them out. With IP-based lockout:
+- Attackers lock themselves out, not your users
+- Multiple users behind the same IP (like a NAT) share a counter (use higher limits or allowlist trusted IPs)
+- Better suited for BBS/community systems where user accounts are valuable
+
+**Persistence:**
+
+IP lockout data is held **in memory only** (not persisted to disk). This means:
+- Lockouts are cleared on BBS restart
+- No permanent lockout records
+- Fast in-memory lookups
+- Lockouts automatically expire based on timestamp, even without restart
+
+**Logging:**
+
+All authentication events are logged:
+```
+SECURITY: Node 3: Failed authentication attempt for user: johndoe from IP: 203.0.113.42
+SECURITY: Node 3: IP 203.0.113.42 has been locked out after too many failed attempts
+SECURITY: Node 3: Login attempt from locked IP 203.0.113.42 (locked until 2026-02-11 14:30:00, 5 attempts)
+DEBUG: Node 3: Cleared failed login attempts for IP 203.0.113.42
+```
+
+**Recommendations:**
+
+- **Public BBS:** `maxFailedLogins: 5`, `lockoutMinutes: 30`
+- **High Security:** `maxFailedLogins: 3`, `lockoutMinutes: 60`
+- **Development:** `maxFailedLogins: 0` (disabled)
+- **Shared IPs (NAT):** Consider higher limits or use IP allowlist for trusted networks
+
+**Manual unlock:**
+
+To manually unlock an IP, simply restart the BBS (lockouts are in-memory only). Alternatively, wait for the lockout duration to expire — the system automatically allows logins after the configured time.
 
 ### SSH Authentication
 

@@ -39,6 +39,15 @@ import (
 // Mutex for protecting access to the oneliners file
 var onelinerMutex sync.Mutex
 
+// IPLockoutChecker defines the interface for IP-based authentication lockout.
+// This allows the menu system to check and record failed login attempts without
+// depending on the specific implementation in main.
+type IPLockoutChecker interface {
+	IsIPLockedOut(ip string) (bool, time.Time, int)
+	RecordFailedLoginAttempt(ip string) bool
+	ClearFailedLoginAttempts(ip string)
+}
+
 // RunnableFunc defines the signature for functions executable via RUN:
 // Returns: authenticatedUser, nextAction (e.g., "GOTO:MENU"), err
 type RunnableFunc func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (authenticatedUser *user.User, nextAction string, err error)
@@ -57,17 +66,18 @@ type MenuExecutor struct {
 	OneLiners      []string                      // Loaded oneliners (Consider if these should be menu-set specific)
 	LoadedStrings  config.StringsConfig          // Loaded global strings configuration
 	Theme          config.ThemeConfig            // Loaded theme configuration
-	ServerCfg      config.ServerConfig           // Server configuration (NEW)
-	MessageMgr     *message.MessageManager       // <-- ADDED FIELD
-	FileMgr        *file.FileManager             // <-- ADDED FIELD: File manager instance
-	ConferenceMgr  *conference.ConferenceManager // Conference grouping manager
+	ServerCfg       config.ServerConfig           // Server configuration (NEW)
+	MessageMgr      *message.MessageManager       // <-- ADDED FIELD
+	FileMgr         *file.FileManager             // <-- ADDED FIELD: File manager instance
+	ConferenceMgr   *conference.ConferenceManager // Conference grouping manager
+	IPLockoutCheck  IPLockoutChecker              // IP-based authentication lockout checker
 }
 
 // NewExecutor creates a new MenuExecutor.
-// Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, and serverCfg parameters
+// Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, serverCfg, and ipLockoutCheck parameters
 // Updated paths to use new structure
-// << UPDATED Signature with msgMgr, fileMgr, and serverCfg
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager) *MenuExecutor {
+// << UPDATED Signature with msgMgr, fileMgr, serverCfg, and ipLockoutCheck
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -87,6 +97,7 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		MessageMgr:     msgMgr,        // <-- ASSIGN FIELD
 		FileMgr:        fileMgr,       // <-- ASSIGN FIELD
 		ConferenceMgr:  confMgr,       // Conference grouping manager
+		IPLockoutCheck: ipLockoutCheck, // IP-based lockout checker
 	}
 }
 
@@ -849,11 +860,46 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return nil, "", fmt.Errorf("failed reading password: %w", err) // Critical error
 	}
 
+	// Get remote IP address for lockout checking
+	remoteAddr := s.RemoteAddr().String()
+	// Extract just the IP (remove port if present)
+	remoteIP := remoteAddr
+	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
+		remoteIP = remoteAddr[:idx]
+	}
+
+	// Check if this IP is currently locked out
+	if e.IPLockoutCheck != nil {
+		isLocked, lockedUntil, attempts := e.IPLockoutCheck.IsIPLockedOut(remoteIP)
+		if isLocked {
+			log.Printf("SECURITY: Node %d: Login attempt from locked IP %s (locked until %s, %d attempts)",
+				nodeNumber, remoteIP, lockedUntil.Format("2006-01-02 15:04:05"), attempts)
+			terminal.Write([]byte(ansi.MoveCursor(errorRow, 1)))
+			minutesLeft := int(time.Until(lockedUntil).Minutes()) + 1
+			errMsg := fmt.Sprintf("\r\n|09Too many failed login attempts from your IP.\r\n|09Please try again in %d minutes.|07\r\n", minutesLeft)
+			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+			if wErr != nil {
+				log.Printf("ERROR: Failed writing IP lockout message: %v", wErr)
+			}
+			time.Sleep(2 * time.Second)
+			return nil, "", nil
+		}
+	}
+
 	// Attempt Authentication via UserManager
-	log.Printf("DEBUG: Node %d: Attempting authentication for user: %s", nodeNumber, username)
+	log.Printf("DEBUG: Node %d: Attempting authentication for user: %s from IP: %s", nodeNumber, username, remoteIP)
 	authUser, authenticated := userManager.Authenticate(username, password)
 	if !authenticated {
-		log.Printf("WARN: Node %d: Failed authentication attempt for user: %s", nodeNumber, username)
+		log.Printf("WARN: Node %d: Failed authentication attempt for user: %s from IP: %s", nodeNumber, username, remoteIP)
+
+		// Record failed login attempt for this IP
+		if e.IPLockoutCheck != nil {
+			wasLocked := e.IPLockoutCheck.RecordFailedLoginAttempt(remoteIP)
+			if wasLocked {
+				log.Printf("SECURITY: Node %d: IP %s has been locked out after too many failed attempts", nodeNumber, remoteIP)
+			}
+		}
+
 		// Display error message to user
 		terminal.Write([]byte(ansi.MoveCursor(errorRow, 1))) // Move cursor for message
 		errMsg := "\r\n|01Login incorrect.|07\r\n"
@@ -883,6 +929,13 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 
 	// Authentication Successful!
 	log.Printf("INFO: Node %d: User '%s' (Handle: %s) authenticated successfully via RUN:AUTHENTICATE", nodeNumber, authUser.Username, authUser.Handle)
+
+	// Clear failed login attempts for this IP
+	if e.IPLockoutCheck != nil {
+		e.IPLockoutCheck.ClearFailedLoginAttempts(remoteIP)
+		log.Printf("DEBUG: Node %d: Cleared failed login attempts for IP %s", nodeNumber, remoteIP)
+	}
+
 	// Display success message (optional) - Move cursor first
 	terminal.Write([]byte(ansi.MoveCursor(errorRow, 1)))
 	// successMsg := "\r\n|10Login successful!|07\r\n"
@@ -1675,11 +1728,46 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		return nil, fmt.Errorf("failed reading password: %w", err)
 	}
 
+	// Get remote IP address for lockout checking
+	remoteAddr := s.RemoteAddr().String()
+	// Extract just the IP (remove port if present)
+	remoteIP := remoteAddr
+	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
+		remoteIP = remoteAddr[:idx]
+	}
+
+	// Check if this IP is currently locked out
+	if e.IPLockoutCheck != nil {
+		isLocked, lockedUntil, attempts := e.IPLockoutCheck.IsIPLockedOut(remoteIP)
+		if isLocked {
+			log.Printf("SECURITY: Node %d: Login attempt from locked IP %s (locked until %s, %d attempts)",
+				nodeNumber, remoteIP, lockedUntil.Format("2006-01-02 15:04:05"), attempts)
+			terminal.Write([]byte(ansi.MoveCursor(errorRow, 1)))
+			minutesLeft := int(time.Until(lockedUntil).Minutes()) + 1
+			errMsg := fmt.Sprintf("\r\n|09Too many failed login attempts from your IP.\r\n|09Please try again in %d minutes.|07\r\n", minutesLeft)
+			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+			if wErr != nil {
+				log.Printf("ERROR: Failed writing IP lockout message: %v", wErr)
+			}
+			time.Sleep(2 * time.Second)
+			return nil, nil
+		}
+	}
+
 	// Attempt Authentication via UserManager
-	log.Printf("DEBUG: Node %d: Attempting authentication for user: %s", nodeNumber, username)
+	log.Printf("DEBUG: Node %d: Attempting authentication for user: %s from IP: %s", nodeNumber, username, remoteIP)
 	authUser, authenticated := userManager.Authenticate(username, password)
 	if !authenticated {
-		log.Printf("WARN: Node %d: Failed authentication attempt for user: %s", nodeNumber, username)
+		log.Printf("WARN: Node %d: Failed authentication attempt for user: %s from IP: %s", nodeNumber, username, remoteIP)
+
+		// Record failed login attempt for this IP
+		if e.IPLockoutCheck != nil {
+			wasLocked := e.IPLockoutCheck.RecordFailedLoginAttempt(remoteIP)
+			if wasLocked {
+				log.Printf("SECURITY: Node %d: IP %s has been locked out after too many failed attempts", nodeNumber, remoteIP)
+			}
+		}
+
 		terminal.Write([]byte(ansi.MoveCursor(errorRow, 1))) // Move cursor for message
 		errMsg := "\r\n|01Login incorrect.|07\r\n"
 		// Use WriteProcessedBytes with the passed outputMode
@@ -1705,6 +1793,13 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 	}
 
 	log.Printf("INFO: Node %d: User '%s' (Handle: %s) authenticated successfully via LOGIN prompt", nodeNumber, authUser.Username, authUser.Handle)
+
+	// Clear failed login attempts for this IP
+	if e.IPLockoutCheck != nil {
+		e.IPLockoutCheck.ClearFailedLoginAttempts(remoteIP)
+		log.Printf("DEBUG: Node %d: Cleared failed login attempts for IP %s", nodeNumber, remoteIP)
+	}
+
 	return authUser, nil // Success!
 }
 

@@ -194,7 +194,9 @@ General BBS configuration settings.
   "maxNodes": 10,
   "maxConnectionsPerIP": 3,
   "ipBlocklistPath": "",
-  "ipAllowlistPath": ""
+  "ipAllowlistPath": "",
+  "maxFailedLogins": 5,
+  "lockoutMinutes": 30
 }
 ```
 
@@ -227,6 +229,11 @@ General BBS configuration settings.
 - `ipBlocklistPath` - Path to IP blocklist file (optional, leave empty to disable)
 - `ipAllowlistPath` - Path to IP allowlist file (optional, leave empty to disable)
 
+**Authentication Security:**
+
+- `maxFailedLogins` - Maximum failed login attempts from a single IP before lockout (default: 5, 0 = disabled)
+- `lockoutMinutes` - Duration of IP lockout in minutes (default: 30)
+
 ### IP Blocklist/Allowlist Files
 
 Both blocklist and allowlist files use the same format:
@@ -253,6 +260,14 @@ Both blocklist and allowlist files use the same format:
 1. **Allowlist takes precedence**: If an IP is on the allowlist, it bypasses all other checks (blocklist, max nodes, per-IP limits)
 2. **Blocklist checked next**: If an IP is on the blocklist, the connection is rejected
 3. **Other limits apply**: If not on either list, normal connection limits apply
+
+**Auto-Reload:**
+
+- Files are **automatically monitored** for changes using file system watching
+- When you edit and save either file, changes apply **within seconds** (no BBS restart needed)
+- Debouncing (500ms) handles rapid successive edits
+- All reloads are logged for debugging
+- See [Security Guide](security.md#auto-reload-feature) for detailed usage
 
 **Example setup:**
 

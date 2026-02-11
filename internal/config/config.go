@@ -389,6 +389,8 @@ type ServerConfig struct {
 	MaxConnectionsPerIP int    `json:"maxConnectionsPerIP"`
 	IPBlocklistPath     string `json:"ipBlocklistPath"`
 	IPAllowlistPath     string `json:"ipAllowlistPath"`
+	MaxFailedLogins     int    `json:"maxFailedLogins"`
+	LockoutMinutes      int    `json:"lockoutMinutes"`
 }
 
 // LoadServerConfig loads the server configuration from config.json
@@ -412,6 +414,8 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		TelnetEnabled:       false,
 		MaxNodes:            10,
 		MaxConnectionsPerIP: 3,
+		MaxFailedLogins:     5,
+		LockoutMinutes:      30,
 	}
 
 	data, err := os.ReadFile(filePath)
