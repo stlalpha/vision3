@@ -60,18 +60,23 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 	showMenu := func() {
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 
-		header := "|15Message Scanning Setup|07\r\n" +
-			"|08" + strings.Repeat("-", 40) + "|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode)
+		// Display ANSI header (Vision/2 style - 4 rows tall)
+		ansPath := "menus/v3/ansi/NSCANHDR.ANS"
+		headerContent, ansErr := ansi.GetAnsiFileContent(ansPath)
+		if ansErr == nil {
+			terminalio.WriteProcessedBytes(terminal, headerContent, outputMode)
+			// Position cursor on line 5 (after 4-row header)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		}
 
-		// Date
+		// Date - Brackets: Dark grey (|08), Hotkeys: Bright cyan (|11), Labels: Dark cyan (|03), Values: Bright blue (|09)
 		dateStr := "All New Messages"
 		if cfg.ScanDate == 0 {
 			dateStr = "ALL Messages"
 		} else if cfg.ScanDate > 0 {
 			dateStr = fmt.Sprintf("From: %s", time.Unix(cfg.ScanDate, 0).Format("01/02/06"))
 		}
-		line := fmt.Sprintf("|15D|07ate: |14%s|07\r\n", dateStr)
+		line := fmt.Sprintf("|08[|11D|08] |03Date: |09%s|07\r\n", dateStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// To
@@ -79,7 +84,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		if cfg.SearchTo != "" {
 			toStr = fmt.Sprintf("Search For %s", cfg.SearchTo)
 		}
-		line = fmt.Sprintf("|15T|07o  : |14%s|07\r\n", toStr)
+		line = fmt.Sprintf("|08[|11T|08] |03To: |09%s|07\r\n", toStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// From
@@ -87,7 +92,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		if cfg.SearchFrom != "" {
 			fromStr = fmt.Sprintf("Search For %s", cfg.SearchFrom)
 		}
-		line = fmt.Sprintf("|15F|07rom: |14%s|07\r\n", fromStr)
+		line = fmt.Sprintf("|08[|11F|08] |03From: |09%s|07\r\n", fromStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// Range
@@ -95,7 +100,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		if cfg.RangeStart > 0 && cfg.RangeEnd > 0 {
 			rangeStr = fmt.Sprintf("%d-%d", cfg.RangeStart, cfg.RangeEnd)
 		}
-		line = fmt.Sprintf("|15R|07ange: |14%s|07\r\n", rangeStr)
+		line = fmt.Sprintf("|08[|11R|08] |03Range: |09%s|07\r\n", rangeStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// Update Pointers
@@ -103,7 +108,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		if !cfg.UpdatePointers {
 			upStr = "No"
 		}
-		line = fmt.Sprintf("|15U|07pdate NewScan Pointers: |14%s|07\r\n", upStr)
+		line = fmt.Sprintf("|08[|11U|08] |03Update NewScan Pointers: |09%s|07\r\n", upStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// Which Areas
@@ -116,13 +121,14 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		case 3:
 			whichStr = "Current Area Only"
 		}
-		line = fmt.Sprintf("|15S|07can Which Areas?: |14%s|07\r\n", whichStr)
+		line = fmt.Sprintf("|08[|11S|08] |03Scan Which Areas?: |09%s|07\r\n", whichStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
-		line = "|15A|07bort Message Scanning\r\n\r\n"
+		line = "|08[|11A|08] |03Abort Message Scanning\r\n\r\n"
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
-		prompt := "|07Selection; (|15Cr|07/|15Scan|07) : |15"
+		// Prompt - "Selection;" Dark Cyan (|03), "(Cr" Bright Cyan (|11), "/" Bright Magenta (|13), "Scan) :" Bright Cyan (|11)
+		prompt := "|03Selection; (|11Cr|13/|11Scan) : "
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 	}
 
