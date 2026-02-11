@@ -10,12 +10,14 @@ This guide covers deploying ViSiON/3 using Docker and Docker Compose.
 ## Quick Start with Docker Compose
 
 1. **Clone the repository:**
+
    ```bash
    git clone https://github.com/robbiew/vision3.git
    cd vision3
    ```
 
 2. **Start the BBS:**
+
    ```bash
    docker-compose up -d
    ```
@@ -28,11 +30,13 @@ This guide covers deploying ViSiON/3 using Docker and Docker Compose.
    - Start the BBS on port 2222
 
 3. **Check logs:**
+
    ```bash
    docker-compose logs -f
    ```
 
 4. **Connect to the BBS:**
+
    ```bash
    ssh felonius@localhost -p 2222
    # Default password: password
@@ -43,16 +47,19 @@ This guide covers deploying ViSiON/3 using Docker and Docker Compose.
 If you prefer not to use Docker Compose:
 
 1. **Build the image:**
+
    ```bash
    docker build -t vision3:latest .
    ```
 
 2. **Create host directories:**
+
    ```bash
    mkdir -p configs data menus
    ```
 
 3. **Run the container:**
+
    ```bash
    docker run -d \
      --name vision3-bbs \
@@ -68,6 +75,7 @@ If you prefer not to use Docker Compose:
 ### CGO and libssh Requirement
 
 ViSiON/3 **requires libssh via CGO** for SSH server functionality. The Dockerfile:
+
 - Enables CGO in the build stage (`CGO_ENABLED=1`)
 - Installs `libssh-dev` during build
 - Includes `libssh` runtime library in the final image
@@ -99,6 +107,7 @@ The following directories are mounted as volumes and persist across container re
 ### First Run Initialization
 
 On first run, the entrypoint script will:
+
 1. Create necessary directories
 2. Generate SSH host keys (RSA and ED25519)
 3. Copy template configs to `configs/` if missing
@@ -119,6 +128,7 @@ docker-compose restart
 ## Private Mail Setup
 
 The PRIVMAIL area is automatically configured in `configs/message_areas.json`. The Docker setup ensures:
+
 - `data/msgbases/privmail/` directory is created
 - JAM message base files are initialized on first message
 - EMAILM menu is accessible via the E key from main menu
@@ -142,6 +152,7 @@ Your data in `configs/`, `data/`, and `menus/` volumes will be preserved.
 ### SSH Connection Refused
 
 If you can't connect via SSH:
+
 1. Check container logs: `docker-compose logs`
 2. Verify port 2222 is not already in use: `netstat -ln | grep 2222`
 3. Check SSH keys were generated: `ls -l configs/ssh_host_*`
@@ -149,8 +160,10 @@ If you can't connect via SSH:
 ### libssh Errors
 
 If you see libssh-related errors:
+
 - Ensure the image was built with CGO enabled
 - Check that `libssh` is installed in the container:
+
   ```bash
   docker-compose exec vision3 apk info libssh
   ```
@@ -158,6 +171,7 @@ If you see libssh-related errors:
 ### Configuration Not Loading
 
 If config changes aren't applied:
+
 1. Ensure config files exist in the `configs/` volume
 2. Restart the container: `docker-compose restart`
 3. Check file permissions (should be readable by container)
@@ -165,6 +179,7 @@ If config changes aren't applied:
 ### Message Base Errors
 
 If you see JAM-related errors:
+
 1. Check directory permissions in `data/msgbases/`
 2. Ensure PRIVMAIL area exists in `configs/message_areas.json`
 3. Delete corrupted JAM files and let them regenerate
@@ -241,6 +256,7 @@ For production deployments:
 ## Support
 
 For issues related to Docker deployment:
+
 - Check logs: `docker-compose logs -f`
-- GitHub Issues: https://github.com/robbiew/vision3/issues
+- GitHub Issues: <https://github.com/robbiew/vision3/issues>
 - Include Docker version, OS, and error logs when reporting issues

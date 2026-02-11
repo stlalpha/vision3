@@ -43,6 +43,7 @@ Tests are located in `internal/ansi/sauce_test.go` and cover:
 - Files too small to contain SAUCE (ignored)
 
 Run tests with:
+
 ```bash
 go test ./internal/ansi -v -run TestStripSAUCE
 ```
@@ -55,12 +56,14 @@ go test ./internal/ansi -v -run TestStripSAUCE
 ## Example
 
 Before stripping:
-```
+
+```text
 [ANSI art content]^Z SAUCE00 [metadata bytes...]
 ```
 
 After stripping:
-```
+
+```text
 [ANSI art content]
 ```
 

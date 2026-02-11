@@ -35,6 +35,7 @@ Limits the total number of simultaneous connections to your BBS.
 - **Purpose:** Prevents server overload from too many connections
 
 **Example:**
+
 ```json
 {
   "maxNodes": 5
@@ -42,6 +43,7 @@ Limits the total number of simultaneous connections to your BBS.
 ```
 
 This allows only 5 users to be connected at the same time. When the limit is reached, new connections receive:
+
 ```
 Connection rejected: maximum nodes reached
 Please try again later.
@@ -56,6 +58,7 @@ Limits how many simultaneous connections a single IP address can make.
 - **Purpose:** Prevents connection flooding from a single source
 
 **Example:**
+
 ```json
 {
   "maxConnectionsPerIP": 2
@@ -63,6 +66,7 @@ Limits how many simultaneous connections a single IP address can make.
 ```
 
 This allows each IP address to maintain up to 2 concurrent connections. Useful for:
+
 - Preventing multi-connection abuse
 - Limiting resource usage per user
 - Mitigating simple DoS attempts
@@ -78,6 +82,7 @@ Block specific IPs or IP ranges from connecting.
 **Setup:**
 
 1. Create `configs/blocklist.txt`:
+
    ```text
    # Blocked IPs - one per line
    # Comments start with #
@@ -99,6 +104,7 @@ Block specific IPs or IP ranges from connecting.
    ```
 
 2. Update `configs/config.json`:
+
    ```json
    {
      "ipBlocklistPath": "configs/blocklist.txt"
@@ -108,6 +114,7 @@ Block specific IPs or IP ranges from connecting.
 3. Restart the BBS
 
 **When to use:**
+
 - Ban abusive users
 - Block known bot networks
 - Prevent access from problematic IP ranges
@@ -120,6 +127,7 @@ Allow specific IPs to bypass all connection limits.
 **Setup:**
 
 1. Create `configs/allowlist.txt`:
+
    ```text
    # Allowed IPs - bypass all limits
    # Comments start with #
@@ -139,6 +147,7 @@ Allow specific IPs to bypass all connection limits.
    ```
 
 2. Update `configs/config.json`:
+
    ```json
    {
      "ipAllowlistPath": "configs/allowlist.txt"
@@ -148,6 +157,7 @@ Allow specific IPs to bypass all connection limits.
 3. Restart the BBS
 
 **When to use:**
+
 - Ensure admin access is never blocked
 - Exempt trusted networks from rate limits
 - Provide unrestricted access to Co-SysOps
@@ -180,6 +190,7 @@ fe80::/10
 ```
 
 **Notes:**
+
 - One IP or CIDR range per line
 - Whitespace is trimmed
 - Invalid entries are logged and skipped
@@ -204,6 +215,7 @@ Connection requests are evaluated in this order:
 5. **Accept Connection**
 
 **Key Points:**
+
 - Allowlist overrides everything (including blocklist)
 - Blocklist overrides connection limits
 - Allowlisted IPs are never rate-limited
@@ -222,6 +234,7 @@ Connection requests are evaluated in this order:
 ```
 
 `configs/allowlist.txt`:
+
 ```text
 # Admin home IP
 203.0.113.42
@@ -231,6 +244,7 @@ Connection requests are evaluated in this order:
 ```
 
 `configs/blocklist.txt`:
+
 ```text
 # Known bad actors
 192.0.2.100
@@ -241,6 +255,7 @@ Connection requests are evaluated in this order:
 ```
 
 **Result:**
+
 - Admin IPs never rate-limited or blocked
 - Known bad IPs blocked
 - Everyone else limited to 3 connections
@@ -257,6 +272,7 @@ Connection requests are evaluated in this order:
 ```
 
 `configs/allowlist.txt`:
+
 ```text
 # Member 1
 203.0.113.1
@@ -269,6 +285,7 @@ Connection requests are evaluated in this order:
 ```
 
 **Result:**
+
 - Only allowlisted IPs can connect
 - Everyone else is rejected (empty allowlist = accept all, but add at least one entry)
 - Actually, this won't work as intended - allowlist doesn't reject others
@@ -281,11 +298,13 @@ Use allowlist for admins only, and rely on authentication + monitoring for acces
 During an attack from `192.0.2.0/24`:
 
 1. Quickly add to blocklist:
+
    ```bash
    echo "192.0.2.0/24" >> configs/blocklist.txt
    ```
 
 2. Restart BBS to apply:
+
    ```bash
    # If running with systemd
    sudo systemctl restart vision3
@@ -298,6 +317,7 @@ During an attack from `192.0.2.0/24`:
    ```
 
 3. Monitor logs:
+
    ```bash
    tail -f data/logs/vision3.log | grep "192.0.2"
    ```
@@ -326,6 +346,7 @@ DEBUG: IP 203.0.113.42 is on allowlist, bypassing all checks
 **Problem:** Allowlisted IP still getting rate-limited
 
 **Solution:** Check the logs. Ensure:
+
 - File path is correct in config.json
 - IP format is valid
 - BBS was restarted after changes
@@ -335,6 +356,7 @@ DEBUG: IP 203.0.113.42 is on allowlist, bypassing all checks
 **Problem:** Can't connect from any IP
 
 **Solution:**
+
 - Check if you accidentally blocked your own IP
 - Verify file format (no typos, valid CIDR notation)
 - Add your IP to allowlist temporarily
@@ -344,9 +366,11 @@ DEBUG: IP 203.0.113.42 is on allowlist, bypassing all checks
 **Problem:** Invalid IP warning in logs
 
 **Solution:** Check the line number in the warning:
+
 ```
 WARN: Invalid CIDR in configs/blocklist.txt line 15: 192.168.1.1/33
 ```
+
 CIDR mask must be 0-32 for IPv4, 0-128 for IPv6.
 
 ## Access Control
@@ -379,6 +403,7 @@ SSH-authenticated users bypass the login screen:
 - If not found, user goes through normal login
 
 **Security implications:**
+
 - Disable SSH password authentication, use keys only
 - Keep SSH keys secure
 - Monitor `data/users/call_history.json` for suspicious activity
@@ -397,6 +422,7 @@ SSH-authenticated users bypass the login screen:
    - Consider password complexity requirements
 
 3. **Keep Software Updated**
+
    ```bash
    git pull
    go build ./cmd/vision3
@@ -405,15 +431,18 @@ SSH-authenticated users bypass the login screen:
    ```
 
 4. **Monitor Logs**
+
    ```bash
    tail -f data/logs/vision3.log
    ```
+
    Watch for:
    - Repeated failed login attempts
    - Unusual connection patterns
    - Rate limit hits
 
 5. **Backup Regularly**
+
    ```bash
    # Backup critical data
    tar -czf bbs-backup-$(date +%Y%m%d).tar.gz \
@@ -423,18 +452,21 @@ SSH-authenticated users bypass the login screen:
 ### Connection Security Recommendations
 
 **Public BBS:**
+
 - `maxNodes`: 10-50 (based on server capacity)
 - `maxConnectionsPerIP`: 2-3
 - Use blocklist for known bad actors
 - Use allowlist for admins only
 
 **Private/Community BBS:**
+
 - `maxNodes`: 5-20 (based on community size)
 - `maxConnectionsPerIP`: 1-2
 - Strict allowlist (optional)
 - Active monitoring
 
 **Test/Development:**
+
 - `maxNodes`: 0 (unlimited)
 - `maxConnectionsPerIP`: 0 (unlimited)
 - Empty blocklist/allowlist
@@ -443,12 +475,14 @@ SSH-authenticated users bypass the login screen:
 
 1. **Disable Password Authentication**
    Edit `/etc/ssh/sshd_config`:
+
    ```
    PasswordAuthentication no
    PubkeyAuthentication yes
    ```
 
 2. **Use Non-Standard Port**
+
    ```json
    {
      "sshPort": 2222
@@ -479,6 +513,7 @@ grep "authentication failed" data/logs/vision3.log
 **Set up alerts** (example with systemd):
 
 Create `/usr/local/bin/bbs-monitor.sh`:
+
 ```bash
 #!/bin/bash
 LOGFILE=/path/to/vision3/data/logs/vision3.log
@@ -497,6 +532,7 @@ fi
 Use a firewall in addition to BBS-level security:
 
 **UFW (Ubuntu):**
+
 ```bash
 # Allow BBS port
 sudo ufw allow 2222/tcp
@@ -506,6 +542,7 @@ sudo ufw allow from 203.0.113.42 to any port 2222
 ```
 
 **iptables:**
+
 ```bash
 # Rate limit connections
 iptables -A INPUT -p tcp --dport 2222 -m state --state NEW \
@@ -539,7 +576,8 @@ iptables -A INPUT -p tcp --dport 2222 -m state --state NEW \
 ## Support
 
 For security issues:
-- GitHub Issues: https://github.com/robbiew/vision3/issues
-- Email: robbiew@gmail.com (for sensitive security issues)
+
+- GitHub Issues: <https://github.com/robbiew/vision3/issues>
+- Email: <robbiew@gmail.com> (for sensitive security issues)
 
 **Note:** Never share your SSH host keys, user database, or configuration files containing sensitive information.

@@ -341,7 +341,7 @@ Located in `menus/v3/mnu/`
 
 Example `LOGIN.MNU`:
 
-```
+```text
 RUN:FULL_LOGIN_SEQUENCE
 COND:LI:GOTO:MAIN
 HOTKEY:A:RUN:AUTHENTICATE
