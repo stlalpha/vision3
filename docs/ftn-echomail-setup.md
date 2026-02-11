@@ -6,7 +6,7 @@ across one or more FTN networks.
 
 ## Overview
 
-Vision/3 uses **external binaries** for mail transport and tossing:
+Vision/3 has been tested using **external binaries** for mail transport and tossing:
 
 - **binkd** - FTN mailer (sends/receives packets over BinkP protocol)
   - GitHub: <https://github.com/pgul/binkd>
@@ -16,6 +16,8 @@ Vision/3 uses **external binaries** for mail transport and tossing:
 
 Vision/3 itself manages the JAM message bases, presents messages to users, and
 handles new message creation. The external tools handle the network side.
+
+You don't have to use these specific tools, but they are well-known and widely used in the FTN community. The key is that your mailer must be able to receive packets from your hub, toss them into JAM bases, and create outbound packets from the JAM bases.
 
 ### How It Works
 
