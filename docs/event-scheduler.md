@@ -126,31 +126,87 @@ Event commands and arguments can include placeholders that are substituted at ru
 }
 ```
 
+## Quick Reference
+
+### Cron Schedule Patterns
+
+| Schedule | Description |
+|----------|-------------|
+| `* * * * *` | Every minute |
+| `*/5 * * * *` | Every 5 minutes |
+| `*/15 * * * *` | Every 15 minutes |
+| `*/30 * * * *` | Every 30 minutes |
+| `0 * * * *` | Every hour (at minute 0) |
+| `0 */2 * * *` | Every 2 hours |
+| `0 0 * * *` | Daily at midnight |
+| `0 3 * * *` | Daily at 3 AM |
+| `0 0 * * 0` | Weekly (Sunday midnight) |
+| `0 0 1 * *` | Monthly (1st at midnight) |
+| `@hourly` | Every hour |
+| `@daily` | Once per day at midnight |
+| `@weekly` | Weekly on Sunday |
+| `@monthly` | Monthly on the 1st |
+
+### Finding Command Paths
+
+```bash
+# Check if binkd/hpt are installed
+which binkd
+which hpt
+
+# Common locations
+/usr/bin/binkd
+/usr/local/bin/binkd
+~/bin/binkd
+```
+
+### Testing Commands Manually
+
+Before adding to scheduler, test commands manually:
+
+```bash
+cd /home/bbs/git/vision3
+/usr/local/bin/binkd -p -D data/ftn/binkd.conf
+/usr/local/bin/hpt toss -c data/ftn/hpt.conf
+```
+
 ## Common Use Cases
 
 ### FTN Mail Polling (Binkd)
 
-Poll FTN mail hubs every 15 minutes:
+**Simple poll all nodes every 30 minutes:**
 
 ```json
 {
-  "id": "ftn_poll",
-  "name": "FTN Mail Poll",
+  "id": "binkd_poll",
+  "name": "Poll FTN Mail",
+  "schedule": "*/30 * * * *",
+  "command": "/usr/local/bin/binkd",
+  "args": ["-p", "-D", "{BBS_ROOT}/data/ftn/binkd.conf"],
+  "working_directory": "{BBS_ROOT}",
+  "timeout_seconds": 300,
+  "enabled": true
+}
+```
+
+**Poll specific node every 15 minutes:**
+
+```json
+{
+  "id": "binkd_poll_fsxnet",
+  "name": "Poll FSXNet Hub",
   "schedule": "*/15 * * * *",
   "command": "/usr/local/bin/binkd",
-  "args": ["-p"],
-  "working_directory": "/opt/ftn",
+  "args": ["-P", "21:4/158@fsxnet", "-D", "{BBS_ROOT}/data/ftn/binkd.conf"],
+  "working_directory": "{BBS_ROOT}",
   "timeout_seconds": 300,
-  "enabled": true,
-  "environment_vars": {
-    "BINKD_CONFIG": "/opt/ftn/binkd.cfg"
-  }
+  "enabled": true
 }
 ```
 
 ### Echomail Tossing (HPT)
 
-Toss echomail every hour:
+**Toss echomail every hour:**
 
 ```json
 {
@@ -158,12 +214,70 @@ Toss echomail every hour:
   "name": "HPT Toss Echomail",
   "schedule": "@hourly",
   "command": "/usr/local/bin/hpt",
-  "args": ["toss"],
-  "working_directory": "/opt/ftn",
+  "args": ["toss", "-c", "{BBS_ROOT}/data/ftn/hpt.conf"],
+  "working_directory": "{BBS_ROOT}",
   "timeout_seconds": 600,
   "enabled": true
 }
 ```
+
+**Scan and pack every 2 hours:**
+
+```json
+{
+  "id": "hpt_scan_pack",
+  "name": "HPT Scan and Pack",
+  "schedule": "0 */2 * * *",
+  "command": "/usr/local/bin/hpt",
+  "args": ["scan", "pack", "-c", "{BBS_ROOT}/data/ftn/hpt.conf"],
+  "working_directory": "{BBS_ROOT}",
+  "timeout_seconds": 900,
+  "enabled": true
+}
+```
+
+### Full FTN Mail Workflow
+
+Process mail in stages with timing offsets:
+
+```json
+{
+  "events": [
+    {
+      "id": "binkd_poll",
+      "name": "Poll FTN Mail",
+      "schedule": "0,30 * * * *",
+      "command": "/usr/local/bin/binkd",
+      "args": ["-p", "-D", "{BBS_ROOT}/data/ftn/binkd.conf"],
+      "timeout_seconds": 300,
+      "enabled": true
+    },
+    {
+      "id": "hpt_toss",
+      "name": "Toss Mail After Poll",
+      "schedule": "5,35 * * * *",
+      "command": "/usr/local/bin/hpt",
+      "args": ["toss", "-c", "{BBS_ROOT}/data/ftn/hpt.conf"],
+      "timeout_seconds": 600,
+      "enabled": true
+    },
+    {
+      "id": "hpt_pack",
+      "name": "Pack Mail After Toss",
+      "schedule": "10,40 * * * *",
+      "command": "/usr/local/bin/hpt",
+      "args": ["pack", "-c", "{BBS_ROOT}/data/ftn/hpt.conf"],
+      "timeout_seconds": 600,
+      "enabled": true
+    }
+  ]
+}
+```
+
+This creates a workflow:
+- **:00, :30** - Poll mail from uplinks
+- **:05, :35** - Toss received mail into message bases
+- **:10, :40** - Pack outbound mail for next poll
 
 ### Nightly Maintenance
 
@@ -174,23 +288,24 @@ Run maintenance script at 3 AM:
   "id": "maintenance",
   "name": "Nightly Maintenance",
   "schedule": "0 3 * * *",
-  "command": "/opt/vision3/scripts/maintenance.sh",
-  "timeout_seconds": 3600,
+  "command": "/bin/sh",
+  "args": ["-c", "cd {BBS_ROOT} && ./cleanup.sh && ./optimize.sh"],
+  "timeout_seconds": 1800,
   "enabled": true
 }
 ```
 
-### Backup
+### Daily Backup
 
-Daily backup at 2 AM:
+Daily backup at 2 AM with date in filename:
 
 ```json
 {
   "id": "backup",
   "name": "Daily Backup",
   "schedule": "0 2 * * *",
-  "command": "/usr/local/bin/backup.sh",
-  "args": ["{BBS_ROOT}/data", "/backups/bbs-{DATE}.tar.gz"],
+  "command": "/usr/bin/tar",
+  "args": ["-czf", "/backups/bbs-{DATE}.tar.gz", "{BBS_ROOT}/data"],
   "timeout_seconds": 7200,
   "enabled": true
 }
@@ -286,39 +401,96 @@ Time  Event A  Event B  Event C  Result
 
 ### Event Not Running
 
-1. Check `configs/events.json`:
-   - Is `enabled: true` at root level?
-   - Is the specific event `enabled: true`?
-   - Is the cron schedule correct?
+**Check logs for scheduler startup:**
 
-2. Check BBS logs for:
-   - `Event scheduler started` message
-   - Event scheduled confirmation
-   - Warning messages about skipped events
+```bash
+tail -f data/logs/vision3.log | grep "Event"
+```
 
-3. Verify command:
-   - Use absolute path to executable
-   - Test command manually with same arguments
-   - Check file permissions
+Look for:
+```
+INFO: Event scheduler started with N events
+INFO: Event 'event_id' scheduled: @hourly
+```
+
+**If missing:**
+1. Verify `enabled: true` at root level AND event level in `configs/events.json`
+2. Check cron schedule syntax
+3. Review BBS startup logs for configuration errors
+4. Restart BBS after config changes
+
+### Command Not Found
+
+```
+ERROR: Event 'binkd_poll' failed to start: fork/exec /usr/local/bin/binkd: no such file or directory
+```
+
+**Fix:**
+- Find correct path: `which binkd`
+- Use absolute path in `command` field
+- Test command manually before adding to scheduler
+
+### Config File Not Found
+
+```
+ERROR: Event 'hpt_toss' stderr: Cannot open config file
+```
+
+**Fix:**
+1. Verify file exists: `ls -la data/ftn/hpt.conf`
+2. Use absolute path or `{BBS_ROOT}/data/ftn/hpt.conf`
+3. Check `working_directory` is set correctly
+4. Verify file permissions
 
 ### Event Timeout
 
+```
+ERROR: Event 'event_id' timed out after 300s
+```
+
+**Fix:**
 - Increase `timeout_seconds` value
 - Optimize the command/script
-- Check for hung processes
+- Check for hung processes: `ps aux | grep command-name`
+- Test command duration manually
+
+### Event Always Skipped
+
+```
+WARN: Event 'binkd_poll' skipped: already running
+```
+
+**Fix:**
+- Event still running from previous execution
+- Increase `timeout_seconds` if command is slow
+- Space out schedule (use `*/30` instead of `*/15`)
+- Check for stuck processes
+
+**Max concurrency reached:**
+
+```
+WARN: Event 'backup' skipped: max concurrent events reached (3)
+```
+
+**Fix:**
+- Increase `max_concurrent_events`
+- Stagger event schedules to avoid conflicts
+- Reduce event durations
 
 ### Event Always Failing
 
-- Check stderr output in DEBUG logs
-- Verify working directory exists and is accessible
-- Test environment variables
-- Ensure required files/directories exist
+```
+ERROR: Event 'event_id' failed with exit code 1
+ERROR: Event 'event_id' stderr: [error message]
+```
 
-### Events Not Concurrent
-
-- Check `max_concurrent_events` setting
-- Look for "already running" warnings in logs
-- Verify event durations aren't overlapping
+**Debug steps:**
+1. Check stderr in BBS logs (DEBUG level)
+2. Test command manually with exact arguments
+3. Verify working directory exists and is accessible
+4. Check file permissions on command and config files
+5. Test environment variables are set correctly
+6. Review command-specific logs if available
 
 ## Disabling the Scheduler
 
