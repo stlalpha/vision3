@@ -93,7 +93,7 @@ The system is designed as a single Go application that listens for incoming SSH 
   - Concurrency control with configurable max concurrent events
   - Per-event execution tracking to prevent overlaps
   - Timeout support with context-based cancellation
-  - Event history persistence in `data/events/event_history.json`
+  - Event history persistence in `data/logs/event_history.json`
   - Placeholder substitution in commands and arguments
   - Non-interactive batch execution (no PTY/TTY)
 * Common use cases: FTN mail polling (binkd), echomail tossing (HPT), backups, maintenance

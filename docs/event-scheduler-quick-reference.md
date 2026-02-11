@@ -223,7 +223,7 @@ Fix:
 ## Log Locations
 
 - **BBS logs:** `data/logs/vision3.log`
-- **Event history:** `data/events/event_history.json`
+- **Event history:** `data/logs/event_history.json`
 
 ## Log Levels
 

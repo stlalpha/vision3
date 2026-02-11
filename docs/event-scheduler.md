@@ -198,7 +198,7 @@ Daily backup at 2 AM:
 
 ## Event History
 
-The scheduler tracks execution history in `data/events/event_history.json`:
+The scheduler tracks execution history in `data/logs/event_history.json`:
 
 ```json
 [

@@ -12,7 +12,7 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
         *   Concurrency control with semaphore pattern (configurable max concurrent events)
         *   Per-event execution tracking to prevent overlapping runs
         *   Timeout support with context-based cancellation
-        *   Event history persistence in `data/events/event_history.json`
+        *   Event history persistence in `data/logs/event_history.json`
         *   Placeholder substitution ({TIMESTAMP}, {EVENT_ID}, {EVENT_NAME}, {BBS_ROOT}, {DATE}, {TIME}, {DATETIME})
         *   Comprehensive test suite with 100% pass rate
     *   **Features:**

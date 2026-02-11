@@ -26,7 +26,7 @@ The ViSiON/3 BBS now includes a fully-featured event scheduler for automating ma
 
 3. **Integration**
    - Modified `cmd/vision3/main.go` to initialize and start scheduler
-   - Updated `setup.sh` to create `data/events/` directory
+   - Updated `setup.sh` to create `data/logs/` directory for event history
    - Added scheduler import and lifecycle management
 
 4. **Documentation**
@@ -55,7 +55,7 @@ The ViSiON/3 BBS now includes a fully-featured event scheduler for automating ma
 - Prevents runaway processes
 
 ✅ **Event History**
-- Persistent JSON storage in `data/events/event_history.json`
+- Persistent JSON storage in `data/logs/event_history.json`
 - Tracks: run count, success/failure counts, last status, duration
 - Auto-saved on scheduler shutdown
 
@@ -289,7 +289,7 @@ ERROR: Event 'long_task' (Long Running Task) timed out after 300s
 
 INFO: Event scheduler stopping...
 INFO: All scheduled events completed
-INFO: Event history saved to data/events/event_history.json
+INFO: Event history saved to data/logs/event_history.json
 ```
 
 ## Event History Example

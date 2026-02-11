@@ -1295,7 +1295,7 @@ func main() {
 	var schedulerCtx context.Context
 	var schedulerCancel context.CancelFunc
 	if eventsConfig.Enabled {
-		historyPath := filepath.Join(dataPath, "events", "event_history.json")
+		historyPath := filepath.Join(dataPath, "logs", "event_history.json")
 		eventScheduler = scheduler.NewScheduler(eventsConfig, historyPath)
 		schedulerCtx, schedulerCancel = context.WithCancel(context.Background())
 		defer func() {
