@@ -116,6 +116,7 @@ Do we need a Discord? Do you want to host it? Contact me!
 *   Access Control System (ACS) Evaluation with basic operators (`!`, `&`, `|`, `()`)
 *   Menu Password Protection
 *   Message Areas: JAM format (echomail/netmail ready), conferences, full-screen reader with scrolling/lightbar menu, 14 customizable header styles, thread searching, replies with quoting, vi-style editor, newscan, last read tracking
+*   Private Mail: User-to-user private messaging with MSG_PRIVATE flag, send/read/list functions
 *   File Areas (basic implementation):
     *   List files
     *   List file areas
@@ -133,7 +134,6 @@ Do we need a Discord? Do you want to host it? Contact me!
 *   Message list view (titles/scan)
 *   Complete SysOp Tools (user editor, system configuration, TUI admin tools)
 *   Full File Base Implementation (tagging, batch downloads, upload processing)
-*   Mail system (private messages)
 *   Comprehensive Testing
 *   Complete Documentation
 

@@ -61,6 +61,74 @@ Message areas are defined in `configs/message_areas.json` as an array:
 - **echomail** - Conference-style networked messages. The tosser imports/exports packets. Messages get MSGID, tearline, origin line, and SEEN-BY/PATH.
 - **netmail** - Point-to-point private FTN mail between addresses.
 
+## Private Mail System
+
+ViSiON/3 includes a dedicated private mail system for user-to-user messaging. Private mail is stored in a special local message area with the `MSG_PRIVATE` JAM flag set.
+
+### PRIVMAIL Area
+
+The private mail area is defined in `message_areas.json`:
+
+```json
+{
+  "id": 19,
+  "tag": "PRIVMAIL",
+  "name": "Private Mail",
+  "description": "Private user-to-user mail",
+  "acs_read": "",
+  "acs_write": "",
+  "allow_anonymous": false,
+  "real_name_only": false,
+  "conference_id": 1,
+  "base_path": "msgbases/privmail",
+  "area_type": "local"
+}
+```
+
+### Private Mail Functions
+
+Users access private mail through the Email Menu (press `E` from main menu):
+
+- **SENDPRIVMAIL** - Send private mail to another user
+  - Validates recipient username exists
+  - Prompts for subject
+  - Launches full-screen editor
+  - Sets `MSG_PRIVATE` flag on message
+
+- **READPRIVMAIL** - Read private mail
+  - Filters messages by `MSG_PRIVATE` flag AND recipient matches current user
+  - Shows message count
+  - Launches message reader
+  - **Security**: Users can only see messages addressed to them
+
+- **LISTPRIVMAIL** - List private mail
+  - Shows private mail in list view
+  - Displays message headers with private flag indicator
+
+### Security Model
+
+Private mail uses a strict security filter:
+
+```go
+if msg.IsPrivate() && strings.EqualFold(msg.To, currentUser.Handle) {
+    // User can read this message
+}
+```
+
+This ensures:
+- Messages must have the `MSG_PRIVATE` flag set (0x00000004)
+- Message recipient (`To` field) must match the current user's handle
+- Case-insensitive comparison for recipient matching
+- Users cannot see private mail addressed to others
+
+### Message Attributes
+
+Private messages combine two JAM attribute flags:
+- `MsgLocal` (0x00000001) - Created locally
+- `MsgPrivate` (0x00000004) - Private message
+
+These flags are stored in the JAM message header's `Attribute` field.
+
 ## Message Storage (JAM Format)
 
 Each message area is backed by a JAM message base consisting of 4 files:

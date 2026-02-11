@@ -63,6 +63,15 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
     *   [x] Implement newscan command (`RUN:NEWSCAN`) using JAM per-user lastread tracking.
     *   [x] Implement message area selection (`RUN:SELECTMSGAREA`).
     *   [x] Implement prompt-and-compose (`RUN:PROMPTANDCOMPOSEMESSAGE`).
+*   **[DONE] Private Mail System:**
+    *   [x] Create PRIVMAIL message area (ID 19, `area_type: "local"`).
+    *   [x] Implement `AddPrivateMessage()` method with MSG_PRIVATE flag support.
+    *   [x] Implement `RUN:SENDPRIVMAIL` - send private mail with recipient validation.
+    *   [x] Implement `RUN:READPRIVMAIL` - read private mail with security filtering.
+    *   [x] Implement `RUN:LISTPRIVMAIL` - list private mail messages.
+    *   [x] Create EMAILM menu configuration (`.CFG` and `.MNU` files).
+    *   [x] Integrate Email Menu into main menu (E key).
+    *   [x] Security filter: users only see messages addressed to them (`IsPrivate() && To == currentUser`).
 *   **[DONE] FTN Echomail System:**
     *   [x] Implement FTN Type-2+ packet library (`internal/ftn/`) - read/write .PKT files.
     *   [x] Implement built-in tosser (`internal/tosser/`) with inbound/outbound processing.

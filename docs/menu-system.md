@@ -435,11 +435,16 @@ Functions available via `RUN:` command:
 - `LISTFILEAR` - List file areas
 - `SELECTFILEAREA` - Choose file area
 
+### Private Mail
+
+- `SENDPRIVMAIL` - Send private mail to another user
+- `READPRIVMAIL` - Read private mail addressed to current user
+- `LISTPRIVMAIL` - List private mail messages
+
 ### Other Functions
 
 - `ONELINER` - One-liner system
 - `SHOWVERSION` - Display BBS version
-- `READMAIL` - Read private mail (placeholder)
 
 ## Special Menu Names
 
