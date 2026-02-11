@@ -156,21 +156,21 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 		totalPages = 1
 	}
 
-	// Draw header with CP437 box characters
+	// Draw header with CP437 box characters (bright cyan borders)
 	// Top border: ┌─...─┐ (total width: 79 chars = 1 + 77 + 1)
-	header := fmt.Sprintf("|15\xDA%s\xBF|07\r\n", strings.Repeat("\xC4", 77))
+	header := fmt.Sprintf("|11\xDA%s\xBF|07\r\n", strings.Repeat("\xC4", 77))
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode); err != nil {
 		return err
 	}
 
-	// Title line with conference and area name
+	// Title line with conference and area name (bright magenta text)
 	title := fmt.Sprintf("%s - Message List", areaName)
 	if confName != "" && confName != "Local" {
 		title = fmt.Sprintf("%s > %s - Message List", confName, areaName)
 	}
 	title = truncateString(title, 75)
 	padding := (77 - len(title)) / 2
-	titleLine := fmt.Sprintf("|15\xB3|07%s%s%s|15\xB3|07\r\n",
+	titleLine := fmt.Sprintf("|11\xB3|13%s%s%s|11\xB3|07\r\n",
 		strings.Repeat(" ", padding),
 		title,
 		strings.Repeat(" ", 77-padding-len(title)))
@@ -179,14 +179,14 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 	}
 
 	// Separator: ├─...─┤ (total width: 79 chars = 1 + 77 + 1)
-	separator := fmt.Sprintf("|15\xC3%s\xB4|07\r\n", strings.Repeat("\xC4", 77))
+	separator := fmt.Sprintf("|11\xC3%s\xB4|07\r\n", strings.Repeat("\xC4", 77))
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(separator)), outputMode); err != nil {
 		return err
 	}
 
-	// Column headers (total interior: 77 chars)
+	// Column headers (bright white text, total interior: 77 chars)
 	// Layout: Status(1) + " N#" (3) + "  " (2) + "Subject" + pad (33) + "    " (4) + "From" + pad (17) + "  " (2) + "To" + pad (15) = 77
-	columnHeaders := "|15\xB3|07 N#  Subject                               From               To             |15\xB3|07\r\n"
+	columnHeaders := "|11\xB3|15 N#  Subject                               From               To             |11\xB3|07\r\n"
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(columnHeaders)), outputMode); err != nil {
 		return err
 	}
@@ -219,7 +219,7 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 		return err
 	}
 
-	// Pagination info (centered)
+	// Pagination info (centered, bright cyan text)
 	pageInfo := fmt.Sprintf("Page %d of %d [%d-%d of %d messages]",
 		state.CurrentPage, totalPages,
 		start+1, end, state.TotalMessages)
@@ -231,7 +231,7 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 	leftPad := (77 - pageInfoLen) / 2
 	rightPad := 77 - pageInfoLen - leftPad
 	pageInfoPadded := fmt.Sprintf("%s%s%s", strings.Repeat(" ", leftPad), pageInfo, strings.Repeat(" ", rightPad))
-	pageLine := fmt.Sprintf("|15\xB3|07%s|15\xB3|07\r\n", pageInfoPadded)
+	pageLine := fmt.Sprintf("|11\xB3|11%s|11\xB3|07\r\n", pageInfoPadded)
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(pageLine)), outputMode); err != nil {
 		return err
 	}
@@ -241,20 +241,20 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 		return err
 	}
 
-	// Help/command line (centered, with CP437 arrows: \x18=↑, \x19=↓)
+	// Help/command line (centered, bright magenta text, with CP437 arrows: \x18=↑, \x19=↓)
 	helpText := "\x18/\x19: Navigate  Enter: Read  Q: Quit"
 	helpTextLen := len(helpText)
 	leftPad = (77 - helpTextLen) / 2
 	rightPad = 77 - helpTextLen - leftPad
 	helpPadded := fmt.Sprintf("%s%s%s", strings.Repeat(" ", leftPad), helpText, strings.Repeat(" ", rightPad))
-	helpLine := fmt.Sprintf("|15\xB3|07%s|15\xB3|07\r\n", helpPadded)
+	helpLine := fmt.Sprintf("|11\xB3|13%s|11\xB3|07\r\n", helpPadded)
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(helpLine)), outputMode); err != nil {
 		return err
 	}
 
 	// Bottom border: └─...─┘ (total width: 79 chars = 1 + 77 + 1)
 	// NOTE: No \r\n at end to prevent scrolling when cursor reaches bottom of terminal
-	footer := fmt.Sprintf("|15\xC0%s\xD9|07", strings.Repeat("\xC4", 77))
+	footer := fmt.Sprintf("|11\xC0%s\xD9|07", strings.Repeat("\xC4", 77))
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(footer)), outputMode); err != nil {
 		return err
 	}
@@ -282,15 +282,15 @@ func drawMessageListLine(terminal *term.Terminal, entry MessageListEntry, isHigh
 	var line string
 	if isHighlighted {
 		// Use ANSI reverse video for highlighting (black on white)
-		line = fmt.Sprintf("|15\xB3\x1b[7m%s%s  %-33s    %-17s  %-15s\x1b[27m|15\xB3|07\r\n",
+		line = fmt.Sprintf("|11\xB3\x1b[7m%s%s  %-33s    %-17s  %-15s\x1b[27m|11\xB3|07\r\n",
 			statusStr,
 			numStr,
 			subject,
 			from,
 			to)
 	} else {
-		// Normal display (white on black)
-		line = fmt.Sprintf("|15\xB3|07%s%s  %-33s    %-17s  %-15s|15\xB3|07\r\n",
+		// Normal display (gray text on black)
+		line = fmt.Sprintf("|11\xB3|07%s%s  %-33s    %-17s  %-15s|11\xB3|07\r\n",
 			statusStr,
 			numStr,
 			subject,
@@ -311,6 +311,74 @@ func drawMessageLineAtRow(terminal *term.Terminal, entry MessageListEntry, row i
 
 	// Draw the line
 	return drawMessageListLine(terminal, entry, isHighlighted, outputMode)
+}
+
+// drawPageInfoAtRow draws the page info line at a specific row
+func drawPageInfoAtRow(terminal *term.Terminal, state *MessageListState, row int, outputMode ansi.OutputMode) error {
+	// Calculate total pages and message range
+	totalPages := (state.TotalMessages + state.ItemsPerPage - 1) / state.ItemsPerPage
+	if totalPages < 1 {
+		totalPages = 1
+	}
+	start, end := calculatePagination(len(state.Entries), state.ItemsPerPage, state.CurrentPage)
+
+	// Format page info (centered, bright cyan text)
+	pageInfo := fmt.Sprintf("Page %d of %d [%d-%d of %d messages]",
+		state.CurrentPage, totalPages,
+		start+1, end, state.TotalMessages)
+	pageInfoLen := len(pageInfo)
+	if pageInfoLen > 77 {
+		pageInfoLen = 77
+		pageInfo = truncateString(pageInfo, 77)
+	}
+	leftPad := (77 - pageInfoLen) / 2
+	rightPad := 77 - pageInfoLen - leftPad
+	pageInfoPadded := fmt.Sprintf("%s%s%s", strings.Repeat(" ", leftPad), pageInfo, strings.Repeat(" ", rightPad))
+	pageLine := fmt.Sprintf("|11\xB3|11%s|11\xB3|07", pageInfoPadded)
+
+	// Position cursor and draw
+	positionCmd := fmt.Sprintf("\x1b[%d;1H", row)
+	if err := terminalio.WriteProcessedBytes(terminal, []byte(positionCmd), outputMode); err != nil {
+		return err
+	}
+	return terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(pageLine)), outputMode)
+}
+
+// refreshPageContent redraws message lines and page info for page changes (optimized, no screen clear)
+func refreshPageContent(terminal *term.Terminal, state *MessageListState, outputMode ansi.OutputMode) error {
+	// Calculate pagination
+	start, _ := calculatePagination(len(state.Entries), state.ItemsPerPage, state.CurrentPage)
+
+	// Redraw all message lines for current page
+	// Message lines start at row 6 (1: top border, 2: title, 3: sep, 4: headers, 5: sep, 6+: messages)
+	startRow := 6
+	for i := 0; i < state.ItemsPerPage; i++ {
+		row := startRow + i
+		actualIndex := start + i
+
+		if actualIndex < len(state.Entries) {
+			// Draw message line
+			isHighlighted := i == state.SelectedIndex
+			if err := drawMessageLineAtRow(terminal, state.Entries[actualIndex], row, isHighlighted, outputMode); err != nil {
+				return err
+			}
+		} else {
+			// Draw empty line for remaining slots
+			positionCmd := fmt.Sprintf("\x1b[%d;1H", row)
+			if err := terminalio.WriteProcessedBytes(terminal, []byte(positionCmd), outputMode); err != nil {
+				return err
+			}
+			emptyLine := fmt.Sprintf("|11\xB3|07%s|11\xB3|07", strings.Repeat(" ", 77))
+			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(emptyLine)), outputMode); err != nil {
+				return err
+			}
+		}
+	}
+
+	// Update page info line
+	// Page info is at: startRow + itemsPerPage (messages end) + 1 (separator) = startRow + itemsPerPage + 1
+	pageInfoRow := startRow + state.ItemsPerPage + 1
+	return drawPageInfoAtRow(terminal, state, pageInfoRow, outputMode)
 }
 
 // runMessageListNavigation handles keyboard input for list navigation
@@ -533,15 +601,15 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				log.Printf("ERROR: Node %d: Failed to redraw message list: %v", nodeNumber, err)
 				return currentUser, "", err
 			}
-			previousIndex = -1 // Reset for full redraw
+			previousIndex = state.SelectedIndex // Track highlighted line after redraw
 
 		case "REFRESH_FULL":
-			// Full screen redraw (page changed)
-			if err := drawMessageListScreen(terminal, state, area.Name, confName, outputMode); err != nil {
-				log.Printf("ERROR: Node %d: Failed to redraw message list: %v", nodeNumber, err)
+			// Optimized page refresh (only redraw message lines and page info, no screen clear)
+			if err := refreshPageContent(terminal, state, outputMode); err != nil {
+				log.Printf("ERROR: Node %d: Failed to refresh page content: %v", nodeNumber, err)
 				return currentUser, "", err
 			}
-			previousIndex = -1 // Reset for full redraw
+			previousIndex = state.SelectedIndex // Track highlighted line after redraw
 
 		case "REFRESH_LINE":
 			// Optimized refresh: only redraw changed lines
