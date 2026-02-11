@@ -13,6 +13,7 @@ Configuration files are split between two directories:
 - `file_areas.json` - File area definitions
 - `message_areas.json` - Message area definitions
 - `conferences.json` - Conference grouping definitions
+- `events.json` - Event scheduler configuration
 - `config.json` - General BBS configuration
 - SSH host keys (`ssh_host_rsa_key`, etc.)
 
@@ -345,6 +346,115 @@ The user's current conference is set automatically when they select an area.
 ### Graceful Degradation
 
 If `conferences.json` is missing or empty, the system operates as before — area listings are flat with no conference headers.
+
+## events.json
+
+The event scheduler configuration file defines automated tasks that run on cron-style schedules.
+
+See the complete [Event Scheduler Guide](event-scheduler.md) for detailed documentation.
+
+### Basic Structure
+
+```json
+{
+  "enabled": true,
+  "max_concurrent_events": 3,
+  "events": [
+    {
+      "id": "event_id",
+      "name": "Event Name",
+      "schedule": "*/15 * * * *",
+      "command": "/path/to/command",
+      "args": ["arg1", "arg2"],
+      "working_directory": "/path/to/workdir",
+      "timeout_seconds": 300,
+      "enabled": true,
+      "environment_vars": {
+        "VAR_NAME": "value"
+      }
+    }
+  ]
+}
+```
+
+### Root Configuration
+
+- **enabled** (boolean): Enable/disable the entire scheduler
+- **max_concurrent_events** (integer): Maximum simultaneous event executions (default: 3)
+- **events** (array): List of event configurations
+
+### Event Configuration Fields
+
+- **id** (string, required): Unique event identifier
+- **name** (string, required): Human-readable name for logging
+- **schedule** (string, required): Cron expression (e.g., `"*/15 * * * *"` or `"@hourly"`)
+- **command** (string, required): Absolute path to executable
+- **args** (array): Command-line arguments (each element is a separate argument)
+- **working_directory** (string): Directory to run command in
+- **timeout_seconds** (integer): Maximum execution time (0 = no timeout)
+- **enabled** (boolean): Enable/disable this event
+- **environment_vars** (object): Environment variables to set
+
+### Cron Schedule Syntax
+
+Standard cron format with optional seconds:
+
+```
+┌─ minute (0-59)
+│ ┌─ hour (0-23)
+│ │ ┌─ day of month (1-31)
+│ │ │ ┌─ month (1-12)
+│ │ │ │ ┌─ day of week (0-6, Sunday=0)
+│ │ │ │ │
+* * * * *
+```
+
+**Examples:**
+- `* * * * *` - Every minute
+- `*/15 * * * *` - Every 15 minutes
+- `0 3 * * *` - Daily at 3:00 AM
+- `@hourly` - Every hour
+- `@daily` - Once per day at midnight
+
+### Available Placeholders
+
+Use in command arguments or working_directory:
+
+- `{TIMESTAMP}` - Unix timestamp
+- `{EVENT_ID}` - Event identifier
+- `{EVENT_NAME}` - Event name
+- `{BBS_ROOT}` - BBS installation directory
+- `{DATE}` - Current date (YYYY-MM-DD)
+- `{TIME}` - Current time (HH:MM:SS)
+- `{DATETIME}` - Date and time (YYYY-MM-DD HH:MM:SS)
+
+### Common Use Cases
+
+**FTN Mail Polling:**
+```json
+{
+  "id": "ftn_poll",
+  "schedule": "*/15 * * * *",
+  "command": "/usr/local/bin/binkd",
+  "args": ["-P", "21:4/158@fsxnet", "-D", "data/ftn/binkd.conf"],
+  "timeout_seconds": 300,
+  "enabled": true
+}
+```
+
+**Daily Backup:**
+```json
+{
+  "id": "backup",
+  "schedule": "0 2 * * *",
+  "command": "/usr/bin/tar",
+  "args": ["-czf", "/backups/bbs-{DATE}.tar.gz", "{BBS_ROOT}/data"],
+  "timeout_seconds": 7200,
+  "enabled": true
+}
+```
+
+See `templates/configs/events.json` for more examples.
 
 ## Menu Configuration
 

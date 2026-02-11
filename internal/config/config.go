@@ -393,6 +393,28 @@ type ServerConfig struct {
 	LockoutMinutes      int    `json:"lockoutMinutes"`
 }
 
+// EventConfig defines a scheduled event configuration
+type EventConfig struct {
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Schedule          string            `json:"schedule"` // Cron syntax
+	Command           string            `json:"command"`
+	Args              []string          `json:"args"`
+	WorkingDirectory  string            `json:"working_directory"`
+	TimeoutSeconds    int               `json:"timeout_seconds"`
+	Enabled           bool              `json:"enabled"`
+	EnvironmentVars   map[string]string `json:"environment_vars,omitempty"`
+	RunAfter          string            `json:"run_after,omitempty"`           // Event ID to run after
+	DelayAfterSeconds int               `json:"delay_after_seconds,omitempty"` // Delay after RunAfter completes
+}
+
+// EventsConfig is the root configuration for the event scheduler
+type EventsConfig struct {
+	Enabled             bool          `json:"enabled"`
+	MaxConcurrentEvents int           `json:"max_concurrent_events"`
+	Events              []EventConfig `json:"events"`
+}
+
 // LoadServerConfig loads the server configuration from config.json
 func LoadServerConfig(configPath string) (ServerConfig, error) {
 	filePath := filepath.Join(configPath, "config.json")
@@ -478,6 +500,50 @@ func LoadFTNConfig(configPath string) (FTNConfig, error) {
 		}
 	}
 	log.Printf("INFO: Loaded FTN configuration: %d network(s), %d enabled", len(config.Networks), enabledCount)
+
+	return config, nil
+}
+
+// LoadEventsConfig loads the event scheduler configuration from events.json
+func LoadEventsConfig(configPath string) (EventsConfig, error) {
+	filePath := filepath.Join(configPath, "events.json")
+	log.Printf("INFO: Loading event scheduler configuration from %s", filePath)
+
+	defaultConfig := EventsConfig{
+		Enabled:             false,
+		MaxConcurrentEvents: 3,
+		Events:              []EventConfig{},
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("INFO: events.json not found at %s. Event scheduler disabled.", filePath)
+			return defaultConfig, nil
+		}
+		return defaultConfig, fmt.Errorf("failed to read events config file %s: %w", filePath, err)
+	}
+
+	var config EventsConfig
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		log.Printf("ERROR: Failed to parse events config JSON from %s: %v", filePath, err)
+		return defaultConfig, fmt.Errorf("failed to parse events config JSON from %s: %w", filePath, err)
+	}
+
+	// Set default max concurrent events if not specified
+	if config.MaxConcurrentEvents <= 0 {
+		config.MaxConcurrentEvents = 3
+	}
+
+	enabledCount := 0
+	for _, event := range config.Events {
+		if event.Enabled {
+			enabledCount++
+		}
+	}
+
+	log.Printf("INFO: Loaded event scheduler configuration: %d event(s), %d enabled", len(config.Events), enabledCount)
 
 	return config, nil
 }

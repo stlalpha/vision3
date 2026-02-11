@@ -127,6 +127,7 @@ Do we need a Discord? Do you want to host it? Contact me!
 *   One-liner System
 *   Door/External Program Support (with dropfile generation)
 *   Call History Tracking
+*   Event Scheduler: Cron-style task scheduler for automated maintenance, FTN mail polling, and periodic operations
 
 ### In Development / TODO
 

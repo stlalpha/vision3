@@ -28,6 +28,7 @@ import (
 	"github.com/robbiew/vision3/internal/file"
 	"github.com/robbiew/vision3/internal/menu"
 	"github.com/robbiew/vision3/internal/message"
+	"github.com/robbiew/vision3/internal/scheduler"
 	"github.com/robbiew/vision3/internal/sshserver"
 	"github.com/robbiew/vision3/internal/telnetserver"
 	"github.com/robbiew/vision3/internal/types"
@@ -1280,6 +1281,34 @@ func main() {
 
 	if ftnErr == nil && len(ftnConfig.Networks) > 0 {
 		log.Printf("INFO: Internal FTN tosser disabled; use external tosser (e.g., hpt).")
+	}
+
+	// Load event scheduler configuration
+	eventsConfig, eventsErr := config.LoadEventsConfig(rootConfigPath)
+	if eventsErr != nil {
+		log.Printf("WARN: Failed to load events config: %v", eventsErr)
+		eventsConfig = config.EventsConfig{Enabled: false}
+	}
+
+	// Start event scheduler if enabled
+	var eventScheduler *scheduler.Scheduler
+	var schedulerCtx context.Context
+	var schedulerCancel context.CancelFunc
+	if eventsConfig.Enabled {
+		historyPath := filepath.Join(dataPath, "events", "event_history.json")
+		eventScheduler = scheduler.NewScheduler(eventsConfig, historyPath)
+		schedulerCtx, schedulerCancel = context.WithCancel(context.Background())
+		defer func() {
+			if schedulerCancel != nil {
+				log.Printf("INFO: Shutting down event scheduler...")
+				schedulerCancel()
+			}
+		}()
+
+		go eventScheduler.Start(schedulerCtx)
+		log.Printf("INFO: Event scheduler started with %d events", len(eventsConfig.Events))
+	} else {
+		log.Printf("INFO: Event scheduler disabled")
 	}
 
 	// Host key path for libssh

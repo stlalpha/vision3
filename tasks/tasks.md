@@ -2,6 +2,29 @@
 
 This file tracks active and planned development tasks for the ViSiON/3 BBS project.
 
+## Recent Completions
+
+*   **[DONE] Event Scheduler (2026-02-11):**
+    *   **Goal:** Implement cron-style event scheduler for automated maintenance tasks (FTN mail polling, echomail tossing, backups, etc.)
+    *   **Implementation:**
+        *   Created `internal/scheduler` package with cron integration (robfig/cron v3)
+        *   Event configuration via `configs/events.json` with cron syntax support
+        *   Concurrency control with semaphore pattern (configurable max concurrent events)
+        *   Per-event execution tracking to prevent overlapping runs
+        *   Timeout support with context-based cancellation
+        *   Event history persistence in `data/events/event_history.json`
+        *   Placeholder substitution ({TIMESTAMP}, {EVENT_ID}, {EVENT_NAME}, {BBS_ROOT}, {DATE}, {TIME}, {DATETIME})
+        *   Comprehensive test suite with 100% pass rate
+    *   **Features:**
+        *   Standard cron syntax with seconds support
+        *   Special schedules (@hourly, @daily, @weekly, @monthly, @yearly)
+        *   Non-interactive batch execution (no PTY/TTY)
+        *   Graceful shutdown with history persistence
+        *   Detailed logging (INFO/WARN/ERROR/DEBUG levels)
+    *   **Files:** `internal/scheduler/`, `internal/config/config.go`, `cmd/vision3/main.go`, `templates/configs/events.json`, `docs/event-scheduler.md`
+    *   **Documentation:** Full user guide created at `docs/event-scheduler.md`
+    *   **Status:** COMPLETE. Fully integrated, tested, and documented.
+
 ## Current Development Tasks
 
 ### Core BBS Functionality

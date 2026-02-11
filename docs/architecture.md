@@ -84,14 +84,29 @@ The system is designed as a single Go application that listens for incoming SSH 
 * Provides conference ACS filtering for area visibility
 * Optional — system operates with flat area listings if conferences.json is missing
 
-1. **ANSI Handler (`internal/ansi/ansi.go`)**
+11. **Event Scheduler (`internal/scheduler/`)**
+
+* Cron-style task scheduler for automated maintenance and periodic operations
+* Configuration loaded from `configs/events.json`
+* Uses robfig/cron v3 for flexible scheduling (standard cron syntax plus special schedules)
+* Features:
+  - Concurrency control with configurable max concurrent events
+  - Per-event execution tracking to prevent overlaps
+  - Timeout support with context-based cancellation
+  - Event history persistence in `data/events/event_history.json`
+  - Placeholder substitution in commands and arguments
+  - Non-interactive batch execution (no PTY/TTY)
+* Common use cases: FTN mail polling (binkd), echomail tossing (HPT), backups, maintenance
+* Background service with graceful shutdown and history persistence
+
+12. **ANSI Handler (`internal/ansi/ansi.go`)**
 
 * Parses ViSiON/2 specific pipe codes (`|00`-`|15`, `|B0`-`|B7`, etc.)
 * Converts CP437 characters to UTF-8 or VT100 line drawing
 * Supports multiple output modes (UTF-8, CP437, Auto)
 * Handles ANSI screen processing and display
 
-1. **Configuration (`configs/` directory)**
+13. **Configuration (`configs/` directory)**
 
 * `strings.json` - Externalized UI strings and prompts
 * `config.json` - General system configuration
@@ -99,6 +114,7 @@ The system is designed as a single Go application that listens for incoming SSH 
 * `file_areas.json` - File area definitions
 * `message_areas.json` - Message area definitions
 * `conferences.json` - Conference grouping definitions
+* `events.json` - Event scheduler configuration
 * SSH host keys (`ssh_host_rsa_key`, etc.)
 
 ## Data Flow
@@ -128,6 +144,8 @@ vision3/
 │   │   ├── outbound/   # Outgoing .PKT files
 │   │   ├── temp/       # Temp for failed packets
 │   │   └── dupes.json  # MSGID dupe database
+│   ├── events/         # Event scheduler history
+│   │   └── event_history.json  # Event execution statistics
 │   └── logs/           # Application logs
 ├── internal/           # Internal packages
 │   ├── ansi/           # ANSI/CP437 handling
@@ -139,6 +157,7 @@ vision3/
 │   ├── jam/            # JAM message base implementation
 │   ├── menu/           # Menu system
 │   ├── message/        # Message area management (JAM-backed)
+│   ├── scheduler/      # Event scheduler (cron-style)
 │   ├── session/        # Session management
 │   ├── sshserver/      # SSH server (libssh via CGO)
 │   ├── telnetserver/   # Telnet server (native Go)
@@ -168,6 +187,7 @@ vision3/
 * `internal/ftn`: FTN Type-2+ packet parsing and creation
 * `internal/message`: Message area management, JAM-backed storage
 * `internal/tosser`: FTN echomail import/export, dupe checking, SEEN-BY/PATH
+* `internal/scheduler`: Cron-style event scheduler for automated tasks
 * `internal/file`: File area management and metadata
 * `internal/session`: Session state tracking (currently minimal)
 * `menus/v3`: Static menu resources (ANSI art, menu definitions)

@@ -106,6 +106,7 @@ mkdir -p data/files/general
 mkdir -p data/logs
 mkdir -p data/msgbases
 mkdir -p data/ftn
+mkdir -p data/events
 mkdir -p configs
 mkdir -p bin
 mkdir -p scripts
