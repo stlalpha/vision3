@@ -9,15 +9,17 @@ across one or more FTN networks.
 Vision/3 uses **external binaries** for mail transport and tossing:
 
 - **binkd** - FTN mailer (sends/receives packets over BinkP protocol)
+  - GitHub: <https://github.com/pgul/binkd>
 - **hpt** (Husky Project Tosser) - Tosses incoming packets into JAM message bases
   and scans outbound messages into packets
+  - GitHub: <https://github.com/huskyproject>
 
 Vision/3 itself manages the JAM message bases, presents messages to users, and
 handles new message creation. The external tools handle the network side.
 
 ### How It Works
 
-```
+```text
 Your Hub <--binkd--> secure_in/ --hpt toss--> JAM bases <-- Vision/3 --> Users
                                                   |
                                          hpt scan --> outbound/ --binkd--> Hub
@@ -39,14 +41,14 @@ Before starting, you need:
 - An FTN network membership (address assigned by your hub/network coordinator)
 - Your hub's connection details (address, hostname/IP, port, password)
 - The network's `.na` file (list of available echo areas)
-- **binkd** and **hpt** binaries installed (see [Installing External Binaries](#installing-external-binaries))
+- **binkd** and **hpt** binaries installed (see [Installing External Binaries](#step-2-install-external-binaries))
 
 ## Directory Structure
 
 FTN data lives under `data/ftn/` within your Vision/3 installation. Here is the
 full directory layout:
 
-```
+```text
 vision3/
 ├── bin/
 │   ├── binkd              # binkd binary
@@ -91,10 +93,10 @@ mkdir -p data/ftn/{in,secure_in,temp_in,temp_out,out,logs,dupehist,dloads}
 
 Place `binkd` and `hpt` in the `bin/` directory. You can obtain these from:
 
-- **binkd**: Build from source at https://github.com/pgul/binkd or install via
+- **binkd**: Build from source at <https://github.com/pgul/binkd> or install via
   your distribution's package manager (`apt install binkd`, etc.)
 - **hpt**: Part of the Husky FidoNet software project. Build from source at
-  https://github.com/huskyproject or install via package manager if available.
+  <https://github.com/huskyproject> or install via package manager if available.
 
 ```bash
 mkdir -p bin
@@ -110,7 +112,7 @@ config files automatically. This is the easiest way to set up a new network.
 
 **Get the NA file** from your hub or network coordinator. It looks like this:
 
-```
+```text
 FSX_GEN              General Chat + More..
 FSX_BBS              BBS Support/Dev
 FSX_RETRO            Retro Computing/Tech
@@ -133,20 +135,20 @@ Each line has an echo tag followed by a description.
 
 **Options:**
 
-| Flag | Required | Description |
-|------|----------|-------------|
-| `--na <path>` | Yes | Path to the `.na` file |
-| `--address <addr>` | Yes | Your FTN address (e.g., `21:4/158.1`) |
-| `--hub <addr>` | Yes | Your hub's FTN address (e.g., `21:4/158`) |
-| `--hub-password <pw>` | No | Packet password shared with your hub |
-| `--hub-name <name>` | No | Human-readable hub label (default: `Hub <addr>`) |
-| `--network <name>` | No | Network name (default: derived from NA filename) |
-| `--conference-id <id>` | No | Use an existing conference instead of creating one |
-| `--acs-read <acs>` | No | ACS string for read access |
-| `--acs-write <acs>` | No | ACS string for write access (e.g., `s10` for security level 10+) |
-| `--config <dir>` | No | Config directory (default: `configs`) |
-| `--dry-run` | No | Preview changes without writing files |
-| `--quiet` | No | Suppress detailed output |
+| Flag                   | Required | Description                                                      |
+| ---------------------- | -------- | ---------------------------------------------------------------- |
+| `--na <path>`          | Yes      | Path to the `.na` file                                           |
+| `--address <addr>`     | Yes      | Your FTN address (e.g., `21:4/158.1`)                            |
+| `--hub <addr>`         | Yes      | Your hub's FTN address (e.g., `21:4/158`)                        |
+| `--hub-password <pw>`  | No       | Packet password shared with your hub                             |
+| `--hub-name <name>`    | No       | Human-readable hub label (default: `Hub <addr>`)                 |
+| `--network <name>`     | No       | Network name (default: derived from NA filename)                 |
+| `--conference-id <id>` | No       | Use an existing conference instead of creating one               |
+| `--acs-read <acs>`     | No       | ACS string for read access                                       |
+| `--acs-write <acs>`    | No       | ACS string for write access (e.g., `s10` for security level 10+) |
+| `--config <dir>`       | No       | Config directory (default: `configs`)                            |
+| `--dry-run`            | No       | Preview changes without writing files                            |
+| `--quiet`              | No       | Suppress detailed output                                         |
 
 **What `helper ftnsetup` does:**
 
@@ -348,13 +350,13 @@ use JAM format (required by Vision/3).
 
 Check that all paths are consistent across your config files:
 
-| What | binkd.conf | husky.cfg | ftn.json |
-|------|-----------|-----------|----------|
-| Secure inbound | `inbound` | `ProtInbound` | `inbound_path` (internal) |
-| Outbound | `domain` path | `Outbound` | `outbound_path` (internal) |
-| Message bases | — | `EchoArea` paths | — |
-| Hub password | `node` line | — | `links[].password` |
-| Your address | `address` | `Address` | `own_address` |
+| What           | binkd.conf    | husky.cfg        | ftn.json                   |
+| -------------- | ------------- | ---------------- | -------------------------- |
+| Secure inbound | `inbound`     | `ProtInbound`    | `inbound_path` (internal)  |
+| Outbound       | `domain` path | `Outbound`       | `outbound_path` (internal) |
+| Message bases  | —             | `EchoArea` paths | —                          |
+| Hub password   | `node` line   | —                | `links[].password`         |
+| Your address   | `address`     | `Address`        | `own_address`              |
 
 ### Step 7: Initialize Message Bases
 
@@ -464,19 +466,19 @@ tool but can be edited manually.
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `dupe_db_path` | Path to the dupe detection database (shared across networks) |
-| `networks.<key>.enabled` | Enable/disable this network |
-| `networks.<key>.own_address` | Your FTN address on this network |
-| `networks.<key>.inbound_path` | Inbound packet directory |
-| `networks.<key>.outbound_path` | Outbound packet directory |
-| `networks.<key>.temp_path` | Temp directory for failed packets |
-| `networks.<key>.poll_interval_seconds` | Internal poll interval (seconds) |
-| `networks.<key>.links[].address` | Hub/link FTN address |
-| `networks.<key>.links[].password` | Packet password |
-| `networks.<key>.links[].name` | Human-readable link name |
-| `networks.<key>.links[].echo_areas` | Echo tags routed to this link |
+| Field                                  | Description                                                  |
+| -------------------------------------- | ------------------------------------------------------------ |
+| `dupe_db_path`                         | Path to the dupe detection database (shared across networks) |
+| `networks.<key>.enabled`               | Enable/disable this network                                  |
+| `networks.<key>.own_address`           | Your FTN address on this network                             |
+| `networks.<key>.inbound_path`          | Inbound packet directory                                     |
+| `networks.<key>.outbound_path`         | Outbound packet directory                                    |
+| `networks.<key>.temp_path`             | Temp directory for failed packets                            |
+| `networks.<key>.poll_interval_seconds` | Internal poll interval (seconds)                             |
+| `networks.<key>.links[].address`       | Hub/link FTN address                                         |
+| `networks.<key>.links[].password`      | Packet password                                              |
+| `networks.<key>.links[].name`          | Human-readable link name                                     |
+| `networks.<key>.links[].echo_areas`    | Echo tags routed to this link                                |
 
 ### message_areas.json (Echomail Entries)
 
@@ -501,14 +503,14 @@ Each echomail area has these FTN-specific fields:
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `area_type` | Must be `"echomail"` for FTN echo areas |
-| `echo_tag` | The FTN echo tag (matches the AREA: kludge in packets) |
-| `origin_addr` | Your FTN address (appears in the Origin line) |
-| `network` | Network key matching a key in `ftn.json` networks |
-| `base_path` | Relative path (under `data/`) to the JAM base files |
-| `conference_id` | Groups this area under a conference for menu display |
+| Field           | Description                                            |
+| --------------- | ------------------------------------------------------ |
+| `area_type`     | Must be `"echomail"` for FTN echo areas                |
+| `echo_tag`      | The FTN echo tag (matches the AREA: kludge in packets) |
+| `origin_addr`   | Your FTN address (appears in the Origin line)          |
+| `network`       | Network key matching a key in `ftn.json` networks      |
+| `base_path`     | Relative path (under `data/`) to the JAM base files    |
+| `conference_id` | Groups this area under a conference for menu display   |
 
 ### conferences.json
 
@@ -549,7 +551,7 @@ To add another FTN network (e.g., AgoraNet alongside fsxNet):
   --network agoranet
 ```
 
-3. Add the new domain, address, and node to `binkd.conf`:
+1. Add the new domain, address, and node to `binkd.conf`:
 
 ```conf
 domain agoranet /home/bbs/vision3/data/ftn/out 46
@@ -557,7 +559,7 @@ address 46:1/100.1@agoranet
 node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 ```
 
-4. Add the link and echo areas to `husky.cfg`:
+1. Add the link and echo areas to `husky.cfg`:
 
 ```conf
 Link 46:1/100
@@ -571,7 +573,7 @@ route crash 46:1/100 46:*
 EchoArea AGN_GEN /home/bbs/vision3/data/msgbases/agn_gen -a 46:1/100.1 -b Jam 46:1/100
 ```
 
-5. Restart binkd
+1. Restart binkd
 
 ## Troubleshooting
 
