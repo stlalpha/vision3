@@ -165,6 +165,23 @@ readerLoop:
 		scrollOffset := 0
 		totalBodyLines := len(wrappedBodyLines)
 		needsRedraw := true
+		needsBodyRedraw := false
+
+		drawBody := func() {
+			// Display visible portion of message body using explicit cursor positioning
+			for i := 0; i < bodyAvailHeight; i++ {
+				lineNum := bodyStartRow + i
+				// Position cursor at specific line
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(lineNum, 1)), outputMode)
+				// Clear line
+				terminalio.WriteProcessedBytes(terminal, []byte("\x1b[K"), outputMode)
+				// Display line if available
+				lineIdx := scrollOffset + i
+				if lineIdx < totalBodyLines {
+					terminalio.WriteProcessedBytes(terminal, []byte(wrappedBodyLines[lineIdx]), outputMode)
+				}
+			}
+		}
 
 		// Update lastread when first displaying message
 		if lrErr := e.MessageMgr.SetLastRead(currentAreaID, currentUser.Handle, currentMsgNum); lrErr != nil {
@@ -182,19 +199,7 @@ readerLoop:
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 				terminalio.WriteProcessedBytes(terminal, processedHeader, outputMode)
 
-				// Display visible portion of message body using explicit cursor positioning
-				for i := 0; i < bodyAvailHeight; i++ {
-					lineNum := bodyStartRow + i
-					// Position cursor at specific line
-					terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(lineNum, 1)), outputMode)
-					// Clear line
-					terminalio.WriteProcessedBytes(terminal, []byte("\x1b[K"), outputMode)
-					// Display line if available
-					lineIdx := scrollOffset + i
-					if lineIdx < totalBodyLines {
-						terminalio.WriteProcessedBytes(terminal, []byte(wrappedBodyLines[lineIdx]), outputMode)
-					}
-				}
+				drawBody()
 
 				// Display footer: board info and lightbar anchored to bottom
 				var suffixText string
@@ -236,6 +241,11 @@ readerLoop:
 				drawMsgLightbarStatic(terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 
 				needsRedraw = false
+				needsBodyRedraw = false
+			} else if needsBodyRedraw {
+				// Only redraw body area to avoid refreshing header/footer while scrolling
+				drawBody()
+				needsBodyRedraw = false
 			}
 
 			// Read key sequence (handles escape sequences for arrow keys, page up/down)
@@ -256,14 +266,14 @@ readerLoop:
 			case "\x1b[A": // Up arrow - scroll up one line
 				if scrollOffset > 0 {
 					scrollOffset--
-					needsRedraw = true
+					needsBodyRedraw = true
 				}
 				continue
 
 			case "\x1b[B": // Down arrow - scroll down one line
 				if totalBodyLines > bodyAvailHeight && scrollOffset < totalBodyLines-bodyAvailHeight {
 					scrollOffset++
-					needsRedraw = true
+					needsBodyRedraw = true
 				}
 				continue
 
@@ -276,7 +286,7 @@ readerLoop:
 				if scrollOffset < 0 {
 					scrollOffset = 0
 				}
-				needsRedraw = true
+				needsBodyRedraw = true
 				continue
 
 			case "\x1b[6~": // Page Down
@@ -292,7 +302,7 @@ readerLoop:
 				if scrollOffset > maxScroll {
 					scrollOffset = maxScroll
 				}
-				needsRedraw = true
+				needsBodyRedraw = true
 				continue
 
 			case "\x1b[D", "\x1b[C": // Left or Right arrow - activate interactive lightbar
