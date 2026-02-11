@@ -5,6 +5,91 @@
 echo "=== ViSiON/3 BBS Setup Script ==="
 echo
 
+# Color codes for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Track if any prerequisites are missing
+MISSING_PREREQS=0
+
+echo "Checking prerequisites..."
+echo
+
+# Check for Go
+if command -v go &> /dev/null; then
+    GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
+    REQUIRED_VERSION="1.24.2"
+    
+    # Simple version comparison (works for most cases)
+    if [ "$(printf '%s\n' "$REQUIRED_VERSION" "$GO_VERSION" | sort -V | head -n1)" = "$REQUIRED_VERSION" ]; then
+        echo -e "${GREEN}✓${NC} Go $GO_VERSION (required: $REQUIRED_VERSION or higher)"
+    else
+        echo -e "${RED}✗${NC} Go $GO_VERSION found, but version $REQUIRED_VERSION or higher is required"
+        MISSING_PREREQS=1
+    fi
+else
+    echo -e "${RED}✗${NC} Go is not installed"
+    echo "  Install from: https://golang.org/dl/"
+    MISSING_PREREQS=1
+fi
+
+# Check for Git
+if command -v git &> /dev/null; then
+    GIT_VERSION=$(git --version | awk '{print $3}')
+    echo -e "${GREEN}✓${NC} Git $GIT_VERSION"
+else
+    echo -e "${RED}✗${NC} Git is not installed"
+    echo "  Install: sudo apt install git (Debian/Ubuntu) or brew install git (macOS)"
+    MISSING_PREREQS=1
+fi
+
+# Check for ssh-keygen
+if command -v ssh-keygen &> /dev/null; then
+    echo -e "${GREEN}✓${NC} SSH client (ssh-keygen)"
+else
+    echo -e "${RED}✗${NC} SSH client (ssh-keygen) is not installed"
+    echo "  Install: sudo apt install openssh-client (Debian/Ubuntu) or included with macOS"
+    MISSING_PREREQS=1
+fi
+
+# Check for pkg-config
+if command -v pkg-config &> /dev/null; then
+    echo -e "${GREEN}✓${NC} pkg-config"
+else
+    echo -e "${RED}✗${NC} pkg-config is not installed"
+    echo "  Install: sudo apt install pkg-config (Debian/Ubuntu) or brew install pkg-config (macOS)"
+    MISSING_PREREQS=1
+fi
+
+# Check for libssh using pkg-config
+if command -v pkg-config &> /dev/null && pkg-config --exists libssh; then
+    LIBSSH_VERSION=$(pkg-config --modversion libssh)
+    echo -e "${GREEN}✓${NC} libssh $LIBSSH_VERSION"
+else
+    echo -e "${RED}✗${NC} libssh is not installed or not found by pkg-config"
+    echo "  Install instructions:"
+    echo "    Debian/Ubuntu: sudo apt install libssh-dev pkg-config"
+    echo "    Fedora: sudo dnf install libssh-devel pkgconf-pkg-config"
+    echo "    macOS: brew install libssh pkg-config"
+    MISSING_PREREQS=1
+fi
+
+echo
+
+# Exit if prerequisites are missing
+if [ $MISSING_PREREQS -eq 1 ]; then
+    echo -e "${RED}Error: Missing required prerequisites!${NC}"
+    echo "Please install the missing components listed above and run setup.sh again."
+    echo
+    echo "For detailed installation instructions, see: docs/installation.md"
+    exit 1
+fi
+
+echo -e "${GREEN}All prerequisites satisfied!${NC}"
+echo
+
 # Check if SSH host key exists
 if [ ! -f "configs/ssh_host_rsa_key" ]; then
     echo "Generating SSH host key (RSA)..."
@@ -22,6 +107,7 @@ mkdir -p data/logs
 mkdir -p data/msgbases
 mkdir -p data/ftn
 mkdir -p configs
+mkdir -p bin
 mkdir -p scripts
 echo "Directories created."
 
