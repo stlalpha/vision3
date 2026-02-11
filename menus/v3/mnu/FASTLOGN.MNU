@@ -7,5 +7,5 @@
   "FORCEHOTKEY": false,
   "ACS": "*",
   "FALLBACK": "FASTLOGN",
-  "CLR_SCR_BEFORE": true
+  "CLR": true
 } 

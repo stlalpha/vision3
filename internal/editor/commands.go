@@ -2,7 +2,6 @@ package editor
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -427,7 +426,7 @@ func (ch *CommandHandler) processForBuffer(text string) string {
 func (ch *CommandHandler) HandleHelp(inputHandler *InputHandler) {
 	// Try to load EDITHELP.ANS file
 	helpPath := filepath.Join(ch.menuSetPath, "ansi", "EDITHELP.ANS")
-	helpContent, err := os.ReadFile(helpPath)
+	helpContent, err := ansi.GetAnsiFileContent(helpPath)
 
 	ch.screen.ClearScreen()
 

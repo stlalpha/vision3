@@ -174,7 +174,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 // displayNewUserScreen loads and displays NEWUSER.ANS.
 func (e *MenuExecutor) displayNewUserScreen(terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber int) error {
 	fullAnsPath := filepath.Join(e.MenuSetPath, "ansi", "NEWUSER.ANS")
-	rawContent, err := os.ReadFile(fullAnsPath)
+	rawContent, err := ansi.GetAnsiFileContent(fullAnsPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Printf("DEBUG: Node %d: NEWUSER.ANS not found, skipping display", nodeNumber)

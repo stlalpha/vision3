@@ -468,7 +468,7 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	ansFilename := "YOURSTAT.ANS"
 	// Use MenuSetPath for ANSI file
 	fullAnsPath := filepath.Join(e.MenuSetPath, "ansi", ansFilename)
-	rawAnsiContent, readErr := os.ReadFile(fullAnsPath)
+	rawAnsiContent, readErr := ansi.GetAnsiFileContent(fullAnsPath)
 	if readErr != nil {
 		log.Printf("ERROR: Node %d: Failed to read %s for SHOWSTATS: %v", nodeNumber, fullAnsPath, readErr)
 		msg := fmt.Sprintf("\r\n|01Error displaying stats screen (%s).|07\r\n", ansFilename)
@@ -1272,9 +1272,9 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		// Note: ansBackgroundBytes is currently unused but will be needed for full lightbar implementation
 		// ansBackgroundBytes := ansiProcessResult.DisplayBytes
 		if currentMenuName != "LOGIN" {
+			// Clear screen before displaying menu if configured to do so
 			if menuRec.GetClrScrBefore() {
-				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-				if wErr != nil {
+				if wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode); wErr != nil {
 					log.Printf("ERROR: Node %d: Failed clearing screen for menu %s: %v", nodeNumber, currentMenuName, wErr)
 				}
 			}
@@ -1288,8 +1288,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						currentMenuName, len(lines), termHeight, termHeight)
 				}
 			}
-			wErr := terminalio.WriteProcessedBytes(terminal, displayBytes, outputMode)
-			if wErr != nil {
+			if wErr := terminalio.WriteProcessedBytes(terminal, displayBytes, outputMode); wErr != nil {
 				log.Printf("ERROR: Failed writing ANSI screen for %s: %v", currentMenuName, wErr)
 				return "", nil, fmt.Errorf("failed displaying screen: %w", wErr)
 			}

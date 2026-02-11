@@ -3,7 +3,6 @@ package editor
 import (
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -57,7 +56,7 @@ func (s *Screen) calculateGeometry() {
 // LoadHeaderTemplate loads and processes the FSEDITOR.ANS template
 func (s *Screen) LoadHeaderTemplate(menuSetPath, subject, recipient string, isAnon bool) error {
 	templatePath := filepath.Join(menuSetPath, "ansi", "FSEDITOR.ANS")
-	content, err := os.ReadFile(templatePath)
+	content, err := ansi.GetAnsiFileContent(templatePath)
 	if err != nil {
 		// If template doesn't exist, create a minimal header
 		s.headerContent = s.createMinimalHeader(subject, recipient)
