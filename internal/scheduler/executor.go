@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -59,9 +58,13 @@ func (s *Scheduler) executeEvent(ctx context.Context, event config.EventConfig) 
 
 	cmd := exec.CommandContext(cmdCtx, event.Command, substitutedArgs...)
 
-	// Set working directory if specified
+	// Set working directory if specified (with placeholder substitution)
 	if event.WorkingDirectory != "" {
-		cmd.Dir = event.WorkingDirectory
+		workDir := event.WorkingDirectory
+		for key, val := range substitutions {
+			workDir = strings.ReplaceAll(workDir, key, val)
+		}
+		cmd.Dir = workDir
 		log.Printf("DEBUG: Event '%s': setting working directory to '%s'", event.ID, cmd.Dir)
 	}
 
@@ -124,18 +127,12 @@ func (s *Scheduler) executeEvent(ctx context.Context, event config.EventConfig) 
 func (s *Scheduler) buildSubstitutions(event config.EventConfig) map[string]string {
 	now := time.Now()
 
-	// Get BBS root directory (parent of working directory or current dir)
+	// Get BBS root directory from current working directory
+	// This should be the BBS installation root where the binary is running
 	bbsRoot, err := os.Getwd()
 	if err != nil {
 		log.Printf("WARN: Failed to get working directory: %v", err)
 		bbsRoot = "."
-	}
-	if event.WorkingDirectory != "" {
-		// If event has a working directory, use it as reference for BBS_ROOT
-		absPath, err := filepath.Abs(event.WorkingDirectory)
-		if err == nil {
-			bbsRoot = filepath.Dir(absPath)
-		}
 	}
 
 	return map[string]string{

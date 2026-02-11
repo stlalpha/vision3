@@ -40,7 +40,7 @@ The ViSiON/3 BBS now includes a fully-featured event scheduler for automating ma
 ## Key Features
 
 ✅ **Cron-Style Scheduling**
-- Standard cron syntax with seconds support
+- Standard 5-field cron syntax (minute hour day month weekday)
 - Special schedules: @hourly, @daily, @weekly, @monthly, @yearly
 - Flexible scheduling from every minute to yearly
 

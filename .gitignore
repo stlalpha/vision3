@@ -13,6 +13,7 @@ bin/
 DOS/
 scripts/
 doors/
+configs/
 
 # Test binary, built with `go test -c`
 *.test

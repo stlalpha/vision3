@@ -88,7 +88,7 @@ The system is designed as a single Go application that listens for incoming SSH 
 
 * Cron-style task scheduler for automated maintenance and periodic operations
 * Configuration loaded from `configs/events.json`
-* Uses robfig/cron v3 for flexible scheduling (standard cron syntax plus special schedules)
+* Uses robfig/cron v3 for flexible scheduling (standard 5-field cron syntax plus special schedules)
 * Features:
   - Concurrency control with configurable max concurrent events
   - Per-event execution tracking to prevent overlaps

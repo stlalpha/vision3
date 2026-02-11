@@ -397,7 +397,7 @@ See the complete [Event Scheduler Guide](event-scheduler.md) for detailed docume
 
 ### Cron Schedule Syntax
 
-Standard cron format with optional seconds:
+Standard 5-field cron format:
 
 ```
 ┌─ minute (0-59)

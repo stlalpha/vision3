@@ -65,18 +65,17 @@ Event scheduling is configured in `configs/events.json`.
 
 ## Cron Schedule Syntax
 
-The scheduler uses standard cron syntax with optional seconds field:
+The scheduler uses standard 5-field cron syntax:
 
 ```
-┌───────────── second (0-59, optional)
-│ ┌───────────── minute (0-59)
-│ │ ┌───────────── hour (0-23)
-│ │ │ ┌───────────── day of month (1-31)
-│ │ │ │ ┌───────────── month (1-12)
-│ │ │ │ │ ┌───────────── day of week (0-6, Sunday=0)
-│ │ │ │ │ │
-│ │ │ │ │ │
-* * * * * *
+┌───────────── minute (0-59)
+│ ┌───────────── hour (0-23)
+│ │ ┌───────────── day of month (1-31)
+│ │ │ ┌───────────── month (1-12)
+│ │ │ │ ┌───────────── day of week (0-6, Sunday=0)
+│ │ │ │ │
+│ │ │ │ │
+* * * * *
 ```
 
 ### Examples

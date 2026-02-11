@@ -132,3 +132,22 @@ func TestBuildSubstitutions(t *testing.T) {
 		t.Errorf("Expected EVENT_NAME to be 'Test Placeholders Event', got %s", subs["{EVENT_NAME}"])
 	}
 }
+
+func TestPlaceholderSubstitutionInWorkingDirectory(t *testing.T) {
+	s := &Scheduler{}
+
+	event := config.EventConfig{
+		ID:               "test_workdir",
+		Name:             "Test Working Directory Substitution",
+		Command:          "/bin/pwd",
+		WorkingDirectory: "{BBS_ROOT}/data/test",
+		TimeoutSeconds:   5,
+	}
+
+	result := s.executeEvent(context.Background(), event)
+
+	// Check that the working directory was substituted
+	if strings.Contains(result.Output, "{BBS_ROOT}") {
+		t.Error("Working directory placeholder was not substituted")
+	}
+}

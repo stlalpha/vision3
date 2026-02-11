@@ -50,8 +50,8 @@ func (s *Scheduler) Start(ctx context.Context) {
 	s.ctx, s.cancel = context.WithCancel(ctx)
 	defer s.cancel()
 
-	// Initialize cron scheduler with seconds support
-	s.cron = cron.New(cron.WithSeconds())
+	// Initialize cron scheduler with standard 5-field format (minute hour day month weekday)
+	s.cron = cron.New()
 
 	// Schedule all enabled events
 	enabledCount := 0

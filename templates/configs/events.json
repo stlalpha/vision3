@@ -1,4 +1,5 @@
 {
+  "_comment": "Event Scheduler Configuration - IMPORTANT: Update command paths and arguments for your system. {BBS_ROOT} will be replaced with the BBS installation directory at runtime.",
   "enabled": false,
   "max_concurrent_events": 3,
   "events": [
@@ -39,10 +40,10 @@
       "id": "example_binkd_poll_simple",
       "name": "Example: Simple Binkd Poll",
       "schedule": "*/15 * * * *",
-      "comment": "Simple binkd poll every 15 minutes (polls all configured nodes)",
+      "comment": "Simple binkd poll every 15 minutes (polls all configured nodes). Adjust paths for your system.",
       "command": "/usr/local/bin/binkd",
       "args": ["-p"],
-      "working_directory": "/opt/ftn",
+      "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 300,
       "enabled": false
     },
@@ -50,15 +51,15 @@
       "id": "example_binkd_poll_specific",
       "name": "Example: Binkd Poll Specific Node",
       "schedule": "*/30 * * * *",
-      "comment": "Poll a specific node every 30 minutes with custom config",
-      "command": "/home/bbs/git/vision3/bin/binkd",
+      "comment": "Poll a specific node every 30 minutes. Update command path, node address, and config path for your setup.",
+      "command": "/usr/local/bin/binkd",
       "args": [
         "-P",
         "21:4/158@fsxnet",
         "-D",
-        "data/ftn/binkd.conf"
+        "{BBS_ROOT}/data/ftn/binkd.conf"
       ],
-      "working_directory": "/home/bbs/git/vision3",
+      "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 300,
       "enabled": false
     },
@@ -66,14 +67,14 @@
       "id": "example_hpt_toss",
       "name": "Example: HPT Toss Echomail",
       "schedule": "@hourly",
-      "comment": "Toss echomail using HPT (Highly Portable Tosser) with custom config",
+      "comment": "Toss echomail using HPT. Update command and config paths for your system.",
       "command": "/usr/local/bin/hpt",
       "args": [
         "toss",
         "-c",
-        "/etc/ftn/config"
+        "{BBS_ROOT}/data/ftn/hpt.conf"
       ],
-      "working_directory": "/opt/ftn",
+      "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 600,
       "enabled": false
     },
@@ -81,15 +82,15 @@
       "id": "example_hpt_scan_pack",
       "name": "Example: HPT Scan and Pack",
       "schedule": "0 */2 * * *",
-      "comment": "Scan and pack echomail every 2 hours",
+      "comment": "Scan and pack echomail every 2 hours. Update command and config paths.",
       "command": "/usr/local/bin/hpt",
       "args": [
         "scan",
         "pack",
         "-c",
-        "/etc/ftn/config"
+        "{BBS_ROOT}/data/ftn/hpt.conf"
       ],
-      "working_directory": "/opt/ftn",
+      "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 900,
       "enabled": false
     },
