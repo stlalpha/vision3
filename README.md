@@ -137,7 +137,7 @@ Do we need a Discord? Do you want to host it? Contact me!
 *   Comprehensive Testing
 *   Complete Documentation
 
-See `docs/status.md` for detailed progress and `tasks/tasks.md` for specific development tasks.
+See `tasks/tasks.md` for development history and completed features.
 
 ## Technology Stack
 
@@ -369,7 +369,7 @@ All configuration files use JSON format and support comments for documentation.
 
 - [SSH Server Migration Guide](docs/ssh-server-migration.md) - Details about the libssh implementation
 - [Developer Guide](docs/developer-guide.md) - Guide for contributors
-- [Status](docs/status.md) - Current development status
+- [Development Tasks](tasks/tasks.md) - Development history and completed features
 
 ## Contributing
 

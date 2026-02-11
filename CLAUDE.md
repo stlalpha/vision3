@@ -2,7 +2,8 @@
 
 ## Task Tracking
 
-- Use 'bd' for task tracking. Read `AGENTS.md` for instructions.
+- Use 'bd' (beads) for **active task tracking**. Read `AGENTS.md` for instructions.
+- Update `tasks/tasks.md` as a **changelog/summary** when major features are completed.
 
 ## Core Philosophy
 
@@ -21,7 +22,7 @@ Always check for and review relevant project documentation before starting any t
 - `README.md` — Project overview, setup, patterns, technology stack
 - `docs/architecture.md` — System architecture, component relationships
 - `docs/technical.md` — Technical specifications, established patterns
-- `tasks/tasks.md` — Current development tasks, requirements
+- `tasks/tasks.md` — Development history, completed features changelog
 
 If documentation is missing, unclear, or conflicts with the request, ask for clarification.
 
@@ -47,8 +48,8 @@ Before making significant changes:
 
 ### Progress Tracking
 
-- Keep `docs/status.md` updated with task progress (in-progress, completed, blocked), issues encountered, and completed items.
-- Update `tasks/tasks.md` upon task completion or if requirements change during implementation.
+- Use `bd` commands to track active work (see `AGENTS.md`)
+- Update `tasks/tasks.md` when major features are completed (as a changelog/summary)
 
 ## Code Quality & Style
 
@@ -121,7 +122,8 @@ Before making significant changes:
 
 ## Documentation Maintenance
 
-- If code changes impact architecture, technical decisions, established patterns, or task status, update the relevant documentation (`README.md`, `docs/architecture.md`, `docs/technical.md`, `tasks/tasks.md`, `docs/status.md`).
+- If code changes impact architecture, technical decisions, or established patterns, update the relevant documentation (`README.md`, `docs/architecture.md`, `docs/technical.md`)
+- When completing major features, update `tasks/tasks.md` with a summary
 
 ## Go-Specific Best Practices
 

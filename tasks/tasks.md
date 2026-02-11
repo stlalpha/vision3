@@ -61,6 +61,8 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
         *   [x] Save message using `MessageManager.AddMessage()` (JAM-backed).
     *   [x] Implement message reading command (`RUN:READMSGS`) with random-access navigation and JAM lastread.
     *   [x] Implement newscan command (`RUN:NEWSCAN`) using JAM per-user lastread tracking.
+    *   [x] Implement newscan configuration (`RUN:NEWSCANCONFIG`) for per-user area tagging.
+    *   [x] Implement message list view (`RUN:LISTMSGS`) with pagination, lightbar navigation, and status indicators.
     *   [x] Implement message area selection (`RUN:SELECTMSGAREA`).
     *   [x] Implement prompt-and-compose (`RUN:PROMPTANDCOMPOSEMESSAGE`).
 *   **[DONE] Private Mail System:**
