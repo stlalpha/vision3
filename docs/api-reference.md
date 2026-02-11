@@ -335,6 +335,7 @@ Currently implemented functions that can be called via `RUN:`:
 - `PROMPTANDCOMPOSEMESSAGE` - Select area then compose
 - `READMSGS` - Read messages (random-access, JAM-backed)
 - `NEWSCAN` - Scan for new messages (per-user lastread via JAM)
+- `NEWSCANCONFIG` - Configure personal newscan tagged areas
 - `LISTFILES` - List files in current area
 - `LISTFILEAR` - List file areas
 - `SELECTFILEAREA` - Select file area

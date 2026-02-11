@@ -145,10 +145,27 @@ The `PROMPTANDCOMPOSEMESSAGE` function:
 
 The `NEWSCAN` function scans for new messages:
 
-- Checks all accessible areas
+- Checks all accessible areas (or user's tagged areas)
 - Shows count of new messages per area
 - Uses JAM lastread tracking (per-user, per-area)
 - Offers to jump directly to reading new messages
+- During scan setup, user can choose:
+  - **All Tagged Areas** - Scans only areas tagged in newscan config
+  - **ALL Areas in Conference** - Scans all areas in current conference
+  - **Current Area Only** - Scans only the current message area
+
+### Newscan Configuration
+
+The `NEWSCANCONFIG` function (key: **Z** in message menu) allows users to configure their personal newscan preferences:
+
+- Displays scrollable list of all accessible message areas grouped by conference
+- Users can tag/untag individual areas with **SPACE** or **ENTER**
+- **A** - Tag all areas
+- **N** - Clear all tags (none)
+- **ESC** - Save and exit
+- Tagged areas are saved to the user's profile in `users.json`
+- When "All Tagged Areas" is selected in newscan setup, only tagged areas are scanned
+- If no areas are tagged, user is prompted to configure their newscan first
 
 ## Access Control
 
