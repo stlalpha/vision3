@@ -450,6 +450,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["NEWUSER"] = runNewUser                                 // Register new user application runnable
 	registry["GETHEADERTYPE"] = runGetHeaderType                     // Message header style selection
 	registry["LISTMSGS"] = runListMsgs                               // List messages in current area
+	registry["NEWSCANCONFIG"] = runNewscanConfig                     // Configure newscan tagged areas
 }
 
 // runShowStats displays the user statistics screen (YOURSTAT.ANS).
