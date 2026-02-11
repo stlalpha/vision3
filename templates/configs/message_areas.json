@@ -24,5 +24,44 @@
         "conference_id": 1,
         "base_path": "msgbases/sysop",
         "area_type": "local"
+    },
+    {
+        "id": 3,
+        "tag": "NETMAIL",
+        "name": "Netmail",
+        "description": "Netmail area",
+        "acs_read": "",
+        "acs_write": "",
+        "allow_anonymous": false,
+        "real_name_only": false,
+        "conference_id": 1,
+        "base_path": "msgbases/netmail",
+        "area_type": "netmail"
+    },
+    {
+        "id": 4,
+        "tag": "BAD",
+        "name": "Bad Area",
+        "description": "Bad message area",
+        "acs_read": "",
+        "acs_write": "",
+        "allow_anonymous": false,
+        "real_name_only": false,
+        "conference_id": 1,
+        "base_path": "msgbases/bad",
+        "area_type": "local"
+    },
+    {
+        "id": 5,
+        "tag": "DUPE",
+        "name": "Dupe Area",
+        "description": "Dupe message area",
+        "acs_read": "",
+        "acs_write": "",
+        "allow_anonymous": false,
+        "real_name_only": false,
+        "conference_id": 1,
+        "base_path": "msgbases/dupe",
+        "area_type": "local"
     }
 ]

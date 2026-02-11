@@ -12,141 +12,145 @@ import (
 //
 // For local messages this behaves identically to WriteMessage.
 func (b *Base) WriteMessageExt(msg *Message, msgType MessageType, echoTag, bbsName, tearline string) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	var msgNum int
+	err := b.withFileLock(func() error {
+		b.mu.Lock()
+		defer b.mu.Unlock()
 
-	if !b.isOpen {
-		return 0, ErrBaseNotOpen
-	}
-	if err := b.readFixedHeader(); err != nil {
-		return 0, err
-	}
+		if !b.isOpen {
+			return ErrBaseNotOpen
+		}
+		if err := b.readFixedHeader(); err != nil {
+			return err
+		}
 
-	attr := msgType.GetJAMAttribute()
-	if msg.Header != nil && msg.Header.Attribute != 0 {
-		attr |= msg.Header.Attribute
-	}
+		attr := msgType.GetJAMAttribute()
+		if msg.Header != nil && msg.Header.Attribute != 0 {
+			attr |= msg.Header.Attribute
+		}
 
-	hdr := &MessageHeader{
-		Revision:      1,
-		DateWritten:   uint32(msg.DateTime.Unix()),
-		DateReceived:  0,
-		DateProcessed: 0, // 0 signals tosser to scan/export this message
-		Attribute:     attr,
-	}
-	copy(hdr.Signature[:], Signature)
+		hdr := &MessageHeader{
+			Revision:      1,
+			DateWritten:   uint32(msg.DateTime.Unix()),
+			DateReceived:  0,
+			DateProcessed: 0, // 0 signals tosser to scan/export this message
+			Attribute:     attr,
+		}
+		copy(hdr.Signature[:], Signature)
 
-	// For local messages, set DateProcessed to now (already "processed")
-	if msgType.IsLocal() {
-		hdr.DateProcessed = uint32(time.Now().Unix())
-	}
+		// For local messages, set DateProcessed to now (already "processed")
+		if msgType.IsLocal() {
+			hdr.DateProcessed = uint32(time.Now().Unix())
+		}
 
-	hdr.Subfields = []Subfield{}
+		hdr.Subfields = []Subfield{}
 
-	// Origin/destination addresses
-	if msg.OrigAddr != "" {
-		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldOAddress, msg.OrigAddr))
-	}
-	if msgType.IsNetmail() && msg.DestAddr != "" {
-		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldDAddress, msg.DestAddr))
-	}
+		// Origin/destination addresses
+		if msg.OrigAddr != "" {
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldOAddress, msg.OrigAddr))
+		}
+		if msgType.IsNetmail() && msg.DestAddr != "" {
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldDAddress, msg.DestAddr))
+		}
 
-	// Standard subfields
-	if msg.From != "" {
-		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldSenderName, msg.From))
-	}
-	if msg.To != "" {
-		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldReceiverName, msg.To))
-	}
-	if msg.Subject != "" {
-		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldSubject, msg.Subject))
-	}
+		// Standard subfields
+		if msg.From != "" {
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldSenderName, msg.From))
+		}
+		if msg.To != "" {
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldReceiverName, msg.To))
+		}
+		if msg.Subject != "" {
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldSubject, msg.Subject))
+		}
 
-	// Echomail-specific kludges and formatting
-	if msgType.IsEchomail() {
-		if msg.MsgID == "" && msg.OrigAddr != "" {
-			msgID, err := b.GenerateMSGID(msg.OrigAddr)
-			if err != nil {
-				return 0, fmt.Errorf("jam: MSGID generation failed: %w", err)
+		// Echomail-specific kludges and formatting
+		if msgType.IsEchomail() {
+			if msg.MsgID == "" && msg.OrigAddr != "" {
+				msgID, err := b.GenerateMSGID(msg.OrigAddr)
+				if err != nil {
+					return fmt.Errorf("jam: MSGID generation failed: %w", err)
+				}
+				msg.MsgID = msgID
 			}
-			msg.MsgID = msgID
+			if msg.MsgID != "" {
+				hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldMsgID, msg.MsgID))
+				hdr.MSGIDcrc = CRC32String(msg.MsgID)
+			}
+			if echoTag != "" {
+				hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldFTSKludge, "AREA:"+echoTag))
+			}
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldPID, FormatPID()))
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldFTSKludge, "TID: "+FormatTID()))
+
+			if bbsName != "" && msg.OrigAddr != "" {
+				msg.Text = AddCustomTearline(msg.Text, tearline)
+				msg.Text = AddOriginLine(msg.Text, bbsName, msg.OrigAddr)
+			}
+			// SEEN-BY and PATH are NOT added here — that is the tosser's job.
+		} else {
+			if msg.MsgID != "" {
+				hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldMsgID, msg.MsgID))
+				hdr.MSGIDcrc = CRC32String(msg.MsgID)
+			}
 		}
-		if msg.MsgID != "" {
-			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldMsgID, msg.MsgID))
-			hdr.MSGIDcrc = CRC32String(msg.MsgID)
+
+		// Reply handling (all message types)
+		if msg.ReplyID != "" {
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldReplyID, msg.ReplyID))
+			hdr.REPLYcrc = CRC32String(msg.ReplyID)
 		}
-		if echoTag != "" {
-			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldFTSKludge, "AREA:"+echoTag))
+
+		// Additional caller-provided kludges
+		for _, kludge := range msg.Kludges {
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldFTSKludge, kludge))
 		}
-		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldPID, FormatPID()))
-		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldFTSKludge, "TID: "+FormatTID()))
 
-		if bbsName != "" && msg.OrigAddr != "" {
-			msg.Text = AddCustomTearline(msg.Text, tearline)
-			msg.Text = AddOriginLine(msg.Text, bbsName, msg.OrigAddr)
+		// Calculate total subfield length
+		hdr.SubfieldLen = 0
+		for _, sf := range hdr.Subfields {
+			hdr.SubfieldLen += SubfieldHdrSize + sf.DatLen
 		}
-		// SEEN-BY and PATH are NOT added here — that is the tosser's job.
-	} else {
-		if msg.MsgID != "" {
-			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldMsgID, msg.MsgID))
-			hdr.MSGIDcrc = CRC32String(msg.MsgID)
+
+		// Write text
+		offset, txtLen, err := b.writeMessageText(msg.Text)
+		if err != nil {
+			return err
 		}
-	}
+		hdr.Offset = offset
+		hdr.TxtLen = txtLen
 
-	// Reply handling (all message types)
-	if msg.ReplyID != "" {
-		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldReplyID, msg.ReplyID))
-		hdr.REPLYcrc = CRC32String(msg.ReplyID)
-	}
+		// Assign message number
+		count, err := b.getMessageCountLocked()
+		if err != nil {
+			return err
+		}
+		msgNum = count + 1
+		hdr.MessageNumber = uint32(msgNum) + b.fixedHeader.BaseMsgNum - 1
 
-	// Additional caller-provided kludges
-	for _, kludge := range msg.Kludges {
-		hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldFTSKludge, kludge))
-	}
+		// Write header
+		hdrOffset, err := b.writeMessageHeader(hdr)
+		if err != nil {
+			return err
+		}
 
-	// Calculate total subfield length
-	hdr.SubfieldLen = 0
-	for _, sf := range hdr.Subfields {
-		hdr.SubfieldLen += SubfieldHdrSize + sf.DatLen
-	}
+		// Write index
+		idx := &IndexRecord{
+			ToCRC:     CRC32String(strings.ToLower(msg.To)),
+			HdrOffset: hdrOffset,
+		}
+		if err := b.writeIndexRecord(msgNum, idx); err != nil {
+			return err
+		}
 
-	// Write text
-	offset, txtLen, err := b.writeMessageText(msg.Text)
-	if err != nil {
-		return 0, err
-	}
-	hdr.Offset = offset
-	hdr.TxtLen = txtLen
+		// Update counters
+		b.fixedHeader.ActiveMsgs++
+		b.fixedHeader.ModCounter++
+		if err := b.writeFixedHeader(); err != nil {
+			return err
+		}
 
-	// Assign message number
-	count, err := b.getMessageCountLocked()
-	if err != nil {
-		return 0, err
-	}
-	msgNum := count + 1
-	hdr.MessageNumber = uint32(msgNum) + b.fixedHeader.BaseMsgNum - 1
-
-	// Write header
-	hdrOffset, err := b.writeMessageHeader(hdr)
-	if err != nil {
-		return 0, err
-	}
-
-	// Write index
-	idx := &IndexRecord{
-		ToCRC:     CRC32String(strings.ToLower(msg.To)),
-		HdrOffset: hdrOffset,
-	}
-	if err := b.writeIndexRecord(msgNum, idx); err != nil {
-		return 0, err
-	}
-
-	// Update counters
-	b.fixedHeader.ActiveMsgs++
-	b.fixedHeader.ModCounter++
-	if err := b.writeFixedHeader(); err != nil {
-		return 0, err
-	}
-
-	return msgNum, nil
+		return nil
+	})
+	return msgNum, err
 }

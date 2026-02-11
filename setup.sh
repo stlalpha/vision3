@@ -99,6 +99,9 @@ go build -o helper ./cmd/helper
 echo "Building jamutil..."
 go build -o jamutil ./cmd/jamutil
 
+echo "Initializing JAM bases..."
+./jamutil stats --all --config configs --data data > /dev/null
+
 echo
 echo "=== Setup Complete ==="
 echo

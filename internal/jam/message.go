@@ -119,45 +119,47 @@ func (b *Base) writeMessageHeader(hdr *MessageHeader) (uint32, error) {
 // UpdateMessageHeader rewrites an existing message header in place.
 // This is used by the tosser to update DateProcessed after export.
 func (b *Base) UpdateMessageHeader(msgNum int, hdr *MessageHeader) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	return b.withFileLock(func() error {
+		b.mu.Lock()
+		defer b.mu.Unlock()
 
-	if !b.isOpen {
-		return ErrBaseNotOpen
-	}
+		if !b.isOpen {
+			return ErrBaseNotOpen
+		}
 
-	idx, err := b.readIndexRecordLocked(msgNum)
-	if err != nil {
-		return err
-	}
+		idx, err := b.readIndexRecordLocked(msgNum)
+		if err != nil {
+			return err
+		}
 
-	b.jhrFile.Seek(int64(idx.HdrOffset), 0)
+		b.jhrFile.Seek(int64(idx.HdrOffset), 0)
 
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Signature)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Revision)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReservedWord)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.SubfieldLen)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.TimesRead)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.MSGIDcrc)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.REPLYcrc)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReplyTo)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Reply1st)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReplyNext)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateWritten)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateReceived)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateProcessed)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.MessageNumber)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Attribute)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Attribute2)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Offset)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.TxtLen)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.PasswordCRC)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Cost)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Signature)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Revision)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReservedWord)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.SubfieldLen)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.TimesRead)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.MSGIDcrc)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.REPLYcrc)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReplyTo)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Reply1st)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReplyNext)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateWritten)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateReceived)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateProcessed)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.MessageNumber)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Attribute)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Attribute2)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Offset)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.TxtLen)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.PasswordCRC)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Cost)
 
-	// Note: subfields are not rewritten since they don't change
-	// and follow immediately after the fixed header portion.
+		// Note: subfields are not rewritten since they don't change
+		// and follow immediately after the fixed header portion.
 
-	return nil
+		return nil
+	})
 }
 
 // ReadMessageText reads the raw message text (CP437) for the given header.
@@ -264,116 +266,122 @@ func (b *Base) ReadMessage(msgNum int) (*Message, error) {
 // WriteMessage writes a complete local message to the base.
 // Returns the 1-based message number assigned to the new message.
 func (b *Base) WriteMessage(msg *Message) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	var msgNum int
+	err := b.withFileLock(func() error {
+		b.mu.Lock()
+		defer b.mu.Unlock()
 
-	if !b.isOpen {
-		return 0, ErrBaseNotOpen
-	}
-	if err := b.readFixedHeader(); err != nil {
-		return 0, err
-	}
+		if !b.isOpen {
+			return ErrBaseNotOpen
+		}
+		if err := b.readFixedHeader(); err != nil {
+			return err
+		}
 
-	hdr := &MessageHeader{
-		Revision:      1,
-		DateWritten:   uint32(msg.DateTime.Unix()),
-		DateProcessed: uint32(time.Now().Unix()),
-		Attribute:     msg.GetAttribute(),
-	}
-	copy(hdr.Signature[:], Signature)
+		hdr := &MessageHeader{
+			Revision:      1,
+			DateWritten:   uint32(msg.DateTime.Unix()),
+			DateProcessed: uint32(time.Now().Unix()),
+			Attribute:     msg.GetAttribute(),
+		}
+		copy(hdr.Signature[:], Signature)
 
-	hdr.Subfields = buildSubfields(msg)
+		hdr.Subfields = buildSubfields(msg)
 
-	// Calculate total subfield length
-	hdr.SubfieldLen = 0
-	for _, sf := range hdr.Subfields {
-		hdr.SubfieldLen += SubfieldHdrSize + sf.DatLen
-	}
+		// Calculate total subfield length
+		hdr.SubfieldLen = 0
+		for _, sf := range hdr.Subfields {
+			hdr.SubfieldLen += SubfieldHdrSize + sf.DatLen
+		}
 
-	offset, txtLen, err := b.writeMessageText(msg.Text)
-	if err != nil {
-		return 0, err
-	}
-	hdr.Offset = offset
-	hdr.TxtLen = txtLen
+		offset, txtLen, err := b.writeMessageText(msg.Text)
+		if err != nil {
+			return err
+		}
+		hdr.Offset = offset
+		hdr.TxtLen = txtLen
 
-	count, err := b.getMessageCountLocked()
-	if err != nil {
-		return 0, err
-	}
-	msgNum := count + 1
-	hdr.MessageNumber = uint32(msgNum) + b.fixedHeader.BaseMsgNum - 1
+		count, err := b.getMessageCountLocked()
+		if err != nil {
+			return err
+		}
+		msgNum = count + 1
+		hdr.MessageNumber = uint32(msgNum) + b.fixedHeader.BaseMsgNum - 1
 
-	hdrOffset, err := b.writeMessageHeader(hdr)
-	if err != nil {
-		return 0, err
-	}
+		hdrOffset, err := b.writeMessageHeader(hdr)
+		if err != nil {
+			return err
+		}
 
-	idx := &IndexRecord{
-		ToCRC:     CRC32String(strings.ToLower(msg.To)),
-		HdrOffset: hdrOffset,
-	}
-	if err := b.writeIndexRecord(msgNum, idx); err != nil {
-		return 0, err
-	}
+		idx := &IndexRecord{
+			ToCRC:     CRC32String(strings.ToLower(msg.To)),
+			HdrOffset: hdrOffset,
+		}
+		if err := b.writeIndexRecord(msgNum, idx); err != nil {
+			return err
+		}
 
-	b.fixedHeader.ActiveMsgs++
-	b.fixedHeader.ModCounter++
-	if err := b.writeFixedHeader(); err != nil {
-		return 0, err
-	}
+		b.fixedHeader.ActiveMsgs++
+		b.fixedHeader.ModCounter++
+		if err := b.writeFixedHeader(); err != nil {
+			return err
+		}
 
-	return msgNum, nil
+		return nil
+	})
+	return msgNum, err
 }
 
 // DeleteMessage marks a message as deleted and zeroes its text length.
 func (b *Base) DeleteMessage(msgNum int) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+	return b.withFileLock(func() error {
+		b.mu.Lock()
+		defer b.mu.Unlock()
 
-	if !b.isOpen {
-		return ErrBaseNotOpen
-	}
+		if !b.isOpen {
+			return ErrBaseNotOpen
+		}
 
-	hdr, err := b.readMessageHeaderLocked(msgNum)
-	if err != nil {
-		return err
-	}
+		hdr, err := b.readMessageHeaderLocked(msgNum)
+		if err != nil {
+			return err
+		}
 
-	hdr.Attribute |= MsgDeleted
-	hdr.TxtLen = 0
+		hdr.Attribute |= MsgDeleted
+		hdr.TxtLen = 0
 
-	idx, err := b.readIndexRecordLocked(msgNum)
-	if err != nil {
-		return err
-	}
+		idx, err := b.readIndexRecordLocked(msgNum)
+		if err != nil {
+			return err
+		}
 
-	// Rewrite header at original offset
-	b.jhrFile.Seek(int64(idx.HdrOffset), 0)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Signature)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Revision)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReservedWord)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.SubfieldLen)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.TimesRead)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.MSGIDcrc)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.REPLYcrc)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReplyTo)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Reply1st)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReplyNext)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateWritten)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateReceived)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateProcessed)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.MessageNumber)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Attribute)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Attribute2)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Offset)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.TxtLen)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.PasswordCRC)
-	binary.Write(b.jhrFile, binary.LittleEndian, hdr.Cost)
+		// Rewrite header at original offset
+		b.jhrFile.Seek(int64(idx.HdrOffset), 0)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Signature)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Revision)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReservedWord)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.SubfieldLen)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.TimesRead)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.MSGIDcrc)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.REPLYcrc)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReplyTo)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Reply1st)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.ReplyNext)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateWritten)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateReceived)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.DateProcessed)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.MessageNumber)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Attribute)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Attribute2)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Offset)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.TxtLen)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.PasswordCRC)
+		binary.Write(b.jhrFile, binary.LittleEndian, hdr.Cost)
 
-	b.fixedHeader.ActiveMsgs--
-	b.fixedHeader.ModCounter++
-	return b.writeFixedHeader()
+		b.fixedHeader.ActiveMsgs--
+		b.fixedHeader.ModCounter++
+		return b.writeFixedHeader()
+	})
 }
 
 // ScanMessages reads up to maxMessages starting from startMsg (1-based),

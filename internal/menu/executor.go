@@ -3596,6 +3596,16 @@ func wrapAnsiString(text string, width int) []string {
 	reAnsi := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`) // Basic regex for ANSI codes
 
 	for _, line := range inputLines {
+		plainLine := reAnsi.ReplaceAllString(line, "")
+		if strings.TrimSpace(plainLine) == "" {
+			wrappedLines = append(wrappedLines, "")
+			continue
+		}
+		if isQuoteLine(plainLine) || isTearLine(plainLine) || isOriginLine(plainLine) {
+			wrappedLines = append(wrappedLines, line)
+			continue
+		}
+
 		currentLine := ""
 		currentWidth := 0
 		words := strings.Fields(line) // Split line into words

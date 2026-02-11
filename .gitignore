@@ -9,6 +9,11 @@
 *.dylib
 log
 
+bin/
+DOS/
+scripts/
+doors/
+
 # Test binary, built with `go test -c`
 *.test
 

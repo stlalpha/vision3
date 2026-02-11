@@ -29,7 +29,6 @@ import (
 	"github.com/robbiew/vision3/internal/message"
 	"github.com/robbiew/vision3/internal/sshserver"
 	"github.com/robbiew/vision3/internal/telnetserver"
-	"github.com/robbiew/vision3/internal/tosser"
 	"github.com/robbiew/vision3/internal/types"
 	"github.com/robbiew/vision3/internal/user"
 )
@@ -778,44 +777,8 @@ func main() {
 	// Initialize MenuExecutor with new paths, loaded theme, server config, and message manager
 	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr)
 
-	// Initialize FTN tossers from ftn.json (one per enabled network)
 	if ftnErr == nil && len(ftnConfig.Networks) > 0 {
-		// Create shared dupe DB
-		var dupeDB *tosser.DupeDB
-		if ftnConfig.DupeDBPath != "" {
-			dupeDB, err = tosser.NewDupeDBFromPath(ftnConfig.DupeDBPath)
-			if err != nil {
-				log.Printf("ERROR: Failed to open FTN dupe DB: %v. Echomail disabled.", err)
-			}
-		}
-
-		if dupeDB != nil {
-			ftnCtx, ftnCancel := context.WithCancel(context.Background())
-			defer ftnCancel()
-
-			for netName, netCfg := range ftnConfig.Networks {
-				if !netCfg.Enabled {
-					continue
-				}
-
-				// Create FTN directories for this network
-				for _, dir := range []string{netCfg.InboundPath, netCfg.OutboundPath, netCfg.TempPath} {
-					if dir != "" {
-						if err := os.MkdirAll(dir, 0755); err != nil {
-							log.Printf("WARN: Failed to create FTN directory %s: %v", dir, err)
-						}
-					}
-				}
-
-				ftnTosser, err := tosser.New(netName, netCfg, dupeDB, messageMgr)
-				if err != nil {
-					log.Printf("ERROR: Failed to initialize FTN tosser for %s: %v", netName, err)
-					continue
-				}
-				go ftnTosser.Start(ftnCtx)
-				log.Printf("INFO: FTN tosser[%s] initialized for %s", netName, netCfg.OwnAddress)
-			}
-		}
+		log.Printf("INFO: Internal FTN tosser disabled; use external tosser (e.g., hpt).")
 	}
 
 	// Host key path for libssh

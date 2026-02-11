@@ -63,10 +63,16 @@ func (b *Base) ResetLastRead(username string) error {
 // to new files, then atomically replacing the originals. The .jlr file
 // is preserved as-is.
 func (b *Base) Pack() (PackResult, error) {
+	var result PackResult
+
+	release, err := b.acquireFileLock()
+	if err != nil {
+		return result, err
+	}
+	defer release()
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	var result PackResult
 
 	if !b.isOpen {
 		return result, ErrBaseNotOpen

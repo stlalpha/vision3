@@ -169,6 +169,32 @@ func (b *Base) IsOpen() bool {
 	return b.isOpen
 }
 
+// RefreshFixedHeader reloads the fixed header from disk.
+// Useful when external tools modify the base.
+func (b *Base) RefreshFixedHeader() (*FixedHeaderInfo, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if !b.isOpen {
+		return nil, ErrBaseNotOpen
+	}
+	if err := b.readFixedHeader(); err != nil {
+		return nil, err
+	}
+	return b.fixedHeader, nil
+}
+
+// GetModCounter returns the current ModCounter value from disk.
+func (b *Base) GetModCounter() (uint32, error) {
+	fh, err := b.RefreshFixedHeader()
+	if err != nil {
+		return 0, err
+	}
+	if fh == nil {
+		return 0, nil
+	}
+	return fh.ModCounter, nil
+}
+
 // readFixedHeader reads the 1024-byte fixed header from the .jhr file.
 func (b *Base) readFixedHeader() error {
 	b.jhrFile.Seek(0, 0)

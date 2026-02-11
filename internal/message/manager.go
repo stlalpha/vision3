@@ -14,6 +14,12 @@ import (
 	"github.com/robbiew/vision3/internal/jam"
 )
 
+type threadIndex struct {
+	total      int
+	modCounter uint32
+	counts     map[string]int
+}
+
 const messageAreaFile = "message_areas.json"
 
 // MessageManager handles message areas backed by JAM message bases.
@@ -27,6 +33,7 @@ type MessageManager struct {
 	boardName  string            // BBS name for echomail origin lines
 	// networkTearlines maps network key -> custom tearline text.
 	networkTearlines map[string]string
+	threadIndex      map[int]*threadIndex
 }
 
 // NewMessageManager creates and initializes a new MessageManager.
@@ -43,6 +50,7 @@ func NewMessageManager(dataPath, configPath, boardName string, networkTearlines 
 		bases:            make(map[int]*jam.Base),
 		boardName:        boardName,
 		networkTearlines: normalizeNetworkTearlines(networkTearlines),
+		threadIndex:      make(map[int]*threadIndex),
 	}
 
 	if err := mm.loadMessageAreas(); err != nil {
@@ -234,10 +242,18 @@ func (mm *MessageManager) AddMessage(areaID int, from, to, subject, body, replyT
 
 	if msgType.IsEchomail() || msgType.IsNetmail() {
 		msg.OrigAddr = area.OriginAddr
-		return b.WriteMessageExt(msg, msgType, area.EchoTag, mm.boardName, mm.tearlineForNetwork(area.Network))
+		msgNum, err := b.WriteMessageExt(msg, msgType, area.EchoTag, mm.boardName, mm.tearlineForNetwork(area.Network))
+		if err == nil {
+			mm.invalidateThreadIndex(areaID)
+		}
+		return msgNum, err
 	}
 
-	return b.WriteMessage(msg)
+	msgNum, err := b.WriteMessage(msg)
+	if err == nil {
+		mm.invalidateThreadIndex(areaID)
+	}
+	return msgNum, err
 }
 
 // GetMessage reads a single message by area ID and 1-based message number.
@@ -283,6 +299,85 @@ func (mm *MessageManager) GetMessageCountForArea(areaID int) (int, error) {
 		return 0, nil
 	}
 	return b.GetMessageCount()
+}
+
+// GetThreadReplyCount returns the number of other messages in the same thread.
+// Threading matches Vision-2/Pascal behavior: subject-based, ignoring "Re:" prefixes
+// and " -Re: #N-" suffixes.
+func (mm *MessageManager) GetThreadReplyCount(areaID int, msgNum int, subject string) (int, error) {
+	mm.mu.RLock()
+	b, exists := mm.bases[areaID]
+	idx := mm.threadIndex[areaID]
+	mm.mu.RUnlock()
+
+	if !exists {
+		return 0, nil
+	}
+
+	total, err := b.GetMessageCount()
+	if err != nil {
+		return 0, err
+	}
+
+	modCounter := uint32(0)
+	modCounterErr := false
+	if mc, err := b.GetModCounter(); err == nil {
+		modCounter = mc
+	} else {
+		modCounterErr = true
+	}
+
+	if idx == nil || idx.total != total || modCounterErr || (modCounter != 0 && idx.modCounter != modCounter) {
+		newIdx := mm.buildThreadIndex(b, total, modCounter)
+		mm.mu.Lock()
+		mm.threadIndex[areaID] = newIdx
+		mm.mu.Unlock()
+		idx = newIdx
+	}
+
+	key := ThreadKey(subject)
+	count := idx.counts[key]
+	if count <= 1 {
+		return 0, nil
+	}
+	return count - 1, nil
+}
+
+func (mm *MessageManager) buildThreadIndex(b *jam.Base, total int, modCounter uint32) *threadIndex {
+	counts := make(map[string]int)
+	for i := 1; i <= total; i++ {
+		hdr, err := b.ReadMessageHeader(i)
+		if err != nil {
+			log.Printf("WARN: Failed to read message header %d: %v", i, err)
+			continue
+		}
+		if hdr.Attribute&jam.MsgDeleted != 0 {
+			continue
+		}
+		subject := subjectFromHeader(hdr)
+		key := ThreadKey(subject)
+		counts[key]++
+	}
+	return &threadIndex{
+		total:      total,
+		modCounter: modCounter,
+		counts:     counts,
+	}
+}
+
+func subjectFromHeader(hdr *jam.MessageHeader) string {
+	for _, sf := range hdr.Subfields {
+		if sf.LoID == jam.SfldSubject {
+			return string(sf.Buffer)
+		}
+	}
+	return ""
+}
+
+func (mm *MessageManager) invalidateThreadIndex(areaID int) {
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
+	delete(mm.threadIndex, areaID)
 }
 
 // GetNewMessageCount returns the number of unread messages for a user in an area.

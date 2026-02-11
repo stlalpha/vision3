@@ -2,6 +2,7 @@ package menu
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -128,29 +129,33 @@ readerLoop:
 		}
 
 		// Build Pascal-style substitution map
-		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel)
+		templateUsesUserNote := bytes.Contains(hdrTemplateBytes, []byte("|U"))
+		replyCount := 0
+		if e.MessageMgr != nil {
+			if count, err := e.MessageMgr.GetThreadReplyCount(currentAreaID, currentMsg.MsgNum, currentMsg.Subject); err != nil {
+				log.Printf("WARN: Failed to get reply count for area %d msg %d: %v", currentAreaID, currentMsg.MsgNum, err)
+			} else {
+				replyCount = count
+			}
+		}
+		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel, !templateUsesUserNote, replyCount)
 
 		// Process template with substitutions
 		processedHeader := processDataFile(hdrTemplateBytes, substitutions)
 
 		// Process message body and pre-format all lines
-		processedBodyStr := string(ansi.ReplacePipeCodes([]byte(currentMsg.Body)))
-		wrappedBodyLines := wrapAnsiString(processedBodyStr, termWidth)
-
-		// Add origin line for echo messages to the body lines
 		area, _ := e.MessageMgr.GetAreaByID(currentAreaID)
-		if area != nil && (area.AreaType == "echomail" || area.AreaType == "netmail") {
-			if currentMsg.OrigAddr != "" {
-				originLine := fmt.Sprintf("|08 * Origin: %s", currentMsg.OrigAddr)
-				wrappedBodyLines = append(wrappedBodyLines, string(ansi.ReplacePipeCodes([]byte(originLine))))
-			}
-		}
+		includeOrigin := area != nil && (area.AreaType == "echomail" || area.AreaType == "netmail") &&
+			currentMsg.OrigAddr != "" && !hasOriginLine(currentMsg.Body)
+		formattedBody := formatMessageBody(currentMsg.Body, currentMsg.OrigAddr, includeOrigin)
+		processedBodyStr := string(ansi.ReplacePipeCodes([]byte(formattedBody)))
+		wrappedBodyLines := wrapAnsiString(processedBodyStr, termWidth)
 
 		// Calculate available body height
 		// Find the actual bottom row of the header using ANSI cursor tracking
 		headerEndRow := findHeaderEndRow(processedHeader)
 		bodyStartRow := headerEndRow + 1 // Start body on next row after header
-		barLines := 3 // Horizontal line + board info line + lightbar
+		barLines := 3                    // Horizontal line + board info line + lightbar
 		bodyAvailHeight := termHeight - bodyStartRow - barLines
 		if bodyAvailHeight < 1 {
 			bodyAvailHeight = 5
@@ -199,7 +204,8 @@ readerLoop:
 					suffixText = " |11(Reading)"
 				}
 
-				// Add scroll percentage if message is longer than display area
+				// Add scroll percentage to the board info line if message is longer than display area.
+				scrollLabel := ""
 				if totalBodyLines > bodyAvailHeight {
 					maxScroll := totalBodyLines - bodyAvailHeight
 					scrollPercent := 0
@@ -209,7 +215,7 @@ readerLoop:
 							scrollPercent = 100
 						}
 					}
-					suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
+					scrollLabel = fmt.Sprintf(" |05[|13%d%%|05]", scrollPercent)
 				}
 
 				// Draw horizontal line above footer (CP437 character 196)
@@ -219,8 +225,8 @@ readerLoop:
 
 				// Position cursor at second-to-last row for board info line
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)), outputMode)
-				boardLine := fmt.Sprintf("|13%s |09> |15%s |01[|13%d|05/|13%d|01]",
-					confName, areaName, currentMsgNum, totalMsgCount)
+				boardLine := fmt.Sprintf("|13%s |09> |15%s |01[|13%d|05/|13%d|01]%s",
+					confName, areaName, currentMsgNum, totalMsgCount, scrollLabel)
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardLine)), outputMode)
 
 				// Position cursor at last row for lightbar
@@ -297,18 +303,6 @@ readerLoop:
 					suffixText = " |11(Reading)"
 				}
 
-				if totalBodyLines > bodyAvailHeight {
-					maxScroll := totalBodyLines - bodyAvailHeight
-					scrollPercent := 0
-					if maxScroll > 0 {
-						scrollPercent = (scrollOffset * 100) / maxScroll
-						if scrollPercent > 100 {
-							scrollPercent = 100
-						}
-					}
-					suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
-				}
-
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
 				// Determine initial direction based on which arrow was pressed
@@ -353,19 +347,6 @@ readerLoop:
 							suffixText = " |11(Reading)"
 						}
 
-						// Add scroll info to suffix
-						if totalBodyLines > bodyAvailHeight {
-							maxScroll := totalBodyLines - bodyAvailHeight
-							scrollPercent := 0
-							if maxScroll > 0 {
-								scrollPercent = (scrollOffset * 100) / maxScroll
-								if scrollPercent > 100 {
-									scrollPercent = 100
-								}
-							}
-							suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
-						}
-
 						// Position cursor at last row for lightbar
 						terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
@@ -386,18 +367,6 @@ readerLoop:
 						suffixText = " |11(NewScan)"
 					} else {
 						suffixText = " |11(Reading)"
-					}
-
-					if totalBodyLines > bodyAvailHeight {
-						maxScroll := totalBodyLines - bodyAvailHeight
-						scrollPercent := 0
-						if maxScroll > 0 {
-							scrollPercent = (scrollOffset * 100) / maxScroll
-							if scrollPercent > 100 {
-								scrollPercent = 100
-							}
-						}
-						suffixText = fmt.Sprintf("%s |05[|13%d%%|05]", suffixText, scrollPercent)
 					}
 
 					terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
@@ -515,8 +484,104 @@ readerLoop:
 	return nil, "", nil
 }
 
+func hasOriginLine(text string) bool {
+	if text == "" {
+		return false
+	}
+	normalized := strings.ReplaceAll(text, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	for _, line := range strings.Split(normalized, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "* Origin:") {
+			return true
+		}
+	}
+	return false
+}
+
+var quotePrefixRe = regexp.MustCompile(`^[A-Za-z0-9]{1,3}>`)
+
+func isQuoteLine(line string) bool {
+	trimmed := strings.TrimLeft(line, " \t")
+	if strings.HasPrefix(trimmed, ">") {
+		return true
+	}
+	return quotePrefixRe.MatchString(trimmed)
+}
+
+func isTearLine(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), "---")
+}
+
+func isOriginLine(line string) bool {
+	return strings.HasPrefix(strings.TrimSpace(line), "* Origin:")
+}
+
+func formatMessageBody(body, originAddr string, includeOrigin bool) string {
+	normalized := strings.ReplaceAll(body, "\r\n", "\n")
+	normalized = strings.ReplaceAll(normalized, "\r", "\n")
+	lines := strings.Split(normalized, "\n")
+	if includeOrigin {
+		lines = append(lines, fmt.Sprintf("* Origin: %s", originAddr))
+	}
+
+	out := make([]string, 0, len(lines))
+	prevWasQuote := false
+	prevWasTear := false
+
+	for i, rawLine := range lines {
+		line := rawLine
+		isQuote := isQuoteLine(line)
+		isTear := isTearLine(line)
+		isOrigin := isOriginLine(line)
+		isOriginBlock := isTear || isOrigin
+
+		if isOriginBlock {
+			if !prevWasTear && len(out) > 0 && out[len(out)-1] != "" {
+				out = append(out, "")
+			}
+			if isTear {
+				out = append(out, fmt.Sprintf("|08%s|07", line))
+				prevWasTear = true
+			} else {
+				out = append(out, fmt.Sprintf("|09%s|07", line))
+				prevWasTear = false
+			}
+			prevWasQuote = false
+			continue
+		}
+
+		if isQuote {
+			if !prevWasQuote && len(out) > 0 && out[len(out)-1] != "" {
+				out = append(out, "")
+			}
+
+			out = append(out, fmt.Sprintf("|14%s|07", line))
+
+			nextLine := ""
+			if i+1 < len(lines) {
+				nextLine = lines[i+1]
+			}
+			nextIsQuote := i+1 < len(lines) && isQuoteLine(nextLine)
+			nextIsOriginBlock := i+1 < len(lines) && (isTearLine(nextLine) || isOriginLine(nextLine))
+			if !nextIsQuote && strings.TrimSpace(nextLine) != "" && !nextIsOriginBlock {
+				out = append(out, "")
+			}
+
+			prevWasQuote = true
+			prevWasTear = false
+			continue
+		}
+
+		out = append(out, line)
+		prevWasQuote = false
+		prevWasTear = false
+	}
+
+	return strings.Join(out, "\n")
+}
+
 // buildMsgSubstitutions creates the Pascal-style substitution map for MSGHDR templates.
-func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userNote string, userLevel int) map[byte]string {
+func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userNote string, userLevel int, includeNoteInFrom bool, replyCount int) map[byte]string {
 	// Import jam constants
 	const (
 		msgTypeLocal = 0x00800000
@@ -527,19 +592,32 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		msgSent      = 0x00000010
 	)
 
+	// Build message status flags (also used for note display)
+	isEcho := (msg.Attributes & msgTypeEcho) != 0
+	isNet := (msg.Attributes & msgTypeNet) != 0
+	isSent := (msg.Attributes & msgSent) != 0
+	isRead := (msg.Attributes & msgRead) != 0
+	isPrivate := (msg.Attributes & msgPrivate) != 0
+
+	// Only show user note for local messages
+	userNoteToUse := userNote
+	if isEcho || isNet {
+		userNoteToUse = ""
+	}
+
 	// Truncate user note if too long (max 25 characters for display)
 	const maxUserNoteLen = 25
-	truncatedNote := userNote
-	if len(userNote) > maxUserNoteLen {
-		truncatedNote = userNote[:maxUserNoteLen-3] + "..."
+	truncatedNote := userNoteToUse
+	if len(userNoteToUse) > maxUserNoteLen {
+		truncatedNote = userNoteToUse[:maxUserNoteLen-3] + "..."
 	}
 
 	// Build From field with user note and/or FidoNet address
 	fromStr := msg.From
-	if truncatedNote != "" && msg.OrigAddr != "" {
+	if includeNoteInFrom && truncatedNote != "" && msg.OrigAddr != "" {
 		// Both user note and FidoNet address
 		fromStr = fmt.Sprintf("%s \"%s\" (%s)", msg.From, truncatedNote, msg.OrigAddr)
-	} else if truncatedNote != "" {
+	} else if includeNoteInFrom && truncatedNote != "" {
 		// Just user note
 		fromStr = fmt.Sprintf("%s \"%s\"", msg.From, truncatedNote)
 	} else if msg.OrigAddr != "" {
@@ -555,11 +633,6 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 
 	// Build message status string from message attributes
 	var statusParts []string
-	isEcho := (msg.Attributes & msgTypeEcho) != 0
-	isNet := (msg.Attributes & msgTypeNet) != 0
-	isSent := (msg.Attributes & msgSent) != 0
-	isRead := (msg.Attributes & msgRead) != 0
-	isPrivate := (msg.Attributes & msgPrivate) != 0
 
 	// Determine message type
 	if isEcho {
@@ -596,20 +669,20 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 	return map[byte]string{
 		'B': areaTag,
 		'T': msg.Subject,
-		'F': fromStr,                    // From with FidoNet address
-		'S': toStr,                      // To with FidoNet address
-		'U': userNote,                   // User note from user profile
-		'M': msgStatusStr,               // Message status (LOCAL, PRIVATE, ECHOMAIL, NETMAIL)
-		'L': strconv.Itoa(userLevel),    // User level/access level
-		'R': "",                         // Real name - not available in JAM
+		'F': fromStr,                 // From with FidoNet address
+		'S': toStr,                   // To with FidoNet address
+		'U': userNoteToUse,           // User note from user profile (local only)
+		'M': msgStatusStr,            // Message status (LOCAL, PRIVATE, ECHOMAIL, NETMAIL)
+		'L': strconv.Itoa(userLevel), // User level/access level
+		'R': "",                      // Real name - not available in JAM
 		'#': strconv.Itoa(msgNum),
 		'N': strconv.Itoa(totalMsgs),
 		'D': msg.DateTime.Format("01/02/06"),
 		'W': msg.DateTime.Format("3:04 pm"),
 		'P': replyStr,
-		'E': "0",                        // Replies count - not tracked in JAM
-		'O': msg.OrigAddr,               // Origin address
-		'A': msg.DestAddr,               // Destination address
+		'E': strconv.Itoa(replyCount),
+		'O': msg.OrigAddr, // Origin address
+		'A': msg.DestAddr, // Destination address
 	}
 }
 
@@ -801,7 +874,7 @@ func forwardBackThread(e *MenuExecutor, areaID int, currentMsg int,
 	totalMsgs int, subject string, forward bool) (int, bool) {
 
 	// Strip " -Re: #N-" suffix and "Re: " prefix for matching
-	searchSubject := stripReplyPrefix(subject)
+	searchSubject := message.NormalizeThreadSubject(subject)
 
 	if forward {
 		for i := currentMsg + 1; i <= totalMsgs; i++ {
@@ -809,7 +882,7 @@ func forwardBackThread(e *MenuExecutor, areaID int, currentMsg int,
 			if err != nil || msg.IsDeleted {
 				continue
 			}
-			if subjectMatchesThread(msg.Subject, searchSubject) {
+			if message.SubjectsMatchThread(msg.Subject, searchSubject) {
 				return i, true
 			}
 		}
@@ -819,32 +892,12 @@ func forwardBackThread(e *MenuExecutor, areaID int, currentMsg int,
 			if err != nil || msg.IsDeleted {
 				continue
 			}
-			if subjectMatchesThread(msg.Subject, searchSubject) {
+			if message.SubjectsMatchThread(msg.Subject, searchSubject) {
 				return i, true
 			}
 		}
 	}
 	return currentMsg, false
-}
-
-// stripReplyPrefix removes "Re: " prefix and " -Re: #N-" suffix from a subject.
-func stripReplyPrefix(subject string) string {
-	s := subject
-	// Remove " -Re: #N-" suffixes (Pascal-style reply markers)
-	reReply := regexp.MustCompile(` -Re: #\d+-$`)
-	s = reReply.ReplaceAllString(s, "")
-	// Remove standard "Re: " prefix
-	s = strings.TrimSpace(s)
-	for strings.HasPrefix(strings.ToUpper(s), "RE: ") {
-		s = strings.TrimSpace(s[4:])
-	}
-	return s
-}
-
-// subjectMatchesThread checks if a message subject matches a thread search string.
-func subjectMatchesThread(msgSubject, searchSubject string) bool {
-	stripped := stripReplyPrefix(msgSubject)
-	return strings.EqualFold(stripped, searchSubject)
 }
 
 // handleJump prompts the user for a message number to jump to.
