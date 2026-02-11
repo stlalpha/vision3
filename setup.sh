@@ -21,6 +21,9 @@ mkdir -p data/files/general
 mkdir -p data/logs
 mkdir -p data/msgbases
 mkdir -p data/ftn
+mkdir -p configs
+mkdir -p scripts
+echo "Directories created."
 
 # Copy template config files to configs/ if they don't exist
 echo "Setting up configuration files..."
@@ -113,4 +116,4 @@ echo "  cd cmd/vision3 && ./vision3"
 echo "  or run ./build_and_run.sh to build and start in one step."
 echo
 echo "To connect:"
-echo "  ssh user@localhost -p 2222" 
+echo "  ssh user@localhost -p 2222"
