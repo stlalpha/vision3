@@ -29,7 +29,10 @@
 
 /* ---- Telix Dialer Splash Screen ---- */
 
-// Cookie helpers
+/**
+ * Determine whether the splash has been shown to this browser previously.
+ * @returns {boolean} `true` if a `vision3_visited=1` cookie is present, `false` otherwise.
+ */
 function hasVisitedBefore() {
     return document.cookie.includes('vision3_visited=1');
 }
