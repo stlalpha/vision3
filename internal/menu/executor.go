@@ -71,13 +71,14 @@ type MenuExecutor struct {
 	FileMgr         *file.FileManager             // <-- ADDED FIELD: File manager instance
 	ConferenceMgr   *conference.ConferenceManager // Conference grouping manager
 	IPLockoutCheck  IPLockoutChecker              // IP-based authentication lockout checker
+	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
 }
 
 // NewExecutor creates a new MenuExecutor.
 // Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, serverCfg, and ipLockoutCheck parameters
 // Updated paths to use new structure
 // << UPDATED Signature with msgMgr, fileMgr, serverCfg, and ipLockoutCheck
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker) *MenuExecutor {
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -98,6 +99,7 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		FileMgr:        fileMgr,       // <-- ASSIGN FIELD
 		ConferenceMgr:  confMgr,       // Conference grouping manager
 		IPLockoutCheck: ipLockoutCheck, // IP-based lockout checker
+		LoginSequence:  loginSequence, // Configurable login sequence
 	}
 }
 
@@ -465,6 +467,10 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["READPRIVMAIL"] = runReadPrivateMail                    // Read private mail
 	registry["LISTPRIVMAIL"] = runListPrivateMail                    // List private mail
 	registry["NEWSCANCONFIG"] = runNewscanConfig                     // Configure newscan tagged areas
+	registry["NMAILSCAN"] = runNewMailScan                           // New mail scan
+	registry["DISPLAYFILE"] = runLoginDisplayFile                    // Display ANSI file
+	registry["RUNDOOR"] = runLoginDoor                               // Run external script/door
+	registry["FASTLOGIN"] = runFastLogin                             // Inline fast login menu
 }
 
 // runShowStats displays the user statistics screen (YOURSTAT.ANS).
@@ -2279,49 +2285,304 @@ func (e *MenuExecutor) processFileIncludes(prompt string, depth int) (string, er
 	return result, nil
 }
 
-// runFullLoginSequence executes the sequence of actions after FASTLOGN option 1.
+// runNewMailScan checks for new private mail and displays a count to the user.
+func runNewMailScan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running NMAILSCAN for user %s", nodeNumber, currentUser.Handle)
+
+	if currentUser == nil {
+		return nil, "", nil
+	}
+
+	if e.MessageMgr == nil {
+		log.Printf("WARN: Node %d: MessageMgr not available for NMAILSCAN", nodeNumber)
+		return currentUser, "", nil
+	}
+
+	// Get PRIVMAIL area
+	privmailArea, exists := e.MessageMgr.GetAreaByTag("PRIVMAIL")
+	if !exists {
+		log.Printf("DEBUG: Node %d: PRIVMAIL area not configured, skipping mail scan", nodeNumber)
+		return currentUser, "", nil
+	}
+
+	// Get JAM base for PRIVMAIL area
+	base, err := e.MessageMgr.GetBase(privmailArea.ID)
+	if err != nil {
+		log.Printf("WARN: Node %d: JAM base not open for PRIVMAIL area: %v", nodeNumber, err)
+		return currentUser, "", nil
+	}
+
+	// Get total message count
+	totalMessages, err := e.MessageMgr.GetMessageCountForArea(privmailArea.ID)
+	if err != nil {
+		log.Printf("WARN: Node %d: Failed to get message count for PRIVMAIL: %v", nodeNumber, err)
+		return currentUser, "", nil
+	}
+
+	if totalMessages == 0 {
+		msg := "\r\n|07No new private mail.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		return currentUser, "", nil
+	}
+
+	// Get lastread pointer for this user
+	lastRead, err := e.MessageMgr.GetLastRead(privmailArea.ID, currentUser.Handle)
+	if err != nil {
+		log.Printf("WARN: Node %d: Failed to get lastread for PRIVMAIL: %v", nodeNumber, err)
+		lastRead = 0
+	}
+
+	// Count unread private messages addressed to this user
+	newMailCount := 0
+	for msgNum := lastRead + 1; msgNum <= totalMessages; msgNum++ {
+		msg, readErr := base.ReadMessage(msgNum)
+		if readErr != nil {
+			continue
+		}
+		if msg.IsDeleted() {
+			continue
+		}
+		if msg.IsPrivate() && strings.EqualFold(msg.To, currentUser.Handle) {
+			newMailCount++
+		}
+	}
+
+	if newMailCount > 0 {
+		mailMsg := fmt.Sprintf("\r\n|14You have |15%d|14 new private mail message(s).|07\r\n", newMailCount)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(mailMsg)), outputMode)
+	} else {
+		msg := "\r\n|07No new private mail.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+	}
+
+	return currentUser, "", nil
+}
+
+// runLoginDisplayFile displays an ANSI file during the login sequence.
+// The filename is passed via the args parameter (from LoginItem.Data).
+func runLoginDisplayFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	filename := strings.TrimSpace(args)
+	if filename == "" {
+		log.Printf("WARN: Node %d: DISPLAYFILE called with no filename", nodeNumber)
+		return currentUser, "", nil
+	}
+
+	log.Printf("DEBUG: Node %d: Running DISPLAYFILE for %s", nodeNumber, filename)
+
+	err := e.displayFile(terminal, filename, outputMode)
+	if err != nil {
+		log.Printf("WARN: Node %d: Failed to display file %s: %v", nodeNumber, filename, err)
+		// Non-fatal - continue login sequence even if file is missing
+	}
+
+	return currentUser, "", nil
+}
+
+// runLoginDoor executes a script/program during the login sequence.
+// The script path is passed via the args parameter (from LoginItem.Data).
+// The node number is passed as the first argument to the script.
+func runLoginDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	scriptPath := strings.TrimSpace(args)
+	if scriptPath == "" {
+		log.Printf("WARN: Node %d: RUNDOOR called with no script path", nodeNumber)
+		return currentUser, "", nil
+	}
+
+	log.Printf("INFO: Node %d: Running login door script: %s", nodeNumber, scriptPath)
+
+	// Verify script exists
+	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+		log.Printf("WARN: Node %d: Login door script not found: %s", nodeNumber, scriptPath)
+		return currentUser, "", nil
+	}
+
+	// Execute the script with node number as argument
+	cmd := exec.Command(scriptPath, strconv.Itoa(nodeNumber))
+	cmd.Stdin = s
+	cmd.Stdout = s
+	cmd.Stderr = s.Stderr()
+
+	if err := cmd.Run(); err != nil {
+		log.Printf("WARN: Node %d: Login door script %s exited with error: %v", nodeNumber, scriptPath, err)
+		// Non-fatal - continue login sequence
+	}
+
+	return currentUser, "", nil
+}
+
+// runFastLogin presents the FASTLOGN menu inline during the login sequence.
+// Returns a GOTO action if the user chooses to skip/jump, or empty string to continue.
+func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running FASTLOGIN inline for user %s", nodeNumber, currentUser.Handle)
+
+	// Load and display the FASTLOGN ANSI
+	err := e.displayFile(terminal, "FASTLOGN.ANS", outputMode)
+	if err != nil {
+		log.Printf("WARN: Node %d: Failed to display FASTLOGN.ANS: %v", nodeNumber, err)
+	}
+
+	// Load FASTLOGN commands
+	cfgPath := filepath.Join(e.MenuSetPath, "cfg")
+	commands, err := LoadCommands("FASTLOGN", cfgPath)
+	if err != nil {
+		log.Printf("WARN: Node %d: Failed to load FASTLOGN.CFG: %v", nodeNumber, err)
+		return currentUser, "", nil
+	}
+
+	// Show prompt and read single key
+	prompt := "\r\n|07Your choice: |15"
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+
+	bufioReader := bufio.NewReader(s)
+	for {
+		r, _, readErr := bufioReader.ReadRune()
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			return currentUser, "", readErr
+		}
+
+		keyStr := strings.ToUpper(string(r))
+
+		// Match against configured commands
+		for _, cmd := range commands {
+			if strings.ToUpper(cmd.Keys) == keyStr {
+				// Check ACS
+				if cmd.ACS != "" && cmd.ACS != "*" {
+					if !checkACS(cmd.ACS, currentUser, s, terminal, sessionStartTime) {
+						continue
+					}
+				}
+
+				// If this is the full login sequence command, return empty to continue
+				if cmd.Command == "RUN:FULL_LOGIN_SEQUENCE" {
+					log.Printf("DEBUG: Node %d: FASTLOGIN - user chose to continue full sequence", nodeNumber)
+					terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+					return currentUser, "", nil
+				}
+
+				// For GOTO commands, return the action to break out of login sequence
+				if strings.HasPrefix(cmd.Command, "GOTO:") {
+					nextMenu := strings.ToUpper(strings.TrimPrefix(cmd.Command, "GOTO:"))
+					log.Printf("DEBUG: Node %d: FASTLOGIN - user chose GOTO:%s", nodeNumber, nextMenu)
+					terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+					return currentUser, "GOTO:" + nextMenu, nil
+				}
+
+				if cmd.Command == "LOGOFF" {
+					return currentUser, "LOGOFF", nil
+				}
+			}
+		}
+
+		// If Enter was pressed with no match, continue sequence
+		if r == '\r' || r == '\n' {
+			return currentUser, "", nil
+		}
+	}
+}
+
+// loginPausePrompt displays the configured pause prompt and waits for Enter.
+func (e *MenuExecutor) loginPausePrompt(s ssh.Session, terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) error {
+	pausePrompt := e.LoadedStrings.PauseString
+	if pausePrompt == "" {
+		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
+	}
+
+	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
+	wErr := terminalio.WriteProcessedBytes(terminal, processedPausePrompt, outputMode)
+	if wErr != nil {
+		return wErr
+	}
+
+	bufioReader := bufio.NewReader(s)
+	for {
+		r, _, err := bufioReader.ReadRune()
+		if err != nil {
+			return err
+		}
+		if r == '\r' || r == '\n' {
+			break
+		}
+	}
+	return nil
+}
+
+// runFullLoginSequence executes the configurable login sequence from login.json.
 func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
-	log.Printf("INFO: Node %d: Running FULL_LOGIN_SEQUENCE for user %s", nodeNumber, currentUser.Handle)
-	var nextAction string
-	var err error
+	log.Printf("INFO: Node %d: Running FULL_LOGIN_SEQUENCE for user %s (%d items configured)", nodeNumber, currentUser.Handle, len(e.LoginSequence))
 
-	// 1. Run Last Callers
-	_, nextAction, err = runLastCallers(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode)
-	if err != nil {
-		log.Printf("ERROR: Node %d: Error during runLastCallers in sequence: %v", nodeNumber, err)
-		if errors.Is(err, io.EOF) {
-			return nil, "LOGOFF", io.EOF
+	// Build dispatch map for login item commands
+	type loginHandler func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error)
+
+	handlers := map[string]loginHandler{
+		"LASTCALLS":   runLastCallers,
+		"ONELINERS":   runOneliners,
+		"USERSTATS":   runShowStats,
+		"NMAILSCAN":   runNewMailScan,
+		"DISPLAYFILE": runLoginDisplayFile,
+		"RUNDOOR":     runLoginDoor,
+		"FASTLOGIN":   runFastLogin,
+	}
+
+	for i, item := range e.LoginSequence {
+		// Check security level requirement
+		if item.SecLevel > 0 && currentUser.AccessLevel < item.SecLevel {
+			log.Printf("DEBUG: Node %d: Skipping login item %d (%s) - user level %d < required %d",
+				nodeNumber, i+1, item.Command, currentUser.AccessLevel, item.SecLevel)
+			continue
+		}
+
+		log.Printf("DEBUG: Node %d: Executing login item %d/%d: %s", nodeNumber, i+1, len(e.LoginSequence), item.Command)
+
+		// Clear screen if requested
+		if item.ClearScreen {
+			terminalio.WriteProcessedBytes(terminal, []byte("\x1b[2J\x1b[H"), outputMode)
+		}
+
+		// Look up and execute the handler
+		handler, exists := handlers[item.Command]
+		if !exists {
+			log.Printf("WARN: Node %d: Unknown login sequence command: %s", nodeNumber, item.Command)
+			continue
+		}
+
+		// Pass item.Data as the args parameter for commands that need it
+		itemArgs := args
+		if item.Data != "" {
+			itemArgs = item.Data
+		}
+
+		_, nextAction, err := handler(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, itemArgs, outputMode)
+		if err != nil {
+			log.Printf("ERROR: Node %d: Error during login item %s: %v", nodeNumber, item.Command, err)
+			if errors.Is(err, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			// Non-fatal errors - continue with next item
+		}
+
+		// Check if the handler requested navigation (GOTO/LOGOFF)
+		if nextAction == "LOGOFF" {
+			return nil, "LOGOFF", nil
+		}
+		if strings.HasPrefix(nextAction, "GOTO:") {
+			log.Printf("DEBUG: Node %d: Login sequence interrupted by %s -> %s", nodeNumber, item.Command, nextAction)
+			return currentUser, nextAction, nil
+		}
+
+		// Pause after if requested
+		if item.PauseAfter {
+			if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode); pauseErr != nil {
+				if errors.Is(pauseErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+			}
 		}
 	}
-	if nextAction == "LOGOFF" {
-		return nil, "LOGOFF", nil
-	}
 
-	// 2. Run Oneliners
-	_, nextAction, err = runOneliners(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode)
-	if err != nil {
-		log.Printf("ERROR: Node %d: Error during runOneliners in sequence: %v", nodeNumber, err)
-		if errors.Is(err, io.EOF) {
-			return nil, "LOGOFF", io.EOF
-		}
-	}
-	if nextAction == "LOGOFF" {
-		return nil, "LOGOFF", nil
-	}
-
-	// 3. Run Show Stats
-	_, nextAction, err = runShowStats(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode)
-	if err != nil {
-		log.Printf("ERROR: Node %d: Error during runShowStats in sequence: %v", nodeNumber, err)
-		if errors.Is(err, io.EOF) {
-			return nil, "LOGOFF", io.EOF
-		}
-	}
-	if nextAction == "LOGOFF" {
-		return nil, "LOGOFF", nil
-	}
-
-	// 4. Signal transition to MAIN menu
+	// Sequence completed - transition to MAIN menu
 	log.Printf("DEBUG: Node %d: FULL_LOGIN_SEQUENCE completed. Transitioning to MAIN.", nodeNumber)
 	return currentUser, "GOTO:MAIN", nil
 }

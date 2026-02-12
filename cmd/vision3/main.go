@@ -969,8 +969,8 @@ func sessionHandler(s ssh.Session) {
 				log.Printf("ERROR: Node %d: Failed to save user default area selections: %v", nodeID, saveErr)
 			}
 
-			currentMenuName = "MAIN" // Skip LOGIN, go directly to MAIN menu
-			nextActionAfterLogin = "MAIN"
+			currentMenuName = "FASTLOGN" // Skip LOGIN, go to FASTLOGN for login sequence
+			nextActionAfterLogin = "GOTO:FASTLOGN"
 		} else {
 			log.Printf("Node %d: SSH user '%s' not found in BBS database, requiring manual login", nodeID, sshUsername)
 			// User not in database, proceed with normal LOGIN flow
@@ -1301,8 +1301,14 @@ func main() {
 		confMgr = nil
 	}
 
+	// Load login sequence configuration
+	loginSequence, err := config.LoadLoginSequence(rootConfigPath)
+	if err != nil {
+		log.Fatalf("Failed to load login sequence configuration: %v", err)
+	}
+
 	// Initialize MenuExecutor with new paths, loaded theme, server config, message manager, and connection tracker
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker)
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence)
 
 	if ftnErr == nil && len(ftnConfig.Networks) > 0 {
 		log.Printf("INFO: Internal FTN tosser disabled; use external tosser (e.g., hpt).")
