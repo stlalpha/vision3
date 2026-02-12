@@ -84,8 +84,8 @@ body {
     background: linear-gradient(
         90deg,
         transparent,
-        rgba(68, 102, 255, 0.08),
-        rgba(255, 255, 255, 0.03),
+        rgb(68 102 255 / 0.08),
+        rgb(255 255 255 / 0.03),
         transparent
     );
     animation: vhs-tracking 25s linear infinite;
