@@ -536,7 +536,7 @@ section:nth-of-type(even) {
 }
 
 /* ---- Responsive ---- */
-`@media` (width <= 600px) {
+@media (width <= 600px) {
     .hero { padding: 4rem 0 3rem; }
     .hero-logo { max-width: 220px; }
     .tagline { font-size: 1.1rem; }
