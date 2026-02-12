@@ -1030,7 +1030,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 				// Persist defaults
 				if userManager != nil {
-					if saveErr := userManager.SaveUsers(); saveErr != nil {
+					if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
 						log.Printf("ERROR: Failed to save user default area selections: %v", saveErr)
 					}
 				}
@@ -1082,7 +1082,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 					currentUser.ScreenHeight = termHeight
 					log.Printf("INFO: Updated user %s screen preferences to %dx%d", currentUser.Handle, termWidth, termHeight)
 					if userManager != nil {
-						if saveErr := userManager.SaveUsers(); saveErr != nil {
+						if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
 							log.Printf("ERROR: Failed to save user screen preferences: %v", saveErr)
 						}
 					}
@@ -1146,7 +1146,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 				// Persist default area/conference selections to disk
 				if userManager != nil {
-					if saveErr := userManager.SaveUsers(); saveErr != nil {
+					if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
 						log.Printf("ERROR: Failed to save user default area selections: %v", saveErr)
 					}
 				}
@@ -4296,7 +4296,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			// 4. Clear tags and save user state
 			log.Printf("DEBUG: Node %d: Clearing %d tagged file IDs for user %s.", nodeNumber, len(currentUser.TaggedFileIDs), currentUser.Handle)
 			currentUser.TaggedFileIDs = nil // Clear the list
-			if err := userManager.SaveUsers(); err != nil {
+			if err := userManager.UpdateUser(currentUser); err != nil {
 				log.Printf("ERROR: Node %d: Failed to save user data after download attempt: %v", nodeNumber, err)
 				// Inform user? State might be inconsistent.
 				terminalio.WriteProcessedBytes(terminal, []byte("\\r\\n|01Error saving user state after download.|07"), outputMode)
@@ -4707,7 +4707,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	e.setUserFileConference(currentUser, area.ConferenceID)
 
 	// Save the user state (important!)
-	if err := userManager.SaveUsers(); err != nil {
+	if err := userManager.UpdateUser(currentUser); err != nil {
 		log.Printf("ERROR: Node %d: Failed to save user data after updating file area: %v", nodeNumber, err)
 		msg := "\r\n|01Error: Could not save area selection.|07\r\n"
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
@@ -4809,7 +4809,7 @@ func runSelectMessageArea(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	currentUser.CurrentMessageAreaTag = area.Tag
 	e.setUserMsgConference(currentUser, area.ConferenceID)
 
-	if err := userManager.SaveUsers(); err != nil {
+	if err := userManager.UpdateUser(currentUser); err != nil {
 		log.Printf("ERROR: Node %d: Failed to save user data after updating message area: %v", nodeNumber, err)
 	}
 

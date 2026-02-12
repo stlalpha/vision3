@@ -110,7 +110,7 @@ func runChangeMsgConference(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 		currentUser.CurrentMessageAreaTag = ""
 	}
 
-	if err := userManager.SaveUsers(); err != nil {
+	if err := userManager.UpdateUser(currentUser); err != nil {
 		log.Printf("ERROR: Node %d: Failed to save user after conference change: %v", nodeNumber, err)
 	}
 
@@ -189,7 +189,7 @@ func navigateMsgArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 	currentUser.CurrentMessageAreaID = newArea.ID
 	currentUser.CurrentMessageAreaTag = newArea.Tag
 
-	if err := userManager.SaveUsers(); err != nil {
+	if err := userManager.UpdateUser(currentUser); err != nil {
 		log.Printf("ERROR: Node %d: Failed to save user after area change: %v", nodeNumber, err)
 	}
 

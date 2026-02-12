@@ -2,13 +2,34 @@
     "dupe_db_path": "data/ftn/dupes.json",
     "networks": {
         "fsxnet": {
-            "enabled": false,
-            "own_address": "",
+            "enabled": true,
+            "own_address": "21:4/158.1",
             "inbound_path": "data/ftn/fsxnet/inbound",
             "outbound_path": "data/ftn/fsxnet/outbound",
             "temp_path": "data/ftn/fsxnet/temp",
             "poll_interval_seconds": 300,
-            "links": []
+            "links": [
+                {
+                    "address": "21:4/158",
+                    "password": "",
+                    "name": "Hub 21:4/158",
+                    "echo_areas": [
+                        "FSX_GEN",
+                        "FSX_BBS",
+                        "FSX_MYS",
+                        "FSX_RETRO",
+                        "FSX_GAMING",
+                        "FSX_VIDEO",
+                        "FSX_HAM",
+                        "FSX_TST",
+                        "FSX_NET",
+                        "FSX_CRY",
+                        "FSX_ADS",
+                        "FSX_BOT",
+                        "FSX_DAT"
+                    ]
+                }
+            ]
         }
     }
 }

@@ -150,7 +150,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 	// Set the private note with creation date
 	newUser.PrivateNote = userNote
 	newUser.CreatedAt = time.Now()
-	if saveErr := userManager.SaveUsers(); saveErr != nil {
+	if saveErr := userManager.UpdateUser(newUser); saveErr != nil {
 		log.Printf("ERROR: Node %d: Failed to save user note for '%s': %v", nodeNumber, handle, saveErr)
 	}
 

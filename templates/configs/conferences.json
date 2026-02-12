@@ -3,8 +3,14 @@
         "id": 1,
         "tag": "LOCAL",
         "name": "Local Areas",
-        "description": "Local discussion and file areas",
-        "acs": "s10",
-        "allow_anonymous": false
+        "description": "Local BBS discussion and file areas",
+        "acs": ""
+    },
+    {
+        "id": 2,
+        "tag": "FSXNET",
+        "name": "fsxNet",
+        "description": "fsxNet message areas",
+        "acs": ""
     }
 ]

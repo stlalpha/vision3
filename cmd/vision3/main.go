@@ -928,7 +928,7 @@ func sessionHandler(s ssh.Session) {
 				authenticatedUser.ScreenWidth = tw
 				authenticatedUser.ScreenHeight = th
 				log.Printf("Node %d: Updated user %s screen preferences to %dx%d", nodeID, sshUser.Handle, tw, th)
-				if saveErr := userMgr.SaveUsers(); saveErr != nil {
+				if saveErr := userMgr.UpdateUser(authenticatedUser); saveErr != nil {
 					log.Printf("ERROR: Node %d: Failed to save user screen preferences: %v", nodeID, saveErr)
 				}
 			}
@@ -965,7 +965,7 @@ func sessionHandler(s ssh.Session) {
 				}
 			}
 			// Persist defaults
-			if saveErr := userMgr.SaveUsers(); saveErr != nil {
+			if saveErr := userMgr.UpdateUser(authenticatedUser); saveErr != nil {
 				log.Printf("ERROR: Node %d: Failed to save user default area selections: %v", nodeID, saveErr)
 			}
 
