@@ -29,11 +29,19 @@
 
 /* ---- Telix Dialer Splash Screen ---- */
 
-// Cookie helpers
+/**
+ * Determine whether the splash has been shown to this browser previously.
+ * @returns {boolean} `true` if a `vision3_visited=1` cookie is present, `false` otherwise.
+ */
 function hasVisitedBefore() {
     return document.cookie.includes('vision3_visited=1');
 }
 
+/**
+ * Marks the current client as visited by setting a persistent "vision3_visited" cookie.
+ *
+ * The cookie is valid for 30 days, applies site-wide (path=/), and uses SameSite=Lax.
+ */
 function setVisitedCookie() {
     var expires = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toUTCString();
     document.cookie = 'vision3_visited=1; expires=' + expires + '; path=/; SameSite=Lax';
@@ -47,6 +55,13 @@ var DTMF_FREQUENCIES = {
     '*': [941, 1209], '0': [941, 1336], '#': [941, 1477]
 };
 
+/**
+ * Schedule one or more sine-wave tones to play on the given AudioContext.
+ * @param {AudioContext} audioContext - The AudioContext used to create and schedule the tones.
+ * @param {number[]} frequencies - Array of frequencies in hertz to play simultaneously.
+ * @param {number} duration - Duration of each tone in seconds.
+ * @param {number} startTime - Time, in the AudioContext's time coordinate (seconds), when playback should start.
+ */
 function playTone(audioContext, frequencies, duration, startTime) {
     frequencies.forEach(function (freq) {
         var oscillator = audioContext.createOscillator();
@@ -61,15 +76,32 @@ function playTone(audioContext, frequencies, duration, startTime) {
     });
 }
 
+/**
+ * Play the standard telephone dial tone using the given audio context.
+ * @param {BaseAudioContext} audioContext - The AudioContext to schedule playback on.
+ * @param {number} startTime - Time, in seconds relative to audioContext.currentTime, when the tone should start.
+ * @param {number} duration - Duration of the tone in seconds.
+ */
 function playDialTone(audioContext, startTime, duration) {
     playTone(audioContext, [350, 440], duration, startTime);
 }
 
+/**
+ * Play a US-style ring tone (440 Hz and 480 Hz) for two seconds starting at the given time.
+ *
+ * @param {AudioContext|BaseAudioContext} audioContext - Audio context used to schedule the tone.
+ * @param {number} startTime - Time, in seconds relative to the audio context's currentTime, when the tone should start.
+ */
 function playRingTone(audioContext, startTime) {
     // US ring: 440+480 Hz, 2s on, 4s off
     playTone(audioContext, [440, 480], 2.0, startTime);
 }
 
+/**
+ * Play a short phone pickup click sound.
+ *
+ * Attempts to play the bundled "audio/phone-pickup.mp3" at 60% volume; playback failures are logged to the console.
+ */
 function playPhonePickup() {
     // Play phone pickup click sound
     var click = new Audio('audio/phone-pickup.mp3');
@@ -79,10 +111,18 @@ function playPhonePickup() {
     });
 }
 
-// Typewriter text output
+/**
+ * Typewrites a string into a terminal-like element by inserting characters before its cursor.
+ * @param {Element} terminal - Container element that contains a child element with class `telix-cursor` where text will be inserted.
+ * @param {string} text - The text to type into the terminal.
+ * @param {Function} [callback] - Optional function called once all characters have been inserted.
+ */
 function typeText(terminal, text, callback) {
     var index = 0;
     var cursor = terminal.querySelector('.telix-cursor');
+    /**
+     * Types the next character from the surrounding `text` into the DOM immediately before `cursor`, advances the internal `index`, schedules the next character with a short randomized delay, and calls `callback` when the entire `text` has been typed.
+     */
     function typeChar() {
         if (index < text.length) {
             cursor.insertAdjacentText('beforebegin', text[index]);
@@ -95,12 +135,24 @@ function typeText(terminal, text, callback) {
     typeChar();
 }
 
+/**
+ * Append a line of text to the terminal just before the visible cursor.
+ * @param {Element} terminal - The terminal container element that contains a `.telix-cursor` element.
+ * @param {string} text - The text to append as a single line; a trailing newline is added automatically.
+ */
 function printLine(terminal, text) {
     var cursor = terminal.querySelector('.telix-cursor');
     cursor.insertAdjacentText('beforebegin', text + '\n');
 }
 
-// Build Telix status bar with flexbox layout
+/**
+ * Render the Telix status bar inside the element with class `.telix-status-bar`.
+ *
+ * Updates the status bar into three segments: a left label ("Unregistered"), a fixed middle banner ("| ANSI-BBS | 38400-N81 FAX | | | |"), and a right status which is "Online 00:00" when connected or "Offline" otherwise.
+ * If the `.telix-status-bar` element is not present, the function does nothing.
+ *
+ * @param {boolean} isOnline - True when the connection is established; controls the right-hand status text.
+ */
 function buildStatusBar(isOnline) {
     var statusBar = document.querySelector('.telix-status-bar');
     if (!statusBar) return;
@@ -115,7 +167,15 @@ function buildStatusBar(isOnline) {
         '<span>' + rightContent + '</span>';
 }
 
-// Main dialer sequence - chained callbacks for synchronous execution
+/**
+ * Plays a staged modem dialer sequence inside the Telix splash overlay.
+ *
+ * Performs a multi-phase terminal simulation (typing AT commands and a phone number),
+ * plays dial/DTMF/ring/modem audio, updates the status bar to online on CONNECT,
+ * and finally removes the splash overlay and sets a persistent visited cookie.
+ *
+ * @param {HTMLElement} splash - The splash overlay element containing the Telix terminal.
+ */
 function runDialerSequence(splash) {
     var terminal = document.getElementById('telix-terminal');
     var audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -259,6 +319,11 @@ function runDialerSequence(splash) {
         buildStatusBar(false);
     }, 100);
 
+    /**
+     * Disables user interaction on the splash and starts the Telix dialer sequence.
+     *
+     * Removes click and keyboard handlers from the splash, resets its cursor, and invokes the dialer sequence to begin the animated/audio splash experience.
+     */
     function startSequence() {
         splash.removeEventListener('click', clickHandler);
         splash.removeEventListener('keydown', keyHandler);
@@ -266,10 +331,18 @@ function runDialerSequence(splash) {
         runDialerSequence(splash);
     }
 
+    /**
+     * Start the splash dialer sequence when the splash is activated by the user.
+     */
     function clickHandler() {
         startSequence();
     }
 
+    /**
+     * Trigger the dialer sequence when the Enter or Space key is pressed.
+     * Prevents the key's default action and calls `startSequence` for those keys.
+     * @param {KeyboardEvent} e - The keyboard event from a keydown listener.
+     */
     function keyHandler(e) {
         if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
