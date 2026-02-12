@@ -135,7 +135,7 @@ Do we need a Discord? Do you want to host it? Contact me!
 *   Comprehensive Testing
 *   Complete Documentation
 
-See `docs/status.md` for detailed progress and `tasks/tasks.md` for specific development tasks.
+See `tasks/tasks.md` for specific development tasks.
 
 ## Technology Stack
 
@@ -180,7 +180,8 @@ vision3/
 │   ├── cfg/             # Menu configuration files
 │   ├── mnu/             # Menu definition files
 │   └── templates/       # Display templates
-├── docs/                # Documentation
+├── docs/                # GitHub Pages website (vision3bbs.com)
+├── documentation/       # Project documentation
 └── tasks/               # Development task tracking
 ```
 
