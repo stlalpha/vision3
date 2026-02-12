@@ -303,6 +303,23 @@ func (um *UserMgr) SaveUsers() error { // Receiver uses renamed type
 	return um.saveUsersLocked()
 }
 
+// UpdateUser copies the modified user back into the internal map and saves to disk.
+// Use this instead of SaveUsers when you have modified a user copy obtained from
+// GetUser or Authenticate and need those changes persisted.
+func (um *UserMgr) UpdateUser(u *User) error {
+	if u == nil {
+		return fmt.Errorf("cannot update nil user")
+	}
+	um.mu.Lock()
+	defer um.mu.Unlock()
+	lowerUsername := strings.ToLower(u.Username)
+	if _, exists := um.users[lowerUsername]; !exists {
+		return ErrUserNotFound
+	}
+	um.users[lowerUsername] = u
+	return um.saveUsersLocked()
+}
+
 // Authenticate checks username and compares password hash.
 // Returns: (user, success)
 func (um *UserMgr) Authenticate(username, password string) (*User, bool) { // Receiver uses renamed type

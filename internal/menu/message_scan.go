@@ -425,7 +425,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		// Update pointers
 		if scanCfg.UpdatePointers {
-			if saveErr := userManager.SaveUsers(); saveErr != nil {
+			if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
 				log.Printf("ERROR: Node %d: Failed to save user data during newscan: %v", nodeNumber, saveErr)
 			}
 		}
@@ -915,7 +915,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			currentUser.TaggedMessageAreaIDs = taggedIDs
 
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-			if err := userManager.SaveUsers(); err != nil {
+			if err := userManager.UpdateUser(currentUser); err != nil {
 				log.Printf("ERROR: Node %d: Failed to save newscan config: %v", nodeNumber, err)
 				msg := "|01Error saving newscan configuration.|07\r\n"
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)

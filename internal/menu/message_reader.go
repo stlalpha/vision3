@@ -1060,7 +1060,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		if pickYes {
 			currentUser.MsgHdr = num
-			if saveErr := userManager.SaveUsers(); saveErr != nil {
+			if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
 				log.Printf("ERROR: Node %d: Failed to save user after header selection: %v", nodeNumber, saveErr)
 			}
 			break
