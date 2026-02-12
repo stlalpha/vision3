@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -909,7 +910,6 @@ func sessionHandler(s ssh.Session) {
 	log.Printf("Node %d: Starting BBS logic...", nodeID)
 	sessionStartTime := time.Now()
 	currentMenuName := "LOGIN"               // Start with LOGIN
-	var nextActionAfterLogin string          // << NEW: Variable to store the action after successful login
 	autoRunLog := make(types.AutoRunTracker) // Initialize tracker for this session
 
 	// Check if user is already authenticated via SSH
@@ -969,8 +969,7 @@ func sessionHandler(s ssh.Session) {
 				log.Printf("ERROR: Node %d: Failed to save user default area selections: %v", nodeID, saveErr)
 			}
 
-			currentMenuName = "FASTLOGN" // Skip LOGIN, go to FASTLOGN for login sequence
-			nextActionAfterLogin = "GOTO:FASTLOGN"
+			currentMenuName = "MAIN" // Will be overridden by login sequence result
 		} else {
 			log.Printf("Node %d: SSH user '%s' not found in BBS database, requiring manual login", nodeID, sshUsername)
 			// User not in database, proceed with normal LOGIN flow
@@ -1019,8 +1018,7 @@ func sessionHandler(s ssh.Session) {
 		if authUser != nil {
 			authenticatedUser = authUser
 			log.Printf("Node %d: User '%s' authenticated successfully.", nodeID, authenticatedUser.Handle)
-			// Login successful! Record event, STORE the next action, and break.
-			nextActionAfterLogin = nextMenuName
+			// Login successful! Break out of login loop.
 
 			// --- START MOVED Login Event Recording --- Removed call to AddLoginEvent
 			/* // Removed LoginEvent tracking
@@ -1066,16 +1064,17 @@ func sessionHandler(s ssh.Session) {
 	_ = terminal.SetSize(int(termWidth.Load()), int(termHeight.Load()))
 	log.Printf("Node %d: Effective terminal size for %s: %dx%d", nodeID, authenticatedUser.Handle, termWidth.Load(), termHeight.Load())
 
-	// << NEW: Set the initial menu for the main loop based on the action returned from login
-	parts := strings.SplitN(nextActionAfterLogin, ":", 2) // Split action like "GOTO:MENU"
-	if len(parts) == 2 {
-		currentMenuName = strings.ToUpper(parts[1]) // Use the part after the colon
-	} else {
-		log.Printf("WARN: Node %d: Could not parse next action '%s' after login. Defaulting to MAIN.", nodeID, nextActionAfterLogin)
-		currentMenuName = "MAIN" // Default if format is unexpected
+	// Run the configurable login sequence (login.json) directly after authentication.
+	// This replaces the old FASTLOGN menu routing — FASTLOGIN is now an optional login.json item.
+	loginNextMenu, loginErr := menuExecutor.RunLoginSequence(s, terminal, userMgr, authenticatedUser, int(nodeID), sessionStartTime, effectiveMode)
+	if loginErr != nil {
+		if errors.Is(loginErr, io.EOF) {
+			log.Printf("Node %d: User disconnected during login sequence.", nodeID)
+			return
+		}
+		log.Printf("ERROR: Node %d: Login sequence error: %v", nodeID, loginErr)
 	}
-
-	// currentMenuName should now hold the name of the first menu AFTER successful login (e.g., "FASTLOGN" or "MAIN")
+	currentMenuName = loginNextMenu
 	for {
 		if currentMenuName == "" || currentMenuName == "LOGOFF" {
 			log.Printf("Node %d: User %s selected Logoff or reached end state.", nodeID, authenticatedUser.Handle)
