@@ -3,7 +3,7 @@
     "boardPhoneNumber": "555-555-5555",
     "sysOpLevel": 255,
     "coSysOpLevel": 250,
-    "logonLevel": 100,
+    "logonLevel": 50,
     "anonymousLevel": 5,
     "sshEnabled": true,
     "sshHost": "0.0.0.0",

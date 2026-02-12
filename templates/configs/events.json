@@ -55,8 +55,8 @@
       "command": "/usr/local/bin/binkd",
       "args": [
         "-P",
-        "21:4/158@fsxnet",
-        "-D",
+        "-p",
+        "21:4/100@fsxnet",
         "{BBS_ROOT}/data/ftn/binkd.conf"
       ],
       "working_directory": "{BBS_ROOT}",
@@ -72,7 +72,7 @@
       "args": [
         "toss",
         "-c",
-        "{BBS_ROOT}/data/ftn/hpt.conf"
+        "{BBS_ROOT}/data/ftn/husky.cfg"
       ],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 600,
@@ -88,7 +88,7 @@
         "scan",
         "pack",
         "-c",
-        "{BBS_ROOT}/data/ftn/hpt.conf"
+        "{BBS_ROOT}/data/ftn/husky.cfg"
       ],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 900,
