@@ -207,7 +207,8 @@ vision3/
 │   ├── mnu/                # Menu definition files
 │   └── templates/          # Display templates
 │       └── message_headers/ # 14 customizable message header styles
-├── docs/                   # Documentation
+├── docs/                   # GitHub Pages website (vision3bbs.com)
+├── documentation/          # Project documentation
 └── tasks/                  # Development task tracking
 ```
 
