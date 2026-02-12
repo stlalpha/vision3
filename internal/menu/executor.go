@@ -2490,8 +2490,26 @@ func (e *MenuExecutor) loginPausePrompt(s ssh.Session, terminal *term.Terminal, 
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
 
+	// Process pipe codes and convert to CP437 if needed
+	var pauseBytesToWrite []byte
 	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-	wErr := terminalio.WriteProcessedBytes(terminal, processedPausePrompt, outputMode)
+	if outputMode == ansi.OutputModeCP437 {
+		var cp437Buf bytes.Buffer
+		for _, r := range string(processedPausePrompt) {
+			if r < 128 {
+				cp437Buf.WriteByte(byte(r))
+			} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
+				cp437Buf.WriteByte(cp437Byte)
+			} else {
+				cp437Buf.WriteByte('?')
+			}
+		}
+		pauseBytesToWrite = cp437Buf.Bytes()
+	} else {
+		pauseBytesToWrite = processedPausePrompt
+	}
+
+	wErr := terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
 	if wErr != nil {
 		return wErr
 	}
