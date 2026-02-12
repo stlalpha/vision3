@@ -273,6 +273,53 @@ func LoadDoors(filePath string) (map[string]DoorConfig, error) {
 	return doorMap, nil
 }
 
+// LoginItem defines a single step in the configurable login sequence.
+type LoginItem struct {
+	Command     string `json:"command"`               // Required: LASTCALLS, ONELINERS, USERSTATS, NMAILSCAN, DISPLAYFILE, RUNDOOR, FASTLOGIN
+	Data        string `json:"data,omitempty"`         // Optional: command-specific data (filename, script path, etc.)
+	ClearScreen bool   `json:"clear_screen,omitempty"` // Optional: clear screen before this item (default false)
+	PauseAfter  bool   `json:"pause_after,omitempty"`  // Optional: show pause prompt after this item (default false)
+	SecLevel    int    `json:"sec_level,omitempty"`     // Optional: minimum security level required (default 0 = everyone)
+}
+
+// LoadLoginSequence loads the login sequence configuration from login.json.
+// If the file is missing, returns a default sequence matching legacy behavior.
+func LoadLoginSequence(configPath string) ([]LoginItem, error) {
+	filePath := filepath.Join(configPath, "login.json")
+	log.Printf("INFO: Loading login sequence from %s", filePath)
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("INFO: login.json not found at %s, using default login sequence", filePath)
+			return defaultLoginSequence(), nil
+		}
+		return nil, fmt.Errorf("failed to read login sequence file %s: %w", filePath, err)
+	}
+
+	var items []LoginItem
+	if err := json.Unmarshal(data, &items); err != nil {
+		return nil, fmt.Errorf("failed to parse login sequence JSON from %s: %w", filePath, err)
+	}
+
+	// Normalize command names to uppercase
+	for i := range items {
+		items[i].Command = strings.ToUpper(items[i].Command)
+	}
+
+	log.Printf("INFO: Loaded login sequence with %d items", len(items))
+	return items, nil
+}
+
+// defaultLoginSequence returns the built-in default login sequence matching legacy behavior.
+func defaultLoginSequence() []LoginItem {
+	return []LoginItem{
+		{Command: "LASTCALLS"},
+		{Command: "ONELINERS"},
+		{Command: "USERSTATS"},
+	}
+}
+
 // LoadOneLiners loads oneliner strings from a JSON file.
 func LoadOneLiners(dataPath string) ([]string, error) { // Changed configPath to dataPath for clarity
 	filePath := filepath.Join(dataPath, "oneliners.dat") // Assume loading .dat from data path
