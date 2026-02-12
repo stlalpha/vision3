@@ -449,57 +449,20 @@ func main() {
 	sshHost := "0.0.0.0"
 	log.Printf("INFO: Configuring BBS SSH server on %s:%d...", sshHost, sshPort)
 
-	passwordHandler := func(ctx ssh.Context, password string) bool {
-		log.Printf("DEBUG: Password handler called for user '%s'. Allowing connection attempt, auth deferred to session handler.", ctx.User())
-		return true
-	}
-
-	// Define cryptographic algorithm lists (defaults + legacy for compatibility)
-	// Use only non-ETM MACs for potentially better compatibility with CBC modes
-	/* // Commented out as unused in this test
-	legacyCiphers := []string{
-		"aes128-cbc", // Legacy added
-		// "3des-cbc",   // Removed - Very weak
-	}
-	legacyMACs := []string{
-		"hmac-sha1-96", // Legacy added
-	}
-	*/
-	legacyKexAlgos := []string{
-		"diffie-hellman-group14-sha1", // Legacy added
-		// "diffie-hellman-group1-sha1",  // Removed - Very weak
-	}
-
+	algorithms := gossh.SupportedAlgorithms() // drop insecure algos.
 	server := &ssh.Server{
-		Addr:            fmt.Sprintf("%s:%d", sshHost, sshPort),
-		Handler:         sessionHandler,
-		PasswordHandler: passwordHandler,
-		// Note: Crypto config is set via ServerConfigCallback below
-	}
-
-	// Set the custom crypto config callback
-	server.ServerConfigCallback = func(ctx ssh.Context) *gossh.ServerConfig {
-		// Get a default config to start with
-		defaultConfig := &gossh.Config{}
-
-		// Create the ServerConfig, ensuring the inner Config is initialized
-		cfg := &gossh.ServerConfig{
-			Config: gossh.Config{
-				// Start with default algorithms from the base library
-				Ciphers:      defaultConfig.Ciphers,
-				KeyExchanges: defaultConfig.KeyExchanges,
-				MACs:         defaultConfig.MACs,
-			},
-		}
-
-		// Append legacy algorithms to the defaults
-		// cfg.Config.Ciphers = append(cfg.Config.Ciphers, legacyCiphers...) // <-- Keep legacy ciphers commented out
-		cfg.Config.KeyExchanges = append(cfg.Config.KeyExchanges, legacyKexAlgos...)
-		// cfg.Config.MACs = append(cfg.Config.MACs, legacyMACs...) // <-- Keep legacy MACs commented out
-
-		log.Printf("DEBUG: ServerConfigCallback invoked, returning config with defaults + appended legacy KEX algorithms ONLY")
-		// The underlying library still needs to add host keys etc.
-		return cfg
+		Addr:    fmt.Sprintf("%s:%d", sshHost, sshPort),
+		Handler: sessionHandler,
+		ServerConfigCallback: func(ctx ssh.Context) *gossh.ServerConfig {
+			cfg := &gossh.ServerConfig{
+				Config: gossh.Config{
+					KeyExchanges: algorithms.KeyExchanges,
+					Ciphers:      algorithms.Ciphers,
+					MACs:         algorithms.MACs,
+				},
+			}
+			return cfg
+		},
 	}
 
 	server.AddHostKey(hostKeySigner)
