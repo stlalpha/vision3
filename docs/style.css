@@ -1,0 +1,657 @@
+/* ============================================
+   ViSiON/3 BBS - Project Website Styles
+   Retro BBS aesthetic, modern layout
+   ============================================ */
+
+@font-face {
+    font-family: 'IBM VGA';
+    src: url('fonts/WebPlus_IBM_VGA_8x16.woff') format('woff');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+*, *::before, *::after {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --bg-primary: #0a0a0a;
+    --bg-secondary: #111118;
+    --bg-card: #15151f;
+    --text-primary: #c8c8d4;
+    --text-secondary: #8888a0;
+    --text-heading: #e0e0f0;
+    --blue-bright: #4466ff;
+    --blue-glow: #3355dd;
+    --blue-dark: #1a1a4e;
+    --cyan-accent: #44ccdd;
+    --border-color: #252540;
+    --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
+    --font-dos: 'IBM VGA', 'Courier New', monospace;
+    --font-body: 'Inter', -apple-system, sans-serif;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    background-color: #000000;
+    color: var(--text-primary);
+    font-family: var(--font-body);
+    font-size: 16px;
+    line-height: 1.7;
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+
+.crt-frame {
+    max-width: calc(100vh * 4 / 3);
+    margin: 0 auto;
+    background-color: var(--bg-primary);
+    min-height: 100vh;
+    isolation: isolate;
+}
+
+/* CRT vignette - dark edges, bright center */
+.crt-vignette {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9997;
+    background: radial-gradient(
+        ellipse at center,
+        transparent 60%,
+        rgba(0, 0, 0, 0.25) 85%,
+        rgba(0, 0, 0, 0.55) 100%
+    );
+}
+
+/* VHS tracking distortion band */
+.crt-vhs {
+    position: fixed;
+    left: -5px;
+    width: calc(100% + 10px);
+    height: 4px;
+    pointer-events: none;
+    z-index: 9998;
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(68, 102, 255, 0.08),
+        rgba(255, 255, 255, 0.03),
+        transparent
+    );
+    animation: vhs-tracking 25s linear infinite;
+    opacity: 0;
+}
+
+/* Phosphor flicker - subtle brightness pulse overlay */
+.phosphor-flicker {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9996;
+    background: rgba(0, 0, 0, 0);
+    animation: phosphor-flicker 4s ease-in-out infinite;
+}
+
+/* Scanline overlay - visible static lines */
+.scanlines {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 9999;
+    background: repeating-linear-gradient(
+        0deg,
+        rgba(0, 0, 0, 0.08) 0px,
+        rgba(0, 0, 0, 0.08) 1px,
+        transparent 1px,
+        transparent 3px
+    );
+}
+
+/* Animated CRT sweep line */
+.scanlines::after {
+    content: '';
+    position: fixed;
+    top: -100%;
+    left: 0;
+    width: 100%;
+    height: 8px;
+    background: linear-gradient(
+        180deg,
+        transparent,
+        rgba(68, 102, 255, 0.06),
+        transparent
+    );
+    animation: scanline-sweep 8s linear infinite;
+    pointer-events: none;
+}
+
+@keyframes scanline-sweep {
+    0% { top: -1%; }
+    100% { top: 101%; }
+}
+
+/* Phosphor flicker - subtle brightness pulse */
+@keyframes phosphor-flicker {
+    0%, 100% { background: rgba(0, 0, 0, 0); }
+    50% { background: rgba(0, 0, 0, 0.03); }
+}
+
+/* VHS tracking - rare horizontal distortion band */
+@keyframes vhs-tracking {
+    0%, 92% { top: -10px; opacity: 0; }
+    93% { opacity: 1; }
+    94% { top: 15%; opacity: 1; transform: translateX(-3px); }
+    95% { top: 35%; transform: translateX(2px); }
+    96% { top: 55%; transform: translateX(-2px); }
+    97% { top: 75%; transform: translateX(1px); }
+    98% { top: 95%; opacity: 1; }
+    99% { top: 101%; opacity: 0; }
+    100% { top: 101%; opacity: 0; }
+}
+
+.container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+/* ---- BBS Nav Bar ---- */
+.bbs-nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background-color: var(--bg-primary);
+    border-bottom: 1px solid var(--border-color);
+    padding: 0.6rem 0;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+}
+
+.bbs-nav .container {
+    display: flex;
+    justify-content: center;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.nav-item {
+    color: var(--text-secondary);
+}
+
+.nav-bracket {
+    color: #00aaaa;
+}
+
+.nav-key {
+    color: #55ffff;
+    font-weight: 700;
+}
+
+.nav-item a {
+    text-decoration: none;
+}
+
+.nav-item a:hover span {
+    color: #55ffff;
+}
+
+.nav-item a:focus-visible {
+    outline: 2px solid var(--cyan-accent);
+    outline-offset: 2px;
+}
+
+/* ---- Hero ---- */
+.hero {
+    text-align: center;
+    padding: 6rem 0 4rem;
+}
+
+.hero-logo {
+    max-width: 1000px;
+    width: 100%;
+    height: auto;
+    filter: drop-shadow(0 0 30px rgba(68, 102, 255, 0.4))
+            drop-shadow(0 0 60px rgba(68, 102, 255, 0.2));
+    margin-bottom: 2rem;
+}
+
+.tagline {
+    font-family: var(--font-mono);
+    font-size: 1.4rem;
+    font-weight: 600;
+    color: var(--text-heading);
+    margin-bottom: 0.5rem;
+}
+
+.subtitle {
+    font-family: var(--font-dos);
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+}
+
+/* ---- Sections ---- */
+section {
+    padding: 4rem 0;
+}
+
+section:nth-of-type(even) {
+    background-color: var(--bg-secondary);
+}
+
+/* ---- ANSI Art Headers ---- */
+.ansi-header {
+    font-family: var(--font-mono);
+    line-height: 1.15;
+    margin-bottom: 1.5rem;
+    white-space: pre;
+    font-size: 0.85rem;
+    user-select: none;
+}
+
+.ansi-header .row-1 { color: #5555ff; }
+.ansi-header .row-2 { color: #5555ff; }
+.ansi-header .row-3 { color: #5555ff; }
+
+/* ---- Message Base Posts ---- */
+.msg-post {
+    max-width: 100%;
+}
+
+.msg-header {
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    line-height: 1.8;
+    margin-bottom: 1.5rem;
+}
+
+.msg-number {
+    color: #cc4444;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.msg-number-of {
+    color: #aa0000;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.msg-bracket {
+    color: #aa00aa;
+}
+
+.msg-label {
+    color: #ff55ff;
+}
+
+.msg-value {
+    color: var(--text-heading);
+}
+
+.msg-line {
+    display: block;
+    overflow: hidden;
+}
+
+.msg-right {
+    float: right;
+}
+
+.msg-body {
+    margin-top: 0.5rem;
+}
+
+.msg-body p {
+    margin-bottom: 1rem;
+    font-family: var(--font-dos);
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+/* ---- About ---- */
+.about p {
+    margin-bottom: 1rem;
+}
+
+.tribute {
+    font-family: var(--font-mono);
+    font-style: italic;
+    color: var(--cyan-accent);
+    margin-top: 1.5rem;
+}
+
+/* ---- History ---- */
+.history p {
+    margin-bottom: 1rem;
+}
+
+.lineage {
+    font-family: var(--font-mono);
+    font-size: 1.1rem;
+    color: var(--cyan-accent);
+    text-align: center;
+    margin: 2rem 0;
+    letter-spacing: 0.5px;
+}
+
+.lineage strong {
+    color: var(--blue-bright);
+    text-shadow: 0 0 10px rgba(68, 102, 255, 0.4);
+}
+
+.screenshot-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin: 2rem 0;
+}
+
+.screenshot-gallery img {
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.screenshot-gallery img:hover {
+    border-color: var(--blue-bright);
+    box-shadow: 0 0 15px rgba(68, 102, 255, 0.15);
+}
+
+.screenshot-caption {
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-align: center;
+    margin-top: 0.25rem;
+}
+
+.history-links {
+    margin-top: 1.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+.history-links a {
+    text-decoration: none;
+    margin-right: 1.5rem;
+}
+
+.history-links a:hover span {
+    text-decoration: underline;
+}
+
+/* ---- BBS Menu Items (Features) ---- */
+.bbs-menu {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem 3rem;
+}
+
+.bbs-menu-item {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+}
+
+.menu-header {
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+}
+
+.menu-bracket {
+    color: #00aaaa;
+}
+
+.menu-key {
+    color: #55ffff;
+    font-weight: 700;
+}
+
+.menu-title {
+    font-weight: 600;
+}
+
+.fade-1 { color: #ffffff; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 0 20px rgba(255, 255, 255, 0.3); }
+.fade-2 { color: #aaaaaa; text-shadow: 0 0 5px rgba(170, 170, 170, 0.2); }
+.fade-3 { color: #555555; }
+
+.cfade-1 { color: #ffffff; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 0 20px rgba(255, 255, 255, 0.3); }
+.cfade-2 { color: #55ffff; text-shadow: 0 0 6px rgba(85, 255, 255, 0.35), 0 0 16px rgba(85, 255, 255, 0.15); }
+.cfade-3 { color: #00aaaa; text-shadow: 0 0 4px rgba(0, 170, 170, 0.2); }
+.cfade-4 { color: #555555; }
+
+.menu-desc {
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.5;
+    font-family: var(--font-dos);
+}
+
+/* ---- Get Involved ---- */
+.get-involved .cta-buttons {
+    text-align: center;
+}
+
+.get-involved .contact {
+    text-align: center;
+}
+
+.cta-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 2rem;
+}
+
+.btn {
+    font-family: var(--font-mono);
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-decoration: none;
+    padding: 0.75rem 2rem;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+}
+
+.btn-primary {
+    background-color: var(--blue-bright);
+    color: #ffffff;
+}
+
+.btn-primary:hover {
+    background-color: var(--blue-glow);
+    box-shadow: 0 0 20px rgba(68, 102, 255, 0.4);
+}
+
+.btn-secondary {
+    background-color: transparent;
+    color: var(--blue-bright);
+    border: 1px solid var(--blue-bright);
+}
+
+.btn-secondary:hover {
+    background-color: var(--blue-dark);
+    box-shadow: 0 0 20px rgba(68, 102, 255, 0.2);
+}
+
+.contact {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.contact a {
+    color: var(--cyan-accent);
+    text-decoration: none;
+}
+
+.contact a:hover {
+    text-decoration: underline;
+}
+
+/* ---- Footer ---- */
+.site-footer {
+    text-align: center;
+    padding: 3rem 0;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.footer-links {
+    margin-top: 1rem;
+    display: flex;
+    gap: 1.5rem;
+    justify-content: center;
+}
+
+.footer-links a {
+    color: var(--blue-bright);
+    text-decoration: none;
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+}
+
+.footer-links a:hover {
+    text-decoration: underline;
+}
+
+/* ---- Responsive ---- */
+@media (max-width: 600px) {
+    .hero { padding: 4rem 0 3rem; }
+    .hero-logo { max-width: 220px; }
+    .tagline { font-size: 1.1rem; }
+    section { padding: 3rem 0; }
+    .ansi-header { font-size: 0.5rem; }
+    .bbs-menu { grid-template-columns: 1fr; }
+    .cta-buttons { flex-direction: column; align-items: center; }
+}
+
+/* ---- Scroll fade-in ---- */
+.fade-in {
+    opacity: 0;
+    transform: translateY(20px);
+    transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.fade-in.visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+/* ---- Focus styles ---- */
+.btn:focus-visible,
+.footer-links a:focus-visible,
+.contact a:focus-visible,
+.history-links a:focus-visible {
+    outline: 2px solid var(--cyan-accent);
+    outline-offset: 2px;
+}
+
+/* ---- Reduced motion ---- */
+@media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .fade-in {
+        opacity: 1;
+        transform: none;
+        transition: none;
+    }
+    .scanlines { background: none; }
+    .scanlines::after { animation: none; }
+    .phosphor-flicker { animation: none; }
+    .crt-vignette { display: none; }
+    .crt-vhs { display: none; }
+    .telix-cursor { animation: none; }
+}
+
+/* ---- Telix Splash Screen ---- */
+.telix-splash {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #000000;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+.telix-screen {
+    max-width: calc(100vh * 4 / 3);
+    width: 100%;
+    height: 100vh;
+    background: #000000;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    margin: 0 auto;
+}
+
+.telix-terminal {
+    flex: 1;
+    padding: 0;
+    font-family: var(--font-dos);
+    font-size: 1rem;
+    line-height: 1.6;
+    color: #aaaaaa;
+    white-space: pre-wrap;
+    overflow: hidden;
+    text-align: left;
+}
+
+.telix-prompt {
+    color: #aaaaaa;
+    display: block;
+}
+
+.telix-cursor {
+    color: #aaaaaa;
+    animation: telix-blink 0.8s step-end infinite;
+}
+
+@keyframes telix-blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+.telix-status-bar {
+    font-family: var(--font-dos);
+    font-size: 0.85rem;
+    background: #aa0000;
+    color: #ffff55;
+    padding: 0 0.5rem;
+    flex-shrink: 0;
+    display: flex;
+    justify-content: space-between;
+}
+
+.telix-splash.hidden {
+    display: none;
+}
+
+/* Lock scroll while splash is visible */
+body.splash-active {
+    overflow: hidden;
+}
