@@ -241,6 +241,12 @@ function runDialerSequence(splash) {
     var splash = document.getElementById('telix-splash');
     if (!splash) return;
 
+    // Skip splash if user prefers reduced motion
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        splash.remove();
+        return;
+    }
+
     if (hasVisitedBefore()) {
         splash.remove();
         return;
@@ -253,11 +259,26 @@ function runDialerSequence(splash) {
         buildStatusBar(false);
     }, 100);
 
-    splash.addEventListener('click', function handler() {
-        splash.removeEventListener('click', handler);
+    function startSequence() {
+        splash.removeEventListener('click', clickHandler);
+        splash.removeEventListener('keydown', keyHandler);
         splash.style.cursor = 'default';
         runDialerSequence(splash);
-    });
+    }
+
+    function clickHandler() {
+        startSequence();
+    }
+
+    function keyHandler(e) {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            startSequence();
+        }
+    }
+
+    splash.addEventListener('click', clickHandler);
+    splash.addEventListener('keydown', keyHandler);
 })();
 
 /* ---- BBS Menu Keyboard Navigation ---- */
@@ -278,8 +299,13 @@ function runDialerSequence(splash) {
     };
 
     document.addEventListener('keydown', function (e) {
-        // Don't hijack if user is typing in an input
-        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        // Don't hijack if modifier keys are pressed or user is typing
+        if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
+            return;
+        }
+
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' ||
+            e.target.isContentEditable || e.target.matches('[contenteditable="true"]')) {
             return;
         }
 

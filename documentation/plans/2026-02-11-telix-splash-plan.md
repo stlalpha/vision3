@@ -188,7 +188,7 @@ function setVisitedCookie() {
 **Step 2: Add Web Audio API tone synthesizer**
 
 DTMF frequency pairs (ITU-T Q.23):
-```
+```text
 1: 697+1209  2: 697+1336  3: 697+1477
 4: 770+1209  5: 770+1336  6: 770+1477
 7: 852+1209  8: 852+1336  9: 852+1477
