@@ -598,6 +598,11 @@ section:nth-of-type(even) {
     cursor: pointer;
 }
 
+.telix-splash:focus-visible {
+    outline: 2px solid #55ffff;
+    outline-offset: -4px;
+}
+
 .telix-screen {
     max-width: calc(100vh * 4 / 3);
     width: 100%;
