@@ -21,9 +21,17 @@ func go_auth_password_cb(session C.ssh_session, user *C.char, password *C.char, 
 	cs := h.Value().(*connState)
 
 	cs.username = C.GoString(user)
-	_ = C.GoString(password) // Accept any password for now
+	pwd := C.GoString(password)
 
-	log.Printf("INFO: Password auth for user: %s", cs.username)
+	// Validate password via the configured auth handler
+	if cs.server.authPasswordFunc != nil {
+		if !cs.server.authPasswordFunc(cs.username, pwd) {
+			log.Printf("INFO: Password auth DENIED for user: %s", cs.username)
+			return C.SSH_AUTH_DENIED
+		}
+	}
+
+	log.Printf("INFO: Password auth accepted for user: %s", cs.username)
 	return C.SSH_AUTH_SUCCESS
 }
 
@@ -33,8 +41,8 @@ func go_auth_none_cb(session C.ssh_session, user *C.char, userdata unsafe.Pointe
 	cs := h.Value().(*connState)
 
 	cs.username = C.GoString(user)
-	log.Printf("INFO: Auth none for user: %s", cs.username)
-	return C.SSH_AUTH_SUCCESS
+	log.Printf("INFO: Auth none denied for user: %s (password required)", cs.username)
+	return C.SSH_AUTH_DENIED
 }
 
 //export go_channel_open_cb
