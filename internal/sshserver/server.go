@@ -60,9 +60,12 @@ import (
 	"io"
 	"log"
 	"net"
+	"os"
 	"runtime"
 	"runtime/cgo"
+	"strconv"
 	"sync"
+	"syscall"
 	"time"
 	"unsafe"
 )
@@ -177,6 +180,15 @@ func NewServer(config Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to set host key")
 	}
 
+	// Bind to dual-stack (IPv6 + IPv4) address.
+	// WSL2 mirrored networking requires dual-stack sockets for external access.
+	cAddr := C.CString("::")
+	defer C.free(unsafe.Pointer(cAddr))
+	if C.ssh_bind_options_set(bind, C.SSH_BIND_OPTIONS_BINDADDR, unsafe.Pointer(cAddr)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set bind address")
+	}
+
 	// Set port
 	cPort := C.int(config.Port)
 	if C.ssh_bind_options_set(bind, C.SSH_BIND_OPTIONS_BINDPORT, unsafe.Pointer(&cPort)) != C.SSH_OK {
@@ -189,13 +201,53 @@ func NewServer(config Config) (*Server, error) {
 
 // Listen starts the SSH server
 func (s *Server) Listen() error {
+	// Snapshot open fds before libssh creates its listening socket.
+	// libssh's C socket() call does not set CLOEXEC, so we must do it
+	// ourselves to prevent child processes from inheriting the fd.
+	beforeFds := openFds()
+
 	if C.ssh_bind_listen(s.bind) != C.SSH_OK {
 		errMsg := C.GoString(C.ssh_get_error(unsafe.Pointer(s.bind)))
 		return fmt.Errorf("failed to listen: %s", errMsg)
 	}
 
+	setCloexecNewFds(beforeFds)
+
 	log.Printf("INFO: SSH server listening on port %d", s.port)
 	return nil
+}
+
+// openFds returns the set of currently open file descriptors.
+func openFds() map[int]bool {
+	fds := make(map[int]bool)
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return fds
+	}
+	for _, e := range entries {
+		if fd, err := strconv.Atoi(e.Name()); err == nil {
+			fds[fd] = true
+		}
+	}
+	return fds
+}
+
+// setCloexecNewFds sets close-on-exec on any file descriptors that were not
+// present in the before set. This prevents C-created sockets (e.g. libssh
+// bind socket) from leaking to child processes spawned by the scheduler.
+func setCloexecNewFds(before map[int]bool) {
+	entries, err := os.ReadDir("/proc/self/fd")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		fd, err := strconv.Atoi(e.Name())
+		if err != nil || fd <= 2 || before[fd] {
+			continue
+		}
+		syscall.CloseOnExec(fd)
+		log.Printf("DEBUG: Set CLOEXEC on fd %d (libssh socket)", fd)
+	}
 }
 
 // Accept waits for and accepts a new SSH connection
