@@ -1993,35 +1993,34 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		for _, record := range lastCallers {
 			line := processedMidTemplate // Start with the pipe-code-processed mid template
 
-			// Format data for substitution
-			baud := record.BaudRate // Static for now
-			// Process pipe codes in user data *before* substitution
-			name := string(ansi.ReplacePipeCodes([]byte(record.Handle)))            // Process Handle
-			groupLoc := string(ansi.ReplacePipeCodes([]byte(record.GroupLocation))) // Process GroupLocation
-			// --- END User Data Processing ---
-			onTime := record.ConnectTime.Format("15:04:05") // HH:MM:SS format
-			actions := record.Actions                       // Placeholder - process if it can contain pipe codes
+			// Format data for substitution with fixed-width padding for column alignment
+			baud := record.BaudRate
+			name := string(ansi.ReplacePipeCodes([]byte(record.Handle)))
+			groupLoc := string(ansi.ReplacePipeCodes([]byte(record.GroupLocation)))
+			onTime := record.ConnectTime.Format("15:04:05")
+			actions := record.Actions
 			hours := int(record.Duration.Hours())
 			mins := int(record.Duration.Minutes()) % 60
 			hmm := fmt.Sprintf("%d:%02d", hours, mins)
 			upM := fmt.Sprintf("%.1f", record.UploadedMB)
 			dnM := fmt.Sprintf("%.1f", record.DownloadedMB)
 			nodeStr := strconv.Itoa(record.NodeID)
-			callNumStr := strconv.FormatUint(record.CallNumber, 10) // Format the new call number
+			callNumStr := strconv.FormatUint(record.CallNumber, 10)
 
-			// Replace placeholders with *already processed* data
-			// Match placeholders found in LASTCALL.MID: ^UN, ^BA etc.
-			line = strings.ReplaceAll(line, "^BA", baud)       // Corrected placeholder for Baud
-			line = strings.ReplaceAll(line, "^UN", name)       // Corrected placeholder for User Name/Handle
-			line = strings.ReplaceAll(line, "^GL", groupLoc)   // Keep this if present in template
-			line = strings.ReplaceAll(line, "^OT", onTime)     // Keep this if present in template
-			line = strings.ReplaceAll(line, "^AC", actions)    // Keep this if present in template
-			line = strings.ReplaceAll(line, "^HM", hmm)        // Keep this if present in template
-			line = strings.ReplaceAll(line, "^UM", upM)        // Keep this if present in template
-			line = strings.ReplaceAll(line, "^DM", dnM)        // Keep this if present in template
-			line = strings.ReplaceAll(line, "|NU", nodeStr)    // Corrected placeholder for Node Number
-			line = strings.ReplaceAll(line, "^CN", callNumStr) // Add replacement for Call Number
-			// Removed ^ND placeholder as |NU is used in template
+			// Replace placeholders with padded data to match header column widths.
+			// Header: " # |  Node |  Handle           | Baud         | Group/Affil"
+			// Widths:   3     7      19                  14             rest
+			// All spacing is in the padding — template has no extra spaces.
+			line = strings.ReplaceAll(line, "^CN", fmt.Sprintf(" %-2s", callNumStr))  // 3 chars
+			line = strings.ReplaceAll(line, "^ND", fmt.Sprintf("  %-5s", nodeStr))    // 7 chars
+			line = strings.ReplaceAll(line, "^UN", fmt.Sprintf("  %-17s", name))      // 19 chars
+			line = strings.ReplaceAll(line, "^BA", fmt.Sprintf(" %-13s", baud))       // 14 chars
+			line = strings.ReplaceAll(line, "^GL", fmt.Sprintf(" %s", groupLoc))
+			line = strings.ReplaceAll(line, "^OT", fmt.Sprintf("%-8s", onTime))
+			line = strings.ReplaceAll(line, "^AC", actions)
+			line = strings.ReplaceAll(line, "^HM", fmt.Sprintf("%-5s", hmm))
+			line = strings.ReplaceAll(line, "^UM", fmt.Sprintf("%-6s", upM))
+			line = strings.ReplaceAll(line, "^DM", fmt.Sprintf("%-6s", dnM))
 
 			outputBuffer.WriteString(line) // Add the fully substituted and processed line
 		}
