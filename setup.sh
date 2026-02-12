@@ -153,7 +153,7 @@ if [ ! -f "data/users/users.json" ]; then
     "username": "felonius",
     "passwordHash": "$2a$10$4BzeQ5Pgg6GT6ckfLtTJOuInTvQxXRSj0DETBGIL87SYG2hHpXbtO",
     "handle": "Felonius",
-    "accessLevel": 100,
+    "accessLevel": 255,
     "flags": "",
     "lastLogin": "0001-01-01T00:00:00Z",
     "timesCalled": 0,

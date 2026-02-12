@@ -5,9 +5,9 @@
         "name": "General Files",
         "description": "General purpose file area",
         "path": "general",
-        "acs_list": "",
-        "acs_upload": "",
-        "acs_download": "",
+        "acs_list": "s50",
+        "acs_upload": "s50",
+        "acs_download": "s50",
         "conference_id": 1
     }
 ]
