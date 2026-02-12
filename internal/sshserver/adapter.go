@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/gliderlabs/ssh"
@@ -23,10 +24,13 @@ type BBSSessionAdapter struct {
 type BBSSessionContext struct {
 	ctx      context.Context
 	session  *Session
+	mu       sync.Mutex
 	values   map[interface{}]interface{}
 }
 
 func (c *BBSSessionContext) Value(key interface{}) interface{} {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if v, ok := c.values[key]; ok {
 		return v
 	}
@@ -76,6 +80,8 @@ func (c *BBSSessionContext) Permissions() *ssh.Permissions {
 }
 
 func (c *BBSSessionContext) SetValue(key, value interface{}) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.values[key] = value
 }
 

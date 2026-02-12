@@ -5,6 +5,9 @@ import (
 	"strings"
 )
 
+// crcTable is the IEEE CRC32 table used by JAM, computed once at init time.
+var crcTable = crc32.MakeTable(crc32.IEEE)
+
 // CRC32String calculates a JAM-specification CRC32 of a string.
 // Per the JAM spec: lowercase only A-Z (not locale-aware), use IEEE
 // polynomial, and invert the result.
@@ -16,6 +19,5 @@ func CRC32String(s string) uint32 {
 		return r
 	}, s)
 
-	table := crc32.MakeTable(crc32.IEEE)
-	return ^crc32.Checksum([]byte(lower), table)
+	return ^crc32.Checksum([]byte(lower), crcTable)
 }

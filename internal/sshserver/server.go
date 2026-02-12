@@ -63,6 +63,7 @@ import (
 	"runtime"
 	"runtime/cgo"
 	"sync"
+	"time"
 	"unsafe"
 )
 
@@ -98,6 +99,7 @@ type connState struct {
 	winCh      chan Window
 	closer     *closeSignal
 	shellReady chan struct{}
+	shellOnce  sync.Once // protects shellReady from double-close
 
 	handle cgo.Handle
 }
@@ -142,6 +144,7 @@ type Server struct {
 	sessionHandler SessionHandler
 	sessions       sync.Map
 	mu             sync.Mutex
+	wg             sync.WaitGroup // tracks active connections
 }
 
 // Config holds server configuration
@@ -216,6 +219,9 @@ func (s *Server) Accept() error {
 
 // handleConnection processes an SSH connection using callback-based API
 func (s *Server) handleConnection(sshSession C.ssh_session) {
+	s.wg.Add(1)
+	defer s.wg.Done()
+
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	defer C.ssh_free(sshSession)
@@ -272,13 +278,18 @@ func (s *Server) handleConnection(sshSession C.ssh_session) {
 		return
 	}
 
-	// Phase 1: Poll until shell request is received
+	// Phase 1: Poll until shell request is received (with 30s timeout)
 	// Auth, channel open, PTY, and shell requests are all handled via callbacks
+	phase1Deadline := time.Now().Add(30 * time.Second)
 	for {
 		select {
 		case <-cs.shellReady:
 			goto startSession
 		default:
+		}
+		if time.Now().After(phase1Deadline) {
+			log.Printf("WARN: Shell request timeout for session, closing")
+			return
 		}
 		rc := C.ssh_event_dopoll(event, 100)
 		if rc == C.SSH_ERROR {
@@ -291,16 +302,13 @@ func (s *Server) handleConnection(sshSession C.ssh_session) {
 startSession:
 	log.Printf("INFO: Shell ready for user %s, starting session handler", cs.username)
 
-	// Create session object
-	ctx, cancel := context.WithCancel(context.Background())
-	_ = ctx // used by adapter via session.cancel
+	// Create session object (context is created by NewBBSSessionAdapter to avoid leaking a second context)
 	sess := &Session{
 		User:       cs.username,
 		RemoteAddr: &net.TCPAddr{IP: net.ParseIP("0.0.0.0"), Port: 0},
 		PTY:        cs.pty,
 		Session:    sshSession,
 		Channel:    cs.channel,
-		cancel:     cancel,
 		readCh:     cs.readCh,
 		writeCh:    cs.writeCh,
 		WinCh:      cs.winCh,
@@ -352,13 +360,20 @@ cleanup:
 	log.Printf("DEBUG: Connection handler finished for user %s", cs.username)
 }
 
-// flushWrites drains pending write data and sends to SSH channel
+// flushWrites drains pending write data and sends to SSH channel.
+// Limits the number of writes per call to prevent starving the event loop.
 func (s *Server) flushWrites(cs *connState) {
-	for {
+	const maxFlushPerPoll = 64
+	for i := 0; i < maxFlushPerPoll; i++ {
 		select {
 		case data := <-cs.writeCh:
 			if cs.channel != nil && len(data) > 0 {
-				C.ssh_channel_write(cs.channel, unsafe.Pointer(&data[0]), C.uint(len(data)))
+				written := C.ssh_channel_write(cs.channel, unsafe.Pointer(&data[0]), C.uint(len(data)))
+				if written < 0 {
+					log.Printf("WARN: ssh_channel_write failed for user %s", cs.username)
+					cs.closer.Close()
+					return
+				}
 			}
 		default:
 			return
@@ -428,12 +443,13 @@ func (s *Session) Close() error {
 	return nil
 }
 
-// Close closes the SSH server
+// Close closes the SSH server and waits for active connections to finish.
 func (s *Server) Close() error {
 	if s.bind != nil {
 		C.ssh_bind_free(s.bind)
 		s.bind = nil
 	}
+	s.wg.Wait() // Wait for active connections to finish
 	return nil
 }
 

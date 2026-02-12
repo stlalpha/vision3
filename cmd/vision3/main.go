@@ -210,6 +210,11 @@ func (ct *ConnectionTracker) CanAccept(remoteAddr net.Addr) (bool, string) {
 	ct.mu.Lock()
 	defer ct.mu.Unlock()
 
+	return ct.canAcceptLocked(remoteAddr)
+}
+
+// canAcceptLocked performs the accept check without acquiring the lock.
+func (ct *ConnectionTracker) canAcceptLocked(remoteAddr net.Addr) (bool, string) {
 	// Extract IP from address (strip port)
 	ip := extractIP(remoteAddr)
 
@@ -236,6 +241,26 @@ func (ct *ConnectionTracker) CanAccept(remoteAddr net.Addr) (bool, string) {
 		}
 	}
 
+	return true, ""
+}
+
+// TryAccept atomically checks limits and registers the connection.
+// Returns (true, "") on success, (false, reason) on rejection.
+func (ct *ConnectionTracker) TryAccept(remoteAddr net.Addr) (bool, string) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	ok, reason := ct.canAcceptLocked(remoteAddr)
+	if !ok {
+		return false, reason
+	}
+
+	ip := extractIP(remoteAddr)
+	ct.activeConnections[ip]++
+	ct.totalConnections++
+
+	log.Printf("INFO: Connection added from %s. IP count: %d, Total: %d/%d",
+		ip, ct.activeConnections[ip], ct.totalConnections, ct.maxNodes)
 	return true, ""
 }
 
@@ -369,43 +394,43 @@ func (ct *ConnectionTracker) ClearFailedLoginAttempts(ip string) {
 	}
 }
 
-// reloadIPLists reloads the blocklist and allowlist from disk
+// reloadIPLists reloads the blocklist and allowlist from disk.
+// Both lists are loaded outside the lock and swapped atomically under a single lock.
 func (ct *ConnectionTracker) reloadIPLists() {
 	log.Printf("INFO: Reloading IP filter lists...")
 
-	// Load blocklist
+	// Load both lists outside the lock (I/O can be slow)
+	var newBlocklist, newAllowlist *IPList
+
 	if ct.blocklistPath != "" {
-		newBlocklist, err := LoadIPList(ct.blocklistPath)
+		bl, err := LoadIPList(ct.blocklistPath)
 		if err != nil {
 			log.Printf("ERROR: Failed to reload blocklist from %s: %v", ct.blocklistPath, err)
 		} else {
-			ct.mu.Lock()
-			ct.blocklist = newBlocklist
-			ct.mu.Unlock()
-			if newBlocklist != nil {
-				log.Printf("INFO: Blocklist reloaded from %s", ct.blocklistPath)
-			} else {
-				log.Printf("INFO: Blocklist cleared (file empty or not found)")
-			}
+			newBlocklist = bl
 		}
 	}
 
-	// Load allowlist
 	if ct.allowlistPath != "" {
-		newAllowlist, err := LoadIPList(ct.allowlistPath)
+		al, err := LoadIPList(ct.allowlistPath)
 		if err != nil {
 			log.Printf("ERROR: Failed to reload allowlist from %s: %v", ct.allowlistPath, err)
 		} else {
-			ct.mu.Lock()
-			ct.allowlist = newAllowlist
-			ct.mu.Unlock()
-			if newAllowlist != nil {
-				log.Printf("INFO: Allowlist reloaded from %s", ct.allowlistPath)
-			} else {
-				log.Printf("INFO: Allowlist cleared (file empty or not found)")
-			}
+			newAllowlist = al
 		}
 	}
+
+	// Swap both lists atomically under a single lock
+	ct.mu.Lock()
+	if ct.blocklistPath != "" {
+		ct.blocklist = newBlocklist
+	}
+	if ct.allowlistPath != "" {
+		ct.allowlist = newAllowlist
+	}
+	ct.mu.Unlock()
+
+	log.Printf("INFO: IP filter lists reloaded")
 }
 
 // startWatching starts watching the IP list files for changes
@@ -733,9 +758,6 @@ func sessionHandler(s ssh.Session) {
 	activeSessions[s] = nodeID // Use session as key
 	activeSessionsMutex.Unlock()
 
-	// Register connection with tracker
-	connectionTracker.AddConnection(s.RemoteAddr())
-
 	// Capture start time and declare authenticatedUser *before* the defer
 	capturedStartTime := time.Now()        // Capture start time close to session start
 	var authenticatedUser *user.User = nil // Declare here so the closure can capture it
@@ -747,9 +769,6 @@ func sessionHandler(s ssh.Session) {
 		activeSessionsMutex.Lock()
 		delete(activeSessions, s) // Remove using session as key
 		activeSessionsMutex.Unlock()
-
-		// Unregister connection from tracker
-		connectionTracker.RemoveConnection(s.RemoteAddr())
 
 		// --- Record Call History ---
 		if authenticatedUser != nil {
@@ -1093,8 +1112,8 @@ func libsshSessionHandler(sess *sshserver.Session) error {
 	// Create adapter that implements ssh.Session interface
 	adapter := sshserver.NewBBSSessionAdapter(sess)
 
-	// Check connection limits before processing
-	canAccept, reason := connectionTracker.CanAccept(adapter.RemoteAddr())
+	// Atomically check limits and register connection
+	canAccept, reason := connectionTracker.TryAccept(adapter.RemoteAddr())
 	if !canAccept {
 		log.Printf("INFO: Rejecting SSH connection from %s: %s", adapter.RemoteAddr(), reason)
 		fmt.Fprintf(adapter, "\r\nConnection rejected: %s\r\n", reason)
@@ -1102,6 +1121,9 @@ func libsshSessionHandler(sess *sshserver.Session) error {
 		time.Sleep(2 * time.Second) // Brief delay before closing
 		return fmt.Errorf("connection limit exceeded: %s", reason)
 	}
+
+	// Connection is registered; ensure it's removed when done
+	defer connectionTracker.RemoveConnection(adapter.RemoteAddr())
 
 	// Call the existing session handler with the adapter
 	sessionHandler(adapter)
@@ -1111,8 +1133,8 @@ func libsshSessionHandler(sess *sshserver.Session) error {
 
 // telnetSessionHandler adapts telnet sessions to the existing BBS session handler
 func telnetSessionHandler(adapter *telnetserver.TelnetSessionAdapter) {
-	// Check connection limits before processing
-	canAccept, reason := connectionTracker.CanAccept(adapter.RemoteAddr())
+	// Atomically check limits and register connection
+	canAccept, reason := connectionTracker.TryAccept(adapter.RemoteAddr())
 	if !canAccept {
 		log.Printf("INFO: Rejecting Telnet connection from %s: %s", adapter.RemoteAddr(), reason)
 		fmt.Fprintf(adapter, "\r\nConnection rejected: %s\r\n", reason)
@@ -1120,6 +1142,9 @@ func telnetSessionHandler(adapter *telnetserver.TelnetSessionAdapter) {
 		time.Sleep(2 * time.Second) // Brief delay before closing
 		return
 	}
+
+	// Connection is registered; ensure it's removed when done
+	defer connectionTracker.RemoveConnection(adapter.RemoteAddr())
 
 	sessionHandler(adapter)
 }
@@ -1453,6 +1478,9 @@ func handleSSHConnection(tcpConn net.Conn, sshConfig *gossh.ServerConfig) {
 		return
 	}
 	defer sshConn.Close()
+
+	// Clear the handshake deadline so the session doesn't timeout after 30s
+	tcpConn.SetDeadline(time.Time{})
 
 	log.Printf("SSH handshake successful from %s (user: %s)", tcpConn.RemoteAddr(), sshConn.User())
 

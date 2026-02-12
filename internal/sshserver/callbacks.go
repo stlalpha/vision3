@@ -106,7 +106,7 @@ func go_channel_shell_request_cb(session C.ssh_session, channel C.ssh_channel, u
 	cs := h.Value().(*connState)
 
 	log.Printf("INFO: Shell request for user: %s", cs.username)
-	close(cs.shellReady)
+	cs.shellOnce.Do(func() { close(cs.shellReady) })
 	return 0 // SSH_OK
 }
 

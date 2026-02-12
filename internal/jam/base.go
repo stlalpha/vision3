@@ -41,6 +41,9 @@ func Open(basePath string) (*Base, error) {
 	if os.IsNotExist(err) {
 		return b, b.create()
 	}
+	if err != nil {
+		return nil, fmt.Errorf("jam: failed to stat .jhr: %w", err)
+	}
 
 	// Corrupted or incomplete base: recreate
 	if stat.Size() < HeaderSize {
@@ -290,6 +293,13 @@ func (b *Base) writeIndexRecord(msgNum int, rec *IndexRecord) error {
 // GetNextMsgSerial atomically increments and returns the next MSGID serial.
 // The serial counter is stored in Reserved[0:4] of the fixed header.
 func (b *Base) GetNextMsgSerial() (uint32, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.getNextMsgSerialLocked()
+}
+
+// getNextMsgSerialLocked is the lock-free version for callers that already hold b.mu.
+func (b *Base) getNextMsgSerialLocked() (uint32, error) {
 	if !b.isOpen {
 		return 0, ErrBaseNotOpen
 	}

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -105,7 +106,38 @@ func (db *DupeDB) saveLocked() error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(db.path, data, 0644)
+	return atomicWriteFile(db.path, data, 0644)
+}
+
+// atomicWriteFile writes data to a temp file then renames it to path,
+// ensuring the target file is never left in a partially-written state.
+func atomicWriteFile(path string, data []byte, perm os.FileMode) error {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp*")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Chmod(tmpPath, perm); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return os.Rename(tmpPath, path)
 }
 
 // Count returns the number of entries in the database.

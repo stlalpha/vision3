@@ -67,7 +67,7 @@ func (b *Base) WriteMessageExt(msg *Message, msgType MessageType, echoTag, bbsNa
 		// Echomail-specific kludges and formatting
 		if msgType.IsEchomail() {
 			if msg.MsgID == "" && msg.OrigAddr != "" {
-				msgID, err := b.GenerateMSGID(msg.OrigAddr)
+				msgID, err := b.generateMSGIDLocked(msg.OrigAddr)
 				if err != nil {
 					return fmt.Errorf("jam: MSGID generation failed: %w", err)
 				}
@@ -93,6 +93,14 @@ func (b *Base) WriteMessageExt(msg *Message, msgType MessageType, echoTag, bbsNa
 				hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldMsgID, msg.MsgID))
 				hdr.MSGIDcrc = CRC32String(msg.MsgID)
 			}
+		}
+
+		// SEEN-BY and PATH subfields (set by tosser during import)
+		if msg.SeenBy != "" {
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldSeenBy2D, msg.SeenBy))
+		}
+		if msg.Path != "" {
+			hdr.Subfields = append(hdr.Subfields, CreateSubfield(SfldPath2D, msg.Path))
 		}
 
 		// Reply handling (all message types)

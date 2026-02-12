@@ -20,6 +20,9 @@ FROM alpine:latest
 # Install runtime dependencies (libssh required for SSH server)
 RUN apk --no-cache add openssh-keygen libssh ca-certificates
 
+# Create non-root user for running the BBS
+RUN addgroup -S vision3 && adduser -S vision3 -G vision3
+
 WORKDIR /vision3
 
 COPY docker-entrypoint.sh /usr/local/bin/
@@ -30,11 +33,16 @@ COPY --from=builder /vision3/ViSiON3 .
 # Copy template configs for initialization
 COPY templates/ ./templates/
 
+RUN chown -R vision3:vision3 /vision3
+
 VOLUME /vision3/configs
 VOLUME /vision3/menus
 VOLUME /vision3/data
 
 EXPOSE 2222
+
+USER vision3
+
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 CMD ["./ViSiON3"]

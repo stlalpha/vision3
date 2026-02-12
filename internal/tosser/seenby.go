@@ -102,14 +102,15 @@ func MergeSeenBy(existing []string, newAddr string) []string {
 }
 
 // AppendPath adds an address to the PATH lines.
+// PATH is chronological routing history -- order must be preserved (no sorting).
 func AppendPath(existing []string, newAddr string) []string {
-	// Parse all existing
+	// Parse all existing (preserving order)
 	var allNodes []netNode
 	for _, line := range existing {
 		allNodes = append(allNodes, ParseSeenByLine(line)...)
 	}
 
-	// Add new
+	// Append new (don't deduplicate PATH, order matters)
 	newNodes := ParseSeenByLine(newAddr)
 	allNodes = append(allNodes, newNodes...)
 
@@ -117,5 +118,27 @@ func AppendPath(existing []string, newAddr string) []string {
 		return nil
 	}
 
-	return []string{FormatSeenByLine(allNodes)}
+	return []string{FormatPathLine(allNodes)}
+}
+
+// FormatPathLine formats net/node pairs into a PATH line WITHOUT sorting.
+// PATH is chronological routing history and must preserve insertion order.
+func FormatPathLine(nodes []netNode) string {
+	if len(nodes) == 0 {
+		return ""
+	}
+
+	var parts []string
+	lastNet := -1
+
+	for _, nn := range nodes {
+		if nn.Net != lastNet {
+			parts = append(parts, fmt.Sprintf("%d/%d", nn.Net, nn.Node))
+			lastNet = nn.Net
+		} else {
+			parts = append(parts, strconv.Itoa(nn.Node))
+		}
+	}
+
+	return strings.Join(parts, " ")
 }

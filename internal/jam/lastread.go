@@ -28,13 +28,23 @@ func (b *Base) getLastReadLocked(username string) (*LastReadRecord, error) {
 	}
 	recordCount := info.Size() / LastReadSize
 
-	b.jlrFile.Seek(0, 0)
+	if _, err := b.jlrFile.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("jam: seek failed in .jlr: %w", err)
+	}
 	for i := int64(0); i < recordCount; i++ {
 		lr := &LastReadRecord{}
-		binary.Read(b.jlrFile, binary.LittleEndian, &lr.UserCRC)
-		binary.Read(b.jlrFile, binary.LittleEndian, &lr.UserID)
-		binary.Read(b.jlrFile, binary.LittleEndian, &lr.LastReadMsg)
-		binary.Read(b.jlrFile, binary.LittleEndian, &lr.HighReadMsg)
+		if err := binary.Read(b.jlrFile, binary.LittleEndian, &lr.UserCRC); err != nil {
+			return nil, fmt.Errorf("jam: read failed in .jlr: %w", err)
+		}
+		if err := binary.Read(b.jlrFile, binary.LittleEndian, &lr.UserID); err != nil {
+			return nil, fmt.Errorf("jam: read failed in .jlr: %w", err)
+		}
+		if err := binary.Read(b.jlrFile, binary.LittleEndian, &lr.LastReadMsg); err != nil {
+			return nil, fmt.Errorf("jam: read failed in .jlr: %w", err)
+		}
+		if err := binary.Read(b.jlrFile, binary.LittleEndian, &lr.HighReadMsg); err != nil {
+			return nil, fmt.Errorf("jam: read failed in .jlr: %w", err)
+		}
 
 		if lr.UserCRC == userCRC {
 			return lr, nil
@@ -47,44 +57,7 @@ func (b *Base) getLastReadLocked(username string) (*LastReadRecord, error) {
 func (b *Base) SetLastRead(username string, lastRead, highRead uint32) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-
-	if !b.isOpen {
-		return ErrBaseNotOpen
-	}
-
-	userCRC := CRC32String(strings.ToLower(username))
-
-	info, err := b.jlrFile.Stat()
-	if err != nil {
-		return fmt.Errorf("jam: failed to stat .jlr: %w", err)
-	}
-	recordCount := info.Size() / LastReadSize
-
-	// Search for existing record
-	for i := int64(0); i < recordCount; i++ {
-		pos := i * LastReadSize
-		b.jlrFile.Seek(pos, 0)
-
-		var readCRC uint32
-		binary.Read(b.jlrFile, binary.LittleEndian, &readCRC)
-
-		if readCRC == userCRC {
-			b.jlrFile.Seek(pos, 0)
-			binary.Write(b.jlrFile, binary.LittleEndian, userCRC)
-			binary.Write(b.jlrFile, binary.LittleEndian, userCRC)
-			binary.Write(b.jlrFile, binary.LittleEndian, lastRead)
-			binary.Write(b.jlrFile, binary.LittleEndian, highRead)
-			return nil
-		}
-	}
-
-	// Append new record
-	b.jlrFile.Seek(0, io.SeekEnd)
-	binary.Write(b.jlrFile, binary.LittleEndian, userCRC)
-	binary.Write(b.jlrFile, binary.LittleEndian, userCRC)
-	binary.Write(b.jlrFile, binary.LittleEndian, lastRead)
-	binary.Write(b.jlrFile, binary.LittleEndian, highRead)
-	return nil
+	return b.setLastReadLocked(username, lastRead, highRead)
 }
 
 // GetNextUnreadMessage returns the next unread message number for the user.
@@ -152,7 +125,12 @@ func (b *Base) MarkMessageRead(username string, msgNum int) error {
 // setLastReadLocked is the non-locking version of SetLastRead, for use
 // when the caller already holds the write lock.
 func (b *Base) setLastReadLocked(username string, lastRead, highRead uint32) error {
+	if !b.isOpen {
+		return ErrBaseNotOpen
+	}
+
 	userCRC := CRC32String(strings.ToLower(username))
+	var userID uint32 // JAM spec: numeric user record number (0 if unknown)
 
 	info, err := b.jlrFile.Stat()
 	if err != nil {
@@ -162,26 +140,50 @@ func (b *Base) setLastReadLocked(username string, lastRead, highRead uint32) err
 
 	for i := int64(0); i < recordCount; i++ {
 		pos := i * LastReadSize
-		b.jlrFile.Seek(pos, 0)
+		if _, err := b.jlrFile.Seek(pos, 0); err != nil {
+			return fmt.Errorf("jam: seek failed in .jlr: %w", err)
+		}
 
 		var readCRC uint32
-		binary.Read(b.jlrFile, binary.LittleEndian, &readCRC)
+		if err := binary.Read(b.jlrFile, binary.LittleEndian, &readCRC); err != nil {
+			return fmt.Errorf("jam: read failed in .jlr: %w", err)
+		}
 
 		if readCRC == userCRC {
-			b.jlrFile.Seek(pos, 0)
-			binary.Write(b.jlrFile, binary.LittleEndian, userCRC)
-			binary.Write(b.jlrFile, binary.LittleEndian, userCRC)
-			binary.Write(b.jlrFile, binary.LittleEndian, lastRead)
-			binary.Write(b.jlrFile, binary.LittleEndian, highRead)
+			if _, err := b.jlrFile.Seek(pos, 0); err != nil {
+				return fmt.Errorf("jam: seek failed in .jlr: %w", err)
+			}
+			if err := binary.Write(b.jlrFile, binary.LittleEndian, userCRC); err != nil {
+				return fmt.Errorf("jam: write failed in .jlr: %w", err)
+			}
+			if err := binary.Write(b.jlrFile, binary.LittleEndian, userID); err != nil {
+				return fmt.Errorf("jam: write failed in .jlr: %w", err)
+			}
+			if err := binary.Write(b.jlrFile, binary.LittleEndian, lastRead); err != nil {
+				return fmt.Errorf("jam: write failed in .jlr: %w", err)
+			}
+			if err := binary.Write(b.jlrFile, binary.LittleEndian, highRead); err != nil {
+				return fmt.Errorf("jam: write failed in .jlr: %w", err)
+			}
 			return nil
 		}
 	}
 
-	b.jlrFile.Seek(0, io.SeekEnd)
-	binary.Write(b.jlrFile, binary.LittleEndian, userCRC)
-	binary.Write(b.jlrFile, binary.LittleEndian, userCRC)
-	binary.Write(b.jlrFile, binary.LittleEndian, lastRead)
-	binary.Write(b.jlrFile, binary.LittleEndian, highRead)
+	if _, err := b.jlrFile.Seek(0, io.SeekEnd); err != nil {
+		return fmt.Errorf("jam: seek failed in .jlr: %w", err)
+	}
+	if err := binary.Write(b.jlrFile, binary.LittleEndian, userCRC); err != nil {
+		return fmt.Errorf("jam: write failed in .jlr: %w", err)
+	}
+	if err := binary.Write(b.jlrFile, binary.LittleEndian, userID); err != nil {
+		return fmt.Errorf("jam: write failed in .jlr: %w", err)
+	}
+	if err := binary.Write(b.jlrFile, binary.LittleEndian, lastRead); err != nil {
+		return fmt.Errorf("jam: write failed in .jlr: %w", err)
+	}
+	if err := binary.Write(b.jlrFile, binary.LittleEndian, highRead); err != nil {
+		return fmt.Errorf("jam: write failed in .jlr: %w", err)
+	}
 	return nil
 }
 

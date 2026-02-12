@@ -75,7 +75,7 @@ func TestStripSAUCE(t *testing.T) {
 	}
 }
 
-func TestGetAnsiFileContentStripsAUCE(t *testing.T) {
+func TestGetAnsiFileContentStripsSAUCE(t *testing.T) {
 	// This is more of an integration test to ensure GetAnsiFileContent calls stripSAUCE
 	// We can test with an actual file that has SAUCE metadata
 	// For now, we just verify the function exists and can be called

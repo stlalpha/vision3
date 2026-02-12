@@ -308,46 +308,57 @@ func (um *UserMgr) SaveUsers() error { // Receiver uses renamed type
 func (um *UserMgr) Authenticate(username, password string) (*User, bool) { // Receiver uses renamed type
 	lowerUsername := strings.ToLower(username)
 
-	um.mu.RLock() // Acquire read lock first to check user existence
+	um.mu.RLock()
 	user, exists := um.users[lowerUsername]
-	um.mu.RUnlock() // Release read lock
-
 	if !exists {
+		um.mu.RUnlock()
 		return nil, false
 	}
+	// Copy the password hash while holding the read lock
+	passwordHash := user.PasswordHash
+	um.mu.RUnlock()
 
-	// Compare hashed password
-	err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
+	// Compare hashed password outside any lock (bcrypt is CPU-intensive)
+	err := bcrypt.CompareHashAndPassword([]byte(passwordHash), []byte(password))
 	if err != nil {
-		// Password does not match
 		return nil, false
 	}
 
 	// Authentication successful - update LastLogin and TimesCalled
-	um.mu.Lock()                // Acquire write lock to update user fields
-	defer um.mu.Unlock()        // Ensure lock is released
-	user.LastLogin = time.Now() // Update last login time
-	user.TimesCalled++          // Increment times called
-	// Re-assign the updated user back to the map (important if user is a copy, though it's a pointer here)
-	um.users[lowerUsername] = user
+	um.mu.Lock()
+	user = um.users[lowerUsername] // Re-fetch under write lock
+	if user == nil {
+		um.mu.Unlock()
+		return nil, false
+	}
+	user.LastLogin = time.Now()
+	user.TimesCalled++
+	um.mu.Unlock()
 
-	// Save the updated user data *while still holding the lock*
-	if err := um.saveUsersLocked(); err != nil {
+	// Save outside the write lock to avoid blocking other user operations
+	if err := um.SaveUsers(); err != nil {
 		log.Printf("ERROR: Failed to save user data after successful login for %s: %v", username, err)
-		// Decide how to handle this - log and continue? Or return an error?
-		// For now, log and continue the successful authentication.
 	}
 
-	return user, true // Return the authenticated user object
+	// Return a copy
+	um.mu.RLock()
+	userCopy := *um.users[lowerUsername]
+	um.mu.RUnlock()
+	return &userCopy, true
 }
 
 // GetUser retrieves a user by username.
+// Returns a copy to prevent callers from mutating internal state without the lock.
 func (um *UserMgr) GetUser(username string) (*User, bool) { // Receiver uses renamed type
 	um.mu.RLock()
 	defer um.mu.RUnlock()
 
 	user, exists := um.users[strings.ToLower(username)] // Use lower case for lookup
-	return user, exists
+	if !exists {
+		return nil, false
+	}
+	userCopy := *user
+	return &userCopy, true
 }
 
 // GetUserByHandle retrieves a user by their handle (case-insensitive search).
@@ -475,15 +486,16 @@ func (um *UserMgr) GetLastCallers() []CallRecord {
 	return historyCopy
 }
 
-// GetAllUsers returns a slice containing all user records.
-// Useful for listing users.
+// GetAllUsers returns a slice containing copies of all user records.
+// Returns copies to prevent callers from mutating internal state.
 func (um *UserMgr) GetAllUsers() []*User {
 	um.mu.RLock()
 	defer um.mu.RUnlock()
 
 	usersSlice := make([]*User, 0, len(um.users))
 	for _, user := range um.users {
-		usersSlice = append(usersSlice, user)
+		userCopy := *user
+		usersSlice = append(usersSlice, &userCopy)
 	}
 	return usersSlice
 }

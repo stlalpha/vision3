@@ -24,11 +24,12 @@ type TossResult struct {
 
 // Tosser handles importing and exporting FTN echomail packets for a single network.
 type Tosser struct {
-	networkName string
-	config      networkConfig
-	msgMgr      *message.MessageManager
-	dupeDB      *DupeDB
-	ownAddr     *jam.FidoAddress
+	networkName     string
+	config          networkConfig
+	msgMgr          *message.MessageManager
+	dupeDB          *DupeDB
+	ownAddr         *jam.FidoAddress
+	exportHighWater map[int]int // area ID -> last scanned msgNum (for export optimization)
 }
 
 // New creates a new Tosser instance for a single FTN network.
@@ -40,11 +41,12 @@ func New(networkName string, cfg networkConfig, dupeDB *DupeDB, msgMgr *message.
 	}
 
 	return &Tosser{
-		networkName: networkName,
-		config:      cfg,
-		msgMgr:      msgMgr,
-		dupeDB:      dupeDB,
-		ownAddr:     addr,
+		networkName:     networkName,
+		config:          cfg,
+		msgMgr:          msgMgr,
+		dupeDB:          dupeDB,
+		ownAddr:         addr,
+		exportHighWater: make(map[int]int),
 	}, nil
 }
 
@@ -113,13 +115,13 @@ func (t *Tosser) tossPacket(path string) (imported, dupes int, errs []string) {
 	}
 	defer f.Close()
 
-	_, msgs, err := ftn.ReadPacket(f)
+	pktHdr, msgs, err := ftn.ReadPacket(f)
 	if err != nil {
 		return 0, 0, []string{fmt.Sprintf("parse %s: %v", path, err)}
 	}
 
 	for i, msg := range msgs {
-		if err := t.tossMessage(msg); err != nil {
+		if err := t.tossMessage(msg, pktHdr); err != nil {
 			if err == errDupe {
 				dupes++
 				continue
@@ -136,7 +138,7 @@ func (t *Tosser) tossPacket(path string) (imported, dupes int, errs []string) {
 var errDupe = fmt.Errorf("duplicate message")
 
 // tossMessage processes a single message from a packet.
-func (t *Tosser) tossMessage(msg *ftn.PackedMessage) error {
+func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) error {
 	parsed := ftn.ParsePackedMessageBody(msg.Body)
 
 	// Echomail must have an AREA tag
@@ -154,8 +156,8 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage) error {
 		}
 	}
 
-	// Dupe check
-	if t.dupeDB.Add(msgID) {
+	// Dupe check (only meaningful if message has a MSGID)
+	if msgID != "" && t.dupeDB.Add(msgID) {
 		log.Printf("TRACE: Dupe message MSGID=%s in area %s", msgID, parsed.Area)
 		return errDupe
 	}
@@ -182,7 +184,15 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage) error {
 	jamMsg.From = msg.From
 	jamMsg.To = msg.To
 	jamMsg.Subject = msg.Subject
-	jamMsg.Text = ftn.FormatPackedMessageBody(parsed)
+	jamMsg.Text = parsed.Text // Store only the message text, not kludges/SEEN-BY/PATH
+
+	// Store SEEN-BY and PATH as JAM subfields for proper roundtrip with export
+	if len(parsed.SeenBy) > 0 {
+		jamMsg.SeenBy = strings.Join(parsed.SeenBy, " ")
+	}
+	if len(parsed.Path) > 0 {
+		jamMsg.Path = strings.Join(parsed.Path, " ")
+	}
 
 	// Parse datetime
 	dt, err := ftn.ParseFTNDateTime(msg.DateTime)
@@ -191,8 +201,15 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage) error {
 	}
 	jamMsg.DateTime = dt
 
-	// Set origin address from the packet message
-	origAddr := fmt.Sprintf("%d:%d/%d", origZone(t.ownAddr), msg.OrigNet, msg.OrigNode)
+	// Set origin address from the packet header and message
+	origZone := pktHdr.OrigZone
+	if origZone == 0 {
+		origZone = pktHdr.QOrigZone // Fallback to QMail zone field
+	}
+	if origZone == 0 {
+		origZone = uint16(t.ownAddr.Zone) // Last resort: assume same zone
+	}
+	origAddr := fmt.Sprintf("%d:%d/%d", origZone, msg.OrigNet, msg.OrigNode)
 	jamMsg.OrigAddr = origAddr
 
 	// Set MSGID if we have one
@@ -227,10 +244,3 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage) error {
 	return nil
 }
 
-// origZone extracts the zone from the tosser's own address for packet context.
-func origZone(addr *jam.FidoAddress) uint16 {
-	if addr == nil {
-		return 1
-	}
-	return uint16(addr.Zone)
-}

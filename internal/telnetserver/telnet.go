@@ -171,9 +171,10 @@ func (tc *TelnetConn) processNegotiationBytes(data []byte) {
 		case stateSBData:
 			if b == IAC {
 				tc.state = stateSBIAC
-			} else {
+			} else if len(tc.sbData) < 256 {
 				tc.sbData = append(tc.sbData, b)
 			}
+			// else: silently discard excess subnegotiation data
 
 		case stateSBIAC:
 			if b == SE {
@@ -284,7 +285,7 @@ func (tc *TelnetConn) Read(p []byte) (int, error) {
 			case stateSBData:
 				if b == IAC {
 					tc.state = stateSBIAC
-				} else {
+				} else if len(tc.sbData) < 256 {
 					tc.sbData = append(tc.sbData, b)
 				}
 
@@ -293,7 +294,9 @@ func (tc *TelnetConn) Read(p []byte) (int, error) {
 					tc.handleSubnegotiation()
 					tc.state = stateData
 				} else if b == IAC {
-					tc.sbData = append(tc.sbData, IAC)
+					if len(tc.sbData) < 256 {
+						tc.sbData = append(tc.sbData, IAC)
+					}
 					tc.state = stateSBData
 				} else {
 					tc.state = stateData

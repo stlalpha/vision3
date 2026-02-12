@@ -190,7 +190,8 @@ func (b *Base) writeMessageText(text string) (uint32, uint32, error) {
 	if !b.isOpen {
 		return 0, 0, ErrBaseNotOpen
 	}
-	text = strings.ReplaceAll(text, "\n", "\r")
+	text = strings.ReplaceAll(text, "\r\n", "\r") // Handle Windows line endings first
+	text = strings.ReplaceAll(text, "\n", "\r")   // Then convert remaining Unix LF to CR
 	pos, err := b.jdtFile.Seek(0, io.SeekEnd)
 	if err != nil {
 		return 0, 0, fmt.Errorf("jam: seek failed on .jdt: %w", err)
@@ -327,6 +328,11 @@ func (b *Base) WriteMessage(msg *Message) (int, error) {
 			return err
 		}
 
+		// Sync all files to ensure consistency on crash
+		b.jdtFile.Sync()
+		b.jhrFile.Sync()
+		b.jdxFile.Sync()
+
 		return nil
 	})
 	return msgNum, err
@@ -402,10 +408,15 @@ func (b *Base) ScanMessages(startMsg, maxMessages int) ([]*Message, error) {
 	}
 
 	var messages []*Message
+	var scanErr error
 	read := 0
 	for n := startMsg; n <= count && (maxMessages == 0 || read < maxMessages); n++ {
 		hdr, err := b.readMessageHeaderLocked(n)
 		if err != nil {
+			if err == ErrNotFound {
+				continue // deleted index entry, skip
+			}
+			scanErr = fmt.Errorf("jam: scan error at message %d: %w", n, err)
 			continue
 		}
 		if hdr.Attribute&MsgDeleted != 0 {
@@ -413,6 +424,7 @@ func (b *Base) ScanMessages(startMsg, maxMessages int) ([]*Message, error) {
 		}
 		text, err := b.readMessageTextLocked(hdr)
 		if err != nil {
+			scanErr = fmt.Errorf("jam: scan text error at message %d: %w", n, err)
 			continue
 		}
 		msg := &Message{
@@ -438,7 +450,7 @@ func (b *Base) ScanMessages(startMsg, maxMessages int) ([]*Message, error) {
 		messages = append(messages, msg)
 		read++
 	}
-	return messages, nil
+	return messages, scanErr
 }
 
 // buildSubfields assembles the standard subfield list for a message.

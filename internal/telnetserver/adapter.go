@@ -86,6 +86,7 @@ type TelnetSessionAdapter struct {
 	telnetConn *TelnetConn
 	ctx        *TelnetSessionContext
 	winCh      chan ssh.Window
+	ptyMu      sync.Mutex // protects pty from concurrent access
 	pty        ssh.Pty
 }
 
@@ -122,8 +123,10 @@ func NewTelnetSessionAdapter(tc *TelnetConn) *TelnetSessionAdapter {
 	// Forward NAWS updates from TelnetConn to the adapter's winCh
 	go func() {
 		for win := range tc.winCh {
-			// Update stored PTY window size
+			// Update stored PTY window size under mutex
+			adapter.ptyMu.Lock()
 			adapter.pty.Window = win
+			adapter.ptyMu.Unlock()
 			// Forward to the session's window change channel
 			select {
 			case adapter.winCh <- win:
@@ -223,7 +226,10 @@ func (a *TelnetSessionAdapter) Permissions() ssh.Permissions {
 
 // Pty returns the synthesized PTY info with Term="ansi" and NAWS-detected window size.
 func (a *TelnetSessionAdapter) Pty() (ssh.Pty, <-chan ssh.Window, bool) {
-	return a.pty, a.winCh, true
+	a.ptyMu.Lock()
+	pty := a.pty
+	a.ptyMu.Unlock()
+	return pty, a.winCh, true
 }
 
 // Exit closes the session.

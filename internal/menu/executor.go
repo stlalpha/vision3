@@ -700,7 +700,8 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	// --- Ask to Add New One --- (Logic remains the same)
 	askPrompt := e.LoadedStrings.AskOneLiner
 	if askPrompt == "" {
-		log.Fatalf("CRITICAL: Required string 'AskOneLiner' is missing or empty in strings configuration.")
+		log.Printf("ERROR: Required string 'AskOneLiner' is missing or empty in strings configuration.")
+		return nil, "", fmt.Errorf("missing AskOneLiner string in configuration")
 	}
 
 	log.Printf("DEBUG: Node %d: Calling promptYesNoLightbar for ONELINER add prompt", nodeNumber)
@@ -717,7 +718,8 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	if addYes {
 		enterPrompt := e.LoadedStrings.EnterOneLiner
 		if enterPrompt == "" {
-			log.Fatalf("CRITICAL: Required string 'EnterOneLiner' is missing or empty in strings configuration.")
+			log.Printf("ERROR: Required string 'EnterOneLiner' is missing or empty in strings configuration.")
+			return nil, "", fmt.Errorf("missing EnterOneLiner string in configuration")
 		}
 		// Use WriteProcessedBytes for SaveCursor, positioning, and clear line
 		wErr = terminalio.WriteProcessedBytes(terminal, []byte(ansi.SaveCursor()), outputMode)

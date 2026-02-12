@@ -114,15 +114,18 @@ func (ih *InputHandler) parseCSISequence() (int, error) {
 		return int(KeyEsc), err
 	}
 
-	// Set timeout for sequence completion
+	// Read sequence bytes. CSI sequences arrive in a burst from the terminal,
+	// so check for buffered data rather than blocking on ReadByte indefinitely.
 	sequence := make([]byte, 0, 10)
 	deadline := time.Now().Add(100 * time.Millisecond)
 
-	// Read until we get a letter (command character)
 	for {
-		if time.Now().After(deadline) {
-			// Timeout - return what we have
-			break
+		// If nothing is buffered, wait briefly for more data to arrive
+		if ih.reader.Buffered() == 0 {
+			time.Sleep(5 * time.Millisecond)
+			if ih.reader.Buffered() == 0 || time.Now().After(deadline) {
+				break // No more data arriving, sequence is complete or timed out
+			}
 		}
 
 		b, err := ih.reader.ReadByte()

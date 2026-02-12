@@ -378,11 +378,16 @@ func (mm *MessageManager) GetThreadReplyCount(areaID int, msgNum int, subject st
 	}
 
 	if idx == nil || idx.total != total || modCounterErr || (modCounter != 0 && idx.modCounter != modCounter) {
-		newIdx := mm.buildThreadIndex(b, total, modCounter)
+		// Acquire write lock so only one goroutine rebuilds the index;
+		// others will wait and reuse the result.
 		mm.mu.Lock()
-		mm.threadIndex[areaID] = newIdx
+		// Re-check after acquiring write lock (another goroutine may have rebuilt it)
+		idx = mm.threadIndex[areaID]
+		if idx == nil || idx.total != total || modCounterErr || (modCounter != 0 && idx.modCounter != modCounter) {
+			idx = mm.buildThreadIndex(b, total, modCounter)
+			mm.threadIndex[areaID] = idx
+		}
 		mm.mu.Unlock()
-		idx = newIdx
 	}
 
 	key := ThreadKey(subject)

@@ -117,31 +117,28 @@ func (s *Scheduler) scheduleEvent(event config.EventConfig) error {
 
 // executeEventWithConcurrency executes an event with concurrency control
 func (s *Scheduler) executeEventWithConcurrency(event config.EventConfig) {
-	// Check if event is already running
+	// Atomically check if event is already running and try to acquire semaphore
 	s.mu.Lock()
 	if s.runningEvents[event.ID] {
 		s.mu.Unlock()
 		log.Printf("WARN: Event '%s' (%s) skipped: already running", event.ID, event.Name)
 		return
 	}
-	s.mu.Unlock()
 
-	// Try to acquire concurrency semaphore
+	// Try to acquire concurrency semaphore while holding the lock
 	select {
 	case s.concurrencySem <- struct{}{}:
-		// Acquired slot, proceed with execution
+		// Acquired slot, mark as running before releasing lock
+		s.runningEvents[event.ID] = true
+		s.mu.Unlock()
 		defer func() { <-s.concurrencySem }()
 	default:
+		s.mu.Unlock()
 		// At concurrency limit, skip execution
 		log.Printf("WARN: Event '%s' (%s) skipped: max concurrent events reached (%d)",
 			event.ID, event.Name, s.config.MaxConcurrentEvents)
 		return
 	}
-
-	// Mark event as running
-	s.mu.Lock()
-	s.runningEvents[event.ID] = true
-	s.mu.Unlock()
 
 	defer func() {
 		s.mu.Lock()

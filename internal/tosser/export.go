@@ -45,7 +45,13 @@ func (t *Tosser) ScanAndExport() TossResult {
 			continue
 		}
 
-		for msgNum := 1; msgNum <= count; msgNum++ {
+		// Start scanning from high-water mark to avoid re-scanning exported messages
+		startMsg := t.exportHighWater[area.ID] + 1
+		if startMsg < 1 {
+			startMsg = 1
+		}
+
+		for msgNum := startMsg; msgNum <= count; msgNum++ {
 			hdr, err := base.ReadMessageHeader(msgNum)
 			if err != nil {
 				continue
@@ -53,6 +59,10 @@ func (t *Tosser) ScanAndExport() TossResult {
 
 			// Skip already-processed messages
 			if hdr.DateProcessed != 0 {
+				// Advance high-water mark past consecutive processed messages
+				if msgNum == t.exportHighWater[area.ID]+1 {
+					t.exportHighWater[area.ID] = msgNum
+				}
 				continue
 			}
 
@@ -72,20 +82,15 @@ func (t *Tosser) ScanAndExport() TossResult {
 				for _, echoTag := range link.EchoAreas {
 					if strings.EqualFold(echoTag, area.EchoTag) || echoTag == "*" {
 						linkMsgs[link.Address] = append(linkMsgs[link.Address], pendingMsg{
-							area: area,
-							msg:  msg,
-							hdr:  hdr,
+							area:   area,
+							msg:    msg,
+							hdr:    hdr,
+							msgNum: msgNum,
+							base:   base,
 						})
 						break
 					}
 				}
-			}
-
-			// Mark as processed
-			hdr.DateProcessed = uint32(time.Now().Unix())
-			if err := base.UpdateMessageHeader(msgNum, hdr); err != nil {
-				log.Printf("WARN: Export: failed to update DateProcessed for msg %d in area %d: %v",
-					msgNum, area.ID, err)
 			}
 		}
 	}
@@ -103,6 +108,16 @@ func (t *Tosser) ScanAndExport() TossResult {
 			result.Errors = append(result.Errors, fmt.Sprintf("create packet for %s: %v", linkAddr, err))
 			continue
 		}
+
+		// Mark messages as processed only AFTER the packet was written successfully
+		for _, pm := range msgs {
+			pm.hdr.DateProcessed = uint32(time.Now().Unix())
+			if err := pm.base.UpdateMessageHeader(pm.msgNum, pm.hdr); err != nil {
+				log.Printf("WARN: Export: failed to update DateProcessed for msg %d: %v",
+					pm.msgNum, err)
+			}
+		}
+
 		result.MessagesExported += exported
 	}
 
@@ -120,9 +135,11 @@ func (t *Tosser) findLink(address string) *linkConfig {
 }
 
 type pendingMsg struct {
-	area *message.MessageArea
-	msg  *jam.Message
-	hdr  *jam.MessageHeader
+	area   *message.MessageArea
+	msg    *jam.Message
+	hdr    *jam.MessageHeader
+	msgNum int
+	base   *jam.Base
 }
 
 // createOutboundPacket creates a .PKT file in the outbound directory.
@@ -197,21 +214,32 @@ func (t *Tosser) createOutboundPacket(link *linkConfig, msgs []pendingMsg) (int,
 		return 0, nil
 	}
 
-	// Generate unique filename: timestamp-based
-	filename := fmt.Sprintf("%08x.pkt", time.Now().UnixNano()&0xFFFFFFFF)
-	pktPath := filepath.Join(t.config.OutboundPath, filename)
-
-	f, err := os.Create(pktPath)
-	if err != nil {
-		return 0, fmt.Errorf("create %s: %w", pktPath, err)
+	// Use os.CreateTemp to avoid filename collisions
+	if err := os.MkdirAll(t.config.OutboundPath, 0755); err != nil {
+		return 0, fmt.Errorf("create outbound dir: %w", err)
 	}
-	defer f.Close()
+	f, err := os.CreateTemp(t.config.OutboundPath, "*.pkt")
+	if err != nil {
+		return 0, fmt.Errorf("create temp packet: %w", err)
+	}
+	pktPath := f.Name()
 
 	if err := ftn.WritePacket(f, hdr, packedMsgs); err != nil {
+		f.Close()
 		os.Remove(pktPath) // Clean up on error
 		return 0, fmt.Errorf("write packet: %w", err)
 	}
+	f.Close()
 
-	log.Printf("INFO: Exported %d messages to %s for link %s", len(packedMsgs), filename, link.Address)
+	// Rename to a proper .pkt filename
+	finalName := fmt.Sprintf("%08x.pkt", time.Now().UnixNano()&0xFFFFFFFF)
+	finalPath := filepath.Join(t.config.OutboundPath, finalName)
+	if err := os.Rename(pktPath, finalPath); err != nil {
+		// Temp file is already a valid .pkt, just log the rename failure
+		log.Printf("WARN: Export: rename %s -> %s failed: %v (temp file kept)", pktPath, finalPath, err)
+		finalName = filepath.Base(pktPath)
+	}
+
+	log.Printf("INFO: Exported %d messages to %s for link %s", len(packedMsgs), finalName, link.Address)
 	return len(packedMsgs), nil
 }
