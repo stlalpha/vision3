@@ -114,7 +114,9 @@ The script's stdin, stdout, and stderr are connected to the user's terminal sess
 
 ### FASTLOGIN
 
-Presents the fast login / quick login menu inline within the login sequence. Displays `FASTLOGN.ANS` and loads options from `menus/v3/cfg/FASTLOGN.CFG`. The user can choose to:
+Presents the fast login / quick login menu inline within the login sequence. This is **optional** — if not included in `login.json`, users go straight through the configured items without being offered a skip option.
+
+Displays `FASTLOGN.ANS` and loads options from `menus/v3/cfg/FASTLOGN.CFG`. The user can choose to:
 
 - Continue with the remaining login sequence items
 - Skip directly to the main menu
@@ -124,7 +126,7 @@ Presents the fast login / quick login menu inline within the login sequence. Dis
 {"command": "FASTLOGIN"}
 ```
 
-If the user selects a jump option (e.g., skip to MAIN), the remaining login items are skipped and the user goes directly to the chosen menu.
+If the user selects a jump option (e.g., skip to MAIN), the remaining login items are skipped and the user goes directly to the chosen menu. Placing FASTLOGIN as the first item lets users skip the entire sequence upfront. Placing it at the end lets users jump to a submenu instead of MAIN after seeing everything.
 
 ## Security Level Gating
 
@@ -217,7 +219,7 @@ Co-sysops (level 100+) see `COSYSOP.ANS`. Sysops (level 200+) see both `COSYSOP.
 
 ## How It Works
 
-The login sequence is loaded at BBS startup from `configs/login.json` and stored in the menu executor. Both SSH and telnet users go through the FASTLOGN menu after authentication. When the user selects the full login sequence (or when FASTLOGN routes to `RUN:FULL_LOGIN_SEQUENCE`), the sequence is executed:
+The login sequence is loaded at BBS startup from `configs/login.json` and stored in the menu executor. After authentication, the sequence runs directly for both SSH and telnet users — there is no intermediary menu. Each item in the array is executed in order:
 
 1. For each item in the array (in order):
    - Check `sec_level` against the user's access level — skip if too low
