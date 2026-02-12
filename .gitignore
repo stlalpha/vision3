@@ -67,3 +67,6 @@ Thumbs.db
 
 # Cursor rules (local development)
 .cursorrules
+
+# Git worktrees
+.worktrees/
