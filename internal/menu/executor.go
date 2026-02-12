@@ -2527,6 +2527,23 @@ func (e *MenuExecutor) loginPausePrompt(s ssh.Session, terminal *term.Terminal, 
 	return nil
 }
 
+// RunLoginSequence is the exported entry point for running the login sequence from main.go.
+// Returns the next menu name to enter (e.g., "MAIN") or "LOGOFF".
+func (e *MenuExecutor) RunLoginSequence(s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, outputMode ansi.OutputMode) (string, error) {
+	_, nextAction, err := runFullLoginSequence(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode)
+	if err != nil {
+		return "LOGOFF", err
+	}
+	// Parse "GOTO:MAIN" -> "MAIN", pass through "LOGOFF" as-is
+	if strings.HasPrefix(nextAction, "GOTO:") {
+		return strings.ToUpper(strings.TrimPrefix(nextAction, "GOTO:")), nil
+	}
+	if nextAction == "LOGOFF" {
+		return "LOGOFF", nil
+	}
+	return "MAIN", nil
+}
+
 // runFullLoginSequence executes the configurable login sequence from login.json.
 func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("INFO: Node %d: Running FULL_LOGIN_SEQUENCE for user %s (%d items configured)", nodeNumber, currentUser.Handle, len(e.LoginSequence))
