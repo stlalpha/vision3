@@ -224,7 +224,7 @@ cd vision3
 docker-compose up -d
 ```
 
-See [Docker Deployment Guide](docs/docker-deployment.md) for detailed instructions.
+See [Docker Deployment Guide](documentation/docker-deployment.md) for detailed instructions.
 
 ### Manual Installation
 
@@ -384,11 +384,11 @@ All configuration files use JSON format and support comments for documentation.
 
 ## Documentation
 
-- [Docker Deployment Guide](docs/docker-deployment.md) - Deploy using Docker and Docker Compose
-- [Security Guide](docs/security.md) - Connection security, IP filtering, and best practices
-- [Configuration Guide](docs/configuration.md) - Detailed configuration options
-- [SSH Server Migration Guide](docs/ssh-server-migration.md) - Details about the libssh implementation
-- [Developer Guide](docs/developer-guide.md) - Guide for contributors
+- [Docker Deployment Guide](documentation/docker-deployment.md) - Deploy using Docker and Docker Compose
+- [Security Guide](documentation/security.md) - Connection security, IP filtering, and best practices
+- [Configuration Guide](documentation/configuration.md) - Detailed configuration options
+- [SSH Server Migration Guide](documentation/ssh-server-migration.md) - Details about the libssh implementation
+- [Developer Guide](documentation/developer-guide.md) - Guide for contributors
 - [Development Tasks](tasks/tasks.md) - Development history and completed features
 
 ## Contributing
