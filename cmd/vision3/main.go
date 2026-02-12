@@ -1362,6 +1362,22 @@ func main() {
 			HostKeyPath:    hostKeyPath,
 			Port:           sshPort,
 			SessionHandler: libsshSessionHandler,
+			AuthPasswordFunc: func(username, password string) bool {
+				// If user exists in BBS database, validate password
+				u, found := userMgr.GetUser(username)
+				if !found {
+					// Unknown user — allow through to BBS login/new user flow
+					return true
+				}
+				// Existing user — verify bcrypt password
+				_, ok := userMgr.Authenticate(username, password)
+				if !ok {
+					log.Printf("WARN: SSH password auth failed for existing user: %s", username)
+				} else {
+					log.Printf("INFO: SSH password auth verified for user: %s (ID: %d)", username, u.ID)
+				}
+				return ok
+			},
 		})
 		if err != nil {
 			log.Fatalf("FATAL: Failed to create SSH server: %v", err)

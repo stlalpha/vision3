@@ -139,22 +139,28 @@ type Window struct {
 // SessionHandler is called when a new SSH session is established
 type SessionHandler func(*Session) error
 
+// AuthPasswordFunc validates SSH password authentication.
+// Returns true if the user/password is accepted.
+type AuthPasswordFunc func(username, password string) bool
+
 // Server represents an SSH server using libssh
 type Server struct {
-	bind           C.ssh_bind
-	hostKeyPath    string
-	port           int
-	sessionHandler SessionHandler
-	sessions       sync.Map
-	mu             sync.Mutex
-	wg             sync.WaitGroup // tracks active connections
+	bind             C.ssh_bind
+	hostKeyPath      string
+	port             int
+	sessionHandler   SessionHandler
+	authPasswordFunc AuthPasswordFunc
+	sessions         sync.Map
+	mu               sync.Mutex
+	wg               sync.WaitGroup // tracks active connections
 }
 
 // Config holds server configuration
 type Config struct {
-	HostKeyPath    string
-	Port           int
-	SessionHandler SessionHandler
+	HostKeyPath      string
+	Port             int
+	SessionHandler   SessionHandler
+	AuthPasswordFunc AuthPasswordFunc
 }
 
 // NewServer creates a new SSH server instance
@@ -165,10 +171,11 @@ func NewServer(config Config) (*Server, error) {
 	}
 
 	server := &Server{
-		bind:           bind,
-		hostKeyPath:    config.HostKeyPath,
-		port:           config.Port,
-		sessionHandler: config.SessionHandler,
+		bind:             bind,
+		hostKeyPath:      config.HostKeyPath,
+		port:             config.Port,
+		sessionHandler:   config.SessionHandler,
+		authPasswordFunc: config.AuthPasswordFunc,
 	}
 
 	// Set host key
