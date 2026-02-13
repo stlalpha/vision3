@@ -237,3 +237,9 @@ func (a *BBSSessionAdapter) RawCommand() string {
 func (a *BBSSessionAdapter) Permissions() ssh.Permissions {
 	return ssh.Permissions{}
 }
+
+// SetReadInterrupt sets a channel that, when closed, causes any blocked Read()
+// to return without consuming data. Used to cleanly stop door I/O goroutines.
+func (a *BBSSessionAdapter) SetReadInterrupt(ch <-chan struct{}) {
+	a.session.SetReadInterrupt(ch)
+}

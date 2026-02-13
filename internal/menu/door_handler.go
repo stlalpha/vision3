@@ -471,11 +471,19 @@ func executeDOSDoor(ctx *DoorCtx) error {
 		defer term.Restore(fd, oldState)
 	}
 
+	// Set up a read interrupt so we can cleanly stop the input goroutine
+	// when the door exits, preventing it from consuming the next keypress.
+	readInterrupt := make(chan struct{})
+	if ri, ok := ctx.Session.(interface{ SetReadInterrupt(<-chan struct{}) }); ok {
+		ri.SetReadInterrupt(readInterrupt)
+		defer ri.SetReadInterrupt(nil)
+	}
+
 	// Bidirectional I/O: SSH session ↔ PTY master (COM1 data)
-	// Use a channel for the output goroutine so we only wait for output to flush.
-	// The input goroutine will exit on its own when ptmx is closed (write fails).
+	inputDone := make(chan struct{})
 	outputDone := make(chan struct{})
 	go func() {
+		defer close(inputDone)
 		_, err := io.Copy(ptmx, ctx.Session)
 		if err != nil && err != io.EOF && !errors.Is(err, os.ErrClosed) {
 			log.Printf("WARN: Node %d: Error copying session stdin to dosemu PTY: %v", ctx.NodeNumber, err)
@@ -489,10 +497,14 @@ func executeDOSDoor(ctx *DoorCtx) error {
 		}
 	}()
 
-	// Wait for dosemu to exit, then close PTY to flush output goroutine
+	// Wait for dosemu to exit, then cleanly shut down I/O goroutines
 	cmdErr := cmd.Wait()
 	log.Printf("DEBUG: Node %d: dosemu2 process exited for door '%s'", ctx.NodeNumber, ctx.DoorName)
 
+	// Interrupt the input goroutine's blocked Read() so it exits without
+	// consuming the user's next keypress, then close the PTY.
+	close(readInterrupt)
+	<-inputDone
 	ptmx.Close()
 	<-outputDone
 
@@ -639,10 +651,18 @@ func executeNativeDoor(ctx *DoorCtx) error {
 				}()
 			}
 
-			// Only wait for output goroutine to flush. The input goroutine
-			// will exit on its own when ptmx is closed (write fails).
+			// Set up a read interrupt so we can cleanly stop the input goroutine
+			// when the door exits, preventing it from consuming the next keypress.
+			readInterrupt := make(chan struct{})
+			if ri, ok := ctx.Session.(interface{ SetReadInterrupt(<-chan struct{}) }); ok {
+				ri.SetReadInterrupt(readInterrupt)
+				defer ri.SetReadInterrupt(nil)
+			}
+
+			inputDone := make(chan struct{})
 			outputDone := make(chan struct{})
 			go func() {
+				defer close(inputDone)
 				_, err := io.Copy(ptmx, ctx.Session)
 				if err != nil && err != io.EOF && !errors.Is(err, os.ErrClosed) {
 					log.Printf("WARN: Node %d: Error copying session stdin to PTY for door '%s': %v", ctx.NodeNumber, ctx.DoorName, err)
@@ -656,9 +676,14 @@ func executeNativeDoor(ctx *DoorCtx) error {
 				}
 			}()
 
-			// Wait for door to exit first, then close PTY to flush output
+			// Wait for door to exit, then cleanly shut down I/O goroutines
 			cmdErr = cmd.Wait()
 			log.Printf("DEBUG: Node %d: Door '%s' process exited", ctx.NodeNumber, ctx.DoorName)
+
+			// Interrupt the input goroutine's blocked Read() so it exits without
+			// consuming the user's next keypress, then close the PTY.
+			close(readInterrupt)
+			<-inputDone
 			ptmx.Close()
 			<-outputDone
 		}

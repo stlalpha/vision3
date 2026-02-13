@@ -107,6 +107,11 @@ type connState struct {
 	handle cgo.Handle
 }
 
+// ErrReadInterrupted is returned by Read when a read interrupt is triggered.
+// This is used to cleanly cancel blocked reads (e.g., when a door program exits)
+// without consuming any data from the session's read channel.
+var ErrReadInterrupted = fmt.Errorf("read interrupted")
+
 // Session represents an SSH session with PTY support
 type Session struct {
 	User       string
@@ -116,11 +121,13 @@ type Session struct {
 	Channel    C.ssh_channel
 	cancel     context.CancelFunc
 
-	readCh  chan []byte
-	readBuf []byte
-	writeCh chan []byte
-	WinCh   chan Window
-	closer  *closeSignal
+	readCh        chan []byte
+	readBuf       []byte
+	readInterrupt <-chan struct{} // when closed, Read() returns ErrReadInterrupted
+	riMu          sync.Mutex     // protects readInterrupt
+	writeCh       chan []byte
+	WinCh         chan Window
+	closer        *closeSignal
 }
 
 // PTYRequest contains PTY parameters
@@ -440,6 +447,16 @@ func (s *Server) flushWrites(cs *connState) {
 	}
 }
 
+// SetReadInterrupt sets a channel that, when closed, causes any blocked Read()
+// to return ErrReadInterrupted without consuming data from the read channel.
+// Pass nil to clear the interrupt. This is used to cleanly stop I/O goroutines
+// (e.g., when a door program exits) without losing pending user input.
+func (s *Session) SetReadInterrupt(ch <-chan struct{}) {
+	s.riMu.Lock()
+	s.readInterrupt = ch
+	s.riMu.Unlock()
+}
+
 // Read reads data from the SSH channel
 func (s *Session) Read(buf []byte) (int, error) {
 	if len(buf) == 0 {
@@ -453,7 +470,13 @@ func (s *Session) Read(buf []byte) (int, error) {
 		return n, nil
 	}
 
-	// Wait for new data from channel_data callback
+	// Grab the current interrupt channel (nil channel blocks forever in select,
+	// so it effectively acts as "no interrupt" when not set).
+	s.riMu.Lock()
+	interrupt := s.readInterrupt
+	s.riMu.Unlock()
+
+	// Wait for new data, session close, or read interrupt
 	select {
 	case data, ok := <-s.readCh:
 		if !ok {
@@ -466,6 +489,8 @@ func (s *Session) Read(buf []byte) (int, error) {
 		return n, nil
 	case <-s.closer.Done():
 		return 0, io.EOF
+	case <-interrupt:
+		return 0, ErrReadInterrupted
 	}
 }
 
