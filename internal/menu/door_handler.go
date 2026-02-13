@@ -653,13 +653,8 @@ func executeNativeDoor(ctx *DoorCtx) error {
 				log.Printf("WARN: Node %d: Failed to put PTY into raw mode for door '%s': %v.", ctx.NodeNumber, ctx.DoorName, err)
 			} else {
 				log.Printf("DEBUG: Node %d: PTY set to raw mode for door '%s'.", ctx.NodeNumber, ctx.DoorName)
-				defer func() {
-					log.Printf("DEBUG: Node %d: Restoring PTY mode after door '%s'.", ctx.NodeNumber, ctx.DoorName)
-					if err := term.Restore(fd, originalState); err != nil {
-						log.Printf("ERROR: Node %d: Failed to restore PTY state after door '%s': %v", ctx.NodeNumber, ctx.DoorName, err)
-					}
-				}()
 			}
+			needsRestore := (err == nil)
 
 			// Set up a read interrupt so we can cleanly stop the input goroutine
 			// when the door exits, preventing it from consuming the next keypress.
@@ -680,14 +675,24 @@ func executeNativeDoor(ctx *DoorCtx) error {
 				defer close(inputDone)
 				_, err := io.Copy(ptmx, ctx.Session)
 				if err != nil && err != io.EOF && !errors.Is(err, os.ErrClosed) {
-					log.Printf("WARN: Node %d: Error copying session stdin to PTY for door '%s': %v", ctx.NodeNumber, ctx.DoorName, err)
+					// "read interrupted" is expected when we close readInterrupt during shutdown
+					if strings.Contains(err.Error(), "read interrupted") {
+						log.Printf("DEBUG: Node %d: Input goroutine interrupted for door '%s' (expected during shutdown)", ctx.NodeNumber, ctx.DoorName)
+					} else {
+						log.Printf("WARN: Node %d: Error copying session stdin to PTY for door '%s': %v", ctx.NodeNumber, ctx.DoorName, err)
+					}
 				}
 			}()
 			go func() {
 				defer close(outputDone)
 				_, err := io.Copy(ctx.Session, ptmx)
 				if err != nil && err != io.EOF && !errors.Is(err, os.ErrClosed) {
-					log.Printf("WARN: Node %d: Error copying PTY stdout to session for door '%s': %v", ctx.NodeNumber, ctx.DoorName, err)
+					// "input/output error" on PTY is expected when closing during active read
+					if strings.Contains(err.Error(), "input/output error") {
+						log.Printf("DEBUG: Node %d: Output goroutine I/O error for door '%s' (expected during shutdown)", ctx.NodeNumber, ctx.DoorName)
+					} else {
+						log.Printf("WARN: Node %d: Error copying PTY stdout to session for door '%s': %v", ctx.NodeNumber, ctx.DoorName, err)
+					}
 				}
 			}()
 
@@ -696,11 +701,20 @@ func executeNativeDoor(ctx *DoorCtx) error {
 			log.Printf("DEBUG: Node %d: Door '%s' process exited", ctx.NodeNumber, ctx.DoorName)
 
 			// Interrupt the input goroutine's blocked Read() so it exits without
-			// consuming the user's next keypress, then close the PTY.
+			// consuming the user's next keypress, then restore PTY state and close.
 			close(readInterrupt)
 			if hasInterrupt {
 				<-inputDone
 			}
+
+			// Restore PTY state before closing the file descriptor
+			if needsRestore {
+				log.Printf("DEBUG: Node %d: Restoring PTY mode after door '%s'.", ctx.NodeNumber, ctx.DoorName)
+				if err := term.Restore(fd, originalState); err != nil {
+					log.Printf("ERROR: Node %d: Failed to restore PTY state after door '%s': %v", ctx.NodeNumber, ctx.DoorName, err)
+				}
+			}
+
 			ptmx.Close()
 			<-outputDone
 		}
