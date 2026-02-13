@@ -108,7 +108,10 @@ func TestPackWithDeleted(t *testing.T) {
 	// Record sizes before pack
 	sizeBefore := int64(0)
 	for _, ext := range []string{".jhr", ".jdt", ".jdx"} {
-		info, _ := os.Stat(basePath + ext)
+		info, err := os.Stat(basePath + ext)
+		if err != nil {
+			t.Fatalf("Stat %s before pack: %v", basePath+ext, err)
+		}
 		sizeBefore += info.Size()
 	}
 
@@ -129,7 +132,10 @@ func TestPackWithDeleted(t *testing.T) {
 	// File sizes should have decreased
 	sizeAfter := int64(0)
 	for _, ext := range []string{".jhr", ".jdt", ".jdx"} {
-		info, _ := os.Stat(basePath + ext)
+		info, err := os.Stat(basePath + ext)
+		if err != nil {
+			t.Fatalf("Stat %s after pack: %v", basePath+ext, err)
+		}
 		sizeAfter += info.Size()
 	}
 	if sizeAfter >= sizeBefore {

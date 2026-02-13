@@ -1,6 +1,7 @@
 package jam
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -26,23 +27,34 @@ func (b *Base) getLastReadLocked(username string) (*LastReadRecord, error) {
 	if err != nil {
 		return nil, fmt.Errorf("jam: failed to stat .jlr: %w", err)
 	}
+	if info.Size()%LastReadSize != 0 {
+		return nil, fmt.Errorf("jam: invalid .jlr size %d (not aligned to record size %d)", info.Size(), LastReadSize)
+	}
 	recordCount := info.Size() / LastReadSize
 
-	if _, err := b.jlrFile.Seek(0, 0); err != nil {
-		return nil, fmt.Errorf("jam: seek failed in .jlr: %w", err)
-	}
 	for i := int64(0); i < recordCount; i++ {
+		offset := i * LastReadSize
+		buf := make([]byte, LastReadSize)
+		n, err := b.jlrFile.ReadAt(buf, offset)
+		if err != nil && err != io.EOF {
+			return nil, fmt.Errorf("jam: read failed in .jlr: %w", err)
+		}
+		if n != int(LastReadSize) {
+			return nil, fmt.Errorf("jam: short read in .jlr: got %d bytes", n)
+		}
+		reader := bytes.NewReader(buf)
+
 		lr := &LastReadRecord{}
-		if err := binary.Read(b.jlrFile, binary.LittleEndian, &lr.UserCRC); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &lr.UserCRC); err != nil {
 			return nil, fmt.Errorf("jam: read failed in .jlr: %w", err)
 		}
-		if err := binary.Read(b.jlrFile, binary.LittleEndian, &lr.UserID); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &lr.UserID); err != nil {
 			return nil, fmt.Errorf("jam: read failed in .jlr: %w", err)
 		}
-		if err := binary.Read(b.jlrFile, binary.LittleEndian, &lr.LastReadMsg); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &lr.LastReadMsg); err != nil {
 			return nil, fmt.Errorf("jam: read failed in .jlr: %w", err)
 		}
-		if err := binary.Read(b.jlrFile, binary.LittleEndian, &lr.HighReadMsg); err != nil {
+		if err := binary.Read(reader, binary.LittleEndian, &lr.HighReadMsg); err != nil {
 			return nil, fmt.Errorf("jam: read failed in .jlr: %w", err)
 		}
 
