@@ -28,8 +28,6 @@ func TestStripSAUCE(t *testing.T) {
 				content = append(content, 0x1A) // EOF marker
 				sauce := make([]byte, 128)
 				copy(sauce, []byte("SAUCE00"))
-				sauce[5] = '2'
-				sauce[6] = '0'
 				content = append(content, sauce...)
 				return content
 			}(),
