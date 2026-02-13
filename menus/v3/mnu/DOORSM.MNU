@@ -1,0 +1,9 @@
+{
+  "CLR": true,
+  "USEPROMPT": true,
+  "PROMPT1": "|08[|07|TIME|08] |08[|15TL:|07|TL|08]|15 |07D|08o|15o|07r|08s |08-|15>|07 ",
+  "PROMPT2": "",
+  "FALLBACK": "MAIN",
+  "ACS": "",
+  "PASS": ""
+}

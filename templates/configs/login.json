@@ -1,0 +1,19 @@
+[
+    {
+        "command": "FASTLOGIN"
+    },
+    {
+        "command": "NMAILSCAN",
+        "clear_screen": true,
+        "pause_after": true
+    },
+    {
+        "command": "LASTCALLS"
+    },
+    {
+        "command": "ONELINERS"
+    },
+    {
+        "command": "USERSTATS"
+    }
+]
