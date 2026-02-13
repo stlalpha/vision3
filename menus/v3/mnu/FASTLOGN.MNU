@@ -1,7 +1,7 @@
 {
   "NAME": "FASTLOGN",
   "PASSWORD": "",
-  "PROMPT1": "",
+  "PROMPT1": " Which one, Ace?",
   "PROMPT2": "",
   "USEPROMPT": true,
   "FORCEHOTKEY": false,

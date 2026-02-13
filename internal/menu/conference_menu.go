@@ -64,7 +64,7 @@ func runChangeMsgConference(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 	upperInput := strings.ToUpper(inputClean)
 
 	if upperInput == "" || upperInput == "Q" {
-		terminal.Write([]byte("\r\n"))
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		return currentUser, "", nil
 	}
 
@@ -244,7 +244,7 @@ func displayConferenceList(e *MenuExecutor, s ssh.Session, terminal *term.Termin
 
 	buf.Write(processedBot)
 
-	terminal.Write([]byte(ansi.ClearScreen()))
+	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 	return terminalio.WriteProcessedBytes(terminal, buf.Bytes(), outputMode)
 }
 
@@ -345,7 +345,7 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 
 	outputBuffer.Write(processedBotTemplate)
 
-	terminal.Write([]byte(ansi.ClearScreen()))
+	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 	return terminalio.WriteProcessedBytes(terminal, outputBuffer.Bytes(), outputMode)
 }
 

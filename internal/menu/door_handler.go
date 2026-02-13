@@ -25,13 +25,13 @@ import (
 
 // doorUserInfo holds the user fields needed for dropfile generation.
 type doorUserInfo struct {
-	ID           int
-	Handle       string
-	RealName     string
-	AccessLevel  int
-	TimeLimit    int
-	TimesCalled  int
-	PhoneNumber  string
+	ID            int
+	Handle        string
+	RealName      string
+	AccessLevel   int
+	TimeLimit     int
+	TimesCalled   int
+	PhoneNumber   string
 	GroupLocation string
 }
 
@@ -87,9 +87,9 @@ func buildDoorCtx(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	return &DoorCtx{
-		Executor:         e,
-		Session:          s,
-		Terminal:         terminal,
+		Executor: e,
+		Session:  s,
+		Terminal: terminal,
 		User: doorUserInfo{
 			ID:            userID,
 			Handle:        handle,
@@ -128,58 +128,58 @@ func generateDoorSys(ctx *DoorCtx, dir string) error {
 	var b strings.Builder
 	crlf := "\r\n"
 
-	b.WriteString("COM1:" + crlf)                                                    // 1: COM port
-	b.WriteString("38400" + crlf)                                                     // 2: Baud rate
-	b.WriteString("8" + crlf)                                                         // 3: Data bits
-	b.WriteString(ctx.NodeNumStr + crlf)                                              // 4: Node number
-	b.WriteString("38400" + crlf)                                                     // 5: Locked baud rate
-	b.WriteString("Y" + crlf)                                                         // 6: Screen display
-	b.WriteString("N" + crlf)                                                         // 7: Printer toggle
-	b.WriteString("Y" + crlf)                                                         // 8: Page bell
-	b.WriteString("Y" + crlf)                                                         // 9: Caller alarm
-	b.WriteString(ctx.User.RealName + crlf)                                           // 10: User full name
-	b.WriteString(ctx.User.GroupLocation + crlf)                                      // 11: Calling from (location)
-	b.WriteString("00-0000-0000" + crlf)                                              // 12: Home phone
-	b.WriteString("00-0000-0000" + crlf)                                              // 13: Work phone
-	b.WriteString("SECRET" + crlf)                                                    // 14: Password (placeholder)
-	b.WriteString(strconv.Itoa(ctx.User.AccessLevel) + crlf)                          // 15: Security level
-	b.WriteString(strconv.Itoa(ctx.User.TimesCalled) + crlf)                          // 16: Total times on
-	b.WriteString("01-01-1971" + crlf)                                                // 17: Last call date
-	b.WriteString(strconv.Itoa(timeLeftSecs) + crlf)                                  // 18: Seconds remaining
-	b.WriteString("255" + crlf)                                                       // 19: Time limit (minutes)
-	b.WriteString("GR" + crlf)                                                        // 20: Graphics mode
-	b.WriteString("25" + crlf)                                                        // 21: Screen length
-	b.WriteString("N" + crlf)                                                         // 22: Expert mode
-	b.WriteString(crlf)                                                               // 23: Conferences registered
-	b.WriteString(crlf)                                                               // 24: Conference exited to
-	b.WriteString(crlf)                                                               // 25: Expiration date
-	b.WriteString(ctx.UserIDStr + crlf)                                               // 26: User record number
-	b.WriteString(crlf)                                                               // 27: Default protocol
-	b.WriteString("0" + crlf)                                                         // 28: Total uploads
-	b.WriteString("0" + crlf)                                                         // 29: Total downloads
-	b.WriteString("0" + crlf)                                                         // 30: Daily download K-bytes total
-	b.WriteString("99999" + crlf)                                                     // 31: Daily download K-bytes allowed
-	b.WriteString("01-01-1971" + crlf)                                                // 32: Birth date
-	b.WriteString(crlf)                                                               // 33: Path to callinfo/main dir
-	b.WriteString(crlf)                                                               // 34: Path to GEN dir
-	b.WriteString(bbsName + crlf)                                                     // 35: Sysop name (BBS name used)
-	b.WriteString(ctx.User.Handle + crlf)                                             // 36: User handle/alias
-	b.WriteString("none" + crlf)                                                      // 37: Next event time
-	b.WriteString("Y" + crlf)                                                         // 38: Error free connection
-	b.WriteString("N" + crlf)                                                         // 39: Always "N"
-	b.WriteString("Y" + crlf)                                                         // 40: Always "Y"
-	b.WriteString("7" + crlf)                                                         // 41: Default color
-	b.WriteString("0" + crlf)                                                         // 42: Time credits (minutes)
-	b.WriteString("01-01-1971" + crlf)                                                // 43: Last new file scan date
-	b.WriteString("00:00" + crlf)                                                     // 44: Time of this call
-	b.WriteString("00:00" + crlf)                                                     // 45: Time of last call
-	b.WriteString("32768" + crlf)                                                     // 46: Max daily files allowed
-	b.WriteString("0" + crlf)                                                         // 47: Files downloaded today
-	b.WriteString("0" + crlf)                                                         // 48: Total K-bytes uploaded
-	b.WriteString("0" + crlf)                                                         // 49: Total K-bytes downloaded
-	b.WriteString("None." + crlf)                                                     // 50: Comment
-	b.WriteString("0" + crlf)                                                         // 51: Total doors opened
-	b.WriteString("0" + crlf)                                                         // 52: Total messages left
+	b.WriteString("COM1:" + crlf)                            // 1: COM port
+	b.WriteString("38400" + crlf)                            // 2: Baud rate
+	b.WriteString("8" + crlf)                                // 3: Data bits
+	b.WriteString(ctx.NodeNumStr + crlf)                     // 4: Node number
+	b.WriteString("38400" + crlf)                            // 5: Locked baud rate
+	b.WriteString("Y" + crlf)                                // 6: Screen display
+	b.WriteString("N" + crlf)                                // 7: Printer toggle
+	b.WriteString("Y" + crlf)                                // 8: Page bell
+	b.WriteString("Y" + crlf)                                // 9: Caller alarm
+	b.WriteString(ctx.User.RealName + crlf)                  // 10: User full name
+	b.WriteString(ctx.User.GroupLocation + crlf)             // 11: Calling from (location)
+	b.WriteString("00-0000-0000" + crlf)                     // 12: Home phone
+	b.WriteString("00-0000-0000" + crlf)                     // 13: Work phone
+	b.WriteString("SECRET" + crlf)                           // 14: Password (placeholder)
+	b.WriteString(strconv.Itoa(ctx.User.AccessLevel) + crlf) // 15: Security level
+	b.WriteString(strconv.Itoa(ctx.User.TimesCalled) + crlf) // 16: Total times on
+	b.WriteString("01-01-1971" + crlf)                       // 17: Last call date
+	b.WriteString(strconv.Itoa(timeLeftSecs) + crlf)         // 18: Seconds remaining
+	b.WriteString("255" + crlf)                              // 19: Time limit (minutes)
+	b.WriteString("GR" + crlf)                               // 20: Graphics mode
+	b.WriteString("25" + crlf)                               // 21: Screen length
+	b.WriteString("N" + crlf)                                // 22: Expert mode
+	b.WriteString(crlf)                                      // 23: Conferences registered
+	b.WriteString(crlf)                                      // 24: Conference exited to
+	b.WriteString(crlf)                                      // 25: Expiration date
+	b.WriteString(ctx.UserIDStr + crlf)                      // 26: User record number
+	b.WriteString(crlf)                                      // 27: Default protocol
+	b.WriteString("0" + crlf)                                // 28: Total uploads
+	b.WriteString("0" + crlf)                                // 29: Total downloads
+	b.WriteString("0" + crlf)                                // 30: Daily download K-bytes total
+	b.WriteString("99999" + crlf)                            // 31: Daily download K-bytes allowed
+	b.WriteString("01-01-1971" + crlf)                       // 32: Birth date
+	b.WriteString(crlf)                                      // 33: Path to callinfo/main dir
+	b.WriteString(crlf)                                      // 34: Path to GEN dir
+	b.WriteString(bbsName + crlf)                            // 35: Sysop name (BBS name used)
+	b.WriteString(ctx.User.Handle + crlf)                    // 36: User handle/alias
+	b.WriteString("none" + crlf)                             // 37: Next event time
+	b.WriteString("Y" + crlf)                                // 38: Error free connection
+	b.WriteString("N" + crlf)                                // 39: Always "N"
+	b.WriteString("Y" + crlf)                                // 40: Always "Y"
+	b.WriteString("7" + crlf)                                // 41: Default color
+	b.WriteString("0" + crlf)                                // 42: Time credits (minutes)
+	b.WriteString("01-01-1971" + crlf)                       // 43: Last new file scan date
+	b.WriteString("00:00" + crlf)                            // 44: Time of this call
+	b.WriteString("00:00" + crlf)                            // 45: Time of last call
+	b.WriteString("32768" + crlf)                            // 46: Max daily files allowed
+	b.WriteString("0" + crlf)                                // 47: Files downloaded today
+	b.WriteString("0" + crlf)                                // 48: Total K-bytes uploaded
+	b.WriteString("0" + crlf)                                // 49: Total K-bytes downloaded
+	b.WriteString("None." + crlf)                            // 50: Comment
+	b.WriteString("0" + crlf)                                // 51: Total doors opened
+	b.WriteString("0" + crlf)                                // 52: Total messages left
 
 	return os.WriteFile(path, []byte(b.String()), 0644)
 }
@@ -193,17 +193,17 @@ func generateDoor32Sys(ctx *DoorCtx, dir string) error {
 	crlf := "\r\n"
 
 	var b strings.Builder
-	b.WriteString("0" + crlf)                                      // 1: Comm type (0=local)
-	b.WriteString("0" + crlf)                                      // 2: Comm/socket handle
-	b.WriteString("38400" + crlf)                                   // 3: Baud rate
-	b.WriteString(bbsName + crlf)                                   // 4: BBS software name/version
-	b.WriteString(ctx.UserIDStr + crlf)                             // 5: User record number
-	b.WriteString(ctx.User.RealName + crlf)                         // 6: User's real name
-	b.WriteString(ctx.User.Handle + crlf)                           // 7: User's handle/alias
-	b.WriteString(strconv.Itoa(ctx.User.AccessLevel) + crlf)        // 8: Security level
-	b.WriteString(strconv.Itoa(ctx.TimeLeftMin) + crlf)             // 9: Time remaining (minutes)
-	b.WriteString("1" + crlf)                                      // 10: Emulation (1=ANSI)
-	b.WriteString(ctx.NodeNumStr + crlf)                            // 11: Node number
+	b.WriteString("0" + crlf)                                // 1: Comm type (0=local)
+	b.WriteString("0" + crlf)                                // 2: Comm/socket handle
+	b.WriteString("38400" + crlf)                            // 3: Baud rate
+	b.WriteString(bbsName + crlf)                            // 4: BBS software name/version
+	b.WriteString(ctx.UserIDStr + crlf)                      // 5: User record number
+	b.WriteString(ctx.User.RealName + crlf)                  // 6: User's real name
+	b.WriteString(ctx.User.Handle + crlf)                    // 7: User's handle/alias
+	b.WriteString(strconv.Itoa(ctx.User.AccessLevel) + crlf) // 8: Security level
+	b.WriteString(strconv.Itoa(ctx.TimeLeftMin) + crlf)      // 9: Time remaining (minutes)
+	b.WriteString("1" + crlf)                                // 10: Emulation (1=ANSI)
+	b.WriteString(ctx.NodeNumStr + crlf)                     // 11: Node number
 
 	return os.WriteFile(path, []byte(b.String()), 0644)
 }
@@ -232,19 +232,19 @@ func generateDorInfo(ctx *DoorCtx, dir string) error {
 	}
 
 	var b strings.Builder
-	b.WriteString(bbsName + crlf)             // 1: BBS name
-	b.WriteString("Sysop" + crlf)             // 2: Sysop name
-	b.WriteString(" " + crlf)                 // 3: Blank
-	b.WriteString("COM1" + crlf)              // 4: COM port
-	b.WriteString("115200 BAUD,N,8,1" + crlf) // 5: Baud, parity, data, stop
-	b.WriteString("0" + crlf)                 // 6: Networked (0=not local)
-	b.WriteString(firstName + crlf)           // 7: User first name
-	b.WriteString(lastName + crlf)            // 8: User last name
-	b.WriteString(location + crlf)            // 9: Location
-	b.WriteString("1" + crlf)                 // 10: Graphics (1=yes)
+	b.WriteString(bbsName + crlf)                            // 1: BBS name
+	b.WriteString("Sysop" + crlf)                            // 2: Sysop name
+	b.WriteString(" " + crlf)                                // 3: Blank
+	b.WriteString("COM1" + crlf)                             // 4: COM port
+	b.WriteString("115200 BAUD,N,8,1" + crlf)                // 5: Baud, parity, data, stop
+	b.WriteString("0" + crlf)                                // 6: Networked (0=not local)
+	b.WriteString(firstName + crlf)                          // 7: User first name
+	b.WriteString(lastName + crlf)                           // 8: User last name
+	b.WriteString(location + crlf)                           // 9: Location
+	b.WriteString("1" + crlf)                                // 10: Graphics (1=yes)
 	b.WriteString(strconv.Itoa(ctx.User.AccessLevel) + crlf) // 11: Security level
 	b.WriteString(strconv.Itoa(ctx.TimeLeftMin) + crlf)      // 12: Time remaining (minutes)
-	b.WriteString("-1" + crlf)                // 13: FOSSIL flag (-1=no)
+	b.WriteString("-1" + crlf)                               // 13: FOSSIL flag (-1=no)
 
 	return os.WriteFile(path, []byte(b.String()), 0644)
 }
@@ -259,36 +259,36 @@ func generateChainTxt(ctx *DoorCtx, dir string) error {
 	crlf := "\r\n"
 
 	var b strings.Builder
-	b.WriteString(ctx.UserIDStr + crlf)                            // 1: User number
-	b.WriteString(ctx.User.Handle + crlf)                          // 2: User alias
-	b.WriteString(ctx.User.RealName + crlf)                        // 3: Real name
-	b.WriteString("NONE" + crlf)                                   // 4: Default protocol
-	b.WriteString("21" + crlf)                                     // 5: Time on (minutes)
-	b.WriteString("M" + crlf)                                      // 6: Gender
-	b.WriteString("0" + crlf)                                      // 7: Pause (0=no)
-	b.WriteString("01/01/71" + crlf)                               // 8: Last call date
-	b.WriteString("80" + crlf)                                     // 9: Screen width
-	b.WriteString("25" + crlf)                                     // 10: Screen height
-	b.WriteString(strconv.Itoa(ctx.User.AccessLevel) + crlf)       // 11: Security level
-	b.WriteString("0" + crlf)                                      // 12: CO-sysop flag
-	b.WriteString("0" + crlf)                                      // 13: File ratio flag
-	b.WriteString("1" + crlf)                                      // 14: ANSI status
-	b.WriteString("1" + crlf)                                      // 15: Another flag
-	b.WriteString(strconv.Itoa(timeLeftSecs) + crlf)               // 16: Time left (seconds)
-	b.WriteString(dir + crlf)                                      // 17: Gfiles path
-	b.WriteString(dir + crlf)                                      // 18: Temp path
-	b.WriteString("NOLOG" + crlf)                                  // 19: Sysop log
-	b.WriteString("9600" + crlf)                                   // 20: Baud rate
-	b.WriteString("1" + crlf)                                      // 21: Another flag
-	b.WriteString(bbsName + crlf)                                  // 22: BBS name
-	b.WriteString("Sysop" + crlf)                                  // 23: Sysop name
-	b.WriteString("0" + crlf)                                      // 24-28: Flags
+	b.WriteString(ctx.UserIDStr + crlf)                      // 1: User number
+	b.WriteString(ctx.User.Handle + crlf)                    // 2: User alias
+	b.WriteString(ctx.User.RealName + crlf)                  // 3: Real name
+	b.WriteString("NONE" + crlf)                             // 4: Default protocol
+	b.WriteString("21" + crlf)                               // 5: Time on (minutes)
+	b.WriteString("M" + crlf)                                // 6: Gender
+	b.WriteString("0" + crlf)                                // 7: Pause (0=no)
+	b.WriteString("01/01/71" + crlf)                         // 8: Last call date
+	b.WriteString("80" + crlf)                               // 9: Screen width
+	b.WriteString("25" + crlf)                               // 10: Screen height
+	b.WriteString(strconv.Itoa(ctx.User.AccessLevel) + crlf) // 11: Security level
+	b.WriteString("0" + crlf)                                // 12: CO-sysop flag
+	b.WriteString("0" + crlf)                                // 13: File ratio flag
+	b.WriteString("1" + crlf)                                // 14: ANSI status
+	b.WriteString("1" + crlf)                                // 15: Another flag
+	b.WriteString(strconv.Itoa(timeLeftSecs) + crlf)         // 16: Time left (seconds)
+	b.WriteString(dir + crlf)                                // 17: Gfiles path
+	b.WriteString(dir + crlf)                                // 18: Temp path
+	b.WriteString("NOLOG" + crlf)                            // 19: Sysop log
+	b.WriteString("9600" + crlf)                             // 20: Baud rate
+	b.WriteString("1" + crlf)                                // 21: Another flag
+	b.WriteString(bbsName + crlf)                            // 22: BBS name
+	b.WriteString("Sysop" + crlf)                            // 23: Sysop name
+	b.WriteString("0" + crlf)                                // 24-28: Flags
 	b.WriteString("0" + crlf)
 	b.WriteString("0" + crlf)
 	b.WriteString("0" + crlf)
 	b.WriteString("0" + crlf)
-	b.WriteString("0" + crlf)                                      // 29: Flag
-	b.WriteString("8N1" + crlf)                                    // 30: Serial config
+	b.WriteString("0" + crlf)   // 29: Flag
+	b.WriteString("8N1" + crlf) // 30: Serial config
 
 	return os.WriteFile(path, []byte(b.String()), 0644)
 }
@@ -580,7 +580,9 @@ func executeNativeDoor(ctx *DoorCtx) error {
 		if genErr != nil {
 			log.Printf("ERROR: Failed to write dropfile %s: %v", dropfilePath, genErr)
 			errMsg := fmt.Sprintf("\r\n|12Error creating system file for door '%s'.\r\nPress Enter to continue...\r\n", ctx.DoorName)
-			fmt.Fprint(ctx.Session.Stderr(), string(ansi.ReplacePipeCodes([]byte(errMsg))))
+			if wErr := terminalio.WriteProcessedBytes(ctx.Session.Stderr(), ansi.ReplacePipeCodes([]byte(errMsg)), ctx.OutputMode); wErr != nil {
+				log.Printf("ERROR: Failed writing dropfile creation error message: %v", wErr)
+			}
 			return genErr
 		}
 
@@ -751,7 +753,7 @@ func executeDoor(ctx *DoorCtx) error {
 // doorErrorMessage sends a formatted error message to the user.
 func doorErrorMessage(ctx *DoorCtx, msg string) {
 	errMsg := fmt.Sprintf("\r\n|12%s\r\nPress Enter to continue...\r\n", msg)
-	wErr := terminalio.WriteProcessedBytes(ctx.Session.Stderr(), ansi.ReplacePipeCodes([]byte(errMsg)), ansi.OutputModeCP437)
+	wErr := terminalio.WriteProcessedBytes(ctx.Session.Stderr(), ansi.ReplacePipeCodes([]byte(errMsg)), ctx.OutputMode)
 	if wErr != nil {
 		log.Printf("ERROR: Failed writing door error message: %v", wErr)
 	}
@@ -861,7 +863,7 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	upperInput := strings.ToUpper(inputClean)
 
 	if upperInput == "" || upperInput == "Q" {
-		terminal.Write([]byte("\r\n"))
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		return currentUser, "", nil
 	}
 
@@ -928,7 +930,7 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	upperInput := strings.ToUpper(inputClean)
 
 	if upperInput == "" || upperInput == "Q" {
-		terminal.Write([]byte("\r\n"))
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		return currentUser, "", nil
 	}
 
@@ -947,7 +949,7 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	// Display door info
-	terminal.Write([]byte("\r\n"))
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 	doorType := "Native Linux"
 	if doorConfig.IsDOS {
 		doorType = "DOS (dosemu2)"
@@ -968,7 +970,7 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(info)), outputMode)
-	terminal.Write([]byte("\r\n"))
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 
 	return currentUser, "", nil
 }
