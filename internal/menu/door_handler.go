@@ -709,10 +709,14 @@ func executeNativeDoor(ctx *DoorCtx) error {
 			log.Printf("WARN: Node %d: Door '%s' requires raw terminal, but no PTY was allocated.", ctx.NodeNumber, ctx.DoorName)
 		}
 		log.Printf("INFO: Node %d: Starting door '%s' with standard I/O redirection", ctx.NodeNumber, ctx.DoorName)
+
 		cmd.Stdout = ctx.Session
 		cmd.Stderr = ctx.Session
 		cmd.Stdin = ctx.Session
 		cmdErr = cmd.Run()
+
+		// Brief delay to let terminal state settle and prevent double-keypress issues
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	return cmdErr
@@ -772,9 +776,17 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	// Display header
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(topBytes), outputMode)
 
+	// Get door registry atomically
+	e.configMu.RLock()
+	doorRegistryCopy := make(map[string]config.DoorConfig, len(e.DoorRegistry))
+	for k, v := range e.DoorRegistry {
+		doorRegistryCopy[k] = v
+	}
+	e.configMu.RUnlock()
+
 	// Sort door names for consistent display
-	doorNames := make([]string, 0, len(e.DoorRegistry))
-	for name := range e.DoorRegistry {
+	doorNames := make([]string, 0, len(doorRegistryCopy))
+	for name := range doorRegistryCopy {
 		doorNames = append(doorNames, name)
 	}
 	sort.Strings(doorNames)
@@ -782,7 +794,7 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	// Display each door
 	midTemplate := string(ansi.ReplacePipeCodes(midBytes))
 	for i, name := range doorNames {
-		doorCfg := e.DoorRegistry[name]
+		doorCfg := doorRegistryCopy[name]
 		doorType := "Native"
 		if doorCfg.IsDOS {
 			doorType = "DOS"
@@ -846,7 +858,7 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	// Look up door
-	doorConfig, exists := e.DoorRegistry[upperInput]
+	doorConfig, exists := e.GetDoorConfig(upperInput)
 	if !exists {
 		msg := fmt.Sprintf("\r\n|12Door '%s' not found. Use ? to list available doors.|07\r\n", inputClean)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
@@ -912,7 +924,7 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	// Look up door
-	doorConfig, exists := e.DoorRegistry[upperInput]
+	doorConfig, exists := e.GetDoorConfig(upperInput)
 	if !exists {
 		msg := fmt.Sprintf("\r\n|12Door '%s' not found. Use ? to list available doors.|07\r\n", inputClean)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)

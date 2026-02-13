@@ -41,10 +41,5 @@ if ! go build -o jamutil ./cmd/jamutil; then
 fi
 
 echo "Build successful!"
+echo "============================="
 echo
-echo "=== Starting ViSiON/3 BBS ==="
-echo
-echo "Press Ctrl+C to stop the server"
-echo "=========================================="
-echo
-./vision3
