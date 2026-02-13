@@ -159,9 +159,15 @@ func (b *Base) WriteMessageExt(msg *Message, msgType MessageType, echoTag, bbsNa
 		}
 
 		// Sync all files to ensure consistency for external readers (e.g., HPT)
-		b.jdtFile.Sync()
-		b.jdxFile.Sync()
-		b.jhrFile.Sync()
+		if err := b.jdtFile.Sync(); err != nil {
+			return fmt.Errorf("jam: sync .jdt failed: %w", err)
+		}
+		if err := b.jdxFile.Sync(); err != nil {
+			return fmt.Errorf("jam: sync .jdx failed: %w", err)
+		}
+		if err := b.jhrFile.Sync(); err != nil {
+			return fmt.Errorf("jam: sync .jhr failed: %w", err)
+		}
 
 		return nil
 	})

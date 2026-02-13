@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const (
+var (
 	lockRetryDelay = 200 * time.Millisecond
 	lockTimeout    = 30 * time.Second
 	lockStaleAfter = 10 * time.Minute
