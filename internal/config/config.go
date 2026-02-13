@@ -407,14 +407,14 @@ type FTNLinkConfig struct {
 
 // FTNNetworkConfig holds settings for a single FTN network (e.g., FSXNet, FidoNet).
 type FTNNetworkConfig struct {
-	Enabled      bool            `json:"enabled"`
-	OwnAddress   string          `json:"own_address"`           // e.g., "21:3/110"
-	InboundPath  string          `json:"inbound_path"`          // e.g., "data/ftn/fsxnet/inbound"
-	OutboundPath string          `json:"outbound_path"`         // e.g., "data/ftn/fsxnet/outbound"
-	TempPath     string          `json:"temp_path"`             // e.g., "data/ftn/fsxnet/temp"
-	PollSeconds  int             `json:"poll_interval_seconds"` // 0 = manual only
-	Tearline     string          `json:"tearline,omitempty"`    // Custom tearline text for echomail (optional)
-	Links        []FTNLinkConfig `json:"links"`
+	InternalTosserEnabled bool            `json:"internal_tosser_enabled"` // Enable internal tosser (false = use external like HPT)
+	OwnAddress            string          `json:"own_address"`             // e.g., "21:3/110"
+	InboundPath           string          `json:"inbound_path"`            // e.g., "data/ftn/fsxnet/inbound"
+	OutboundPath          string          `json:"outbound_path"`           // e.g., "data/ftn/fsxnet/outbound"
+	TempPath              string          `json:"temp_path"`               // e.g., "data/ftn/fsxnet/temp"
+	PollSeconds           int             `json:"poll_interval_seconds"`   // 0 = manual only
+	Tearline              string          `json:"tearline,omitempty"`      // Custom tearline text for echomail (optional)
+	Links                 []FTNLinkConfig `json:"links"`
 }
 
 // FTNConfig holds all FTN (FidoNet Technology Network) echomail settings.
@@ -548,12 +548,12 @@ func LoadFTNConfig(configPath string) (FTNConfig, error) {
 
 	enabledCount := 0
 	for name, net := range config.Networks {
-		if net.Enabled {
+		if net.InternalTosserEnabled {
 			enabledCount++
-			log.Printf("INFO: FTN network %q enabled: address=%s", name, net.OwnAddress)
+			log.Printf("INFO: FTN network %q internal tosser enabled: address=%s", name, net.OwnAddress)
 		}
 	}
-	log.Printf("INFO: Loaded FTN configuration: %d network(s), %d enabled", len(config.Networks), enabledCount)
+	log.Printf("INFO: Loaded FTN configuration: %d network(s), %d with internal tosser enabled", len(config.Networks), enabledCount)
 
 	return config, nil
 }

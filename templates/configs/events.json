@@ -55,7 +55,6 @@
       "command": "/usr/local/bin/binkd",
       "args": [
         "-P",
-        "-p",
         "21:4/100@fsxnet",
         "{BBS_ROOT}/data/ftn/binkd.conf"
       ],
@@ -82,13 +81,13 @@
       "id": "example_hpt_scan_pack",
       "name": "Example: HPT Scan and Pack",
       "schedule": "0 */2 * * *",
-      "comment": "Scan and pack echomail every 2 hours. Update command and config paths.",
+      "comment": "Scan and pack echomail every 2 hours. Uses high water marks to only export new messages. Update command and config paths.",
       "command": "/usr/local/bin/hpt",
       "args": [
-        "scan",
-        "pack",
         "-c",
-        "{BBS_ROOT}/data/ftn/husky.cfg"
+        "{BBS_ROOT}/data/ftn/husky.cfg",
+        "scan",
+        "pack"
       ],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 900,

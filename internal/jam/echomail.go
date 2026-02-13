@@ -158,6 +158,11 @@ func (b *Base) WriteMessageExt(msg *Message, msgType MessageType, echoTag, bbsNa
 			return err
 		}
 
+		// Sync all files to ensure consistency for external readers (e.g., HPT)
+		b.jdtFile.Sync()
+		b.jdxFile.Sync()
+		b.jhrFile.Sync()
+
 		return nil
 	})
 	return msgNum, err

@@ -158,7 +158,8 @@ Each line has an echo tag followed by a description.
 2. Creates a conference entry in `conferences.json` for the network (if one
    doesn't exist)
 3. Adds echomail area entries to `message_areas.json` for each echo tag
-4. Updates `ftn.json` with network and link configuration
+4. Updates `ftn.json` with network and link configuration (note: mostly unused until
+   internal tosser is implemented; currently only `tearline` field is active)
 5. Skips any echo tags that already exist (safe to re-run with updated NA files)
 
 **Tip:** Use `--dry-run` first to preview what will be changed:
@@ -438,49 +439,43 @@ Alternatively, you can call hpt scan from a script that runs alongside Vision/3.
 
 ### ftn.json
 
-This is Vision/3's internal FTN configuration. It is managed by the `helper`
-tool but can be edited manually.
+**Current Status**: This configuration file is **mostly unused** in the current implementation.
+ViSiON/3 relies on **external tossers** (HPT, which uses `husky.cfg`) for echomail processing.
+
+**What is currently used from ftn.json**:
+- `networks.<key>.tearline` — Optional custom tearline text per network (added to echomail messages)
+
+**What is NOT currently used** (reserved for future internal tosser):
+- `dupe_db_path` — Dupe detection database path
+- `networks.<key>.internal_tosser_enabled` — Enable internal tosser (false = use external like HPT)
+- `networks.<key>.own_address` — FTN address
+- `networks.<key>.inbound_path` / `outbound_path` / `temp_path` — Directory paths
+- `networks.<key>.poll_interval_seconds` — Polling configuration
+- `networks.<key>.links[]` — Link/hub configuration
+
+**Template configuration** (for reference only):
 
 ```json
 {
     "dupe_db_path": "data/ftn/dupes.json",
     "networks": {
         "fsxnet": {
-            "enabled": true,
-            "own_address": "21:4/158.1",
+            "internal_tosser_enabled": false,
+            "own_address": "",
             "inbound_path": "data/ftn/fsxnet/inbound",
             "outbound_path": "data/ftn/fsxnet/outbound",
             "temp_path": "data/ftn/fsxnet/temp",
             "poll_interval_seconds": 300,
-            "links": [
-                {
-                    "address": "21:4/158",
-                    "password": "MYSECRET",
-                    "name": "Hub 21:4/158",
-                    "echo_areas": [
-                        "FSX_GEN",
-                        "FSX_BBS"
-                    ]
-                }
-            ]
+            "tearline": "My Custom Tearline",
+            "links": []
         }
     }
 }
 ```
 
-| Field                                  | Description                                                  |
-| -------------------------------------- | ------------------------------------------------------------ |
-| `dupe_db_path`                         | Path to the dupe detection database (shared across networks) |
-| `networks.<key>.enabled`               | Enable/disable this network                                  |
-| `networks.<key>.own_address`           | Your FTN address on this network                             |
-| `networks.<key>.inbound_path`          | Inbound packet directory                                     |
-| `networks.<key>.outbound_path`         | Outbound packet directory                                    |
-| `networks.<key>.temp_path`             | Temp directory for failed packets                            |
-| `networks.<key>.poll_interval_seconds` | Internal poll interval (seconds)                             |
-| `networks.<key>.links[].address`       | Hub/link FTN address                                         |
-| `networks.<key>.links[].password`      | Packet password                                              |
-| `networks.<key>.links[].name`          | Human-readable link name                                     |
-| `networks.<key>.links[].echo_areas`    | Echo tags routed to this link                                |
+**Note**: When ViSiON/3 eventually implements an internal tosser, this configuration will
+become fully functional. Until then, use HPT's `husky.cfg` for all echomail tossing,
+scanning, and packing operations.
 
 ### message_areas.json (Echomail Entries)
 

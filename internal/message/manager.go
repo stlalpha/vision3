@@ -23,14 +23,15 @@ type threadIndex struct {
 const messageAreaFile = "message_areas.json"
 
 // MessageManager handles message areas backed by JAM message bases.
+// Bases are opened on-demand and closed after each operation to allow
+// external tossers (like HPT) concurrent access.
 type MessageManager struct {
 	mu         sync.RWMutex
 	dataPath   string // Base data directory (e.g., "data")
 	areasPath  string // Full path to message_areas.json
 	areasByID  map[int]*MessageArea
 	areasByTag map[string]*MessageArea
-	bases      map[int]*jam.Base // Open JAM bases keyed by area ID
-	boardName  string            // BBS name for echomail origin lines
+	boardName  string // BBS name for echomail origin lines
 	// networkTearlines maps network key -> custom tearline text.
 	networkTearlines map[string]string
 	threadIndex      map[int]*threadIndex
@@ -47,7 +48,6 @@ func NewMessageManager(dataPath, configPath, boardName string, networkTearlines 
 		areasPath:        filepath.Join(configPath, messageAreaFile),
 		areasByID:        make(map[int]*MessageArea),
 		areasByTag:       make(map[string]*MessageArea),
-		bases:            make(map[int]*jam.Base),
 		boardName:        boardName,
 		networkTearlines: normalizeNetworkTearlines(networkTearlines),
 		threadIndex:      make(map[int]*threadIndex),
@@ -61,11 +61,8 @@ func NewMessageManager(dataPath, configPath, boardName string, networkTearlines 
 		}
 	}
 
-	if err := mm.initializeBases(); err != nil {
-		return nil, fmt.Errorf("failed to initialize JAM bases: %w", err)
-	}
-
 	log.Printf("INFO: MessageManager initialized. Loaded %d areas.", len(mm.areasByID))
+	log.Printf("INFO: JAM bases will be opened on-demand for external tosser compatibility.")
 	return mm, nil
 }
 
@@ -98,22 +95,9 @@ func (mm *MessageManager) tearlineForNetwork(network string) string {
 	return mm.networkTearlines[key]
 }
 
-// Close closes all open JAM bases. Call this during server shutdown.
+// Close is a no-op now that bases are opened on-demand.
+// Kept for API compatibility.
 func (mm *MessageManager) Close() error {
-	mm.mu.Lock()
-	defer mm.mu.Unlock()
-
-	var errs []error
-	for id, b := range mm.bases {
-		if err := b.Close(); err != nil {
-			errs = append(errs, fmt.Errorf("area %d: %w", id, err))
-		}
-	}
-	mm.bases = make(map[int]*jam.Base)
-
-	if len(errs) > 0 {
-		return fmt.Errorf("errors closing bases: %v", errs)
-	}
 	return nil
 }
 
@@ -153,19 +137,24 @@ func (mm *MessageManager) loadMessageAreas() error {
 	return nil
 }
 
-// initializeBases opens (or creates) a JAM base for each configured area.
-func (mm *MessageManager) initializeBases() error {
-	for id, area := range mm.areasByID {
-		basePath := mm.resolveBasePath(area)
-		b, err := jam.Open(basePath)
-		if err != nil {
-			log.Printf("WARN: Failed to open JAM base for area %d (%s): %v", id, area.Tag, err)
-			continue
-		}
-		mm.bases[id] = b
-		log.Printf("TRACE: Opened JAM base for area %d (%s) at %s", id, area.Tag, basePath)
+// openBase opens a JAM base on-demand. The caller must close it when done.
+// This method does not hold any locks and should be called after releasing mm.mu.
+func (mm *MessageManager) openBase(areaID int) (*jam.Base, *MessageArea, error) {
+	mm.mu.RLock()
+	area, exists := mm.areasByID[areaID]
+	mm.mu.RUnlock()
+
+	if !exists {
+		return nil, nil, fmt.Errorf("message area %d not found", areaID)
 	}
-	return nil
+
+	basePath := mm.resolveBasePath(area)
+	b, err := jam.Open(basePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to open JAM base for area %d: %w", areaID, err)
+	}
+
+	return b, area, nil
 }
 
 // resolveBasePath returns the absolute path for a JAM base.
@@ -215,17 +204,11 @@ func (mm *MessageManager) ListAreas() []*MessageArea {
 // For echomail areas, it automatically handles MSGID, kludges, tearline, and origin.
 // Returns the 1-based message number assigned.
 func (mm *MessageManager) AddMessage(areaID int, from, to, subject, body, replyToMsgID string) (int, error) {
-	mm.mu.RLock()
-	area, exists := mm.areasByID[areaID]
-	b, baseExists := mm.bases[areaID]
-	mm.mu.RUnlock()
-
-	if !exists {
-		return 0, fmt.Errorf("message area %d not found", areaID)
+	b, area, err := mm.openBase(areaID)
+	if err != nil {
+		return 0, err
 	}
-	if !baseExists {
-		return 0, fmt.Errorf("JAM base not open for area %d", areaID)
-	}
+	defer b.Close()
 
 	msg := jam.NewMessage()
 	msg.From = from
@@ -240,16 +223,14 @@ func (mm *MessageManager) AddMessage(areaID int, from, to, subject, body, replyT
 
 	msgType := jam.DetermineMessageType(area.AreaType, area.EchoTag)
 
+	var msgNum int
 	if msgType.IsEchomail() || msgType.IsNetmail() {
 		msg.OrigAddr = area.OriginAddr
-		msgNum, err := b.WriteMessageExt(msg, msgType, area.EchoTag, mm.boardName, mm.tearlineForNetwork(area.Network))
-		if err == nil {
-			mm.invalidateThreadIndex(areaID)
-		}
-		return msgNum, err
+		msgNum, err = b.WriteMessageExt(msg, msgType, area.EchoTag, mm.boardName, mm.tearlineForNetwork(area.Network))
+	} else {
+		msgNum, err = b.WriteMessage(msg)
 	}
 
-	msgNum, err := b.WriteMessage(msg)
 	if err == nil {
 		mm.invalidateThreadIndex(areaID)
 	}
@@ -260,17 +241,11 @@ func (mm *MessageManager) AddMessage(areaID int, from, to, subject, body, replyT
 // It sets the MSG_PRIVATE flag on the message to indicate it's private user-to-user mail.
 // Returns the 1-based message number assigned.
 func (mm *MessageManager) AddPrivateMessage(areaID int, from, to, subject, body, replyToMsgID string) (int, error) {
-	mm.mu.RLock()
-	area, exists := mm.areasByID[areaID]
-	b, baseExists := mm.bases[areaID]
-	mm.mu.RUnlock()
-
-	if !exists {
-		return 0, fmt.Errorf("message area %d not found", areaID)
+	b, area, err := mm.openBase(areaID)
+	if err != nil {
+		return 0, err
 	}
-	if !baseExists {
-		return 0, fmt.Errorf("JAM base not open for area %d", areaID)
-	}
+	defer b.Close()
 
 	msg := jam.NewMessage()
 	msg.From = from
@@ -290,16 +265,14 @@ func (mm *MessageManager) AddPrivateMessage(areaID int, from, to, subject, body,
 
 	msgType := jam.DetermineMessageType(area.AreaType, area.EchoTag)
 
+	var msgNum int
 	if msgType.IsEchomail() || msgType.IsNetmail() {
 		msg.OrigAddr = area.OriginAddr
-		msgNum, err := b.WriteMessageExt(msg, msgType, area.EchoTag, mm.boardName, mm.tearlineForNetwork(area.Network))
-		if err == nil {
-			mm.invalidateThreadIndex(areaID)
-		}
-		return msgNum, err
+		msgNum, err = b.WriteMessageExt(msg, msgType, area.EchoTag, mm.boardName, mm.tearlineForNetwork(area.Network))
+	} else {
+		msgNum, err = b.WriteMessage(msg)
 	}
 
-	msgNum, err := b.WriteMessage(msg)
 	if err == nil {
 		mm.invalidateThreadIndex(areaID)
 	}
@@ -308,13 +281,11 @@ func (mm *MessageManager) AddPrivateMessage(areaID int, from, to, subject, body,
 
 // GetMessage reads a single message by area ID and 1-based message number.
 func (mm *MessageManager) GetMessage(areaID, msgNum int) (*DisplayMessage, error) {
-	mm.mu.RLock()
-	b, exists := mm.bases[areaID]
-	mm.mu.RUnlock()
-
-	if !exists {
-		return nil, fmt.Errorf("JAM base not open for area %d", areaID)
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return nil, err
 	}
+	defer b.Close()
 
 	msg, err := b.ReadMessage(msgNum)
 	if err != nil {
@@ -341,13 +312,12 @@ func (mm *MessageManager) GetMessage(areaID, msgNum int) (*DisplayMessage, error
 
 // GetMessageCountForArea returns the total message count for an area.
 func (mm *MessageManager) GetMessageCountForArea(areaID int) (int, error) {
-	mm.mu.RLock()
-	b, exists := mm.bases[areaID]
-	mm.mu.RUnlock()
-
-	if !exists {
-		return 0, nil
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return 0, nil // Return 0 if area doesn't exist
 	}
+	defer b.Close()
+
 	return b.GetMessageCount()
 }
 
@@ -355,14 +325,15 @@ func (mm *MessageManager) GetMessageCountForArea(areaID int) (int, error) {
 // Threading matches Vision-2/Pascal behavior: subject-based, ignoring "Re:" prefixes
 // and " -Re: #N-" suffixes.
 func (mm *MessageManager) GetThreadReplyCount(areaID int, msgNum int, subject string) (int, error) {
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return 0, nil // Return 0 if area doesn't exist
+	}
+	defer b.Close()
+
 	mm.mu.RLock()
-	b, exists := mm.bases[areaID]
 	idx := mm.threadIndex[areaID]
 	mm.mu.RUnlock()
-
-	if !exists {
-		return 0, nil
-	}
 
 	total, err := b.GetMessageCount()
 	if err != nil {
@@ -437,26 +408,24 @@ func (mm *MessageManager) invalidateThreadIndex(areaID int) {
 
 // GetNewMessageCount returns the number of unread messages for a user in an area.
 func (mm *MessageManager) GetNewMessageCount(areaID int, username string) (int, error) {
-	mm.mu.RLock()
-	b, exists := mm.bases[areaID]
-	mm.mu.RUnlock()
-
-	if !exists {
-		return 0, nil
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return 0, nil // Return 0 if area doesn't exist
 	}
+	defer b.Close()
+
 	return b.GetUnreadCount(username)
 }
 
 // GetLastRead returns the last-read message number for a user in an area.
 // Returns 0 if the user has no lastread record.
 func (mm *MessageManager) GetLastRead(areaID int, username string) (int, error) {
-	mm.mu.RLock()
-	b, exists := mm.bases[areaID]
-	mm.mu.RUnlock()
-
-	if !exists {
-		return 0, nil
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return 0, nil // Return 0 if area doesn't exist
 	}
+	defer b.Close()
+
 	lr, err := b.GetLastRead(username)
 	if err != nil {
 		if err == jam.ErrNotFound {
@@ -469,26 +438,24 @@ func (mm *MessageManager) GetLastRead(areaID int, username string) (int, error) 
 
 // SetLastRead updates the lastread pointer for a user in an area.
 func (mm *MessageManager) SetLastRead(areaID int, username string, msgNum int) error {
-	mm.mu.RLock()
-	b, exists := mm.bases[areaID]
-	mm.mu.RUnlock()
-
-	if !exists {
-		return fmt.Errorf("JAM base not open for area %d", areaID)
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return err
 	}
+	defer b.Close()
+
 	return b.MarkMessageRead(username, msgNum)
 }
 
 // GetNextUnreadMessage returns the next unread message number for a user.
 // Returns 0, nil if there are no unread messages.
 func (mm *MessageManager) GetNextUnreadMessage(areaID int, username string) (int, error) {
-	mm.mu.RLock()
-	b, exists := mm.bases[areaID]
-	mm.mu.RUnlock()
-
-	if !exists {
-		return 0, nil
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return 0, nil // Return 0 if area doesn't exist
 	}
+	defer b.Close()
+
 	next, err := b.GetNextUnreadMessage(username)
 	if err != nil {
 		if err == jam.ErrNotFound {
@@ -500,15 +467,13 @@ func (mm *MessageManager) GetNextUnreadMessage(areaID int, username string) (int
 }
 
 // GetBase returns the underlying JAM base for an area. This is used by
-// the tosser for direct base access.
+// the tosser for direct base access. The caller MUST close the base when done.
 func (mm *MessageManager) GetBase(areaID int) (*jam.Base, error) {
-	mm.mu.RLock()
-	defer mm.mu.RUnlock()
-
-	b, exists := mm.bases[areaID]
-	if !exists {
-		return nil, fmt.Errorf("JAM base not open for area %d", areaID)
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return nil, err
 	}
+	// Note: Caller must close the base
 	return b, nil
 }
 
