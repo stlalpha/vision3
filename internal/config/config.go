@@ -244,11 +244,11 @@ type DoorConfig struct {
 	RequiresRawTerminal bool              `json:"requires_raw_terminal,omitempty"` // Whether the BBS should attempt to put the terminal in raw mode (optional, defaults to false)
 	EnvironmentVars     map[string]string `json:"environment_variables,omitempty"` // Additional environment variables (optional)
 	// DOS door fields (dosemu2)
-	IsDOS        bool     `json:"is_dos,omitempty"`          // true = DOS door launched via dosemu2
-	DOSCommands  []string `json:"dos_commands,omitempty"`    // DOS commands to run (e.g. ["cd c:\\doors\\lord\\", "lord /n{NODE}"])
-	DriveCPath   string   `json:"drive_c_path,omitempty"`    // Path to drive_c directory (default: ~/.dosemu/drive_c)
-	DosemuPath   string   `json:"dosemu_path,omitempty"`     // Path to dosemu binary (default: /usr/bin/dosemu)
-	DosemuConfig string   `json:"dosemu_config,omitempty"`   // Path to custom .dosemurc (optional)
+	IsDOS        bool     `json:"is_dos,omitempty"`        // true = DOS door launched via dosemu2
+	DOSCommands  []string `json:"dos_commands,omitempty"`  // DOS commands to run (e.g. ["cd c:\\doors\\lord\\", "lord /n{NODE}"])
+	DriveCPath   string   `json:"drive_c_path,omitempty"`  // Path to drive_c directory (default: ~/.dosemu/drive_c)
+	DosemuPath   string   `json:"dosemu_path,omitempty"`   // Path to dosemu binary (default: /usr/bin/dosemu)
+	DosemuConfig string   `json:"dosemu_config,omitempty"` // Path to custom .dosemurc (optional)
 }
 
 // LoadDoors loads the door configuration from the specified file path.
@@ -281,11 +281,11 @@ func LoadDoors(filePath string) (map[string]DoorConfig, error) {
 
 // LoginItem defines a single step in the configurable login sequence.
 type LoginItem struct {
-	Command     string `json:"command"`               // Required: LASTCALLS, ONELINERS, USERSTATS, NMAILSCAN, DISPLAYFILE, RUNDOOR, FASTLOGIN
+	Command     string `json:"command"`                // Required: LASTCALLS, ONELINERS, USERSTATS, NMAILSCAN, DISPLAYFILE, RUNDOOR, FASTLOGIN
 	Data        string `json:"data,omitempty"`         // Optional: command-specific data (filename, script path, etc.)
 	ClearScreen bool   `json:"clear_screen,omitempty"` // Optional: clear screen before this item (default false)
 	PauseAfter  bool   `json:"pause_after,omitempty"`  // Optional: show pause prompt after this item (default false)
-	SecLevel    int    `json:"sec_level,omitempty"`     // Optional: minimum security level required (default 0 = everyone)
+	SecLevel    int    `json:"sec_level,omitempty"`    // Optional: minimum security level required (default 0 = everyone)
 }
 
 // LoadLoginSequence loads the login sequence configuration from login.json.
@@ -428,6 +428,7 @@ type FTNConfig struct {
 type ServerConfig struct {
 	BoardName           string `json:"boardName"`
 	BoardPhoneNumber    string `json:"boardPhoneNumber"`
+	Timezone            string `json:"timezone,omitempty"`
 	SysOpLevel          int    `json:"sysOpLevel"`
 	CoSysOpLevel        int    `json:"coSysOpLevel"`
 	LogonLevel          int    `json:"logonLevel"`
@@ -456,7 +457,7 @@ type EventConfig struct {
 	WorkingDirectory  string            `json:"working_directory"`
 	TimeoutSeconds    int               `json:"timeout_seconds"` // 0 = no timeout (for daemons)
 	Enabled           bool              `json:"enabled"`
-	RunAtStartup      bool              `json:"run_at_startup,omitempty"`      // Launch immediately when BBS starts
+	RunAtStartup      bool              `json:"run_at_startup,omitempty"` // Launch immediately when BBS starts
 	EnvironmentVars   map[string]string `json:"environment_vars,omitempty"`
 	RunAfter          string            `json:"run_after,omitempty"`           // Event ID to run after
 	DelayAfterSeconds int               `json:"delay_after_seconds,omitempty"` // Delay after RunAfter completes
@@ -478,6 +479,7 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 	defaultConfig := ServerConfig{
 		BoardName:           "ViSiON/3 BBS",
 		BoardPhoneNumber:    "",
+		Timezone:            "",
 		SysOpLevel:          255,
 		CoSysOpLevel:        250,
 		LogonLevel:          100,

@@ -49,14 +49,47 @@ var (
 	loadedStrings       config.StringsConfig
 	loadedTheme         config.ThemeConfig
 	// colorTestMode       bool   // Flag variable REMOVED
-	outputModeFlag  string             // Output mode flag (auto, utf8, cp437)
+	outputModeFlag    string             // Output mode flag (auto, utf8, cp437)
 	connectionTracker *ConnectionTracker // Global connection tracker
 )
 
+// allocateNodeIDForSession assigns the lowest available node slot (1..maxNodes)
+// and records it in activeSessions. Falls back to a monotonic counter if maxNodes
+// is unavailable or all slots appear occupied.
+func allocateNodeIDForSession(s ssh.Session) int32 {
+	activeSessionsMutex.Lock()
+	defer activeSessionsMutex.Unlock()
+
+	maxNodes := 0
+	if connectionTracker != nil {
+		maxNodes = connectionTracker.maxNodes
+	}
+
+	if maxNodes > 0 {
+		used := make(map[int32]bool, len(activeSessions))
+		for _, id := range activeSessions {
+			if id > 0 && int(id) <= maxNodes {
+				used[id] = true
+			}
+		}
+
+		for slot := int32(1); slot <= int32(maxNodes); slot++ {
+			if !used[slot] {
+				activeSessions[s] = slot
+				return slot
+			}
+		}
+	}
+
+	fallback := atomic.AddInt32(&nodeCounter, 1)
+	activeSessions[s] = fallback
+	return fallback
+}
+
 // IPList holds a list of IP addresses and CIDR ranges
 type IPList struct {
-	ips      map[string]bool   // Individual IP addresses
-	networks []*net.IPNet      // CIDR ranges
+	ips      map[string]bool // Individual IP addresses
+	networks []*net.IPNet    // CIDR ranges
 }
 
 // IPLockoutTracker tracks failed login attempts per IP
@@ -69,19 +102,19 @@ type IPLockoutTracker struct {
 // ConnectionTracker manages active connections and enforces limits
 type ConnectionTracker struct {
 	mu                  sync.Mutex
-	activeConnections   map[string]int                // IP address -> connection count
-	failedLogins        map[string]*IPLockoutTracker  // IP address -> lockout tracker
+	activeConnections   map[string]int               // IP address -> connection count
+	failedLogins        map[string]*IPLockoutTracker // IP address -> lockout tracker
 	maxNodes            int
 	maxConnectionsPerIP int
 	totalConnections    int
 	blocklist           *IPList
 	allowlist           *IPList
-	blocklistPath       string                        // Path to blocklist file for watching
-	allowlistPath       string                        // Path to allowlist file for watching
+	blocklistPath       string // Path to blocklist file for watching
+	allowlistPath       string // Path to allowlist file for watching
 	maxFailedLogins     int
 	lockoutMinutes      int
-	watcher             *fsnotify.Watcher             // File system watcher for auto-reload
-	watcherDone         chan bool                     // Signal to stop watcher
+	watcher             *fsnotify.Watcher // File system watcher for auto-reload
+	watcherDone         chan bool         // Signal to stop watcher
 }
 
 // NewConnectionTracker creates a new connection tracker
@@ -741,7 +774,7 @@ func (s *SessionAdapter) Close() error {
 
 // --- BBS sessionHandler (Original logic) ---
 func sessionHandler(s ssh.Session) {
-	nodeID := atomic.AddInt32(&nodeCounter, 1)
+	nodeID := allocateNodeIDForSession(s)
 	remoteAddr := s.RemoteAddr().String()
 
 	// Extract session ID if available (type-specific)
@@ -753,11 +786,6 @@ func sessionHandler(s ssh.Session) {
 	log.Printf("Node %d: Connection from %s (User: %s, Session ID: %s)", nodeID, remoteAddr, s.User(), sessionID)
 	log.Printf("Node %d: Environment: %v", nodeID, s.Environ())
 	log.Printf("Node %d: Command: %v", nodeID, s.Command())
-
-	// Add session to active sessions map
-	activeSessionsMutex.Lock()
-	activeSessions[s] = nodeID // Use session as key
-	activeSessionsMutex.Unlock()
 
 	// Capture start time and declare authenticatedUser *before* the defer
 	capturedStartTime := time.Now()        // Capture start time close to session start
