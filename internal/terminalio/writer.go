@@ -7,6 +7,46 @@ import (
 	"github.com/robbiew/vision3/internal/ansi"
 )
 
+func writeUTF8Mode(writer io.Writer, data []byte) error {
+	out := make([]byte, 0, len(data))
+	i := 0
+
+	for i < len(data) {
+		b := data[i]
+
+		if b == 0x1B {
+			end := findAnsiEnd(data, i)
+			out = append(out, data[i:end]...)
+			i = end
+			continue
+		}
+
+		if b < 0x80 {
+			out = append(out, b)
+			i++
+			continue
+		}
+
+		r, size := utf8.DecodeRune(data[i:])
+		if r != utf8.RuneError || size > 1 {
+			out = append(out, data[i:i+size]...)
+			i += size
+			continue
+		}
+
+		mapped := ansi.Cp437ToUnicode[b]
+		if mapped == 0 {
+			out = append(out, '?')
+		} else {
+			out = append(out, []byte(string(mapped))...)
+		}
+		i++
+	}
+
+	_, err := writer.Write(out)
+	return err
+}
+
 // Helper to find the end of an ANSI sequence
 // Returns the index *after* the terminating character
 func findAnsiEnd(data []byte, start int) int {
@@ -42,13 +82,20 @@ func findAnsiEnd(data []byte, start int) int {
 	}
 }
 
-// WriteProcessedBytes writes rawBytes to the writer.
-// For raw CP437 data (ANS files), bytes pass through directly.
-// For UTF-8 strings destined for CP437 terminals, callers should use
-// WriteStringCP437 instead, which handles rune-to-byte conversion.
+// WriteProcessedBytes writes bytes while honoring the configured output mode.
+// CP437 mode converts UTF-8 runes to CP437 where possible and passes raw
+// single bytes through unchanged. UTF-8 mode converts raw CP437 high bytes
+// to UTF-8 when they are not valid UTF-8 sequences.
 func WriteProcessedBytes(writer io.Writer, rawBytes []byte, mode ansi.OutputMode) error {
-	_, err := writer.Write(rawBytes)
-	return err
+	switch mode {
+	case ansi.OutputModeCP437:
+		return WriteStringCP437(writer, rawBytes, mode)
+	case ansi.OutputModeUTF8:
+		return writeUTF8Mode(writer, rawBytes)
+	default:
+		_, err := writer.Write(rawBytes)
+		return err
+	}
 }
 
 // WriteStringCP437 writes a UTF-8 string (e.g., from strings.json) to a
@@ -61,20 +108,8 @@ func WriteStringCP437(writer io.Writer, data []byte, mode ansi.OutputMode) error
 		return err
 	}
 
-	// Fast path: if no multi-byte UTF-8, pass through directly
-	hasMultibyte := false
-	for _, b := range data {
-		if b >= 0xC0 {
-			hasMultibyte = true
-			break
-		}
-	}
-	if !hasMultibyte {
-		_, err := writer.Write(data)
-		return err
-	}
-
-	// Convert UTF-8 runes to CP437 bytes, preserving ANSI escapes
+	// Convert UTF-8 runes to CP437 bytes only for spans that are entirely valid UTF-8,
+	// preserving ANSI escapes and passing raw CP437 bytes through unchanged.
 	out := make([]byte, 0, len(data))
 	i := 0
 	for i < len(data) {
@@ -88,29 +123,29 @@ func WriteStringCP437(writer io.Writer, data []byte, mode ansi.OutputMode) error
 			continue
 		}
 
-		// ASCII byte — pass through
-		if b < 0x80 {
-			out = append(out, b)
+		// Process a text span up to next ANSI escape.
+		spanStart := i
+		for i < len(data) && data[i] != 0x1B {
 			i++
+		}
+		span := data[spanStart:i]
+
+		if !utf8.Valid(span) {
+			out = append(out, span...)
 			continue
 		}
 
-		// Try to decode as multi-byte UTF-8 rune
-		r, size := utf8.DecodeRune(data[i:])
-		if r != utf8.RuneError || size > 1 {
-			// Valid multi-byte UTF-8 rune — convert to CP437
+		for _, r := range string(span) {
+			if r < 0x80 {
+				out = append(out, byte(r))
+				continue
+			}
 			if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
 				out = append(out, cp437Byte)
 			} else {
 				out = append(out, '?')
 			}
-			i += size
-			continue
 		}
-
-		// Invalid UTF-8 / single high byte — pass through as raw
-		out = append(out, b)
-		i++
 	}
 
 	_, err := writer.Write(out)

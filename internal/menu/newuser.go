@@ -289,7 +289,7 @@ func (e *MenuExecutor) promptForPassword(
 	for attempt := 0; attempt < maxAttempts; attempt++ {
 		// First entry
 		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+createPrompt)), outputMode)
-		password, err := readPasswordSecurely(s, terminal)
+		password, err := readPasswordSecurely(s, terminal, outputMode)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return "", io.EOF
@@ -309,7 +309,7 @@ func (e *MenuExecutor) promptForPassword(
 
 		// Confirmation
 		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(confirmPrompt)), outputMode)
-		confirm, err := readPasswordSecurely(s, terminal)
+		confirm, err := readPasswordSecurely(s, terminal, outputMode)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return "", io.EOF
