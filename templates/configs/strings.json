@@ -1,6 +1,6 @@
 {
-  "connectionStr": "|08¤ |15Connect |08(|03|BR|08)",
-  "lockedBaudStr": "|08¤ |15PiRATE MiND Station Active",
+  "connectionStr": "|08» |15Connect |08(|03|BR|08)",
+  "lockedBaudStr": "|08» |15PiRATE MiND Station Active",
   "applyAsNewStr": "|08A|07p|15ply |08F|07o|15r |08A|07c|15cess? @",
   "getNupStr": "|03[|11NUP|03]|08:",
   "chatRequestStr": "|09Why do you want to |08[|15Chat|08]? :",
@@ -31,7 +31,7 @@
   "sysopWorkingStr": "|15■|07■|08■ |B4|15Wait, Damn it!|B0 |08■|07■|15■",
   "sysopInDos": "|09[ |15SysOp in DOS |09]",
   "systemPasswordStr": "|08─── |09Login Password|01:",
-  "defPrompt": "|08•• |15|MN |08•• |13|TL |05Left: ",
+  "defPrompt": "|08·· |15|MN |08·· |13|TL |05Left: ",
   "enterChat": "|13Greetings, |05|UH...",
   "exitChat": "|13Back into the BBS...",
   "sysOpIsIn": "|09SysOp is |08[|15IN|08]..",
