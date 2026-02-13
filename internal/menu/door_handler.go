@@ -473,10 +473,15 @@ func executeDOSDoor(ctx *DoorCtx) error {
 
 	// Set up a read interrupt so we can cleanly stop the input goroutine
 	// when the door exits, preventing it from consuming the next keypress.
+	// Sessions that support SetReadInterrupt (SSH) get clean cancellation;
+	// others (telnet) fall back to the old behavior where the input goroutine
+	// exits on its own when ptmx is closed and the next write fails.
 	readInterrupt := make(chan struct{})
+	hasInterrupt := false
 	if ri, ok := ctx.Session.(interface{ SetReadInterrupt(<-chan struct{}) }); ok {
 		ri.SetReadInterrupt(readInterrupt)
 		defer ri.SetReadInterrupt(nil)
+		hasInterrupt = true
 	}
 
 	// Bidirectional I/O: SSH session ↔ PTY master (COM1 data)
@@ -504,7 +509,9 @@ func executeDOSDoor(ctx *DoorCtx) error {
 	// Interrupt the input goroutine's blocked Read() so it exits without
 	// consuming the user's next keypress, then close the PTY.
 	close(readInterrupt)
-	<-inputDone
+	if hasInterrupt {
+		<-inputDone
+	}
 	ptmx.Close()
 	<-outputDone
 
@@ -653,10 +660,15 @@ func executeNativeDoor(ctx *DoorCtx) error {
 
 			// Set up a read interrupt so we can cleanly stop the input goroutine
 			// when the door exits, preventing it from consuming the next keypress.
+			// Sessions that support SetReadInterrupt (SSH) get clean cancellation;
+			// others (telnet) fall back to the old behavior where the input goroutine
+			// exits on its own when ptmx is closed and the next write fails.
 			readInterrupt := make(chan struct{})
+			hasInterrupt := false
 			if ri, ok := ctx.Session.(interface{ SetReadInterrupt(<-chan struct{}) }); ok {
 				ri.SetReadInterrupt(readInterrupt)
 				defer ri.SetReadInterrupt(nil)
+				hasInterrupt = true
 			}
 
 			inputDone := make(chan struct{})
@@ -683,7 +695,9 @@ func executeNativeDoor(ctx *DoorCtx) error {
 			// Interrupt the input goroutine's blocked Read() so it exits without
 			// consuming the user's next keypress, then close the PTY.
 			close(readInterrupt)
-			<-inputDone
+			if hasInterrupt {
+				<-inputDone
+			}
 			ptmx.Close()
 			<-outputDone
 		}
