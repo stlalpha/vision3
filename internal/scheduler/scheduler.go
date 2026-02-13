@@ -55,29 +55,45 @@ func (s *Scheduler) Start(ctx context.Context) {
 
 	// Schedule all enabled events
 	enabledCount := 0
+	startupCount := 0
 	for _, event := range s.config.Events {
 		if !event.Enabled {
 			log.Printf("DEBUG: Event '%s' (%s) is disabled, skipping", event.ID, event.Name)
 			continue
 		}
 
-		if err := s.scheduleEvent(event); err != nil {
-			log.Printf("ERROR: Failed to schedule event '%s' (%s): %v", event.ID, event.Name, err)
-		} else {
-			enabledCount++
-			log.Printf("INFO: Event '%s' (%s) scheduled: %s", event.ID, event.Name, event.Schedule)
+		// Launch startup events immediately in background goroutines
+		if event.RunAtStartup {
+			startupCount++
+			e := event // capture for goroutine
+			go func() {
+				log.Printf("INFO: Startup event '%s' (%s) launching", e.ID, e.Name)
+				s.executeEventWithConcurrency(e)
+			}()
+		}
+
+		// Schedule cron events (startup-only events have no schedule)
+		if event.Schedule != "" {
+			if err := s.scheduleEvent(event); err != nil {
+				log.Printf("ERROR: Failed to schedule event '%s' (%s): %v", event.ID, event.Name, err)
+			} else {
+				enabledCount++
+				log.Printf("INFO: Event '%s' (%s) scheduled: %s", event.ID, event.Name, event.Schedule)
+			}
+		} else if !event.RunAtStartup {
+			log.Printf("WARN: Event '%s' (%s) has no schedule and run_at_startup is false, skipping", event.ID, event.Name)
 		}
 	}
 
-	if enabledCount == 0 {
+	if enabledCount == 0 && startupCount == 0 {
 		log.Printf("WARN: No enabled events to schedule")
 		return
 	}
 
 	// Start the cron scheduler
 	s.cron.Start()
-	log.Printf("INFO: Event scheduler running with %d enabled events (max concurrent: %d)",
-		enabledCount, s.config.MaxConcurrentEvents)
+	log.Printf("INFO: Event scheduler running with %d scheduled + %d startup events (max concurrent: %d)",
+		enabledCount, startupCount, s.config.MaxConcurrentEvents)
 
 	// Wait for context cancellation
 	<-s.ctx.Done()
