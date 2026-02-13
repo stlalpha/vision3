@@ -6,7 +6,19 @@ mkdir -p /vision3/data/users
 mkdir -p /vision3/data/logs
 mkdir -p /vision3/data/msgbases/privmail
 mkdir -p /vision3/data/files
-mkdir -p /vision3/data/ftn/{in,secure_in,temp_in,temp_out,out,logs,dupehist,dloads,dloads/pass}
+for d in \
+    /vision3/data/ftn/in \
+    /vision3/data/ftn/secure_in \
+    /vision3/data/ftn/temp_in \
+    /vision3/data/ftn/temp_out \
+    /vision3/data/ftn/out \
+    /vision3/data/ftn/logs \
+    /vision3/data/ftn/dupehist \
+    /vision3/data/ftn/dloads \
+    /vision3/data/ftn/dloads/pass
+do
+    mkdir -p "$d"
+done
 
 # Generate SSH host keys if missing
 if [ ! -f "/vision3/configs/ssh_host_rsa_key" ]; then

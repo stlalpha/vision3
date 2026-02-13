@@ -405,6 +405,9 @@ func (e *FSEditor) deleteLine() {
 		// Ensure cursor is on a valid line
 		if e.currentLine > e.buffer.GetLineCount() {
 			e.currentLine = e.buffer.GetLineCount()
+			if e.currentLine < 1 {
+				e.currentLine = 1
+			}
 		}
 		e.currentCol = 1
 	}

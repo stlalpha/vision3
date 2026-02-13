@@ -898,22 +898,25 @@ func sessionHandler(s ssh.Session) {
 	}
 
 	// --- Handle Window Size Changes ---
-	// Forward resize events to both our atomic values and the term.Terminal
-	go func() {
-		for win := range winCh {
-			log.Printf("Node %d: Window resize event: %dx%d", nodeID, win.Width, win.Height)
-			if win.Width > 0 {
-				termWidth.Store(int32(win.Width))
+	// Forward resize events to both our atomic values and the term.Terminal.
+	// Guard against nil winCh (ranging a nil channel blocks forever).
+	if isPty && winCh != nil {
+		go func() {
+			for win := range winCh {
+				log.Printf("Node %d: Window resize event: %dx%d", nodeID, win.Width, win.Height)
+				if win.Width > 0 {
+					termWidth.Store(int32(win.Width))
+				}
+				if win.Height > 0 {
+					termHeight.Store(int32(win.Height))
+				}
+				if win.Width > 0 && win.Height > 0 {
+					_ = terminal.SetSize(win.Width, win.Height)
+				}
 			}
-			if win.Height > 0 {
-				termHeight.Store(int32(win.Height))
-			}
-			if win.Width > 0 && win.Height > 0 {
-				_ = terminal.SetSize(win.Width, win.Height)
-			}
-		}
-		log.Printf("Node %d: Window change channel closed.", nodeID)
-	}()
+			log.Printf("Node %d: Window change channel closed.", nodeID)
+		}()
+	}
 
 	// Attempt to set raw mode (might fail, proceed anyway)
 	if isPty {
@@ -950,12 +953,19 @@ func sessionHandler(s ssh.Session) {
 			// User exists in database, authenticate them automatically
 			authenticatedUser = sshUser
 			log.Printf("Node %d: SSH auto-login successful for user '%s' (Handle: %s)", nodeID, sshUsername, sshUser.Handle)
-			// Update user's terminal dimensions from detected PTY size
+			// Set user's terminal dimensions from detected PTY size only when not already stored.
 			tw, th := int(termWidth.Load()), int(termHeight.Load())
-			if tw > 0 && th > 0 {
+			updatedScreenPrefs := false
+			if tw > 0 && authenticatedUser.ScreenWidth == 0 {
 				authenticatedUser.ScreenWidth = tw
+				updatedScreenPrefs = true
+			}
+			if th > 0 && authenticatedUser.ScreenHeight == 0 {
 				authenticatedUser.ScreenHeight = th
-				log.Printf("Node %d: Updated user %s screen preferences to %dx%d", nodeID, sshUser.Handle, tw, th)
+				updatedScreenPrefs = true
+			}
+			if updatedScreenPrefs {
+				log.Printf("Node %d: Set user %s screen preferences to %dx%d", nodeID, sshUser.Handle, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight)
 				if saveErr := userMgr.UpdateUser(authenticatedUser); saveErr != nil {
 					log.Printf("ERROR: Node %d: Failed to save user screen preferences: %v", nodeID, saveErr)
 				}

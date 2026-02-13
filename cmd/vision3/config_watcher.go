@@ -16,14 +16,14 @@ import (
 
 // ConfigWatcher watches configuration files for changes and hot-reloads them.
 type ConfigWatcher struct {
-	mu              sync.RWMutex
-	watcher         *fsnotify.Watcher
-	watcherDone     chan bool
-	rootConfigPath  string
-	menuSetPath     string
-	menuExecutor    *menu.MenuExecutor
-	serverConfig    *config.ServerConfig
-	serverConfigMu  *sync.RWMutex // External mutex for server config
+	mu             sync.RWMutex
+	watcher        *fsnotify.Watcher
+	watcherDone    chan bool
+	rootConfigPath string
+	menuSetPath    string
+	menuExecutor   *menu.MenuExecutor
+	serverConfig   *config.ServerConfig
+	serverConfigMu *sync.RWMutex // External mutex for server config
 }
 
 // NewConfigWatcher creates a new configuration file watcher.
@@ -130,7 +130,7 @@ func (cw *ConfigWatcher) handleConfigChange(path string) {
 		cw.reloadStrings()
 	case "theme.json":
 		cw.reloadTheme()
-	case "server.json":
+	case "config.json":
 		cw.reloadServerConfig()
 	case "events.json":
 		// Events config reload would require restarting the scheduler

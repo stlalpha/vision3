@@ -263,7 +263,12 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 	ch.screen.WriteDirectProcessed(fmt.Sprintf("|09Start Quoting @ |03(|151|03-|15%d|03) |09: ", maxLines))
 
 	startStr := ""
-	key, _ := inputHandler.ReadKey()
+	key, err := inputHandler.ReadKey()
+	if err != nil {
+		ch.screen.GoXY(1, ch.screen.statusLineY)
+		ch.screen.ClearEOL()
+		return currentLine, 1
+	}
 	for key != KeyEnter && key != KeyEsc {
 		if key >= '0' && key <= '9' {
 			startStr += string(rune(key))
@@ -277,7 +282,12 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 			ch.screen.ClearEOL()
 			return currentLine, 1
 		}
-		key, _ = inputHandler.ReadKey()
+		key, err = inputHandler.ReadKey()
+		if err != nil {
+			ch.screen.GoXY(1, ch.screen.statusLineY)
+			ch.screen.ClearEOL()
+			return currentLine, 1
+		}
 	}
 	if key == KeyEsc {
 		ch.screen.GoXY(1, ch.screen.statusLineY)
@@ -303,7 +313,12 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 	ch.screen.WriteDirectProcessed(fmt.Sprintf("|09End Quoting @ |03(|15%d|03-|15%d|03) |09: ", startLine, maxEnd))
 
 	endStr := ""
-	key, _ = inputHandler.ReadKey()
+	key, err = inputHandler.ReadKey()
+	if err != nil {
+		ch.screen.GoXY(1, ch.screen.statusLineY)
+		ch.screen.ClearEOL()
+		return currentLine, 1
+	}
 	for key != KeyEnter && key != KeyEsc {
 		if key >= '0' && key <= '9' {
 			endStr += string(rune(key))
@@ -317,7 +332,12 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 			ch.screen.ClearEOL()
 			return currentLine, 1
 		}
-		key, _ = inputHandler.ReadKey()
+		key, err = inputHandler.ReadKey()
+		if err != nil {
+			ch.screen.GoXY(1, ch.screen.statusLineY)
+			ch.screen.ClearEOL()
+			return currentLine, 1
+		}
 	}
 	if key == KeyEsc {
 		ch.screen.GoXY(1, ch.screen.statusLineY)
@@ -428,7 +448,7 @@ func (ch *CommandHandler) filterPipeCodes(text string) string {
 	// For now, always filter pipe codes from quoted text
 	result := text
 	i := len(result) - 2
-	for i > 0 {
+	for i >= 0 {
 		if result[i] == '|' && i+2 < len(result) {
 			// Check if next two chars are digits
 			if result[i+1] >= '0' && result[i+1] <= '9' && result[i+2] >= '0' && result[i+2] <= '9' {
