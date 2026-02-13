@@ -243,6 +243,12 @@ type DoorConfig struct {
 	IOMode              string            `json:"io_mode,omitempty"`               // I/O handling ("STDIO", "FOSSIL" - future) (optional, defaults to STDIO)
 	RequiresRawTerminal bool              `json:"requires_raw_terminal,omitempty"` // Whether the BBS should attempt to put the terminal in raw mode (optional, defaults to false)
 	EnvironmentVars     map[string]string `json:"environment_variables,omitempty"` // Additional environment variables (optional)
+	// DOS door fields (dosemu2)
+	IsDOS        bool     `json:"is_dos,omitempty"`          // true = DOS door launched via dosemu2
+	DOSCommands  []string `json:"dos_commands,omitempty"`    // DOS commands to run (e.g. ["cd c:\\doors\\lord\\", "lord /n{NODE}"])
+	DriveCPath   string   `json:"drive_c_path,omitempty"`    // Path to drive_c directory (default: ~/.dosemu/drive_c)
+	DosemuPath   string   `json:"dosemu_path,omitempty"`     // Path to dosemu binary (default: /usr/bin/dosemu)
+	DosemuConfig string   `json:"dosemu_config,omitempty"`   // Path to custom .dosemurc (optional)
 }
 
 // LoadDoors loads the door configuration from the specified file path.

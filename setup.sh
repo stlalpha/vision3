@@ -138,6 +138,26 @@ for template_file in templates/configs/*.txt; do
     fi
 done
 
+# Copy dosemu2 config templates if dosemu is installed
+if command -v dosemu &> /dev/null; then
+    echo "Setting up dosemu2 configuration..."
+    mkdir -p "$HOME/.dosemu/drive_c"
+    if [ ! -f "$HOME/.dosemu/.dosemurc" ]; then
+        echo "  Creating .dosemurc from template..."
+        cp templates/configs/dosemurc "$HOME/.dosemu/.dosemurc"
+    else
+        echo "  .dosemurc already exists, skipping."
+    fi
+    if [ ! -f "$HOME/.dosemu/drive_c/.dosemurc-nocom" ]; then
+        echo "  Creating .dosemurc-nocom from template..."
+        cp templates/configs/dosemurc-nocom "$HOME/.dosemu/drive_c/.dosemurc-nocom"
+    else
+        echo "  .dosemurc-nocom already exists, skipping."
+    fi
+else
+    echo -e "${YELLOW}Note:${NC} dosemu2 not installed — skipping .dosemurc setup (only needed for DOS doors)"
+fi
+
 # Create initial data files if they don't exist
 if [ ! -f "data/oneliners.json" ]; then
     echo "Creating empty oneliners.json..."
