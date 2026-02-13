@@ -27,4 +27,4 @@ mkdir -p "$LOG_DIR"
     -f "$DRIVE_C/.dosemurc-nocom" \
     2>/dev/null
 
-trap 2
+trap - 2
