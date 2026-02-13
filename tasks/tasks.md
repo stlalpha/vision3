@@ -4,6 +4,32 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 ## Recent Completions
 
+*   **[DONE] Configuration Hot Reload (2026-02-13):**
+    *   **Goal:** Enable automatic reload of configuration files without requiring server restart
+    *   **Implementation:**
+        *   Created `ConfigWatcher` using fsnotify for file system monitoring
+        *   Added thread-safe config setters/getters to `MenuExecutor` with `sync.RWMutex`
+        *   Debounced file change events (500ms) to avoid multiple reloads
+        *   Integrated into main.go startup sequence with graceful shutdown
+    *   **Supported Configs:**
+        *   `doors.json` - Door configurations hot reload automatically
+        *   `login.json` - Login sequence changes apply immediately
+        *   `strings.json` - String templates update without restart
+        *   `theme.json` - Theme changes apply to new sessions
+        *   `server.json` - Server settings (some require restart for ports/keys)
+    *   **Features:**
+        *   Atomic config updates with mutex protection
+        *   Safe for active user sessions (doesn't affect users mid-session)
+        *   Comprehensive logging of reload events
+        *   Hot reload indicator in startup logs
+    *   **Additional Work:**
+        *   Fixed login sequence to support `DOOR:` command prefix
+        *   Added XNEWS door to login.json sequence as proof-of-concept
+        *   Configured XNEWS with STDIO mode (-X flag) and proper dropfile arguments
+        *   Fixed double-keypress issue for standard I/O doors
+    *   **Files:** `cmd/vision3/config_watcher.go`, `internal/menu/executor.go`, `internal/menu/door_handler.go`, `cmd/vision3/main.go`
+    *   **Status:** COMPLETE. Fully integrated and tested with XNEWS door in login sequence.
+
 *   **[DONE] Event Scheduler (2026-02-11):**
     *   **Goal:** Implement cron-style event scheduler for automated maintenance tasks (FTN mail polling, echomail tossing, backups, etc.)
     *   **Implementation:**
