@@ -71,6 +71,7 @@ type MenuExecutor struct {
 	ConferenceMgr   *conference.ConferenceManager // Conference grouping manager
 	IPLockoutCheck  IPLockoutChecker              // IP-based authentication lockout checker
 	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
+	configMu        sync.RWMutex                  // Mutex for thread-safe config updates
 }
 
 // NewExecutor creates a new MenuExecutor.
@@ -100,6 +101,79 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		IPLockoutCheck: ipLockoutCheck, // IP-based lockout checker
 		LoginSequence:  loginSequence, // Configurable login sequence
 	}
+}
+
+// --- Hot Reload Methods ---
+
+// SetDoorRegistry atomically updates the door registry.
+func (e *MenuExecutor) SetDoorRegistry(doors map[string]config.DoorConfig) {
+	e.configMu.Lock()
+	defer e.configMu.Unlock()
+	e.DoorRegistry = doors
+}
+
+// GetDoorConfig atomically retrieves a door configuration.
+func (e *MenuExecutor) GetDoorConfig(name string) (config.DoorConfig, bool) {
+	e.configMu.RLock()
+	defer e.configMu.RUnlock()
+	cfg, ok := e.DoorRegistry[name]
+	return cfg, ok
+}
+
+// SetLoginSequence atomically updates the login sequence.
+func (e *MenuExecutor) SetLoginSequence(sequence []config.LoginItem) {
+	e.configMu.Lock()
+	defer e.configMu.Unlock()
+	e.LoginSequence = sequence
+}
+
+// GetLoginSequence atomically retrieves the login sequence.
+func (e *MenuExecutor) GetLoginSequence() []config.LoginItem {
+	e.configMu.RLock()
+	defer e.configMu.RUnlock()
+	return e.LoginSequence
+}
+
+// SetStrings atomically updates the strings configuration.
+func (e *MenuExecutor) SetStrings(strings config.StringsConfig) {
+	e.configMu.Lock()
+	defer e.configMu.Unlock()
+	e.LoadedStrings = strings
+}
+
+// GetStrings atomically retrieves the strings configuration.
+func (e *MenuExecutor) GetStrings() config.StringsConfig {
+	e.configMu.RLock()
+	defer e.configMu.RUnlock()
+	return e.LoadedStrings
+}
+
+// SetTheme atomically updates the theme configuration.
+func (e *MenuExecutor) SetTheme(theme config.ThemeConfig) {
+	e.configMu.Lock()
+	defer e.configMu.Unlock()
+	e.Theme = theme
+}
+
+// GetTheme atomically retrieves the theme configuration.
+func (e *MenuExecutor) GetTheme() config.ThemeConfig {
+	e.configMu.RLock()
+	defer e.configMu.RUnlock()
+	return e.Theme
+}
+
+// SetServerConfig atomically updates the server configuration.
+func (e *MenuExecutor) SetServerConfig(serverCfg config.ServerConfig) {
+	e.configMu.Lock()
+	defer e.configMu.Unlock()
+	e.ServerCfg = serverCfg
+}
+
+// GetServerConfig atomically retrieves the server configuration.
+func (e *MenuExecutor) GetServerConfig() config.ServerConfig {
+	e.configMu.RLock()
+	defer e.configMu.RUnlock()
+	return e.ServerCfg
 }
 
 // setUserMsgConference updates the user's current message conference based on a conference ID.
@@ -161,7 +235,7 @@ func registerPlaceholderRunnables(registry map[string]RunnableFunc) { // Use loc
 		log.Printf("INFO: Node %d: User %s attempting to run door: %s", nodeNumber, currentUser.Handle, doorName)
 
 		// Look up door configuration
-		doorConfig, exists := e.DoorRegistry[strings.ToUpper(doorName)]
+		doorConfig, exists := e.GetDoorConfig(strings.ToUpper(doorName))
 		if !exists {
 			log.Printf("WARN: Door configuration not found for '%s'", doorName)
 			errMsg := fmt.Sprintf("\r\n|12Error: Door '%s' is not configured.\r\nPress Enter to continue...\r\n", doorName)
@@ -2302,7 +2376,8 @@ func (e *MenuExecutor) RunLoginSequence(s ssh.Session, terminal *term.Terminal, 
 
 // runFullLoginSequence executes the configurable login sequence from login.json.
 func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
-	log.Printf("INFO: Node %d: Running FULL_LOGIN_SEQUENCE for user %s (%d items configured)", nodeNumber, currentUser.Handle, len(e.LoginSequence))
+	loginSequence := e.GetLoginSequence()
+	log.Printf("INFO: Node %d: Running FULL_LOGIN_SEQUENCE for user %s (%d items configured)", nodeNumber, currentUser.Handle, len(loginSequence))
 
 	// Build dispatch map for login item commands
 	type loginHandler func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error)
@@ -2317,7 +2392,7 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		"FASTLOGIN":   runFastLogin,
 	}
 
-	for i, item := range e.LoginSequence {
+	for i, item := range loginSequence {
 		// Check security level requirement
 		if item.SecLevel > 0 && currentUser.AccessLevel < item.SecLevel {
 			log.Printf("DEBUG: Node %d: Skipping login item %d (%s) - user level %d < required %d",
@@ -2325,27 +2400,44 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			continue
 		}
 
-		log.Printf("DEBUG: Node %d: Executing login item %d/%d: %s", nodeNumber, i+1, len(e.LoginSequence), item.Command)
+		log.Printf("DEBUG: Node %d: Executing login item %d/%d: %s", nodeNumber, i+1, len(loginSequence), item.Command)
 
 		// Clear screen if requested
 		if item.ClearScreen {
 			terminalio.WriteProcessedBytes(terminal, []byte("\x1b[2J\x1b[H"), outputMode)
 		}
 
-		// Look up and execute the handler
-		handler, exists := handlers[item.Command]
-		if !exists {
-			log.Printf("WARN: Node %d: Unknown login sequence command: %s", nodeNumber, item.Command)
-			continue
-		}
+		// Check if this is a DOOR: command
+		var nextAction string
+		var err error
+		if strings.HasPrefix(item.Command, "DOOR:") {
+			// Extract door name and execute via DOOR: handler
+			doorName := strings.TrimPrefix(item.Command, "DOOR:")
+			log.Printf("INFO: Node %d: Executing door '%s' from login sequence", nodeNumber, doorName)
 
-		// Pass item.Data as the args parameter for commands that need it
-		itemArgs := args
-		if item.Data != "" {
-			itemArgs = item.Data
-		}
+			// Call the DOOR: handler from RunRegistry
+			if doorFunc, exists := e.RunRegistry["DOOR:"]; exists {
+				_, nextAction, err = doorFunc(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, doorName, outputMode)
+			} else {
+				log.Printf("ERROR: Node %d: DOOR: handler not registered", nodeNumber)
+				continue
+			}
+		} else {
+			// Look up and execute the handler from the local handlers map
+			handler, exists := handlers[item.Command]
+			if !exists {
+				log.Printf("WARN: Node %d: Unknown login sequence command: %s", nodeNumber, item.Command)
+				continue
+			}
 
-		_, nextAction, err := handler(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, itemArgs, outputMode)
+			// Pass item.Data as the args parameter for commands that need it
+			itemArgs := args
+			if item.Data != "" {
+				itemArgs = item.Data
+			}
+
+			_, nextAction, err = handler(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, itemArgs, outputMode)
+		}
 		if err != nil {
 			log.Printf("ERROR: Node %d: Error during login item %s: %v", nodeNumber, item.Command, err)
 			if errors.Is(err, io.EOF) {

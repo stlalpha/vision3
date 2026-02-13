@@ -1309,6 +1309,16 @@ func main() {
 	// Initialize MenuExecutor with new paths, loaded theme, server config, message manager, and connection tracker
 	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence)
 
+	// Initialize configuration file watcher for hot reload
+	var serverConfigMu sync.RWMutex
+	configWatcher, err := NewConfigWatcher(rootConfigPath, menuSetPath, menuExecutor, &serverConfig, &serverConfigMu)
+	if err != nil {
+		log.Printf("WARN: Failed to start config file watcher: %v. Hot reload disabled.", err)
+	} else {
+		defer configWatcher.Stop()
+		log.Printf("INFO: Configuration hot reload enabled for doors.json, login.json, strings.json, theme.json, server.json")
+	}
+
 	if ftnErr == nil && len(ftnConfig.Networks) > 0 {
 		log.Printf("INFO: Internal FTN tosser disabled; use external tosser (e.g., hpt).")
 	}
