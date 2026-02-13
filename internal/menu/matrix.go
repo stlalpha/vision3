@@ -95,6 +95,10 @@ func (e *MenuExecutor) RunMatrixScreen(
 		newIndex := selectedIndex
 		selectionMade := false
 
+		if r < 32 && r != '\r' && r != '\n' && r != 27 {
+			continue
+		}
+
 		switch {
 		case r >= '1' && r <= '9':
 			// Direct selection by number (always enabled)
@@ -113,13 +117,17 @@ func (e *MenuExecutor) RunMatrixScreen(
 			drawMatrixScreen(terminal, ansBackground, options, selectedIndex, outputMode)
 
 		case r == 27: // ESC - check for arrow key sequence
-			escSeq := make([]byte, 2)
-			n, readErr := bufioReader.Read(escSeq)
-			if readErr != nil || n != 2 {
-				continue
+			time.Sleep(20 * time.Millisecond)
+			seq := make([]byte, 0, 8)
+			for bufioReader.Buffered() > 0 && len(seq) < 8 {
+				b, readErr := bufioReader.ReadByte()
+				if readErr != nil {
+					break
+				}
+				seq = append(seq, b)
 			}
-			if escSeq[0] == 91 { // '['
-				switch escSeq[1] {
+			if len(seq) >= 2 && seq[0] == 91 { // '['
+				switch seq[1] {
 				case 65: // Up arrow
 					newIndex = selectedIndex - 1
 					if newIndex < 0 {
@@ -136,13 +144,19 @@ func (e *MenuExecutor) RunMatrixScreen(
 		default:
 			// Check for hotkey match (explicit HotKey field from BAR file)
 			keyStr := strings.ToUpper(string(r))
+			matchedHotkey := false
 			for i, opt := range options {
 				if keyStr == opt.HotKey {
 					selectedIndex = i
 					drawMatrixOptions(terminal, options, selectedIndex, outputMode)
 					selectionMade = true
+					matchedHotkey = true
 					break
 				}
+			}
+			if !matchedHotkey {
+				e.showUndefinedMenuInput(terminal, outputMode, nodeNumber)
+				drawMatrixScreen(terminal, ansBackground, options, selectedIndex, outputMode)
 			}
 		}
 
@@ -221,6 +235,7 @@ func (e *MenuExecutor) processMatrixAction(
 
 	default:
 		log.Printf("WARN: Node %d: Unknown matrix action: %s", nodeNumber, action)
+		e.showUndefinedMenuInput(terminal, outputMode, nodeNumber)
 		return "MATRIX", nil
 	}
 }

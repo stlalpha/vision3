@@ -177,6 +177,15 @@ func (e *MenuExecutor) GetServerConfig() config.ServerConfig {
 	return e.ServerCfg
 }
 
+func (e *MenuExecutor) showUndefinedMenuInput(terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber int) {
+	errMsg := "\r\n|01Unknown command!|07\r\n"
+	processedErrMsg := ansi.ReplacePipeCodes([]byte(errMsg))
+	if wErr := terminalio.WriteProcessedBytes(terminal, processedErrMsg, outputMode); wErr != nil {
+		log.Printf("ERROR: Node %d: Failed writing unknown command message: %v", nodeNumber, wErr)
+	}
+	time.Sleep(500 * time.Millisecond)
+}
+
 // setUserMsgConference updates the user's current message conference based on a conference ID.
 func (e *MenuExecutor) setUserMsgConference(u *user.User, conferenceID int) {
 	u.CurrentMsgConferenceID = conferenceID
@@ -270,6 +279,9 @@ func registerPlaceholderRunnables(registry map[string]RunnableFunc) { // Use loc
 
 // registerAppRunnables registers the actual application command functions.
 func registerAppRunnables(registry map[string]RunnableFunc) { // Use local RunnableFunc
+	registry["PLACEHOLDER"] = runPlaceholderCommand // Canonical handler for undefined/not-yet-implemented options
+	registry["MAINLOGOFF"] = runMainLogoffCommand   // MAIN menu logoff with confirmation + GOODBYE.ANS
+	registry["IMMEDIATELOGOFF"] = runImmediateLogoffCommand
 	registry["SHOWSTATS"] = runShowStats
 	registry["LASTCALLERS"] = runLastCallers
 	registry["AUTHENTICATE"] = runAuthenticate
@@ -303,6 +315,42 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTDOORS"] = runListDoors                             // List available doors
 	registry["OPENDOOR"] = runOpenDoor                               // Prompt and open a door
 	registry["DOORINFO"] = runDoorInfo                               // Show door information
+}
+
+func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	e.showUndefinedMenuInput(terminal, outputMode, nodeNumber)
+	return currentUser, "", nil
+}
+
+func runMainLogoffCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	prompt := e.LoadedStrings.LogOffStr
+	if prompt == "" {
+		prompt = "\r\n|07Log off now? @"
+	}
+
+	confirm, err := e.promptYesNo(s, terminal, prompt, outputMode, nodeNumber)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return currentUser, "", err
+	}
+
+	if !confirm {
+		return currentUser, "", nil
+	}
+
+	return runImmediateLogoffCommand(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode)
+}
+
+func runImmediateLogoffCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	if displayErr := e.displayFile(terminal, "GOODBYE.ANS", outputMode); displayErr != nil {
+		log.Printf("WARN: Node %d: Failed to display GOODBYE.ANS before logoff: %v", nodeNumber, displayErr)
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Goodbye!|07\r\n")), outputMode)
+	}
+
+	time.Sleep(1 * time.Second)
+	return currentUser, "LOGOFF", nil
 }
 
 // runShowStats displays the user statistics screen (YOURSTAT.ANS).
@@ -1260,7 +1308,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 		var userInput string // Declare userInput here (Keep this one)
 		// Removed authenticatedUserResult declaration from here
-		var numericMatchAction string // Move this declaration up here as well
+		// Numeric commands must be explicitly defined in KEYS tokens (no positional matching)
 
 		// Determine ANSI filename using standard convention
 		ansFilename := currentMenuName + ".ANS"
@@ -1691,9 +1739,9 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 					// Process keyboard navigation for lightbar
 					lightbarResult := "" // Use a local variable for the result
 					inputLoop := true
+					bufioReader := bufio.NewReader(s)
 					for inputLoop {
 						// Read keyboard input for lightbar navigation
-						bufioReader := bufio.NewReader(s)
 						r, _, err := bufioReader.ReadRune()
 						if err != nil {
 							if err == io.EOF {
@@ -1704,6 +1752,10 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 							return "", nil, fmt.Errorf("failed reading lightbar input: %w", err)
 						}
 						log.Printf("DEBUG: Lightbar input rune: '%c' (%d)", r, r)
+
+						if r < 32 && r != '\r' && r != '\n' && r != 27 {
+							continue
+						}
 
 						// Map specific keys for navigation and selection
 						switch r {
@@ -1726,16 +1778,19 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 								inputLoop = false
 							}
 						case 27: // ESC key - check for arrow keys in ANSI sequence
-							escSeq := make([]byte, 2)
-							n, err := bufioReader.Read(escSeq)
-							if err != nil || n != 2 {
-								// Just ESC pressed or error reading sequence
-								continue // Ignore
+							time.Sleep(20 * time.Millisecond)
+							seq := make([]byte, 0, 8)
+							for bufioReader.Buffered() > 0 && len(seq) < 8 {
+								b, readErr := bufioReader.ReadByte()
+								if readErr != nil {
+									break
+								}
+								seq = append(seq, b)
 							}
 
 							// Check for arrow keys and handle navigation
-							if escSeq[0] == 91 { // '['
-								switch escSeq[1] {
+							if len(seq) >= 2 && seq[0] == 91 { // '['
+								switch seq[1] {
 								case 65: // Up arrow
 									if selectedIndex > 0 {
 										prevIndex := selectedIndex
@@ -1846,26 +1901,6 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				}
 			}
 
-			// var numericMatchAction string // Declaration moved outside
-			if numInput, err := strconv.Atoi(userInput); err == nil && numInput > 0 {
-				log.Printf("DEBUG: User entered numeric input: %d", numInput)
-				visibleCmdIndex := 0
-				for _, cmdRec := range commands {
-					if cmdRec.GetHidden() {
-						continue // Skip hidden commands
-					}
-					cmdACS := cmdRec.ACS
-					if !checkACS(cmdACS, currentUser, s, terminal, sessionStartTime) { // Use ssh.Session 's'
-						continue // Skip commands user cannot access
-					}
-					visibleCmdIndex++ // Increment for each visible, accessible command
-					if visibleCmdIndex == numInput {
-						numericMatchAction = cmdRec.Command
-						log.Printf("DEBUG: Numeric input %d matched command index %d, action: '%s'", numInput, visibleCmdIndex, numericMatchAction)
-						break // Found numeric match
-					}
-				}
-			}
 			// --- End Special Input Handling ---
 		} // End if isLightbarMenu / else
 
@@ -1873,10 +1908,13 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		matched := false
 		nextAction := "" // Store the action determined by the matched command
 
-		if numericMatchAction != "" { // Check numeric match first (only relevant for standard menus)
-			nextAction = numericMatchAction
+		// Global hangup shortcut: /G
+		if userInput == "/G" {
+			nextAction = "RUN:IMMEDIATELOGOFF"
 			matched = true
-		} else { // Check keyword matches (relevant for both)
+		}
+
+		if !matched { // Check keyword matches (relevant for both)
 			for _, cmdRec := range commands {
 				if cmdRec.GetHidden() {
 					continue // Skip hidden commands
@@ -1944,14 +1982,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				currentMenuName = strings.ToUpper(fallbackMenu)
 				continue
 			}
-			errMsg := "\r\n|01Unknown command!|07\r\n"
-			processedErrMsg := ansi.ReplacePipeCodes([]byte(errMsg))
-			wErr := terminalio.WriteProcessedBytes(terminal, processedErrMsg, outputMode)
-			if wErr != nil {
-				log.Printf("ERROR: Failed writing unknown command message: %v", wErr)
-			}
-			time.Sleep(1 * time.Second) // Brief pause on error
-			continue                    // Redisplay current menu
+			e.showUndefinedMenuInput(terminal, outputMode, nodeNumber)
+			continue // Redisplay current menu
 		}
 	}
 }
@@ -3069,15 +3101,28 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		fastlognMenu = loadedMenu
 	}
 
-	// Respect CLR/CLS from menu definition
-	if fastlognMenu != nil && fastlognMenu.GetClrScrBefore() {
-		_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	}
+	renderFastLoginScreen := func() {
+		if fastlognMenu != nil && fastlognMenu.GetClrScrBefore() {
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+		}
 
-	// Load and display the FASTLOGN ANSI
-	err := e.displayFile(terminal, "FASTLOGN.ANS", outputMode)
-	if err != nil {
-		log.Printf("WARN: Node %d: Failed to display FASTLOGN.ANS: %v", nodeNumber, err)
+		if displayErr := e.displayFile(terminal, "FASTLOGN.ANS", outputMode); displayErr != nil {
+			log.Printf("WARN: Node %d: Failed to display FASTLOGN.ANS: %v", nodeNumber, displayErr)
+		}
+
+		if fastlognMenu != nil && fastlognMenu.GetUsePrompt() {
+			promptParts := make([]string, 0, 2)
+			if strings.TrimSpace(fastlognMenu.Prompt1) != "" {
+				promptParts = append(promptParts, fastlognMenu.Prompt1)
+			}
+			if strings.TrimSpace(fastlognMenu.Prompt2) != "" {
+				promptParts = append(promptParts, fastlognMenu.Prompt2)
+			}
+			if len(promptParts) > 0 {
+				prompt := "\r\n" + strings.Join(promptParts, "\r\n")
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+			}
+		}
 	}
 
 	// Load FASTLOGN commands
@@ -3088,20 +3133,7 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		return currentUser, "", nil
 	}
 
-	// Show menu-defined prompt (no hard-coded fallback)
-	if fastlognMenu != nil && fastlognMenu.GetUsePrompt() {
-		promptParts := make([]string, 0, 2)
-		if strings.TrimSpace(fastlognMenu.Prompt1) != "" {
-			promptParts = append(promptParts, fastlognMenu.Prompt1)
-		}
-		if strings.TrimSpace(fastlognMenu.Prompt2) != "" {
-			promptParts = append(promptParts, fastlognMenu.Prompt2)
-		}
-		if len(promptParts) > 0 {
-			prompt := "\r\n" + strings.Join(promptParts, "\r\n")
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
-		}
-	}
+	renderFastLoginScreen()
 
 	bufioReader := bufio.NewReader(s)
 	for {
@@ -3113,11 +3145,40 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			return currentUser, "", readErr
 		}
 
+		if r == 27 {
+			for bufioReader.Buffered() > 0 {
+				_, _ = bufioReader.ReadByte()
+			}
+			continue
+		}
+
+		if r < 32 || r == 127 {
+			continue
+		}
+
 		keyStr := strings.ToUpper(string(r))
+		if r == '/' {
+			time.Sleep(25 * time.Millisecond)
+			if bufioReader.Buffered() > 0 {
+				nextRune, _, nextErr := bufioReader.ReadRune()
+				if nextErr == nil {
+					keyStr = "/" + strings.ToUpper(string(nextRune))
+				}
+			}
+		}
 
 		// Match against configured commands
 		for _, cmd := range commands {
-			if strings.ToUpper(cmd.Keys) == keyStr {
+			keys := strings.Fields(strings.ToUpper(cmd.Keys))
+			matchedKey := false
+			for _, key := range keys {
+				if key == keyStr {
+					matchedKey = true
+					break
+				}
+			}
+
+			if matchedKey {
 				// Check ACS
 				if cmd.ACS != "" && cmd.ACS != "*" {
 					if !checkACS(cmd.ACS, currentUser, s, terminal, sessionStartTime) {
@@ -3150,6 +3211,9 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		if r == '\r' || r == '\n' {
 			return currentUser, "", nil
 		}
+
+		e.showUndefinedMenuInput(terminal, outputMode, nodeNumber)
+		renderFastLoginScreen()
 	}
 }
 
