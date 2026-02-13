@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ViSiON/3 BBS - A ground-up rewrite of ViSiON/2 in Go. SSH, not dialup. Everything else, the real deal.">
+    <title>ViSiON/3 BBS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Telix dialer splash — first visit only -->
+    <div id="telix-splash" class="telix-splash" role="button" tabindex="0">
+        <div class="telix-screen">
+            <div class="telix-terminal" id="telix-terminal"><span class="telix-prompt">Click to connect...</span><span class="telix-cursor">&#9608;</span></div>
+            <div class="telix-status-bar"></div>
+        </div>
+    </div>
+
+    <div class="crt-frame">
+
+    <!-- BBS Nav -->
+    <nav class="bbs-nav">
+        <div class="container">
+            <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">A</span><span class="nav-bracket">]</span> <a href="#about"><span class="fade-1">A</span><span class="fade-2">b</span><span class="fade-3">o</span><span class="fade-2">u</span><span class="fade-1">t</span></a></span>
+            <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">F</span><span class="nav-bracket">]</span> <a href="#features"><span class="fade-1">F</span><span class="fade-2">e</span><span class="fade-3">atur</span><span class="fade-2">e</span><span class="fade-1">s</span></a></span>
+            <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">G</span><span class="nav-bracket">]</span> <a href="#get-started"><span class="fade-1">G</span><span class="fade-2">e</span><span class="fade-3">t Start</span><span class="fade-2">e</span><span class="fade-1">d</span></a></span>
+            <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">J</span><span class="nav-bracket">]</span> <a href="#get-involved"><span class="fade-1">G</span><span class="fade-2">e</span><span class="fade-3">t Involv</span><span class="fade-2">e</span><span class="fade-1">d</span></a></span>
+            <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">H</span><span class="nav-bracket">]</span> <a href="#history"><span class="fade-1">H</span><span class="fade-2">i</span><span class="fade-3">sto</span><span class="fade-2">r</span><span class="fade-1">y</span></a></span>
+        </div>
+    </nav>
+
+    <!-- Hero -->
+    <header class="hero">
+        <div class="container">
+            <img src="ViSiON3.png" alt="ViSiON/3 BBS" class="hero-logo">
+            <p class="tagline">A modern resurrection of the classic BBS experience</p>
+            <p class="subtitle">SSH connectivity because you have no idea what a modem is.</p>
+            <p class="subtitle">Written in Go because we're not animals.</p>
+        </div>
+    </header>
+
+    <!-- About -->
+    <section class="about" id="about">
+        <div class="container">
+<div class="ansi-header" aria-label="About">
+<span class="row-1">▄▀▀▄  █▀▀▄  ▄▀▀▄  █  █  ▀██▀</span>
+<span class="row-2">█▀▀█  █▀▀▄  █  █  █  █   █</span>
+<span class="row-3">▀  ▀  ▀▀▀   ▀▀▀   ▀▀▀    ▀</span>
+</div>
+            <div class="msg-post">
+                <div class="msg-header">
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">What This Is</span> <span class="msg-right"><span class="msg-number">1</span> <span class="msg-number-of">of</span> <span class="msg-number">4</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Author</span><span class="msg-bracket">]</span>: <span class="msg-value">felonius</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">When</span><span class="msg-bracket">]</span>: <span class="msg-value">02/11/26</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">To</span><span class="msg-bracket">]</span>: <span class="msg-value">All</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">Area</span><span class="msg-bracket">]</span>: <span class="msg-value">General</span></span></span>
+                </div>
+                <div class="msg-body">
+                    <p>This is a ground-up rewrite of ViSiON/2 BBS in Go. You connect over SSH, not dialup -- but everything else is the real deal. Menus, message bases, file areas, door games, ANSI art. We didn't modernize away what makes it a BBS. We're not going to turn it into a web app. We're not adding a REST API. If you want that, there are plenty of other projects that would love to have you.</p>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <section class="features" id="features">
+        <div class="container">
+<div class="ansi-header" aria-label="Features">
+<span class="row-1">█▀▀▀  █▀▀▀  ▄▀▀▄  ▀██▀  █  █  █▀▀▄  █▀▀▀  ▄▀▀▀</span>
+<span class="row-2">█▀    █▀    █▀▀█   █    █  █  █▀▀▄  █▀    ▀▀▄</span>
+<span class="row-3">▀     ▀▀▀▀  ▀  ▀   ▀    ▀▀▀   ▀  ▀  ▀▀▀▀  ▀▀▀</span>
+</div>
+            <div class="bbs-menu">
+                <div class="bbs-menu-item">
+                    <div class="menu-header"><span class="menu-bracket">[</span><span class="menu-key">S</span><span class="menu-bracket">]</span> <span class="menu-title"><span class="fade-1">S</span><span class="fade-2">S</span><span class="fade-3">H, Not Dialup</span></span></div>
+                    <p class="menu-desc">Connect over SSH. Any terminal. Any client. Its not 1993 -- we don't need to tie up your mom's phone line, but this ain't point and click.</p>
+                </div>
+                <div class="bbs-menu-item">
+                    <div class="menu-header"><span class="menu-bracket">[</span><span class="menu-key">M</span><span class="menu-bracket">]</span> <span class="menu-title"><span class="fade-1">M</span><span class="fade-2">e</span><span class="fade-3">ssages &amp; File Areas</span></span></div>
+                    <p class="menu-desc">Compose, read and newscan messages. But lets be honest, most of you just browsed the file areas. This was the core of what made a BBS a BBS.</p>
+                </div>
+                <div class="bbs-menu-item">
+                    <div class="menu-header"><span class="menu-bracket">[</span><span class="menu-key">D</span><span class="menu-bracket">]</span> <span class="menu-title"><span class="fade-1">D</span><span class="fade-2">o</span><span class="fade-3">or Games</span></span></div>
+                    <p class="menu-desc">Run external programs with dropfile generation. TradeWars, L.O.R.D, FoodFight? They were terrible but alot of people loved them - now you can too.</p>
+                </div>
+                <div class="bbs-menu-item">
+                    <div class="menu-header"><span class="menu-bracket">[</span><span class="menu-key">A</span><span class="menu-bracket">]</span> <span class="menu-title"><span class="fade-1">A</span><span class="fade-2">N</span><span class="fade-3">SI Art</span></span></div>
+                    <p class="menu-desc">Never have so few done so much with so little. And damn it was pretty! CP437 and UTF-8 support. If you don't know what TheDraw is, you don't care about this either.</p>
+                </div>
+                <div class="bbs-menu-item">
+                    <div class="menu-header"><span class="menu-bracket">[</span><span class="menu-key">C</span><span class="menu-bracket">]</span> <span class="menu-title"><span class="fade-1">M</span><span class="fade-2">e</span><span class="fade-3">nus &amp; ACS</span></span></div>
+                    <p class="menu-desc">.MNU, .CFG, .ANS files -- the whole setup. Fully scriptable, completely configurable. Your board, your rules, your access levels.</p>
+                </div>
+                <div class="bbs-menu-item">
+                    <div class="menu-header"><span class="menu-bracket">[</span><span class="menu-key">O</span><span class="menu-bracket">]</span> <span class="menu-title"><span class="fade-1">O</span><span class="fade-2">n</span><span class="fade-3">e-Liners &amp; Last Callers</span></span></div>
+                    <p class="menu-desc">The one-liner wall. Last callers list. Who's online. The stuff that made you feel like you weren't the only weirdo calling this thing at 2am.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Get Started -->
+    <section class="get-started" id="get-started">
+        <div class="container">
+<div class="ansi-header" aria-label="Get Started">
+<span class="row-1">▄▀▀▀  █▀▀▀  ▀██▀   ▄▀▀▀  ▀██▀  ▄▀▀▄  █▀▀▄  ▀██▀  █▀▀▀  █▀▀▄</span>
+<span class="row-2">█ ▀█  █▀     █     ▀▀▄    █    █▀▀█  █▀▀▄   █    █▀    █  █</span>
+<span class="row-3">▀▀▀   ▀▀▀▀   ▀     ▀▀▀    ▀    ▀  ▀  ▀  ▀   ▀    ▀▀▀▀  ▀▀▀</span>
+</div>
+            <div class="msg-post">
+                <div class="msg-header">
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">Running Your Own</span> <span class="msg-right"><span class="msg-number">2</span> <span class="msg-number-of">of</span> <span class="msg-number">4</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Author</span><span class="msg-bracket">]</span>: <span class="msg-value">felonius</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">When</span><span class="msg-bracket">]</span>: <span class="msg-value">02/11/26</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">To</span><span class="msg-bracket">]</span>: <span class="msg-value">All</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">Area</span><span class="msg-bracket">]</span>: <span class="msg-value">General</span></span></span>
+                </div>
+                <div class="msg-body">
+                    <p>Hey y'all - if you want to install the current vision3 bbs code on your own machine - execute these commands in a terminal:</p>
+                    <p>&nbsp;</p>
+                    <p>git clone https://github.com/stlalpha/vision3.git</p>
+                    <p>cd vision3</p>
+                    <p>./setup.sh</p>
+                    <p>cd cmd/vision3 && ./vision3</p>
+                    <p>&nbsp;</p>
+                    <p>Connect from another terminal:</p>
+                    <p>ssh felonius@localhost -p 2222</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Get Involved -->
+    <section class="get-involved" id="get-involved">
+        <div class="container">
+<div class="ansi-header" aria-label="Get Involved">
+<span class="row-1">▄▀▀▀  █▀▀▀  ▀██▀   ▀█▀  █▄ █  █  █  ▄▀▀▄  █    █  █  █▀▀▀  █▀▀▄</span>
+<span class="row-2">█ ▀█  █▀     █      █   █ ▀█  ▀▄▄▀  █  █  █    ▀▄▄▀  █▀    █  █</span>
+<span class="row-3">▀▀▀   ▀▀▀▀   ▀     ▀▀▀  ▀  ▀   ▀▀   ▀▀▀   ▀▀▀   ▀▀   ▀▀▀▀  ▀▀▀</span>
+</div>
+            <div class="msg-post">
+                <div class="msg-header">
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">We Need You</span> <span class="msg-right"><span class="msg-number">3</span> <span class="msg-number-of">of</span> <span class="msg-number">4</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Author</span><span class="msg-bracket">]</span>: <span class="msg-value">felonius</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">When</span><span class="msg-bracket">]</span>: <span class="msg-value">02/11/26</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">To</span><span class="msg-bracket">]</span>: <span class="msg-value">All</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">Area</span><span class="msg-bracket">]</span>: <span class="msg-value">General</span></span></span>
+                </div>
+                <div class="msg-body">
+                    <p>Do you write Go? Do you have fond memories of waiting 3 minutes for a single GIF to download at 14.4k? Are you looking for a project that will impress exactly nobody at your day job but might make a dozen middle-aged nerds unreasonably happy? Boy, do we have the unpaid volunteer opportunity for you!</p>
+                    <p>If you aren't old enough to have experienced it first-hand, have you read a weird text file or listened to some wild-eyed GenX nutjob ramble on about how much we enjoyed it and decided "I need me some of that?"</p>
+                    <p>Your reward? The satisfaction of knowing that somewhere, someone is reliving their misspent youth thanks to your code. Also, we'll put your handle in the credits. Not your real name though - this is a BBS, we have standards.</p>
+                    <div class="cta-buttons">
+                        <a href="https://discord.gg/VkjRN2Ms" class="btn btn-primary">Join the Discord</a>
+                        <a href="https://github.com/stlalpha/vision3" class="btn btn-secondary">View on GitHub</a>
+                        <a href="mailto:spaceman@vision3bbs.com" class="btn btn-secondary">Questions? Email Us</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- History -->
+    <section class="history" id="history">
+        <div class="container">
+<div class="ansi-header" aria-label="History">
+<span class="row-1">█  █  ▀█▀  ▄▀▀▀  ▀██▀  ▄▀▀▄  █▀▀▄  █  █</span>
+<span class="row-2">█▀▀█   █   ▀▀▄    █    █  █  █▀▀▄  ▀▄▄▀</span>
+<span class="row-3">▀  ▀  ▀▀▀  ▀▀▀    ▀    ▀▀▀   ▀  ▀   ▀▀</span>
+</div>
+            <div class="msg-post">
+                <div class="msg-header">
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">Where It Came From</span> <span class="msg-right"><span class="msg-number">4</span> <span class="msg-number-of">of</span> <span class="msg-number">4</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Author</span><span class="msg-bracket">]</span>: <span class="msg-value">felonius</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">When</span><span class="msg-bracket">]</span>: <span class="msg-value">02/11/26</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">To</span><span class="msg-bracket">]</span>: <span class="msg-value">All</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">Area</span><span class="msg-bracket">]</span>: <span class="msg-value">General</span></span></span>
+                </div>
+                <div class="msg-body">
+                    <p>ViSiON/2 appears to be derived from the ViSiON code, and was written by Crimson Blade circa 1991-1993.</p>
+                    <p class="lineage">FORUM &rarr; LSD &rarr; ViSiON &rarr; ViSiON/2 &rarr; <strong>ViSiON/3</strong></p>
+                    <p>ViSiON/2 was beautiful out of the box, insanely configurable and ultimately grew to include the ability to completely emulate any other BBS you could think of via its completely user scriptable workflow and display setup.</p>
+                    <p>ViSiON/2 was my absolute favorite of all the hundreds of bbs programs I played with, and was the only one what I ever worked on.</p>
+                    <p>I got to know Crimson Blade at some point in 91 or 92. I ended up being a ViSiON/2 sysop and provided a ton of feedback - solicited and unsolicited - to Crim and the other guys that pitched in.</p>
+                    <p>We were kids, working together on a software project, servicing users all over the country, in a mostly pre-internet world.</p>
+                    <p>We were friends, we spent an enormous amount of time on the phone and on party lines when someone had one, hanging out talking and working on V2.</p>
+                    <p>It was amazing.</p>
+                    <p>ViSiON/3 is built in tribute to that software and those friendships.</p>
+                    <div class="screenshot-gallery">
+                        <div>
+                            <img src="images/welcome.png" alt="ViSiON/2 Welcome Screen">
+                            <p class="screenshot-caption">Welcome screen</p>
+                        </div>
+                        <div>
+                            <img src="images/credits.png" alt="ViSiON/2 Credits">
+                            <p class="screenshot-caption">Credits</p>
+                        </div>
+                    </div>
+                    <div class="history-links">
+                        <a href="https://github.com/stlalpha/vision-2-bbs"><span class="cfade-1">S</span><span class="cfade-2">e</span><span class="cfade-3">e</span><span class="cfade-4"> the original sou</span><span class="cfade-3">r</span><span class="cfade-2">c</span><span class="cfade-1">e &rarr;</span></a>
+                        <a href="https://www.youtube.com/watch?v=Dddbe9OuJLU&list=PL7nj3G6Jpv2G6Gp6NvN1kUtQuW8QshBWE"><span class="cfade-1">W</span><span class="cfade-2">a</span><span class="cfade-3">t</span><span class="cfade-4">ch the BBS Document</span><span class="cfade-3">a</span><span class="cfade-2">r</span><span class="cfade-1">y &rarr;</span></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="site-footer">
+        <div class="container">
+            <p><span class="fade-1">V</span><span class="fade-2">i</span><span class="fade-3">SiON/3 &mdash; Built with love by people smart enough to know better and old enough to care any</span><span class="fade-3">w</span><span class="fade-2">a</span><span class="fade-1">y</span></p>
+            <div class="footer-links">
+                <a href="https://github.com/stlalpha/vision3">GitHub</a>
+                <a href="https://discord.gg/VkjRN2Ms">Discord</a>
+                <a href="mailto:spaceman@vision3bbs.com">Contact</a>
+            </div>
+        </div>
+    </footer>
+    </div><!-- .crt-frame -->
+
+    <!-- CRT overlays — after content so they always paint on top -->
+    <div class="crt-vignette" aria-hidden="true"></div>
+    <div class="crt-vhs" aria-hidden="true"></div>
+    <div class="phosphor-flicker" aria-hidden="true"></div>
+    <div class="scanlines"></div>
+
+    <script src="main.js"></script>
+</body>
+</html>

@@ -179,7 +179,7 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 ## Documentation
 
-- [x] Update project documentation (`README.md`, `docs/`) to reflect current features and architecture.
+- [x] Update project documentation (`README.md`, `documentation/`) to reflect current features and architecture.
 - [ ] Add API documentation for extension developers.
 - [ ] Create user manual for BBS operators.
 
