@@ -39,12 +39,10 @@ go.work.sum
 /vision3
 /cmd/vision3/vision3
 /cmd/ansitest/ansitest
-/cmd/strings-decoder/strings-decoder
 /jamutil
 /helper
 tmp/
 /tmp/*
-data/oneliners.json
 
 # Config files (contain site-specific settings, FTN addresses, passwords)
 # Actual config files are ignored, but templates/ directory is tracked
