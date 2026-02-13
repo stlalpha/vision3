@@ -54,7 +54,15 @@ func (ww *WordWrapper) CheckAndWrap(lineNum, col int) (int, int) {
 			combined := rightPart + " " + existingNext
 			ww.buffer.SetLine(nextLine, combined)
 			// Recursively check if the next line also needs wrapping
-			return ww.CheckAndWrap(nextLine, 1)
+			if col > wrapPos {
+				nextCol := col - wrapPos
+				if nextCol < 1 {
+					nextCol = 1
+				}
+				return ww.CheckAndWrap(nextLine, nextCol)
+			}
+			_, _ = ww.CheckAndWrap(nextLine, 1)
+			return lineNum, col
 		} else {
 			ww.buffer.SetLine(nextLine, rightPart)
 		}
@@ -88,13 +96,6 @@ func (ww *WordWrapper) findWrapPosition(line string) int {
 	// Find the last space at or before position MaxLineLength
 	for i := MaxLineLength; i > 0; i-- {
 		if i < len(line) && line[i] == ' ' {
-			return i
-		}
-	}
-
-	// If no space found, look for first space after MaxLineLength
-	for i := MaxLineLength; i < len(line); i++ {
-		if line[i] == ' ' {
 			return i
 		}
 	}

@@ -71,11 +71,20 @@ func (cw *ConfigWatcher) Stop() {
 	cw.mu.Lock()
 	defer cw.mu.Unlock()
 
-	if cw.watcher != nil {
-		close(cw.watcherDone)
-		cw.watcher.Close()
-		log.Printf("INFO: Configuration file watcher stopped")
+	if cw.watcher == nil {
+		return
 	}
+
+	select {
+	case <-cw.watcherDone:
+		// already closed
+	default:
+		close(cw.watcherDone)
+	}
+
+	cw.watcher.Close()
+	cw.watcher = nil
+	log.Printf("INFO: Configuration file watcher stopped")
 }
 
 // watchLoop handles file system events for configuration files.
@@ -208,11 +217,11 @@ func (cw *ConfigWatcher) reloadTheme() {
 
 // reloadServerConfig reloads the server configuration.
 func (cw *ConfigWatcher) reloadServerConfig() {
-	log.Printf("INFO: Reloading server.json...")
+	log.Printf("INFO: Reloading config.json...")
 
 	newServerConfig, err := config.LoadServerConfig(cw.rootConfigPath)
 	if err != nil {
-		log.Printf("ERROR: Failed to reload server.json: %v", err)
+		log.Printf("ERROR: Failed to reload config.json: %v", err)
 		return
 	}
 
@@ -229,6 +238,6 @@ func (cw *ConfigWatcher) reloadServerConfig() {
 	// Also update MenuExecutor's ServerCfg
 	cw.menuExecutor.SetServerConfig(newServerConfig)
 
-	log.Printf("INFO: server.json reloaded successfully")
-	log.Printf("WARN: Some server.json changes (ports, keys, IP limits) require a full restart")
+	log.Printf("INFO: config.json reloaded successfully")
+	log.Printf("WARN: Some config.json changes (ports, keys, IP limits) require a full restart")
 }

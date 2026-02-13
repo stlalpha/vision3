@@ -22,10 +22,10 @@ type BBSSessionAdapter struct {
 
 // BBSSessionContext implements context.Context and ssh.Context
 type BBSSessionContext struct {
-	ctx      context.Context
-	session  *Session
-	mu       sync.Mutex
-	values   map[interface{}]interface{}
+	ctx     context.Context
+	session *Session
+	mu      sync.Mutex
+	values  map[interface{}]interface{}
 }
 
 func (c *BBSSessionContext) Value(key interface{}) interface{} {
@@ -47,6 +47,14 @@ func (c *BBSSessionContext) Done() <-chan struct{} {
 
 func (c *BBSSessionContext) Err() error {
 	return c.ctx.Err()
+}
+
+func (c *BBSSessionContext) Lock() {
+	c.mu.Lock()
+}
+
+func (c *BBSSessionContext) Unlock() {
+	c.mu.Unlock()
 }
 
 func (c *BBSSessionContext) User() string {
@@ -168,7 +176,7 @@ func (a *BBSSessionAdapter) PublicKey() ssh.PublicKey {
 	return nil
 }
 
-func (a *BBSSessionAdapter) Context() context.Context {
+func (a *BBSSessionAdapter) Context() ssh.Context {
 	return a.ctx
 }
 

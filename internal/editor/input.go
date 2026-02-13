@@ -3,6 +3,7 @@ package editor
 import (
 	"bufio"
 	"io"
+	"net"
 	"time"
 )
 
@@ -54,16 +55,44 @@ const (
 
 // InputHandler handles keyboard input and escape sequence parsing
 type InputHandler struct {
-	reader *bufio.Reader
-	debug  bool
+	reader         *bufio.Reader
+	readDeadlineIO interface{ SetReadDeadline(time.Time) error }
+	debug          bool
 }
 
 // NewInputHandler creates a new input handler
 func NewInputHandler(input io.Reader) *InputHandler {
-	return &InputHandler{
-		reader: bufio.NewReader(input),
-		debug:  false,
+	var deadlineIO interface{ SetReadDeadline(time.Time) error }
+	if conn, ok := input.(interface{ SetReadDeadline(time.Time) error }); ok {
+		deadlineIO = conn
 	}
+
+	return &InputHandler{
+		reader:         bufio.NewReader(input),
+		readDeadlineIO: deadlineIO,
+		debug:          false,
+	}
+}
+
+func (ih *InputHandler) readByteWithTimeout(timeout time.Duration) (byte, error) {
+	if ih.readDeadlineIO != nil {
+		if err := ih.readDeadlineIO.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+			return 0, err
+		}
+		defer ih.readDeadlineIO.SetReadDeadline(time.Time{})
+	}
+
+	return ih.reader.ReadByte()
+}
+
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if netErr, ok := err.(net.Error); ok {
+		return netErr.Timeout()
+	}
+	return false
 }
 
 // ReadKey reads a single key, handling escape sequences
@@ -115,21 +144,15 @@ func (ih *InputHandler) parseCSISequence() (int, error) {
 	}
 
 	// Read sequence bytes. CSI sequences arrive in a burst from the terminal,
-	// so check for buffered data rather than blocking on ReadByte indefinitely.
+	// so use a short inter-byte timeout where possible.
 	sequence := make([]byte, 0, 10)
-	deadline := time.Now().Add(100 * time.Millisecond)
 
 	for {
-		// If nothing is buffered, wait briefly for more data to arrive
-		if ih.reader.Buffered() == 0 {
-			time.Sleep(5 * time.Millisecond)
-			if ih.reader.Buffered() == 0 || time.Now().After(deadline) {
-				break // No more data arriving, sequence is complete or timed out
-			}
-		}
-
-		b, err := ih.reader.ReadByte()
+		b, err := ih.readByteWithTimeout(100 * time.Millisecond)
 		if err != nil {
+			if isTimeoutError(err) {
+				break
+			}
 			break
 		}
 
