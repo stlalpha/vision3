@@ -47,6 +47,13 @@ This file contains all the customizable text strings displayed by the BBS. You c
 - `defPrompt` - Default menu prompt
 - `continueStr` - More prompt for paginated displays
 
+**One-Liner Strings:**
+
+- `askOneLiner` - Prompt asking whether to post a one-liner
+- `oneLinerAnonymousPrompt` - Prompt asking whether to post anonymously
+- `enterOneLiner` - Prompt for one-liner text entry
+- `anonymousName` - Display label used when `anonymous=true` (for example, "Anonymous Coward")
+
 **New User Strings:**
 
 - `newUserNameStr` - New user alias prompt
@@ -526,24 +533,32 @@ Located in the `data/` directory. Stores user-submitted one-liner messages displ
 
 ```json
 [
-  "|12THiNK ELiTE|08.. |15DiAL FAST|08.. |09HANG UP LAST|08! |07-|15acidburn",
-  "|10RaZoR 1911|08, |11TRiSTAR|08, |14FAiRLiGHT |07- |15THE LEGENDS LiVE ON|08!",
-  "|09Got |150-day warez|09? |07Trade ratio |151:3 |07or |14GET OUT|08! |07-|13k-rad",
-  "|08[|15SYSOP|08] |12iF YOU AiN'T |10ELiTE|12, YOU AiN'T |14NOTHiNG|08!",
-  "|11Just grabbed |15DOOM II |11off a |14Euro courier|11 - |100-hour! |07-|15cyber",
-  "|13No |09LAMERS|13, No |10AOLers|13, No |12NARCs |07- |15REAL SCENE ONLY",
-  "|15New |10THG|15 release in |14File Area #3 |07- |09GET iT FAST! |07-|11phoenix",
-  "|08Running |14USR Courier v.Everything |08@ |1528.8k |07- |12BLAZING SPEEDS!",
-  "|12ViSiON/2 |07was |15THE BEST|07.. |10ViSiON/3 |07will |14RULE THEM ALL|08!",
-  "|09Shouts to |15INC|09, |10HYBRID|09, |11PWA |09& |14RiSC |07- |13You know who you are!"
+  {
+    "text": "first post from a hidden handle",
+    "anonymous": true,
+    "posted_by_username": "guest42",
+    "posted_by_handle": "AcidBurn",
+    "posted_at": "2026-02-13T17:30:00Z"
+  },
+  {
+    "text": "long live the scene",
+    "posted_by_username": "zerocool",
+    "posted_by_handle": "ZeroCool",
+    "posted_at": "2026-02-13T17:32:10Z"
+  }
 ]
 ```
 
-The file is a simple JSON array of strings. Each one-liner can include:
+The file is a JSON array of one-liner objects. Each one-liner includes:
 
-- User messages
-- Pipe color codes (|00-|15)
-- Any text up to the configured line length
+- `text` (displayed one-liner text, max 51 visible chars; pipe color codes are supported)
+- `anonymous` (if true, on-screen display is anonymous)
+- `posted_by_username` / `posted_by_handle` (actual poster identity for sysop traceability)
+- `posted_at` (UTC RFC3339 timestamp)
+
+Displayed name is derived automatically: `anonymousName` (from `strings.json`) when `anonymous=true`, otherwise `posted_by_handle` (fallback `posted_by_username`).
+
+Legacy string-array entries are still read for backward compatibility and are normalized on write.
 
 The system dynamically loads this file when displaying oneliners and saves new entries when users add them.
 

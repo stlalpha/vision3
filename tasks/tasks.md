@@ -4,6 +4,17 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 ## Recent Completions
 
+*   **[DONE] Retrograde-Style One Liners (2026-02-13):**
+    *   **Goal:** Replace legacy one-liner flow with Retrograde-style template UX while preserving anonymous posting and sysop traceability.
+    *   **Implementation:**
+        *   Reworked `RUN:ONELINER` to use `ONELINER.TOP/MID/BOT` template flow.
+        *   Added JSON object model in `data/oneliners.json` with backward compatibility for legacy string entries.
+        *   Added anonymous posting prompt and persisted poster identity fields (`posted_by_username`, `posted_by_handle`) for sysop visibility.
+        *   Added configurable anonymous display label via `strings.json` key `anonymousName` (example: "Anonymous Coward").
+        *   Fixed one-liner pipe code behavior and added support for `|CR` / `|DE` translation.
+    *   **Files:** `internal/menu/executor.go`, `internal/ansi/ansi.go`, `internal/config/config.go`, `menus/v3/templates/ONELINER.*`, `configs/strings.json`, `templates/configs/strings.json`, `documentation/configuration.md`, `documentation/login-sequence.md`
+    *   **Status:** COMPLETE. Feature is bd-tracked (`vision3-4ji`) and closed.
+
 *   **[DONE] Configuration Hot Reload (2026-02-13):**
     *   **Goal:** Enable automatic reload of configuration files without requiring server restart
     *   **Implementation:**

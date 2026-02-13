@@ -1050,7 +1050,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		// Ask "Pick this header?"
 		pickPrompt := "|08P|07i|15ck |08t|07h|15is |08h|07e|15ader? "
-		pickYes, pickErr := e.promptYesNoLightbar(s, terminal, pickPrompt, outputMode, nodeNumber)
+		pickYes, pickErr := e.promptYesNo(s, terminal, pickPrompt, outputMode, nodeNumber)
 		if pickErr != nil {
 			if errors.Is(pickErr, io.EOF) {
 				return nil, "LOGOFF", io.EOF

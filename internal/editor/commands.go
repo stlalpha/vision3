@@ -13,22 +13,22 @@ import (
 type CommandType int
 
 const (
-	CommandNone CommandType = iota
-	CommandSave             // /S - Save and exit
-	CommandAbort            // /A - Abort editing
-	CommandQuote            // /Q - Quote previous message
-	CommandHelp             // /H or /? - Show help
-	CommandView             // /V - View message (not implemented in this version)
+	CommandNone  CommandType = iota
+	CommandSave              // /S - Save and exit
+	CommandAbort             // /A - Abort editing
+	CommandQuote             // /Q - Quote previous message
+	CommandHelp              // /H or /? - Show help
+	CommandView              // /V - View message (not implemented in this version)
 )
 
 // QuoteData holds message metadata for quoting
 type QuoteData struct {
-	From    string   // Message author
-	Title   string   // Message subject/title
-	Date    string   // Message date
-	Time    string   // Message time
-	IsAnon  bool     // Anonymous flag
-	Lines   []string // Message content lines
+	From   string   // Message author
+	Title  string   // Message subject/title
+	Date   string   // Message date
+	Time   string   // Message time
+	IsAnon bool     // Anonymous flag
+	Lines  []string // Message content lines
 }
 
 // CommandHandler handles special slash commands
@@ -39,16 +39,37 @@ type CommandHandler struct {
 	menuSetPath string     // Path to menu files
 	yesNoHi     string     // ANSI sequence for highlighted Yes/No
 	yesNoLo     string     // ANSI sequence for regular Yes/No
+	yesText     string     // Configurable Yes label
+	noText      string     // Configurable No label
+	abortText   string     // Configurable abort confirmation prompt
 }
 
 // NewCommandHandler creates a new command handler
-func NewCommandHandler(screen *Screen, buffer *MessageBuffer, menuSetPath, yesNoHi, yesNoLo string) *CommandHandler {
+func NewCommandHandler(screen *Screen, buffer *MessageBuffer, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText string) *CommandHandler {
+	yesText = strings.TrimSpace(yesText)
+	if yesText == "" {
+		yesText = "Yes"
+	}
+
+	noText = strings.TrimSpace(noText)
+	if noText == "" {
+		noText = "No"
+	}
+
+	abortText = strings.TrimSpace(abortText)
+	if abortText == "" {
+		abortText = "|14Abort message?"
+	}
+
 	return &CommandHandler{
 		screen:      screen,
 		buffer:      buffer,
 		menuSetPath: menuSetPath,
 		yesNoHi:     yesNoHi,
 		yesNoLo:     yesNoLo,
+		yesText:     yesText,
+		noText:      noText,
+		abortText:   abortText,
 	}
 }
 
@@ -140,10 +161,16 @@ func (ch *CommandHandler) HandleSave() bool {
 // HandleAbort handles the /A (abort) command
 // Returns true to signal abort and exit
 func (ch *CommandHandler) HandleAbort(inputHandler *InputHandler) bool {
+	// Display one blank row, then the confirmation prompt.
+	if ch.screen.statusLineY > 1 {
+		ch.screen.GoXY(1, ch.screen.statusLineY-1)
+		ch.screen.ClearEOL()
+	}
+
 	// Display confirmation prompt
 	ch.screen.GoXY(1, ch.screen.statusLineY)
 	ch.screen.ClearEOL()
-	ch.screen.WriteDirectProcessed("|14Abort message?")
+	ch.screen.WriteDirectProcessed(ch.abortText)
 
 	// Save cursor position, hide cursor, then render inline lightbar.
 	ch.screen.WriteDirect("\x1b[s")
@@ -160,7 +187,7 @@ func (ch *CommandHandler) HandleAbort(inputHandler *InputHandler) bool {
 		} else {
 			noColor = ch.yesNoHi
 		}
-		ch.screen.WriteDirect(" " + yesColor + "Yes" + "\x1b[0m" + " " + noColor + "No!" + "\x1b[0m")
+		ch.screen.WriteDirect(" " + yesColor + ch.yesText + " " + "\x1b[0m" + " " + noColor + ch.noText + " " + "\x1b[0m")
 	}
 
 	drawInline(selectedIndex)

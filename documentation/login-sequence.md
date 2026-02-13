@@ -40,13 +40,13 @@ The file is a JSON array of login items. Items are executed in order from top to
 
 ### Configuration Fields
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| **command** | string | Yes | — | The login command to execute (see Built-in Commands below) |
-| **data** | string | No | — | Command-specific data (filename, script path, etc.) |
-| **clear_screen** | boolean | No | `false` | Clear the screen before executing this item |
-| **pause_after** | boolean | No | `false` | Show a "Press [ENTER] to continue" prompt after this item |
-| **sec_level** | integer | No | `0` | Minimum security level required to see this item (0 = everyone) |
+| Field            | Type    | Required | Default | Description                                                     |
+| ---------------- | ------- | -------- | ------- | --------------------------------------------------------------- |
+| **command**      | string  | Yes      | —       | The login command to execute (see Built-in Commands below)      |
+| **data**         | string  | No       | —       | Command-specific data (filename, script path, etc.)             |
+| **clear_screen** | boolean | No       | `false` | Clear the screen before executing this item                     |
+| **pause_after**  | boolean | No       | `false` | Show a "Press [ENTER] to continue" prompt after this item       |
+| **sec_level**    | integer | No       | `0`     | Minimum security level required to see this item (0 = everyone) |
 
 ## Built-in Commands
 
@@ -60,7 +60,7 @@ Displays the last callers list using templates from `menus/v3/templates/` (`LAST
 
 ### ONELINERS
 
-Displays recent oneliners and prompts the user to add a new one. Uses templates from `menus/v3/templates/` (`ONELINER.TOP`, `ONELINER.MID`, `ONELINER.BOT`). Data is stored in `data/oneliners.json`.
+Displays recent oneliners and prompts the user to add a new one. Uses templates from `menus/v3/templates/` (`ONELINER.TOP`, `ONELINER.MID`, `ONELINER.BOT`) with Retrograde-style layout/colors. Data is stored in `data/oneliners.json` as object entries. Anonymous posts display using `strings.json` → `anonymousName` (for example, "Anonymous Coward") while preserving poster identity fields in JSON for sysop visibility.
 
 ```json
 {"command": "ONELINERS"}
@@ -241,24 +241,24 @@ The login sequence is loaded at BBS startup from `configs/login.json` and stored
 
 All login sequence commands are also registered as menu runnables and can be used from any menu via `RUN:` commands:
 
-| Command | Menu Usage |
-|---------|-----------|
-| LASTCALLS | `RUN:LASTCALLERS` (existing) |
-| ONELINERS | `RUN:ONELINER` (existing) |
-| USERSTATS | `RUN:SHOWSTATS` (existing) |
-| NMAILSCAN | `RUN:NMAILSCAN` |
+| Command     | Menu Usage                   |
+| ----------- | ---------------------------- |
+| LASTCALLS   | `RUN:LASTCALLERS` (existing) |
+| ONELINERS   | `RUN:ONELINER` (existing)    |
+| USERSTATS   | `RUN:SHOWSTATS` (existing)   |
+| NMAILSCAN   | `RUN:NMAILSCAN`              |
 | DISPLAYFILE | `RUN:DISPLAYFILE <filename>` |
-| RUNDOOR | `RUN:RUNDOOR <script_path>` |
-| FASTLOGIN | `RUN:FASTLOGIN` |
+| RUNDOOR     | `RUN:RUNDOOR <script_path>`  |
+| FASTLOGIN   | `RUN:FASTLOGIN`              |
 
 ## File Locations
 
-| File | Purpose |
-|------|---------|
-| `configs/login.json` | Active login sequence configuration |
-| `templates/configs/login.json` | Default template for new installations |
-| `menus/v3/ansi/FASTLOGN.ANS` | Fast login menu ANSI art |
-| `menus/v3/cfg/FASTLOGN.CFG` | Fast login menu command definitions |
-| `menus/v3/ansi/YOURSTAT.ANS` | User statistics ANSI art |
-| `menus/v3/templates/LASTCALL.*` | Last callers display templates |
-| `menus/v3/templates/ONELINER.*` | Oneliners display templates |
+| File                            | Purpose                                |
+| ------------------------------- | -------------------------------------- |
+| `configs/login.json`            | Active login sequence configuration    |
+| `templates/configs/login.json`  | Default template for new installations |
+| `menus/v3/ansi/FASTLOGN.ANS`    | Fast login menu ANSI art               |
+| `menus/v3/cfg/FASTLOGN.CFG`     | Fast login menu command definitions    |
+| `menus/v3/ansi/YOURSTAT.ANS`    | User statistics ANSI art               |
+| `menus/v3/templates/LASTCALL.*` | Last callers display templates         |
+| `menus/v3/templates/ONELINER.*` | Oneliners display templates            |
