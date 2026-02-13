@@ -46,6 +46,14 @@ func (c *TelnetSessionContext) Err() error {
 	return c.ctx.Err()
 }
 
+func (c *TelnetSessionContext) Lock() {
+	c.mu.Lock()
+}
+
+func (c *TelnetSessionContext) Unlock() {
+	c.mu.Unlock()
+}
+
 func (c *TelnetSessionContext) User() string {
 	return "" // Telnet has no username - forces manual login
 }
@@ -210,7 +218,7 @@ func (a *TelnetSessionAdapter) PublicKey() ssh.PublicKey {
 }
 
 // Context returns the session context.
-func (a *TelnetSessionAdapter) Context() context.Context {
+func (a *TelnetSessionAdapter) Context() ssh.Context {
 	return a.ctx
 }
 

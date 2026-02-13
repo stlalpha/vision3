@@ -2,7 +2,6 @@ package editor
 
 import (
 	"io"
-	"strings"
 
 	"github.com/gliderlabs/ssh"
 	"github.com/robbiew/vision3/internal/ansi"
@@ -264,10 +263,11 @@ func (e *FSEditor) insertCharacter(ch rune) {
 // handleReturn processes the Enter key
 func (e *FSEditor) handleReturn() {
 	// Split line at cursor position
-	e.buffer.SplitLine(e.currentLine, e.currentCol)
-	e.currentLine++
-	e.currentCol = 1
-	e.modified = true
+	if e.buffer.SplitLine(e.currentLine, e.currentCol) {
+		e.currentLine++
+		e.currentCol = 1
+		e.modified = true
+	}
 }
 
 // handleBackspace processes the Backspace key
@@ -310,7 +310,7 @@ func (e *FSEditor) moveCursorUp() {
 // moveCursorDown moves cursor down one line
 func (e *FSEditor) moveCursorDown() {
 	lineCount := e.buffer.GetLineCount()
-	if e.currentLine < lineCount || e.currentLine < MaxLines {
+	if e.currentLine < lineCount {
 		e.currentLine++
 		// Adjust column if line is shorter
 		lineLen := e.buffer.GetLineLength(e.currentLine)
@@ -489,16 +489,4 @@ func (e *FSEditor) HandleResize(newWidth, newHeight int) {
 // GetBuffer returns the message buffer (for testing)
 func (e *FSEditor) GetBuffer() *MessageBuffer {
 	return e.buffer
-}
-
-// trimTrailingSpaces removes trailing spaces from all lines
-func (e *FSEditor) trimTrailingSpaces() {
-	lineCount := e.buffer.GetLineCount()
-	for i := 1; i <= lineCount; i++ {
-		line := e.buffer.GetLine(i)
-		trimmed := strings.TrimRight(line, " ")
-		if trimmed != line {
-			e.buffer.SetLine(i, trimmed)
-		}
-	}
 }

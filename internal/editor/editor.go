@@ -12,6 +12,36 @@ import (
 	"github.com/robbiew/vision3/internal/terminalio"
 )
 
+func resolveEditorPaths() (menuSetPath, rootConfigPath string) {
+	menuSetPath = os.Getenv("VISION3_MENU_PATH")
+	rootConfigPath = os.Getenv("VISION3_CONFIG_PATH")
+
+	if menuSetPath == "" {
+		menuSetPath = "menus/v3"
+	}
+	if rootConfigPath == "" {
+		rootConfigPath = "configs"
+	}
+
+	if _, err := os.Stat(menuSetPath); err == nil {
+		if _, err := os.Stat(rootConfigPath); err == nil {
+			return menuSetPath, rootConfigPath
+		}
+	}
+
+	if cwd, err := os.Getwd(); err == nil {
+		candidateMenu := filepath.Join(cwd, "menus/v3")
+		candidateConfig := filepath.Join(cwd, "configs")
+		if _, err := os.Stat(candidateMenu); err == nil {
+			if _, err := os.Stat(candidateConfig); err == nil {
+				return candidateMenu, candidateConfig
+			}
+		}
+	}
+
+	return menuSetPath, rootConfigPath
+}
+
 // RunEditor takes initial text, the input/output streams from the SSH session,
 // the terminal type string (TERM environment variable), runs a full-screen
 // editor, and returns the final text content, whether it was saved, and any error.
@@ -56,17 +86,7 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, termTyp
 		wrappedOutput = output
 	}
 
-	// Determine menu set path (look for standard location)
-	menuSetPath := "/home/bbs/git/vision3/menus/v3"
-	rootConfigPath := "/home/bbs/git/vision3/configs"
-
-	// Check if we're in a different location (development vs production)
-	if _, err := os.Stat("menus/v3"); err == nil {
-		if cwd, err := os.Getwd(); err == nil {
-			menuSetPath = filepath.Join(cwd, "menus/v3")
-			rootConfigPath = filepath.Join(cwd, "configs")
-		}
-	}
+	menuSetPath, rootConfigPath := resolveEditorPaths()
 
 	// Load theme colors for Yes/No lightbar prompts
 	theme, _ := config.LoadThemeConfig(menuSetPath)
@@ -99,10 +119,21 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, termTyp
 	}
 
 	// Handle window resize events in background if we have PTY
+	done := make(chan struct{})
+	defer close(done)
+
 	if isPty && winCh != nil {
 		go func() {
-			for win := range winCh {
-				editor.HandleResize(win.Width, win.Height)
+			for {
+				select {
+				case win, ok := <-winCh:
+					if !ok {
+						return
+					}
+					editor.HandleResize(win.Width, win.Height)
+				case <-done:
+					return
+				}
 			}
 		}()
 	}
@@ -158,15 +189,7 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 		wrappedOutput = output
 	}
 
-	// Determine menu set path
-	menuSetPath := "/home/bbs/git/vision3/menus/v3"
-	rootConfigPath := "/home/bbs/git/vision3/configs"
-	if _, err := os.Stat("menus/v3"); err == nil {
-		if cwd, err := os.Getwd(); err == nil {
-			menuSetPath = filepath.Join(cwd, "menus/v3")
-			rootConfigPath = filepath.Join(cwd, "configs")
-		}
-	}
+	menuSetPath, rootConfigPath := resolveEditorPaths()
 
 	// Load theme colors for Yes/No lightbar prompts
 	theme, _ := config.LoadThemeConfig(menuSetPath)
@@ -215,10 +238,21 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 	}
 
 	// Handle window resize events in background if we have PTY
+	done := make(chan struct{})
+	defer close(done)
+
 	if isPty && winCh != nil {
 		go func() {
-			for win := range winCh {
-				editor.HandleResize(win.Width, win.Height)
+			for {
+				select {
+				case win, ok := <-winCh:
+					if !ok {
+						return
+					}
+					editor.HandleResize(win.Width, win.Height)
+				case <-done:
+					return
+				}
 			}
 		}()
 	}

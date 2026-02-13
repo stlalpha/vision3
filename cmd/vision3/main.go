@@ -703,7 +703,7 @@ func (s *SessionAdapter) LocalAddr() net.Addr {
 	return s.localAddr
 }
 
-func (s *SessionAdapter) Context() context.Context {
+func (s *SessionAdapter) Context() ssh.Context {
 	return s.ctx
 }
 

@@ -64,11 +64,9 @@ func (s *Screen) LoadHeaderTemplate(menuSetPath, subject, recipient string, isAn
 	}
 
 	// Process pipe codes and substitutions
+	s.parseGeometryMarkers(string(content))
 	processed := s.processPipeCodes(content, subject, recipient, isAnon)
 	s.headerContent = string(processed)
-
-	// Parse geometry markers from template if present
-	s.parseGeometryMarkers(string(processed))
 
 	return nil
 }
@@ -175,12 +173,16 @@ func (s *Screen) parseGeometryMarkers(content string) {
 	if idx := strings.Index(content, "|#"); idx != -1 {
 		// Extract number after |#
 		rest := content[idx+2:]
-		if len(rest) > 0 && rest[0] >= '0' && rest[0] <= '9' {
-			lineNum := int(rest[0] - '0')
-			if lineNum > 0 && lineNum < 20 {
-				s.editingStartY = lineNum
-				s.screenLines = s.termHeight - s.editingStartY - 1
+		lineNum := 0
+		for i := 0; i < len(rest); i++ {
+			if rest[i] < '0' || rest[i] > '9' {
+				break
 			}
+			lineNum = lineNum*10 + int(rest[i]-'0')
+		}
+		if lineNum > 0 && lineNum < s.termHeight {
+			s.editingStartY = lineNum
+			s.screenLines = s.termHeight - s.editingStartY - 1
 		}
 	}
 }
