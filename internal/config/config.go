@@ -450,12 +450,13 @@ type ServerConfig struct {
 type EventConfig struct {
 	ID                string            `json:"id"`
 	Name              string            `json:"name"`
-	Schedule          string            `json:"schedule"` // Cron syntax
+	Schedule          string            `json:"schedule"` // Cron syntax (empty for startup-only events)
 	Command           string            `json:"command"`
 	Args              []string          `json:"args"`
 	WorkingDirectory  string            `json:"working_directory"`
-	TimeoutSeconds    int               `json:"timeout_seconds"`
+	TimeoutSeconds    int               `json:"timeout_seconds"` // 0 = no timeout (for daemons)
 	Enabled           bool              `json:"enabled"`
+	RunAtStartup      bool              `json:"run_at_startup,omitempty"`      // Launch immediately when BBS starts
 	EnvironmentVars   map[string]string `json:"environment_vars,omitempty"`
 	RunAfter          string            `json:"run_after,omitempty"`           // Event ID to run after
 	DelayAfterSeconds int               `json:"delay_after_seconds,omitempty"` // Delay after RunAfter completes
