@@ -153,7 +153,7 @@ vision3/
 
 ### Port Already in Use
 
-If port 2222 is already in use, you'll need to modify the port in `cmd/vision3/main.go` (search for `sshPort := 2222`).
+If port 2222 is already in use, change `"sshPort": 2222` in `templates/configs/config.json` (or your deployed `configs/config.json`).
 
 ### Permission Denied
 

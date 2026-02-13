@@ -206,13 +206,13 @@ func readPackedMessage(data []byte, pos int) (*PackedMessage, int, error) {
 	}
 	msg.To = s
 
-	s, pos, err = readNullTerminated(data, pos, MaxFieldLen)
+	s, pos, err = readNullTerminated(data, pos, 36)
 	if err != nil {
 		return nil, pos, fmt.Errorf("from: %w", err)
 	}
 	msg.From = s
 
-	s, pos, err = readNullTerminated(data, pos, MaxFieldLen)
+	s, pos, err = readNullTerminated(data, pos, 72)
 	if err != nil {
 		return nil, pos, fmt.Errorf("subject: %w", err)
 	}
@@ -286,13 +286,23 @@ func writePackedMessage(w io.Writer, msg *PackedMessage) error {
 	}
 
 	// Write null-terminated string fields
-	for _, s := range []string{msg.DateTime, msg.To, msg.From, msg.Subject, msg.Body} {
+	to := truncateField(msg.To, 36)
+	from := truncateField(msg.From, 36)
+	subject := truncateField(msg.Subject, 72)
+	for _, s := range []string{msg.DateTime, to, from, subject, msg.Body} {
 		if _, err := w.Write(append([]byte(s), 0)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func truncateField(s string, max int) string {
+	if len(s) > max {
+		return s[:max]
+	}
+	return s
 }
 
 // ParsedBody holds the components of a parsed FTN message body.
