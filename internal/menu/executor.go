@@ -2527,28 +2527,17 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 	log.Printf("DEBUG: Loading CFG: %s", cfgPath)
 	log.Printf("DEBUG: Loading BAR: %s", barPath)
 
-	// Try to load commands from CFG file
+	// Load commands from CFG file using the proper JSON loader
 	commandsByHotkey := make(map[string]string)
-	cfgFile, err := os.Open(cfgPath)
+	configPath := filepath.Join(e.MenuSetPath, "cfg")
+	commands, err := LoadCommands(menuName, configPath)
 	if err != nil {
 		log.Printf("WARN: Failed to load CFG file %s: %v", cfgPath, err)
 	} else {
-		defer cfgFile.Close()
-		scanner := bufio.NewScanner(cfgFile)
-		for scanner.Scan() {
-			line := strings.TrimSpace(scanner.Text())
-			if line == "" || strings.HasPrefix(line, ";") {
-				continue // Skip empty lines and comments
-			}
-
-			parts := strings.SplitN(line, " ", 2)
-			if len(parts) != 2 {
-				continue // Skip malformed lines
-			}
-
-			hotkey := strings.ToUpper(strings.TrimSpace(parts[0]))
-			command := strings.TrimSpace(parts[1])
-			commandsByHotkey[hotkey] = command
+		// Build hotkey -> command mapping for validation
+		for _, cmd := range commands {
+			hotkey := strings.ToUpper(strings.TrimSpace(cmd.Keys))
+			commandsByHotkey[hotkey] = cmd.Command
 		}
 	}
 
