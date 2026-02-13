@@ -446,6 +446,53 @@ Functions available via `RUN:` command:
 - `ONELINER` - One-liner system
 - `SHOWVERSION` - Display BBS version
 
+### Last Callers (`RUN:LASTCALLERS`)
+
+`LASTCALLERS` shows recent caller history using template files in `menus/v3/templates/`.
+
+Command usage examples:
+
+```json
+{
+  "KEYS": "LC",
+  "CMD": "RUN:LASTCALLERS 10",
+  "ACS": "*",
+  "HIDDEN": false
+}
+```
+
+- `RUN:LASTCALLERS` - Uses default limit of 10 entries
+- `RUN:LASTCALLERS 25` - Shows last 25 entries
+
+Template files:
+
+- `LASTCALL.TOP` - Header (displayed once)
+- `LASTCALL.MID` - Row template (displayed once per caller)
+- `LASTCALL.BOT` - Footer (displayed once)
+
+Notes:
+
+- Pipe color delimiters are normalized, so both `|` and broken-bar variants are accepted.
+- SAUCE metadata in template files is stripped automatically before display.
+
+Supported row tokens in `LASTCALL.MID` (`@CODE@` / `@CODE:width@`):
+
+- `@LO@` - Logon time
+- `@LT@` - Logoff time
+- `@UN@` - User handle
+- `@NOTE@` - User note (from user private note)
+- `@ND@` - Node number
+- `@CA@` - Caller number
+- `@TO@` - Time on (minutes)
+- `@LC@` - Location/group
+- `@NU@` - New user marker (`*` or space)
+
+Global token (header/footer/rows):
+
+- `@USERCT@` - Total registered users
+
+Legacy caret placeholders (`^UN`, `^ND`, etc.) remain supported for compatibility.
+
 ## Special Menu Names
 
 Some menu names have special behavior:
