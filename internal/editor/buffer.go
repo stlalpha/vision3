@@ -26,8 +26,10 @@ func NewMessageBuffer() *MessageBuffer {
 
 // LoadContent loads initial content into the buffer
 func (mb *MessageBuffer) LoadContent(content string) {
+	mb.lines = [MaxLines + 1]string{}
+	mb.lineCount = 1
+
 	if content == "" {
-		mb.lineCount = 1
 		return
 	}
 
