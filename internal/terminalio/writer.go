@@ -21,26 +21,30 @@ func writeUTF8Mode(writer io.Writer, data []byte) error {
 			continue
 		}
 
-		if b < 0x80 {
-			out = append(out, b)
+		// Process a text span up to the next ANSI escape.
+		spanStart := i
+		for i < len(data) && data[i] != 0x1B {
 			i++
+		}
+		span := data[spanStart:i]
+
+		if utf8.Valid(span) {
+			out = append(out, span...)
 			continue
 		}
 
-		r, size := utf8.DecodeRune(data[i:])
-		if r != utf8.RuneError || size > 1 {
-			out = append(out, data[i:i+size]...)
-			i += size
-			continue
+		for _, sb := range span {
+			if sb < 0x80 {
+				out = append(out, sb)
+				continue
+			}
+			mapped := ansi.Cp437ToUnicode[sb]
+			if mapped == 0 {
+				out = append(out, '?')
+			} else {
+				out = append(out, []byte(string(mapped))...)
+			}
 		}
-
-		mapped := ansi.Cp437ToUnicode[b]
-		if mapped == 0 {
-			out = append(out, '?')
-		} else {
-			out = append(out, []byte(string(mapped))...)
-		}
-		i++
 	}
 
 	_, err := writer.Write(out)
