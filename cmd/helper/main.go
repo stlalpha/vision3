@@ -50,14 +50,14 @@ type ftnConfig struct {
 }
 
 type ftnNetworkConfig struct {
-	Enabled      bool         `json:"enabled"`
-	OwnAddress   string       `json:"own_address"`
-	InboundPath  string       `json:"inbound_path"`
-	OutboundPath string       `json:"outbound_path"`
-	TempPath     string       `json:"temp_path"`
-	PollSeconds  int          `json:"poll_interval_seconds"`
-	Tearline     string       `json:"tearline,omitempty"`
-	Links        []linkConfig `json:"links"`
+	InternalTosserEnabled bool         `json:"internal_tosser_enabled"`
+	OwnAddress            string       `json:"own_address"`
+	InboundPath           string       `json:"inbound_path"`
+	OutboundPath          string       `json:"outbound_path"`
+	TempPath              string       `json:"temp_path"`
+	PollSeconds           int          `json:"poll_interval_seconds"`
+	Tearline              string       `json:"tearline,omitempty"`
+	Links                 []linkConfig `json:"links"`
 }
 
 type linkConfig struct {
@@ -271,8 +271,8 @@ func cmdFTNSetup(args []string) {
 	}
 
 	fmt.Println("\nConfig changes (ftn.json):")
-	if !netCfg.Enabled {
-		fmt.Printf("  networks.%s.enabled: false -> true\n", networkKey)
+	if !netCfg.InternalTosserEnabled {
+		fmt.Printf("  networks.%s.internal_tosser_enabled: false -> true\n", networkKey)
 	}
 	if netCfg.OwnAddress == "" {
 		fmt.Printf("  networks.%s.own_address: \"\" -> %q\n", networkKey, *address)
@@ -334,7 +334,7 @@ func cmdFTNSetup(args []string) {
 	}
 
 	// 8c. Update FTN network config
-	netCfg.Enabled = true
+	netCfg.InternalTosserEnabled = true
 	if netCfg.OwnAddress == "" {
 		netCfg.OwnAddress = *address
 	}

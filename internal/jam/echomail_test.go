@@ -40,8 +40,8 @@ func TestWriteMessageExtEchomail(t *testing.T) {
 	if got.PID == "" {
 		t.Error("PID should be set for echomail")
 	}
-	if !strings.HasPrefix(got.PID, "Vision3") {
-		t.Errorf("PID = %q, should start with Vision3", got.PID)
+	if !strings.HasPrefix(got.PID, "ViSiON/3") {
+		t.Errorf("PID = %q, should start with ViSiON/3", got.PID)
 	}
 
 	// Verify kludges contain AREA and TID
@@ -62,7 +62,7 @@ func TestWriteMessageExtEchomail(t *testing.T) {
 	}
 
 	// Verify tearline and origin in text
-	if !strings.Contains(got.Text, "--- Vision3") {
+	if !strings.Contains(got.Text, "--- ViSiON/3") {
 		t.Error("text should contain tearline")
 	}
 	if !strings.Contains(got.Text, "* Origin: Test BBS (21:3/110)") {
@@ -108,7 +108,7 @@ func TestWriteMessageExtLocal(t *testing.T) {
 	}
 
 	// Local messages should NOT have echomail elements
-	if strings.Contains(got.Text, "--- Vision3") {
+	if strings.Contains(got.Text, "--- ViSiON/3") {
 		t.Error("local message should not have tearline")
 	}
 	if strings.Contains(got.Text, "* Origin:") {

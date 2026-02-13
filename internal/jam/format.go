@@ -6,19 +6,19 @@ import (
 	"strings"
 )
 
-// Version is the Vision3 version string. Set via build flags:
+// Version is the ViSiON/3 version string. Set via build flags:
 //
 //	-ldflags "-X github.com/robbiew/vision3/internal/jam.Version=1.0.0"
 var Version = "0.1.0"
 
 // AddTearline appends a tearline to the message text.
-// Format: "--- Vision3 0.1.0/darwin"
+// Format: "--- ViSiON/3 0.1.0/darwin"
 func AddTearline(text string) string {
 	return AddCustomTearline(text, "")
 }
 
 // AddCustomTearline appends a tearline to the message text.
-// If tearline is empty, it uses the default Vision3 tearline.
+// If tearline is empty, it uses the default ViSiON/3 tearline.
 // If tearline already starts with "---", it is used as-is.
 func AddCustomTearline(text, tearline string) string {
 	if !strings.HasSuffix(text, "\n") {
@@ -26,7 +26,7 @@ func AddCustomTearline(text, tearline string) string {
 	}
 	trimmed := strings.TrimSpace(tearline)
 	if trimmed == "" {
-		trimmed = fmt.Sprintf("Vision3 %s/%s", Version, runtime.GOOS)
+		trimmed = fmt.Sprintf("ViSiON/3 %s/%s", Version, runtime.GOOS)
 	}
 	if strings.HasPrefix(trimmed, "---") {
 		return text + trimmed + "\n"
@@ -45,7 +45,7 @@ func AddOriginLine(text, systemName, address string) string {
 
 // FormatPID returns the PID kludge value.
 func FormatPID() string {
-	return fmt.Sprintf("Vision3 %s/%s", Version, runtime.GOOS)
+	return fmt.Sprintf("ViSiON/3 %s/%s", Version, runtime.GOOS)
 }
 
 // FormatTID returns the TID kludge value.
