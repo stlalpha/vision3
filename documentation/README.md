@@ -46,3 +46,30 @@ This directory contains comprehensive documentation for the ViSiON/3 BBS system.
 - **Getting Started**: Start with the [Installation Guide](installation.md)
 - **For Developers**: See [Developer Guide](developer-guide.md) and [API Reference](api-reference.md)
 - **For SysOps**: Check [Configuration Guide](configuration.md), [Security Guide](security.md), and operational guides
+
+## Last Callers Quick Reference
+
+Use menu command:
+
+- `RUN:LASTCALLERS` (default 10)
+- `RUN:LASTCALLERS 25` (explicit count)
+
+Template files (menu set):
+
+- `menus/v3/templates/LASTCALL.TOP`
+- `menus/v3/templates/LASTCALL.MID`
+- `menus/v3/templates/LASTCALL.BOT`
+
+Common Last Callers tokens:
+
+- `@LO@` / `@LT@` - Logon/logoff time
+- `@UN@` - User handle
+- `@NOTE@` - User note (private note)
+- `@ND@` - Node number
+- `@CA@` - Caller number
+- `@TO@` - Minutes online
+- `@USERCT@` - Total registered users
+
+Width formatting is supported with `:n` (example: `@UN:20@`, `@NOTE:14@`).
+
+For full details, see [Menu System Guide](menu-system.md#last-callers-runlastcallers).

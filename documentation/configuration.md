@@ -183,6 +183,7 @@ General BBS configuration settings.
 {
   "boardName": "PiRATE MiND STATiON",
   "boardPhoneNumber": "314-567-3833",
+  "timezone": "America/Los_Angeles",
   "sysOpLevel": 255,
   "coSysOpLevel": 250,
   "logonLevel": 100,
@@ -207,6 +208,7 @@ General BBS configuration settings.
 
 - `boardName` - BBS name displayed to users
 - `boardPhoneNumber` - Phone number (historical/display purposes)
+- `timezone` - IANA timezone for display formatting (example: `America/Los_Angeles`)
 - `sysOpLevel` - Security level for SysOp access
 - `coSysOpLevel` - Security level for Co-SysOp access
 - `logonLevel` - Security level granted after successful login
@@ -234,6 +236,12 @@ General BBS configuration settings.
 
 - `maxFailedLogins` - Maximum failed login attempts from a single IP before lockout (default: 5, 0 = disabled)
 - `lockoutMinutes` - Duration of IP lockout in minutes (default: 30)
+
+**Timezone behavior:**
+
+- Last Callers time fields use `config.json` `timezone` first.
+- If unset, the app checks environment variables `VISION3_TIMEZONE`, then `TZ`.
+- If none are set or invalid, server local timezone is used.
 
 ### IP Blocklist/Allowlist Files
 
