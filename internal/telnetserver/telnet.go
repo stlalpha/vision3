@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"regexp"
@@ -64,6 +65,11 @@ type TelnetConn struct {
 	sbData   []byte // accumulated subnegotiation data
 
 	closed int32 // atomic flag
+
+	// Read interrupt: when the channel is closed, a goroutine sets a
+	// short read deadline on the conn to unblock any pending Read().
+	readInterrupt <-chan struct{}
+	riMu          sync.Mutex
 }
 
 // NewTelnetConn wraps an existing net.Conn with telnet protocol handling.
@@ -227,6 +233,27 @@ func (tc *TelnetConn) handleSubnegotiation() {
 	}
 }
 
+// SetReadInterrupt sets a channel that, when closed, causes any blocked Read()
+// to return io.EOF without consuming data. This works by setting a past read
+// deadline on the underlying connection to unblock the blocked read syscall.
+// Pass nil to clear the interrupt and reset the deadline.
+func (tc *TelnetConn) SetReadInterrupt(ch <-chan struct{}) {
+	tc.riMu.Lock()
+	tc.readInterrupt = ch
+	tc.riMu.Unlock()
+
+	if ch == nil {
+		// Clear any deadline set by a previous interrupt
+		tc.conn.SetReadDeadline(time.Time{})
+	} else {
+		// Watch for the interrupt and unblock the read when it fires
+		go func() {
+			<-ch
+			tc.conn.SetReadDeadline(time.Now())
+		}()
+	}
+}
+
 // Read reads data from the telnet connection, stripping IAC commands transparently.
 func (tc *TelnetConn) Read(p []byte) (int, error) {
 	if len(p) == 0 {
@@ -305,6 +332,21 @@ func (tc *TelnetConn) Read(p []byte) (int, error) {
 		}
 
 		if err != nil {
+			// Check if this error was triggered by a read interrupt
+			tc.riMu.Lock()
+			interrupt := tc.readInterrupt
+			tc.riMu.Unlock()
+			if interrupt != nil {
+				select {
+				case <-interrupt:
+					if written > 0 {
+						return written, nil
+					}
+					return 0, io.EOF
+				default:
+				}
+			}
+
 			if written > 0 {
 				return written, nil // Return data we have, error on next call
 			}

@@ -244,3 +244,9 @@ func (a *TelnetSessionAdapter) Signals(c chan<- ssh.Signal) {
 // Break is a no-op for telnet.
 func (a *TelnetSessionAdapter) Break(c chan<- bool) {
 }
+
+// SetReadInterrupt sets a channel that, when closed, causes any blocked Read()
+// to return without consuming data. Used to cleanly stop door I/O goroutines.
+func (a *TelnetSessionAdapter) SetReadInterrupt(ch <-chan struct{}) {
+	a.telnetConn.SetReadInterrupt(ch)
+}
