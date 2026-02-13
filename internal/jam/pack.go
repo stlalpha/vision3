@@ -20,7 +20,11 @@ type PackResult struct {
 func (b *Base) GetFixedHeader() *FixedHeaderInfo {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
-	return b.fixedHeader
+	if b.fixedHeader == nil {
+		return nil
+	}
+	fh := *b.fixedHeader
+	return &fh
 }
 
 // GetAllLastReadRecords reads all lastread records from the .jlr file.
@@ -36,19 +40,32 @@ func (b *Base) GetAllLastReadRecords() ([]LastReadRecord, error) {
 	if err != nil {
 		return nil, fmt.Errorf("jam: failed to stat .jlr: %w", err)
 	}
+	if info.Size()%LastReadSize != 0 {
+		return nil, fmt.Errorf("jam: invalid .jlr size %d (not aligned to record size %d)", info.Size(), LastReadSize)
+	}
 	count := info.Size() / LastReadSize
 	if count == 0 {
 		return nil, nil
 	}
 
-	b.jlrFile.Seek(0, 0)
+	if _, err := b.jlrFile.Seek(0, 0); err != nil {
+		return nil, fmt.Errorf("jam: seek failed in .jlr: %w", err)
+	}
 	records := make([]LastReadRecord, 0, count)
 	for i := int64(0); i < count; i++ {
 		var lr LastReadRecord
-		binary.Read(b.jlrFile, binary.LittleEndian, &lr.UserCRC)
-		binary.Read(b.jlrFile, binary.LittleEndian, &lr.UserID)
-		binary.Read(b.jlrFile, binary.LittleEndian, &lr.LastReadMsg)
-		binary.Read(b.jlrFile, binary.LittleEndian, &lr.HighReadMsg)
+		if err := readBinaryLE(b.jlrFile, &lr.UserCRC, "lastread user crc"); err != nil {
+			return nil, err
+		}
+		if err := readBinaryLE(b.jlrFile, &lr.UserID, "lastread user id"); err != nil {
+			return nil, err
+		}
+		if err := readBinaryLE(b.jlrFile, &lr.LastReadMsg, "lastread message pointer"); err != nil {
+			return nil, err
+		}
+		if err := readBinaryLE(b.jlrFile, &lr.HighReadMsg, "lastread high read pointer"); err != nil {
+			return nil, err
+		}
 		records = append(records, lr)
 	}
 	return records, nil
@@ -145,10 +162,14 @@ func (b *Base) Pack() (PackResult, error) {
 		}
 
 		// Read header at the offset
-		b.jhrFile.Seek(int64(idx.HdrOffset), 0)
+		if _, err := b.jhrFile.Seek(int64(idx.HdrOffset), 0); err != nil {
+			cleanup()
+			return result, fmt.Errorf("jam: failed to seek header for msg %d: %w", n, err)
+		}
 		hdr, err := b.readHeaderFromReader(b.jhrFile)
 		if err != nil {
-			continue
+			cleanup()
+			return result, fmt.Errorf("jam: failed to read header for msg %d: %w", n, err)
 		}
 
 		if hdr.Attribute&MsgDeleted != 0 {
@@ -159,7 +180,10 @@ func (b *Base) Pack() (PackResult, error) {
 		var textBuf []byte
 		if hdr.TxtLen > 0 {
 			textBuf = make([]byte, hdr.TxtLen)
-			b.jdtFile.Seek(int64(hdr.Offset), 0)
+			if _, err := b.jdtFile.Seek(int64(hdr.Offset), 0); err != nil {
+				cleanup()
+				return result, fmt.Errorf("jam: failed to seek text for msg %d: %w", n, err)
+			}
 			if _, err := io.ReadFull(b.jdtFile, textBuf); err != nil {
 				cleanup()
 				return result, fmt.Errorf("jam: failed to read text for msg %d: %w", n, err)
@@ -186,22 +210,35 @@ func (b *Base) Pack() (PackResult, error) {
 		hdr.ReplyNext = 0
 
 		// Write header to new .jhr
-		hdrPos, _ := jhrOut.Seek(0, io.SeekEnd)
+		hdrPos, err := jhrOut.Seek(0, io.SeekEnd)
+		if err != nil {
+			cleanup()
+			return result, fmt.Errorf("jam: failed to seek temp .jhr: %w", err)
+		}
 		if err := b.writeHeaderToWriter(jhrOut, hdr); err != nil {
 			cleanup()
 			return result, fmt.Errorf("jam: failed to write header: %w", err)
 		}
 
 		// Write index record to new .jdx
-		binary.Write(jdxOut, binary.LittleEndian, idx.ToCRC)
-		binary.Write(jdxOut, binary.LittleEndian, uint32(hdrPos))
+		if err := writeBinaryLE(jdxOut, idx.ToCRC, "packed index ToCRC"); err != nil {
+			cleanup()
+			return result, err
+		}
+		if err := writeBinaryLE(jdxOut, uint32(hdrPos), "packed index header offset"); err != nil {
+			cleanup()
+			return result, err
+		}
 
 		activeCount++
 	}
 
 	// Update final ActiveMsgs in the fixed header
 	newFH.ActiveMsgs = uint32(activeCount)
-	jhrOut.Seek(0, 0)
+	if _, err := jhrOut.Seek(0, 0); err != nil {
+		cleanup()
+		return result, fmt.Errorf("jam: failed to seek temp fixed header: %w", err)
+	}
 	if err := binary.Write(jhrOut, binary.LittleEndian, &newFH); err != nil {
 		cleanup()
 		return result, fmt.Errorf("jam: failed to update fixed header: %w", err)
@@ -209,8 +246,14 @@ func (b *Base) Pack() (PackResult, error) {
 
 	// Sync and close temp files
 	for _, f := range []*os.File{jhrOut, jdtOut, jdxOut} {
-		f.Sync()
-		f.Close()
+		if err := f.Sync(); err != nil {
+			cleanup()
+			return result, fmt.Errorf("jam: failed to sync temp file: %w", err)
+		}
+		if err := f.Close(); err != nil {
+			cleanup()
+			return result, fmt.Errorf("jam: failed to close temp file: %w", err)
+		}
 	}
 
 	// Close original file handles
@@ -267,7 +310,10 @@ func (b *Base) Pack() (PackResult, error) {
 
 	// Calculate new sizes
 	for _, f := range []*os.File{b.jhrFile, b.jdtFile, b.jdxFile} {
-		info, _ := f.Stat()
+		info, err := f.Stat()
+		if err != nil {
+			return result, fmt.Errorf("jam: failed to stat file after pack: %w", err)
+		}
 		result.BytesAfter += info.Size()
 	}
 
@@ -279,26 +325,66 @@ func (b *Base) Pack() (PackResult, error) {
 // readHeaderFromReader reads a MessageHeader from an io.Reader at the current position.
 func (b *Base) readHeaderFromReader(r io.Reader) (*MessageHeader, error) {
 	hdr := &MessageHeader{}
-	binary.Read(r, binary.LittleEndian, &hdr.Signature)
-	binary.Read(r, binary.LittleEndian, &hdr.Revision)
-	binary.Read(r, binary.LittleEndian, &hdr.ReservedWord)
-	binary.Read(r, binary.LittleEndian, &hdr.SubfieldLen)
-	binary.Read(r, binary.LittleEndian, &hdr.TimesRead)
-	binary.Read(r, binary.LittleEndian, &hdr.MSGIDcrc)
-	binary.Read(r, binary.LittleEndian, &hdr.REPLYcrc)
-	binary.Read(r, binary.LittleEndian, &hdr.ReplyTo)
-	binary.Read(r, binary.LittleEndian, &hdr.Reply1st)
-	binary.Read(r, binary.LittleEndian, &hdr.ReplyNext)
-	binary.Read(r, binary.LittleEndian, &hdr.DateWritten)
-	binary.Read(r, binary.LittleEndian, &hdr.DateReceived)
-	binary.Read(r, binary.LittleEndian, &hdr.DateProcessed)
-	binary.Read(r, binary.LittleEndian, &hdr.MessageNumber)
-	binary.Read(r, binary.LittleEndian, &hdr.Attribute)
-	binary.Read(r, binary.LittleEndian, &hdr.Attribute2)
-	binary.Read(r, binary.LittleEndian, &hdr.Offset)
-	binary.Read(r, binary.LittleEndian, &hdr.TxtLen)
-	binary.Read(r, binary.LittleEndian, &hdr.PasswordCRC)
-	binary.Read(r, binary.LittleEndian, &hdr.Cost)
+	if err := readBinaryLE(r, &hdr.Signature, "header signature"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.Revision, "header revision"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.ReservedWord, "header reserved word"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.SubfieldLen, "header subfield length"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.TimesRead, "header times read"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.MSGIDcrc, "header MSGID crc"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.REPLYcrc, "header REPLY crc"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.ReplyTo, "header reply to"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.Reply1st, "header reply first"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.ReplyNext, "header reply next"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.DateWritten, "header date written"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.DateReceived, "header date received"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.DateProcessed, "header date processed"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.MessageNumber, "header message number"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.Attribute, "header attribute"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.Attribute2, "header attribute2"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.Offset, "header text offset"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.TxtLen, "header text length"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.PasswordCRC, "header password crc"); err != nil {
+		return nil, err
+	}
+	if err := readBinaryLE(r, &hdr.Cost, "header cost"); err != nil {
+		return nil, err
+	}
 
 	if string(hdr.Signature[:]) != Signature {
 		return nil, ErrInvalidSignature
@@ -307,11 +393,19 @@ func (b *Base) readHeaderFromReader(r io.Reader) (*MessageHeader, error) {
 	bytesRead := uint32(0)
 	for bytesRead < hdr.SubfieldLen {
 		sf := Subfield{}
-		binary.Read(r, binary.LittleEndian, &sf.LoID)
-		binary.Read(r, binary.LittleEndian, &sf.HiID)
-		binary.Read(r, binary.LittleEndian, &sf.DatLen)
+		if err := readBinaryLE(r, &sf.LoID, "subfield loID"); err != nil {
+			return nil, err
+		}
+		if err := readBinaryLE(r, &sf.HiID, "subfield hiID"); err != nil {
+			return nil, err
+		}
+		if err := readBinaryLE(r, &sf.DatLen, "subfield data length"); err != nil {
+			return nil, err
+		}
 		sf.Buffer = make([]byte, sf.DatLen)
-		io.ReadFull(r, sf.Buffer)
+		if _, err := io.ReadFull(r, sf.Buffer); err != nil {
+			return nil, fmt.Errorf("jam: read subfield buffer: %w", err)
+		}
 		hdr.Subfields = append(hdr.Subfields, sf)
 		bytesRead += SubfieldHdrSize + sf.DatLen
 	}
@@ -322,32 +416,80 @@ func (b *Base) readHeaderFromReader(r io.Reader) (*MessageHeader, error) {
 // writeHeaderToWriter writes a MessageHeader to an io.Writer, matching
 // the exact binary layout used by writeMessageHeader.
 func (b *Base) writeHeaderToWriter(w io.Writer, hdr *MessageHeader) error {
-	binary.Write(w, binary.LittleEndian, hdr.Signature)
-	binary.Write(w, binary.LittleEndian, hdr.Revision)
-	binary.Write(w, binary.LittleEndian, hdr.ReservedWord)
-	binary.Write(w, binary.LittleEndian, hdr.SubfieldLen)
-	binary.Write(w, binary.LittleEndian, hdr.TimesRead)
-	binary.Write(w, binary.LittleEndian, hdr.MSGIDcrc)
-	binary.Write(w, binary.LittleEndian, hdr.REPLYcrc)
-	binary.Write(w, binary.LittleEndian, hdr.ReplyTo)
-	binary.Write(w, binary.LittleEndian, hdr.Reply1st)
-	binary.Write(w, binary.LittleEndian, hdr.ReplyNext)
-	binary.Write(w, binary.LittleEndian, hdr.DateWritten)
-	binary.Write(w, binary.LittleEndian, hdr.DateReceived)
-	binary.Write(w, binary.LittleEndian, hdr.DateProcessed)
-	binary.Write(w, binary.LittleEndian, hdr.MessageNumber)
-	binary.Write(w, binary.LittleEndian, hdr.Attribute)
-	binary.Write(w, binary.LittleEndian, hdr.Attribute2)
-	binary.Write(w, binary.LittleEndian, hdr.Offset)
-	binary.Write(w, binary.LittleEndian, hdr.TxtLen)
-	binary.Write(w, binary.LittleEndian, hdr.PasswordCRC)
-	binary.Write(w, binary.LittleEndian, hdr.Cost)
+	if err := writeBinaryLE(w, hdr.Signature, "header signature"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.Revision, "header revision"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.ReservedWord, "header reserved word"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.SubfieldLen, "header subfield length"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.TimesRead, "header times read"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.MSGIDcrc, "header MSGID crc"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.REPLYcrc, "header REPLY crc"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.ReplyTo, "header reply to"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.Reply1st, "header reply first"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.ReplyNext, "header reply next"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.DateWritten, "header date written"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.DateReceived, "header date received"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.DateProcessed, "header date processed"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.MessageNumber, "header message number"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.Attribute, "header attribute"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.Attribute2, "header attribute2"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.Offset, "header text offset"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.TxtLen, "header text length"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.PasswordCRC, "header password crc"); err != nil {
+		return err
+	}
+	if err := writeBinaryLE(w, hdr.Cost, "header cost"); err != nil {
+		return err
+	}
 
 	for _, sf := range hdr.Subfields {
-		binary.Write(w, binary.LittleEndian, sf.LoID)
-		binary.Write(w, binary.LittleEndian, sf.HiID)
-		binary.Write(w, binary.LittleEndian, sf.DatLen)
-		w.Write(sf.Buffer)
+		if err := writeBinaryLE(w, sf.LoID, "subfield loID"); err != nil {
+			return err
+		}
+		if err := writeBinaryLE(w, sf.HiID, "subfield hiID"); err != nil {
+			return err
+		}
+		if err := writeBinaryLE(w, sf.DatLen, "subfield data length"); err != nil {
+			return err
+		}
+		if err := writeAll(w, sf.Buffer, "subfield buffer"); err != nil {
+			return err
+		}
 	}
 	return nil
 }

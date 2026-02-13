@@ -1,8 +1,10 @@
 package jam
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -266,11 +268,27 @@ func (b *Base) readIndexRecordLocked(msgNum int) (*IndexRecord, error) {
 	}
 
 	offset := int64((msgNum - 1) * IndexRecordSize)
-	b.jdxFile.Seek(offset, 0)
+	buf := make([]byte, IndexRecordSize)
+	n, err := b.jdxFile.ReadAt(buf, offset)
+	if err != nil {
+		if err == io.EOF && n == int(IndexRecordSize) {
+			// Full read despite EOF at boundary; continue.
+		} else {
+			return nil, fmt.Errorf("jam: failed to read index record %d: %w", msgNum, err)
+		}
+	}
+	if n != int(IndexRecordSize) {
+		return nil, fmt.Errorf("jam: short read for index record %d: got %d bytes", msgNum, n)
+	}
 
+	reader := bytes.NewReader(buf)
 	var toCRC, hdrOffset uint32
-	binary.Read(b.jdxFile, binary.LittleEndian, &toCRC)
-	binary.Read(b.jdxFile, binary.LittleEndian, &hdrOffset)
+	if err := binary.Read(reader, binary.LittleEndian, &toCRC); err != nil {
+		return nil, fmt.Errorf("jam: failed to decode index toCRC: %w", err)
+	}
+	if err := binary.Read(reader, binary.LittleEndian, &hdrOffset); err != nil {
+		return nil, fmt.Errorf("jam: failed to decode index hdrOffset: %w", err)
+	}
 
 	if toCRC == 0xFFFFFFFF && hdrOffset == 0xFFFFFFFF {
 		return nil, ErrNotFound
@@ -284,9 +302,15 @@ func (b *Base) writeIndexRecord(msgNum int, rec *IndexRecord) error {
 		return ErrBaseNotOpen
 	}
 	offset := int64((msgNum - 1) * IndexRecordSize)
-	b.jdxFile.Seek(offset, 0)
-	binary.Write(b.jdxFile, binary.LittleEndian, rec.ToCRC)
-	binary.Write(b.jdxFile, binary.LittleEndian, rec.HdrOffset)
+	if _, err := b.jdxFile.Seek(offset, 0); err != nil {
+		return fmt.Errorf("jam: seek failed in .jdx: %w", err)
+	}
+	if err := binary.Write(b.jdxFile, binary.LittleEndian, rec.ToCRC); err != nil {
+		return fmt.Errorf("jam: write ToCRC failed in .jdx: %w", err)
+	}
+	if err := binary.Write(b.jdxFile, binary.LittleEndian, rec.HdrOffset); err != nil {
+		return fmt.Errorf("jam: write HdrOffset failed in .jdx: %w", err)
+	}
 	return nil
 }
 
