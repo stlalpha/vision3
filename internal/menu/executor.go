@@ -425,100 +425,462 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	return nil, "", nil // Updated return (Success)
 }
 
+const (
+	oneLinerMaxStored  = 20
+	oneLinerMaxDisplay = 10
+	oneLinerMaxLength  = 51
+	oneLinerNameWidth  = 20
+	oneLinerStartRow   = 12
+	oneLinerStartCol   = 5
+)
+
+type onelinerRecord struct {
+	Text             string `json:"text"`
+	Anonymous        bool   `json:"anonymous,omitempty"`
+	PostedByUsername string `json:"posted_by_username,omitempty"`
+	PostedByHandle   string `json:"posted_by_handle,omitempty"`
+	PostedAt         string `json:"posted_at,omitempty"`
+}
+
+type onelinerRecordCompat struct {
+	DisplayName      string `json:"display_name,omitempty"`
+	Username         string `json:"username,omitempty"`
+	Text             string `json:"text"`
+	Anonymous        bool   `json:"anonymous,omitempty"`
+	PostedByUsername string `json:"posted_by_username,omitempty"`
+	PostedByHandle   string `json:"posted_by_handle,omitempty"`
+	PostedAt         string `json:"posted_at,omitempty"`
+}
+
+func truncateRunes(value string, max int) string {
+	value = strings.TrimSpace(value)
+	if max <= 0 || value == "" {
+		return ""
+	}
+	if utf8.RuneCountInString(value) <= max {
+		return value
+	}
+	runes := []rune(value)
+	if max <= 3 {
+		return string(runes[:max])
+	}
+	return string(runes[:max-3]) + "..."
+}
+
+func isPipeCodeStartChar(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
+}
+
+func pipeCodeLenAt(value string, index int) int {
+	if index < 0 || index >= len(value) || value[index] != '|' || index+1 >= len(value) {
+		return 0
+	}
+
+	// 3-char forms: |00..|15, |CR, |DE, |CL, |PP, |23
+	if index+2 < len(value) {
+		two := value[index+1 : index+3]
+		if len(two) == 2 {
+			if (two[0] >= '0' && two[0] <= '9') && (two[1] >= '0' && two[1] <= '9') {
+				return 3
+			}
+			u := strings.ToUpper(two)
+			if u == "CR" || u == "DE" || u == "CL" || u == "PP" {
+				return 3
+			}
+		}
+	}
+
+	// 4-char forms: |B0..|B9, |B10..|B15
+	if index+2 < len(value) {
+		if (value[index+1] == 'B' || value[index+1] == 'b') && (value[index+2] >= '0' && value[index+2] <= '9') {
+			if index+3 < len(value) && (value[index+3] >= '0' && value[index+3] <= '9') {
+				return 5 // |B10..|B15 (validated loosely)
+			}
+			return 4 // |B0..|B9
+		}
+	}
+
+	// 2-char form: |P
+	if index+1 < len(value) && (value[index+1] == 'P' || value[index+1] == 'p') {
+		return 2
+	}
+
+	if index+1 < len(value) && isPipeCodeStartChar(value[index+1]) {
+		return 0
+	}
+
+	return 0
+}
+
+func truncateOnelinerPreservePipeCodes(value string, maxVisible int) string {
+	value = strings.TrimSpace(value)
+	if value == "" || maxVisible <= 0 {
+		return ""
+	}
+
+	var out strings.Builder
+	visible := 0
+	i := 0
+	for i < len(value) {
+		if value[i] == '|' {
+			codeLen := pipeCodeLenAt(value, i)
+			if codeLen > 0 && i+codeLen <= len(value) {
+				out.WriteString(value[i : i+codeLen])
+				i += codeLen
+				continue
+			}
+		}
+
+		r, size := utf8.DecodeRuneInString(value[i:])
+		if r == utf8.RuneError && size == 1 {
+			size = 1
+		}
+		if visible >= maxVisible {
+			break
+		}
+		out.WriteString(value[i : i+size])
+		visible++
+		i += size
+	}
+
+	return strings.TrimSpace(out.String())
+}
+
+func visibleWidthPreservePipeCodes(value string) int {
+	if value == "" {
+		return 0
+	}
+
+	visible := 0
+	i := 0
+	for i < len(value) {
+		if value[i] == '|' && i+1 < len(value) && value[i+1] == '|' {
+			visible++
+			i += 2
+			continue
+		}
+
+		if value[i] == '|' {
+			codeLen := pipeCodeLenAt(value, i)
+			if codeLen > 0 && i+codeLen <= len(value) {
+				i += codeLen
+				continue
+			}
+		}
+
+		_, size := utf8.DecodeRuneInString(value[i:])
+		if size <= 0 {
+			size = 1
+		}
+		visible++
+		i += size
+	}
+
+	return visible
+}
+
+func truncatePipeCodedText(value string, maxVisible int) string {
+	if value == "" || maxVisible <= 0 {
+		return ""
+	}
+
+	var out strings.Builder
+	visible := 0
+	i := 0
+	for i < len(value) {
+		if value[i] == '|' && i+1 < len(value) && value[i+1] == '|' {
+			if visible >= maxVisible {
+				break
+			}
+			out.WriteString("||")
+			visible++
+			i += 2
+			continue
+		}
+
+		if value[i] == '|' {
+			codeLen := pipeCodeLenAt(value, i)
+			if codeLen > 0 && i+codeLen <= len(value) {
+				out.WriteString(value[i : i+codeLen])
+				i += codeLen
+				continue
+			}
+		}
+
+		_, size := utf8.DecodeRuneInString(value[i:])
+		if size <= 0 {
+			size = 1
+		}
+		if visible >= maxVisible {
+			break
+		}
+		out.WriteString(value[i : i+size])
+		visible++
+		i += size
+	}
+
+	return out.String()
+}
+
+func containsDisallowedOnelinerColorCode(value string) bool {
+	i := 0
+	for i < len(value) {
+		if value[i] == '|' && i+1 < len(value) && value[i+1] == '|' {
+			i += 2
+			continue
+		}
+
+		if value[i] == '|' {
+			codeLen := pipeCodeLenAt(value, i)
+			if codeLen > 0 && i+codeLen <= len(value) {
+				// Only standard foreground colors |01..|15 are allowed.
+				if codeLen != 3 {
+					return true
+				}
+
+				colorCode := value[i+1 : i+3]
+				if colorCode < "01" || colorCode > "15" {
+					return true
+				}
+
+				i += codeLen
+				continue
+			}
+		}
+
+		_, size := utf8.DecodeRuneInString(value[i:])
+		if size <= 0 {
+			size = 1
+		}
+		i += size
+	}
+
+	return false
+}
+
+func centerPipeCodedText(value string, width int) string {
+	if width <= 0 {
+		return value
+	}
+
+	visible := visibleWidthPreservePipeCodes(value)
+	if visible >= width {
+		return value
+	}
+
+	leftPad := (width - visible) / 2
+	if leftPad <= 0 {
+		return value
+	}
+
+	return strings.Repeat(" ", leftPad) + value
+}
+
+func formatOnelinerDisplayName(name string) string {
+	formatted := truncateRunes(name, oneLinerNameWidth)
+	if formatted == "" {
+		formatted = "Unknown"
+	}
+	padding := oneLinerNameWidth - utf8.RuneCountInString(formatted)
+	if padding > 0 {
+		formatted = strings.Repeat(" ", padding) + formatted
+	}
+	return formatted
+}
+
+func onelinerVisibleName(record onelinerRecord, anonymousName string) string {
+	if strings.TrimSpace(anonymousName) == "" {
+		anonymousName = "Anonymous"
+	}
+	if record.Anonymous {
+		return anonymousName
+	}
+	if strings.TrimSpace(record.PostedByHandle) != "" {
+		return record.PostedByHandle
+	}
+	if strings.TrimSpace(record.PostedByUsername) != "" {
+		return record.PostedByUsername
+	}
+	return "Unknown"
+}
+
+func loadOnelinerRecords(onelinerPath string) ([]onelinerRecord, error) {
+	jsonData, readErr := os.ReadFile(onelinerPath)
+	if readErr != nil {
+		if os.IsNotExist(readErr) {
+			return []onelinerRecord{}, nil
+		}
+		return nil, readErr
+	}
+
+	if strings.TrimSpace(string(jsonData)) == "" {
+		return []onelinerRecord{}, nil
+	}
+
+	var rawEntries []json.RawMessage
+	if err := json.Unmarshal(jsonData, &rawEntries); err != nil {
+		return nil, err
+	}
+
+	records := make([]onelinerRecord, 0, len(rawEntries))
+	for _, raw := range rawEntries {
+		var legacyText string
+		if err := json.Unmarshal(raw, &legacyText); err == nil {
+			legacyText = truncateOnelinerPreservePipeCodes(legacyText, oneLinerMaxLength)
+			if legacyText != "" {
+				records = append(records, onelinerRecord{
+					Text:             legacyText,
+					PostedByUsername: "Unknown",
+				})
+			}
+			continue
+		}
+
+		var compat onelinerRecordCompat
+		if err := json.Unmarshal(raw, &compat); err != nil {
+			continue
+		}
+
+		record := onelinerRecord{
+			Text:             truncateOnelinerPreservePipeCodes(compat.Text, oneLinerMaxLength),
+			Anonymous:        compat.Anonymous,
+			PostedByUsername: strings.TrimSpace(compat.PostedByUsername),
+			PostedByHandle:   strings.TrimSpace(compat.PostedByHandle),
+			PostedAt:         compat.PostedAt,
+		}
+
+		if record.PostedByUsername == "" {
+			record.PostedByUsername = strings.TrimSpace(compat.Username)
+		}
+		if record.PostedByHandle == "" {
+			if strings.TrimSpace(compat.DisplayName) != "" && !record.Anonymous {
+				record.PostedByHandle = strings.TrimSpace(compat.DisplayName)
+			} else if strings.TrimSpace(compat.Username) != "" {
+				record.PostedByHandle = strings.TrimSpace(compat.Username)
+			}
+		}
+
+		if record.Text == "" {
+			continue
+		}
+
+		records = append(records, record)
+	}
+
+	return records, nil
+}
+
+func saveOnelinerRecords(onelinerPath string, records []onelinerRecord) error {
+	if len(records) > oneLinerMaxStored {
+		records = records[len(records)-oneLinerMaxStored:]
+	}
+
+	updatedJSON, err := json.MarshalIndent(records, "", "  ")
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(onelinerPath, updatedJSON, 0644)
+}
+
 // runOneliners displays the oneliners using templates.
 func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running ONELINER", nodeNumber)
 
-	// --- Load current oneliners dynamically ---
 	onelinerPath := filepath.Join("data", "oneliners.json")
-	var currentOneLiners []string
 
-	// --- BEGIN MUTEX PROTECTED SECTION ---
+	var currentOneLiners []onelinerRecord
 	onelinerMutex.Lock()
-	log.Printf("DEBUG: Node %d: Acquired oneliner mutex.", nodeNumber)
-	defer func() {
-		onelinerMutex.Unlock()
-		log.Printf("DEBUG: Node %d: Released oneliner mutex.", nodeNumber)
-	}()
-
-	jsonData, readErr := os.ReadFile(onelinerPath)
-	if readErr != nil {
-		if os.IsNotExist(readErr) {
-			log.Printf("INFO: %s not found, starting with empty list.", onelinerPath)
-			currentOneLiners = []string{}
-		} else {
-			log.Printf("ERROR: Failed to read oneliners file %s: %v", onelinerPath, readErr)
-			currentOneLiners = []string{}
-		}
+	loadedOneLiners, loadErr := loadOnelinerRecords(onelinerPath)
+	onelinerMutex.Unlock()
+	if loadErr != nil {
+		log.Printf("ERROR: Failed loading oneliners from %s: %v", onelinerPath, loadErr)
+		currentOneLiners = []onelinerRecord{}
 	} else {
-		err := json.Unmarshal(jsonData, &currentOneLiners)
-		if err != nil {
-			log.Printf("ERROR: Failed to parse oneliners JSON from %s: %v. Starting with empty list.", onelinerPath, err)
-			currentOneLiners = []string{}
-		}
+		currentOneLiners = loadedOneLiners
 	}
 	log.Printf("DEBUG: Loaded %d oneliners from %s", len(currentOneLiners), onelinerPath)
 
-	// --- Load Templates ---
+	numLiners := len(currentOneLiners)
+	maxLinesToShow := oneLinerMaxDisplay
+	startIdx := 0
+	if numLiners > maxLinesToShow {
+		startIdx = numLiners - maxLinesToShow
+	}
+
+	// 1. Load template files (same flow as LASTCALLERS)
 	topTemplatePath := filepath.Join(e.MenuSetPath, "templates", "ONELINER.TOP")
 	midTemplatePath := filepath.Join(e.MenuSetPath, "templates", "ONELINER.MID")
 	botTemplatePath := filepath.Join(e.MenuSetPath, "templates", "ONELINER.BOT")
 
-	topTemplate, errTop := os.ReadFile(topTemplatePath)
+	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
 	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplate, errBot := os.ReadFile(botTemplatePath)
-
+	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more ONELINER template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := "\r\n|01Error loading Oneliners screen templates.|07\r\n"
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
+		if wErr != nil {
 		}
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading ONELINER templates")
 	}
 
-	// --- Build Display Output ---
-	processedTopTemplate := ansi.ReplacePipeCodes(topTemplate)
-	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
-	processedBotTemplate := ansi.ReplacePipeCodes(botTemplate)
+	// Strip SAUCE metadata and normalize broken bar delimiters, matching LASTCALLERS behavior.
+	topTemplateBytes = stripSauceMetadata(topTemplateBytes)
+	midTemplateBytes = stripSauceMetadata(midTemplateBytes)
+	botTemplateBytes = stripSauceMetadata(botTemplateBytes)
 
-	// Use WriteProcessedBytes for ClearScreen
+	topTemplateBytes = normalizePipeCodeDelimiters(topTemplateBytes)
+	midTemplateBytes = normalizePipeCodeDelimiters(midTemplateBytes)
+	botTemplateBytes = normalizePipeCodeDelimiters(botTemplateBytes)
+
+	processedTopTemplate := ansi.ReplacePipeCodes(topTemplateBytes)
+	midTemplateRaw := string(midTemplateBytes)
+	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
+
 	wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed clearing screen for ONELINER: %v", nodeNumber, wErr)
-		// Continue if possible
 	}
-	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing ONELINER top template bytes (hex): %x", nodeNumber, processedTopTemplate)
+
 	wErr = terminalio.WriteProcessedBytes(terminal, processedTopTemplate, outputMode)
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing ONELINER top template: %v", nodeNumber, wErr)
 		return nil, "", wErr
 	}
 
-	// --- Display Last 20 (or fewer) Oneliners --- REMOVED Pagination Logic
-	numLiners := len(currentOneLiners)
-	maxLinesToShow := 20
-	startIdx := 0
-	if numLiners > maxLinesToShow {
-		startIdx = numLiners - maxLinesToShow
-	}
-
-	for i := startIdx; i < numLiners; i++ {
-		oneliner := currentOneLiners[i]
-		processedOneliner := string(ansi.ReplacePipeCodes([]byte(oneliner)))
-
-		line := processedMidTemplate
-		line = strings.ReplaceAll(line, "^OL", processedOneliner)
-
-		// Log hex bytes before writing
-		lineBytes := []byte(line)
-		log.Printf("DEBUG: Node %d: Writing ONELINER mid line %d bytes (hex): %x", nodeNumber, i, lineBytes)
+	if numLiners == 0 {
+		line := strings.ReplaceAll(midTemplateRaw, "^NU", formatOnelinerDisplayName("System"))
+		line = strings.ReplaceAll(line, "^OL", "No one-liners yet. Be the first!")
+		line = "    " + line
+		lineBytes := ansi.ReplacePipeCodes([]byte(line))
 		wErr = terminalio.WriteProcessedBytes(terminal, lineBytes, outputMode)
 		if wErr != nil {
-			log.Printf("ERROR: Node %d: Failed writing oneliner line %d: %v", nodeNumber, i, wErr)
+			log.Printf("ERROR: Node %d: Failed writing empty oneliner state: %v", nodeNumber, wErr)
 			return nil, "", wErr
+		}
+	} else {
+		anonymousName := strings.TrimSpace(e.LoadedStrings.AnonymousName)
+		if anonymousName == "" {
+			anonymousName = "Anonymous"
+		}
+		for i := startIdx; i < numLiners; i++ {
+			record := currentOneLiners[i]
+			displayName := onelinerVisibleName(record, anonymousName)
+			displayName = formatOnelinerDisplayName(displayName)
+			messageText := truncateOnelinerPreservePipeCodes(record.Text, oneLinerMaxLength)
+
+			line := strings.ReplaceAll(midTemplateRaw, "^NU", displayName)
+			line = strings.ReplaceAll(line, "^OL", messageText)
+			line = "    " + line
+
+			lineBytes := ansi.ReplacePipeCodes([]byte(line))
+			wErr = terminalio.WriteProcessedBytes(terminal, lineBytes, outputMode)
+			if wErr != nil {
+				log.Printf("ERROR: Node %d: Failed writing oneliner line %d: %v", nodeNumber, i, wErr)
+				return nil, "", wErr
+			}
 		}
 	}
 
@@ -527,23 +889,15 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		log.Printf("ERROR: Node %d: Failed writing ONELINER bottom template: %v", nodeNumber, wErr)
 		return nil, "", wErr
 	}
-	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing ONELINER bot template bytes (hex): %x", nodeNumber, processedBotTemplate)
-	wErr = terminalio.WriteProcessedBytes(terminal, processedBotTemplate, outputMode)
-	if wErr != nil {
-		log.Printf("ERROR: Node %d: Failed writing ONELINER bottom template: %v", nodeNumber, wErr)
-		return nil, "", wErr
-	}
-
-	// --- Ask to Add New One --- (Logic remains the same)
+	// --- Ask to Add New One ---
 	askPrompt := e.LoadedStrings.AskOneLiner
 	if askPrompt == "" {
 		log.Printf("ERROR: Required string 'AskOneLiner' is missing or empty in strings configuration.")
 		return nil, "", fmt.Errorf("missing AskOneLiner string in configuration")
 	}
 
-	log.Printf("DEBUG: Node %d: Calling promptYesNoLightbar for ONELINER add prompt", nodeNumber)
-	addYes, err := e.promptYesNoLightbar(s, terminal, askPrompt, outputMode, nodeNumber) // Pass nodeNumber
+	log.Printf("DEBUG: Node %d: Calling promptYesNo for ONELINER add prompt", nodeNumber)
+	addYes, err := e.promptYesNo(s, terminal, askPrompt, outputMode, nodeNumber)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			log.Printf("INFO: Node %d: User disconnected during ONELINER add prompt.", nodeNumber)
@@ -554,18 +908,86 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	if addYes {
+		allowAnon := currentUser != nil && currentUser.AccessLevel >= e.ServerCfg.AnonymousLevel
+		isAnonymous := false
+		if allowAnon {
+			anonPrompt := e.LoadedStrings.OneLinerAnonymousPrompt
+			if anonPrompt == "" {
+				anonPrompt = "|09Post this one-liner as |08[|15A|08]nonymous|09? @"
+			}
+			// Start anonymous prompt at column 1 to avoid inherited indentation.
+			wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Node %d: Failed to clear line before ONELINER anonymous prompt: %v", nodeNumber, wErr)
+			}
+			anonYes, anonErr := e.promptYesNo(s, terminal, anonPrompt, outputMode, nodeNumber)
+			if anonErr != nil {
+				if errors.Is(anonErr, io.EOF) {
+					log.Printf("INFO: Node %d: User disconnected during ONELINER anonymous prompt.", nodeNumber)
+					return nil, "LOGOFF", io.EOF
+				}
+				log.Printf("WARN: Node %d: Failed anonymous prompt for ONELINER: %v", nodeNumber, anonErr)
+			} else {
+				isAnonymous = anonYes
+			}
+		}
+
 		enterPrompt := e.LoadedStrings.EnterOneLiner
 		if enterPrompt == "" {
 			log.Printf("ERROR: Required string 'EnterOneLiner' is missing or empty in strings configuration.")
 			return nil, "", fmt.Errorf("missing EnterOneLiner string in configuration")
 		}
+
+		promptRow := 23
+		promptColWidth := 80
+		if ptyReq, _, isPty := s.Pty(); isPty && ptyReq.Window.Height > 0 {
+			promptRow = ptyReq.Window.Height
+			if ptyReq.Window.Width > 0 {
+				promptColWidth = ptyReq.Window.Width
+			}
+		}
+
+		// Prefer current cursor row so EnterOneLiner prompt reuses the same line
+		// as the previous Yes/No prompt, avoiding stacked prompts.
+		inputRow := promptRow
+		if row, _, posErr := requestCursorPosition(s, terminal); posErr == nil && row > 0 {
+			inputRow = row
+		}
+
+		legendText := strings.TrimSpace(e.LoadedStrings.OneLinerLegend)
+		legendRow := inputRow - 1
+		if legendRow < 1 {
+			legendRow = 1
+		}
+
 		// Use WriteProcessedBytes for SaveCursor, positioning, and clear line
 		wErr = terminalio.WriteProcessedBytes(terminal, []byte(ansi.SaveCursor()), outputMode)
 		if wErr != nil { /* Log? */
 		}
-		posClearCmd := fmt.Sprintf("\x1b[%d;1H\x1b[2K", 23) // Use row 23 for input prompt
+		// Clear legend row, detected input row, and prompt row fallback.
+		posClearCmd := fmt.Sprintf("\x1b[%d;1H\x1b[2K\x1b[%d;1H\x1b[2K\x1b[%d;1H\x1b[2K\x1b[%d;1H", legendRow, inputRow, promptRow, inputRow)
 		wErr = terminalio.WriteProcessedBytes(terminal, []byte(posClearCmd), outputMode)
 		if wErr != nil { /* Log? */
+		}
+
+		if legendText != "" {
+			legendText = truncatePipeCodedText(legendText, promptColWidth)
+			legendPosCmd := fmt.Sprintf("\x1b[%d;1H", legendRow)
+			wErr = terminalio.WriteProcessedBytes(terminal, []byte(legendPosCmd), outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Node %d: Failed positioning ONELINER legend row: %v", nodeNumber, wErr)
+			}
+
+			legendBytes := ansi.ReplacePipeCodes([]byte(legendText))
+			wErr = terminalio.WriteProcessedBytes(terminal, legendBytes, outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Node %d: Failed writing ONELINER legend: %v", nodeNumber, wErr)
+			}
+
+			wErr = terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[%d;1H", inputRow)), outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Node %d: Failed restoring ONELINER input row after legend: %v", nodeNumber, wErr)
+			}
 		}
 
 		// Log hex bytes before writing
@@ -585,29 +1007,55 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			log.Printf("ERROR: Failed reading new oneliner input: %v", err)
 			return nil, "", err
 		}
-		newOneliner = strings.TrimSpace(newOneliner)
+		newOneliner = truncateOnelinerPreservePipeCodes(newOneliner, oneLinerMaxLength)
+		if containsDisallowedOnelinerColorCode(newOneliner) {
+			msg := "\r\n|01Only standard foreground colors |15||01|01-|15||15 |01are allowed in one-liners.|07\r\n"
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(500 * time.Millisecond)
+			return nil, "", nil
+		}
 
 		if newOneliner != "" {
-			currentOneLiners = append(currentOneLiners, newOneliner)
-			log.Printf("DEBUG: Node %d: Appended oneliner to local list: '%s'", nodeNumber, newOneliner)
+			postedByUsername := ""
+			postedByHandle := ""
+			if currentUser != nil {
+				postedByUsername = currentUser.Username
+				postedByHandle = currentUser.Handle
+			}
+			if strings.TrimSpace(postedByUsername) == "" {
+				postedByUsername = "Unknown"
+			}
+			if strings.TrimSpace(postedByHandle) == "" {
+				postedByHandle = postedByUsername
+			}
 
-			updatedJsonData, err := json.MarshalIndent(currentOneLiners, "", "  ")
-			if err != nil {
-				log.Printf("ERROR: Node %d: Failed to marshal updated oneliners list to JSON: %v", nodeNumber, err)
-				msg := "\r\n|01Error preparing oneliner data for saving.|07\r\n"
+			entry := onelinerRecord{
+				Text:             newOneliner,
+				Anonymous:        isAnonymous,
+				PostedByUsername: postedByUsername,
+				PostedByHandle:   postedByHandle,
+				PostedAt:         time.Now().UTC().Format(time.RFC3339),
+			}
+
+			onelinerMutex.Lock()
+			latestOneLiners, latestErr := loadOnelinerRecords(onelinerPath)
+			if latestErr != nil {
+				log.Printf("WARN: Node %d: Failed reloading oneliners before save: %v", nodeNumber, latestErr)
+				latestOneLiners = currentOneLiners
+			}
+			latestOneLiners = append(latestOneLiners, entry)
+			saveErr := saveOnelinerRecords(onelinerPath, latestOneLiners)
+			onelinerMutex.Unlock()
+
+			if saveErr != nil {
+				log.Printf("ERROR: Node %d: Failed to write updated oneliners JSON to %s: %v", nodeNumber, onelinerPath, saveErr)
+				msg := "\r\n|01Error writing oneliner to disk.|07\r\n"
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			} else {
-				err = os.WriteFile(onelinerPath, updatedJsonData, 0644)
-				if err != nil {
-					log.Printf("ERROR: Node %d: Failed to write updated oneliners JSON to %s: %v", nodeNumber, onelinerPath, err)
-					msg := "\r\n|01Error writing oneliner to disk.|07\r\n"
-					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-				} else {
-					log.Printf("INFO: Node %d: Successfully saved updated oneliners to %s", nodeNumber, onelinerPath)
-					msg := "\r\n|10Oneliner added!|07\r\n"
-					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-					time.Sleep(500 * time.Millisecond)
-				}
+				log.Printf("INFO: Node %d: Successfully saved updated oneliners to %s", nodeNumber, onelinerPath)
+				msg := "\r\n|10Oneliner added!|07\r\n"
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				time.Sleep(500 * time.Millisecond)
 			}
 		} else {
 			msg := "\r\n|01Empty oneliner not added.|07\r\n"
@@ -2025,14 +2473,55 @@ func normalizePipeCodeDelimiters(input []byte) []byte {
 		return input
 	}
 
-	// Replace UTF-8 broken bar (U+00A6 => 0xC2 0xA6) with '|'
-	normalized := bytes.ReplaceAll(input, []byte{0xC2, 0xA6}, []byte{'|'})
-	// Replace UTF-8 box drawing light vertical (U+2502 => 0xE2 0x94 0x82) with '|'
-	normalized = bytes.ReplaceAll(normalized, []byte{0xE2, 0x94, 0x82}, []byte{'|'})
-	// Replace raw single-byte broken bar (0xA6, common from CP437/ANSI assets) with '|'
-	normalized = bytes.ReplaceAll(normalized, []byte{0xA6}, []byte{'|'})
-	// Replace raw single-byte CP437 vertical bar (0xB3) with '|'
-	normalized = bytes.ReplaceAll(normalized, []byte{0xB3}, []byte{'|'})
+	// Only normalize likely pipe-code delimiters (e.g. ¦CR, ¦08, │DE).
+	// Do NOT blanket-convert ANSI line-art bytes (such as CP437 0xB3), which
+	// can corrupt imported Retrograde art templates.
+	normalized := make([]byte, 0, len(input))
+
+	isPipeCodeLead := func(b byte) bool {
+		return (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || (b >= '0' && b <= '9')
+	}
+
+	for i := 0; i < len(input); {
+		replaced := false
+
+		// UTF-8 broken bar (U+00A6 => 0xC2 0xA6)
+		if i+1 < len(input) && input[i] == 0xC2 && input[i+1] == 0xA6 {
+			if i+2 < len(input) && isPipeCodeLead(input[i+2]) {
+				normalized = append(normalized, '|')
+				i += 2
+				replaced = true
+			}
+		}
+
+		if !replaced {
+			// UTF-8 box drawing light vertical (U+2502 => 0xE2 0x94 0x82)
+			if i+2 < len(input) && input[i] == 0xE2 && input[i+1] == 0x94 && input[i+2] == 0x82 {
+				if i+3 < len(input) && isPipeCodeLead(input[i+3]) {
+					normalized = append(normalized, '|')
+					i += 3
+					replaced = true
+				}
+			}
+		}
+
+		if !replaced {
+			// Raw single-byte broken bar (0xA6)
+			if input[i] == 0xA6 {
+				if i+1 < len(input) && isPipeCodeLead(input[i+1]) {
+					normalized = append(normalized, '|')
+					i++
+					replaced = true
+				}
+			}
+		}
+
+		if !replaced {
+			normalized = append(normalized, input[i])
+			i++
+		}
+	}
+
 	return normalized
 }
 
@@ -3021,6 +3510,12 @@ func requestCursorPosition(s ssh.Session, terminal *term.Terminal) (int, int, er
 	}
 }
 
+// promptYesNo is the canonical Yes/No prompt entrypoint for menu flows.
+// Keep all call sites routed here so prompt behavior can be changed in one place.
+func (e *MenuExecutor) promptYesNo(s ssh.Session, terminal *term.Terminal, promptText string, outputMode ansi.OutputMode, nodeNumber int) (bool, error) {
+	return e.promptYesNoLightbar(s, terminal, promptText, outputMode, nodeNumber)
+}
+
 // promptYesNoLightbar displays a Yes/No prompt with lightbar selection.
 // Returns true for Yes, false for No, and error on issues like disconnect.
 func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Terminal, promptText string, outputMode ansi.OutputMode, nodeNumber int) (bool, error) {
@@ -3036,19 +3531,39 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 	if hasPtyHeight {
 		// --- Dynamic Lightbar Logic (if terminal height is known) ---
 		log.Printf("DEBUG: Terminal height known (%d), using lightbar prompt.", ptyReq.Window.Height)
+		wErr := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+		if wErr != nil {
+			log.Printf("WARN: Node %d: Failed hiding cursor for Yes/No prompt: %v", nodeNumber, wErr)
+		}
+		defer func() {
+			restoreErr := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+			if restoreErr != nil {
+				log.Printf("WARN: Node %d: Failed restoring cursor for Yes/No prompt: %v", nodeNumber, restoreErr)
+			}
+		}()
+
 		promptRow := ptyReq.Window.Height // Use last row
 		promptCol := 3
-		yesOptionText := " Yes "
-		noOptionText := " No " // Ensure consistent padding
-		yesNoSpacing := 2      // Spaces between prompt and first option (after cursor)
-		optionSpacing := 2     // Spaces between Yes and No
+		yesLabel := strings.TrimSpace(e.LoadedStrings.YesPromptText)
+		if yesLabel == "" {
+			yesLabel = "Yes"
+		}
+		noLabel := strings.TrimSpace(e.LoadedStrings.NoPromptText)
+		if noLabel == "" {
+			noLabel = "No"
+		}
+
+		yesOptionText := " " + yesLabel + " "
+		noOptionText := " " + noLabel + " "
+		yesNoSpacing := 2  // Spaces between prompt and first option (after cursor)
+		optionSpacing := 2 // Spaces between Yes and No
 		highlightColor := e.Theme.YesNoHighlightColor
 		regularColor := e.Theme.YesNoRegularColor
 
 		// Use WriteProcessedBytes for ANSI codes
 		saveCursorBytes := []byte(ansi.SaveCursor())
 		log.Printf("DEBUG: Node %d: Writing prompt save cursor bytes (hex): %x", nodeNumber, saveCursorBytes) // Use nodeNumber
-		wErr := terminalio.WriteProcessedBytes(terminal, saveCursorBytes, outputMode)
+		wErr = terminalio.WriteProcessedBytes(terminal, saveCursorBytes, outputMode)
 		if wErr != nil {
 			log.Printf("WARN: Failed saving cursor: %v", wErr)
 		}
@@ -3252,10 +3767,10 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 		// Construct the simple text prompt
 		fullPrompt := promptText + " [Y/N]? "
 
-		// Write the prompt. Add CRLF before it for spacing - Use WriteProcessedBytes
-		wErr := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		// Write the prompt after one blank row: newline + blank line, then prompt.
+		wErr := terminalio.WriteProcessedBytes(terminal, []byte("\r\n\r\n"), outputMode)
 		if wErr != nil {
-			log.Printf("WARN: Failed writing CRLF: %v", wErr)
+			log.Printf("WARN: Failed writing fallback pre-prompt spacing: %v", wErr)
 		}
 
 		processedPromptBytes := ansi.ReplacePipeCodes([]byte(fullPrompt))
@@ -3777,7 +4292,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		if anonPrompt == "" {
 			anonPrompt = "|07Anonymous? @"
 		}
-		isAnon, err := e.promptYesNoInline(s, terminal, anonPrompt, outputMode, nodeNumber)
+		isAnon, err := e.promptYesNo(s, terminal, anonPrompt, outputMode, nodeNumber)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				log.Printf("INFO: Node %d: User disconnected during anonymous input.", nodeNumber)
@@ -3795,7 +4310,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	if uploadPrompt == "" {
 		uploadPrompt = "|07Upload Message? @"
 	}
-	uploadYes, err := e.promptYesNoInline(s, terminal, uploadPrompt, outputMode, nodeNumber)
+	uploadYes, err := e.promptYesNo(s, terminal, uploadPrompt, outputMode, nodeNumber)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			log.Printf("INFO: Node %d: User disconnected during upload input.", nodeNumber)
@@ -3852,7 +4367,10 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	// Determine the "from" name (may be anonymous)
 	fromName := currentUser.Handle
 	if isAnonymous {
-		fromName = "Anonymous"
+		fromName = strings.TrimSpace(e.LoadedStrings.AnonymousName)
+		if fromName == "" {
+			fromName = "Anonymous"
+		}
 	}
 
 	msgNum, err := e.MessageMgr.AddMessage(area.ID, fromName, toUser, subject, body, "")
@@ -4603,7 +5121,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.SaveCursor()), outputMode)
 			terminalio.WriteProcessedBytes(terminal, []byte("\\r\\n\\x1b[K"), outputMode) // Newline, clear line
 
-			proceed, err := e.promptYesNoLightbar(s, terminal, confirmPrompt, outputMode, nodeNumber)
+			proceed, err := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()), outputMode) // Restore cursor after prompt
 
 			if err != nil {

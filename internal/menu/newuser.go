@@ -1,7 +1,6 @@
 package menu
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -43,7 +42,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 	if applyPrompt == "" {
 		applyPrompt = "|08A|07p|15ply |08F|07o|15r |08A|07c|15cess? @"
 	}
-	applyYes, err := e.promptYesNoInline(s, terminal, applyPrompt, outputMode, nodeNumber)
+	applyYes, err := e.promptYesNo(s, terminal, applyPrompt, outputMode, nodeNumber)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return io.EOF
@@ -428,82 +427,6 @@ func (e *MenuExecutor) promptForUserNote(
 	}
 
 	return strings.TrimSpace(input), nil
-}
-
-// promptYesNoInline renders a Yes/No prompt at the current cursor position,
-// matching Pascal's PlaceYesNo from SUBS2.PAS: space + colored "Yes" + reset +
-// two spaces + colored "No!" + reset. Cursor is hidden during selection.
-func (e *MenuExecutor) promptYesNoInline(s ssh.Session, terminal *term.Terminal, promptText string, outputMode ansi.OutputMode, nodeNumber int) (bool, error) {
-	// Strip trailing ' @' — ViSiON/2 convention for Yes/No prompt terminator
-	promptText = strings.TrimSuffix(promptText, " @")
-	promptText = strings.TrimSuffix(promptText, "@")
-
-	// Write prompt text at current cursor position
-	promptBytes := ansi.ReplacePipeCodes([]byte(promptText))
-	terminalio.WriteStringCP437(terminal, promptBytes, outputMode)
-
-	// Colors match Pascal PlaceYesNo: color7 = highlighted, color6 = regular
-	highlightColor := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
-	regularColor := colorCodeToAnsi(e.Theme.YesNoRegularColor)
-
-	selectedIndex := 0 // 0=No (default)
-
-	// Hide cursor during selection, restore on exit
-	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
-	defer terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
-
-	drawInline := func(sel int) {
-		// Restore cursor to saved position and redraw
-		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[u"), outputMode)
-		yesColor, noColor := regularColor, regularColor
-		if sel == 1 {
-			yesColor = highlightColor
-		} else {
-			noColor = highlightColor
-		}
-		// Match Pascal: space + colored "Yes" + reset + two spaces + colored "No!" + reset
-		terminalio.WriteProcessedBytes(terminal, []byte(
-			" "+yesColor+"Yes"+"\x1b[0m"+"  "+noColor+"No!"+"\x1b[0m",
-		), outputMode)
-	}
-
-	// Save cursor position right after prompt text, then draw options
-	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[s"), outputMode)
-	drawInline(selectedIndex)
-
-	bufioReader := bufio.NewReader(s)
-	for {
-		r, _, err := bufioReader.ReadRune()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return false, io.EOF
-			}
-			return false, fmt.Errorf("failed reading yes/no input: %w", err)
-		}
-
-		switch unicode.ToUpper(r) {
-		case 'Y':
-			selectedIndex = 1
-			drawInline(selectedIndex)
-			return true, nil
-		case 'N':
-			selectedIndex = 0
-			drawInline(selectedIndex)
-			return false, nil
-		case ' ', '\r', '\n':
-			return selectedIndex == 1, nil
-		case 27: // ESC - arrow keys
-			escSeq := make([]byte, 2)
-			n, readErr := bufioReader.Read(escSeq)
-			if readErr != nil || n != 2 {
-				continue
-			}
-			if escSeq[0] == 91 && (escSeq[1] == 67 || escSeq[1] == 68) { // Left or Right
-				selectedIndex = 1 - selectedIndex
-				drawInline(selectedIndex)
-			}
-		}
-	}
 }
 
 // validateHandle checks a handle against rules from Pascal ValidUserName().

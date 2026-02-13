@@ -58,11 +58,13 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, termTyp
 
 	// Determine menu set path (look for standard location)
 	menuSetPath := "/home/bbs/git/vision3/menus/v3"
+	rootConfigPath := "/home/bbs/git/vision3/configs"
 
 	// Check if we're in a different location (development vs production)
 	if _, err := os.Stat("menus/v3"); err == nil {
 		if cwd, err := os.Getwd(); err == nil {
 			menuSetPath = filepath.Join(cwd, "menus/v3")
+			rootConfigPath = filepath.Join(cwd, "configs")
 		}
 	}
 
@@ -71,8 +73,25 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, termTyp
 	yesNoHi := colorCodeToAnsi(theme.YesNoHighlightColor)
 	yesNoLo := colorCodeToAnsi(theme.YesNoRegularColor)
 
+	// Load configurable Yes/No labels for prompts.
+	stringsCfg, stringsErr := config.LoadStrings(rootConfigPath)
+	yesText := "Yes"
+	noText := "No"
+	abortText := "|14Abort message?"
+	if stringsErr == nil {
+		if v := strings.TrimSpace(stringsCfg.YesPromptText); v != "" {
+			yesText = v
+		}
+		if v := strings.TrimSpace(stringsCfg.NoPromptText); v != "" {
+			noText = v
+		}
+		if v := strings.TrimSpace(stringsCfg.AbortMessagePrompt); v != "" {
+			abortText = v
+		}
+	}
+
 	// Create the full-screen editor
-	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo)
+	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
 
 	// Load initial content
 	if initialContent != "" {
@@ -141,9 +160,11 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 
 	// Determine menu set path
 	menuSetPath := "/home/bbs/git/vision3/menus/v3"
+	rootConfigPath := "/home/bbs/git/vision3/configs"
 	if _, err := os.Stat("menus/v3"); err == nil {
 		if cwd, err := os.Getwd(); err == nil {
 			menuSetPath = filepath.Join(cwd, "menus/v3")
+			rootConfigPath = filepath.Join(cwd, "configs")
 		}
 	}
 
@@ -152,8 +173,25 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 	yesNoHi := colorCodeToAnsi(theme.YesNoHighlightColor)
 	yesNoLo := colorCodeToAnsi(theme.YesNoRegularColor)
 
+	// Load configurable Yes/No labels for prompts.
+	stringsCfg, stringsErr := config.LoadStrings(rootConfigPath)
+	yesText := "Yes"
+	noText := "No"
+	abortText := "|14Abort message?"
+	if stringsErr == nil {
+		if v := strings.TrimSpace(stringsCfg.YesPromptText); v != "" {
+			yesText = v
+		}
+		if v := strings.TrimSpace(stringsCfg.NoPromptText); v != "" {
+			noText = v
+		}
+		if v := strings.TrimSpace(stringsCfg.AbortMessagePrompt); v != "" {
+			abortText = v
+		}
+	}
+
 	// Create the full-screen editor
-	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo)
+	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
 
 	// Set metadata
 	editor.SetMetadata(subject, recipient, isAnon)

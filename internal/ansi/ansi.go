@@ -138,25 +138,27 @@ var pipeCodeReplacements = map[string]string{
 	"|15": "\x1B[1;37m", // White (Bright White)
 
 	// Background Colors (|B0 - |B7)
-	"|B0": "\x1B[40m", // Black BG
-	"|B1": "\x1B[41m", // Red BG
-	"|B2": "\x1B[42m", // Green BG
-	"|B3": "\x1B[43m", // Brown BG
-	"|B4": "\x1B[44m", // Blue BG
-	"|B5": "\x1B[45m", // Magenta BG
-	"|B6": "\x1B[46m", // Cyan BG
-	"|B7": "\x1B[47m", // Gray BG (Standard White BG)
-	"|B8": "\x1B[100m", // Bright Black BG
-	"|B9": "\x1B[101m", // Bright Red BG
-	"|B10": "\x1B[102m", // Bright Green BG
-	"|B11": "\x1B[103m", // Bright Yellow BG
+	"|B0":  "\x1B[40m",               // Black BG
+	"|B1":  "\x1B[41m",               // Red BG
+	"|B2":  "\x1B[42m",               // Green BG
+	"|B3":  "\x1B[43m",               // Brown BG
+	"|B4":  "\x1B[44m",               // Blue BG
+	"|B5":  "\x1B[45m",               // Magenta BG
+	"|B6":  "\x1B[46m",               // Cyan BG
+	"|B7":  "\x1B[47m",               // Gray BG (Standard White BG)
+	"|B8":  "\x1B[100m",              // Bright Black BG
+	"|B9":  "\x1B[101m",              // Bright Red BG
+	"|B10": "\x1B[102m",              // Bright Green BG
+	"|B11": "\x1B[103m",              // Bright Yellow BG
 	"|B12": "\x1B[104m\x1B[48;5;12m", // Bright Blue BG (16-color + 256-color)
-	"|B13": "\x1B[105m", // Bright Magenta BG
-	"|B14": "\x1B[106m", // Bright Cyan BG
-	"|B15": "\x1B[107m", // Bright White BG
+	"|B13": "\x1B[105m",              // Bright Magenta BG
+	"|B14": "\x1B[106m",              // Bright Cyan BG
+	"|B15": "\x1B[107m",              // Bright White BG
 
 	// Other standard codes (using common ANSI)
 	"|CL": "\x1B[2J\x1B[H", // Clear screen and home cursor
+	"|CR": "\r\n",          // Carriage return + line feed
+	"|DE": "\x1B[K",        // Clear to end of line
 	"|P":  "\x1B[s",        // Save cursor position
 	"|PP": "\x1B[u",        // Restore cursor position
 	"|23": "\x1B[0m",       // Reset attributes
@@ -538,6 +540,13 @@ func ReplacePipeCodes(data []byte) []byte {
 	dataLen := len(data)
 
 	for i < dataLen {
+		// Escaped literal pipe: "||" -> "|"
+		if data[i] == '|' && i+1 < dataLen && data[i+1] == '|' {
+			buf.WriteByte('|')
+			i += 2
+			continue
+		}
+
 		// Check for potential |XX code
 		if data[i] == '|' && i+2 < dataLen {
 			if i+3 < dataLen {
