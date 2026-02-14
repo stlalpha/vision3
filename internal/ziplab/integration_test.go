@@ -110,13 +110,19 @@ func TestZipLabPipeline_Integration(t *testing.T) {
 		}
 		defer r.Close()
 
-		if r.Comment == "" {
-			t.Error("zip comment should be set")
+		commentData, err := os.ReadFile(filepath.Join(root, "ziplab", "ZCOMMENT.TXT"))
+		if err != nil {
+			t.Fatalf("failed to read ZCOMMENT.TXT: %v", err)
+		}
+		expectedComment := strings.TrimSpace(string(commentData))
+		if r.Comment != expectedComment {
+			t.Errorf("zip comment should match ZCOMMENT.TXT\nexpected: %q\ngot:      %q", expectedComment, r.Comment)
 		}
 
 		foundBBSAD := false
 		foundReadme := false
 		foundDIZ := false
+		foundVendor := false
 		for _, f := range r.File {
 			switch {
 			case f.Name == "BBS.AD":
@@ -125,6 +131,8 @@ func TestZipLabPipeline_Integration(t *testing.T) {
 				foundReadme = true
 			case strings.EqualFold(f.Name, "FILE_ID.DIZ"):
 				foundDIZ = true
+			case strings.EqualFold(f.Name, "VENDOR.TXT"):
+				foundVendor = true
 			}
 		}
 		if !foundBBSAD {
@@ -135,6 +143,9 @@ func TestZipLabPipeline_Integration(t *testing.T) {
 		}
 		if !foundDIZ {
 			t.Error("FILE_ID.DIZ should be present in final zip")
+		}
+		if foundVendor {
+			t.Error("VENDOR.TXT should have been removed by ad removal step")
 		}
 
 		t.Run("display_pipeline", func(t *testing.T) {

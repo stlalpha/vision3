@@ -162,7 +162,8 @@ func (p *Processor) StepVirusScan(workDir string) error {
 
 // StepRemoveAdsAndDIZ (Step 5) extracts FILE_ID.DIZ content and removes
 // unwanted files matching patterns from REMOVE.TXT.
-func (p *Processor) StepRemoveAdsAndDIZ(workDir string) (string, error) {
+// workDir is used to find FILE_ID.DIZ; archivePath is the ZIP to strip ad files from.
+func (p *Processor) StepRemoveAdsAndDIZ(workDir, archivePath string) (string, error) {
 	if !p.config.Steps.RemoveAds.Enabled {
 		log.Printf("INFO: ZipLab step 5 (remove ads/DIZ) skipped — disabled")
 		return "", nil
@@ -179,7 +180,93 @@ func (p *Processor) StepRemoveAdsAndDIZ(workDir string) (string, error) {
 		p.removeMatchingFiles(workDir, pattern)
 	}
 
+	// Remove matching files from the archive itself
+	if len(patterns) > 0 && archivePath != "" {
+		at, ok := p.config.GetArchiveType(archivePath)
+		if ok && at.Native {
+			if err := p.removeFilesFromZip(archivePath, patterns); err != nil {
+				log.Printf("WARN: failed to remove ad files from archive: %v", err)
+			}
+		}
+	}
+
 	return diz, nil
+}
+
+// removeFilesFromZip rewrites a ZIP excluding entries that match any of the patterns (case-insensitive).
+func (p *Processor) removeFilesFromZip(zipPath string, patterns []string) error {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return fmt.Errorf("failed to open zip: %w", err)
+	}
+
+	tmpPath := zipPath + ".tmp"
+	outFile, err := os.Create(tmpPath)
+	if err != nil {
+		r.Close()
+		return fmt.Errorf("failed to create temp zip: %w", err)
+	}
+
+	w := zip.NewWriter(outFile)
+	if r.Comment != "" {
+		w.SetComment(r.Comment)
+	}
+
+	removed := 0
+	for _, f := range r.File {
+		if shouldRemoveFile(f.Name, patterns) {
+			log.Printf("INFO: removing ad file from archive: %s", f.Name)
+			removed++
+			continue
+		}
+
+		fw, err := w.CreateHeader(&f.FileHeader)
+		if err != nil {
+			w.Close()
+			outFile.Close()
+			r.Close()
+			os.Remove(tmpPath)
+			return fmt.Errorf("failed to copy entry %s: %w", f.Name, err)
+		}
+		if !f.FileInfo().IsDir() {
+			rc, err := f.Open()
+			if err != nil {
+				w.Close()
+				outFile.Close()
+				r.Close()
+				os.Remove(tmpPath)
+				return fmt.Errorf("failed to read entry %s: %w", f.Name, err)
+			}
+			io.Copy(fw, rc)
+			rc.Close()
+		}
+	}
+
+	r.Close()
+	if err := w.Close(); err != nil {
+		outFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("failed to finalize zip: %w", err)
+	}
+	outFile.Close()
+
+	if removed == 0 {
+		os.Remove(tmpPath)
+		return nil
+	}
+
+	return os.Rename(tmpPath, zipPath)
+}
+
+// shouldRemoveFile checks if a filename matches any removal pattern (case-insensitive).
+func shouldRemoveFile(name string, patterns []string) bool {
+	baseName := filepath.Base(name)
+	for _, pattern := range patterns {
+		if strings.EqualFold(baseName, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // findAndReadDIZ searches for FILE_ID.DIZ (case-insensitive) and returns its content.

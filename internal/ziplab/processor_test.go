@@ -177,7 +177,7 @@ func TestStepRemoveAdsAndDIZ_ExtractsDIZ(t *testing.T) {
 	cfg := DefaultConfig()
 	p := NewProcessor(cfg, tmpDir)
 
-	diz, err := p.StepRemoveAdsAndDIZ(workDir)
+	diz, err := p.StepRemoveAdsAndDIZ(workDir, "")
 	if err != nil {
 		t.Fatalf("should extract DIZ: %v", err)
 	}
@@ -197,7 +197,7 @@ func TestStepRemoveAdsAndDIZ_CaseInsensitive(t *testing.T) {
 	cfg := DefaultConfig()
 	p := NewProcessor(cfg, tmpDir)
 
-	diz, err := p.StepRemoveAdsAndDIZ(workDir)
+	diz, err := p.StepRemoveAdsAndDIZ(workDir, "")
 	if err != nil {
 		t.Fatalf("should handle case insensitive DIZ: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestStepRemoveAdsAndDIZ_RemovesPatternFiles(t *testing.T) {
 	cfg.Steps.RemoveAds.PatternsFile = patternsFile
 	p := NewProcessor(cfg, tmpDir)
 
-	_, err := p.StepRemoveAdsAndDIZ(workDir)
+	_, err := p.StepRemoveAdsAndDIZ(workDir, "")
 	if err != nil {
 		t.Fatalf("should remove ad files: %v", err)
 	}
@@ -253,7 +253,7 @@ func TestStepRemoveAdsAndDIZ_NoDIZ(t *testing.T) {
 	cfg := DefaultConfig()
 	p := NewProcessor(cfg, tmpDir)
 
-	diz, err := p.StepRemoveAdsAndDIZ(workDir)
+	diz, err := p.StepRemoveAdsAndDIZ(workDir, "")
 	if err != nil {
 		t.Fatalf("should succeed even without DIZ: %v", err)
 	}
@@ -268,7 +268,7 @@ func TestStepRemoveAdsAndDIZ_StepDisabled(t *testing.T) {
 	cfg.Steps.RemoveAds.Enabled = false
 	p := NewProcessor(cfg, tmpDir)
 
-	diz, err := p.StepRemoveAdsAndDIZ(filepath.Join(tmpDir, "nonexistent"))
+	diz, err := p.StepRemoveAdsAndDIZ(filepath.Join(tmpDir, "nonexistent"), "")
 	if err != nil {
 		t.Fatalf("disabled step should be skipped: %v", err)
 	}

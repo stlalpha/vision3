@@ -108,7 +108,7 @@ func (p *Processor) RunPipeline(archivePath string, statusFn StatusCallback) Pip
 		var diz string
 		sr := p.runStep(StepRemoveAds, "FILE_ID.DIZ / Remove Ads", statusFn, func() error {
 			var err error
-			diz, err = p.StepRemoveAdsAndDIZ(workDir)
+			diz, err = p.StepRemoveAdsAndDIZ(workDir, archivePath)
 			return err
 		})
 		result.StepResults = append(result.StepResults, sr)
