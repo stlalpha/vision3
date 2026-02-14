@@ -2,10 +2,22 @@ package ziplab
 
 import (
 	"archive/zip"
+	"bufio"
+	"bytes"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
+
+	"github.com/gliderlabs/ssh"
+	"golang.org/x/term"
+
+	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/terminalio"
+	"github.com/stlalpha/vision3/internal/transfer"
 )
 
 // viewerFormatFileSize returns a human-readable file size string.
@@ -114,4 +126,94 @@ func extractSingleEntry(zipPath string, entryNum int) (string, func(), error) {
 	}
 
 	return destPath, cleanup, nil
+}
+
+// RunZipLabView presents an interactive archive viewer that lets the user
+// browse entries and extract individual files via ZMODEM.
+func RunZipLabView(s ssh.Session, terminal *term.Terminal, filePath string, filename string, outputMode ansi.OutputMode) {
+	// Build the listing into a buffer to get the file count.
+	var buf bytes.Buffer
+	fileCount, err := formatArchiveListing(&buf, filePath, filename, 24)
+	if err != nil {
+		msg := "\r\n|01Error reading archive.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		pauseEnterViewer(s, terminal, outputMode)
+		return
+	}
+	if fileCount == 0 {
+		msg := "\r\n|01Archive is empty.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		pauseEnterViewer(s, terminal, outputMode)
+		return
+	}
+
+	// Display the listing.
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(buf.Bytes()), outputMode)
+
+	for {
+		prompt := fmt.Sprintf("\r\n|07ZipLab [|15#|07/|15Q|07]: |15")
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+
+		line, err := terminal.ReadLine()
+		if err != nil {
+			return
+		}
+		line = strings.TrimSpace(line)
+
+		if line == "" {
+			// Redisplay listing.
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(buf.Bytes()), outputMode)
+			continue
+		}
+
+		if strings.EqualFold(line, "Q") {
+			return
+		}
+
+		num, err := strconv.Atoi(line)
+		if err != nil || num < 1 || num > fileCount {
+			msg := fmt.Sprintf("\r\n|01Invalid selection. Enter 1-%d or Q.|07\r\n", fileCount)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			continue
+		}
+
+		extractedPath, cleanup, err := extractSingleEntry(filePath, num)
+		if err != nil {
+			log.Printf("ziplab: extraction failed: %v", err)
+			msg := "\r\n|01Extraction failed.|07\r\n"
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			continue
+		}
+
+		baseName := filepath.Base(extractedPath)
+		sendMsg := fmt.Sprintf("\r\n|07Sending |15%s|07 via ZMODEM...\r\n", baseName)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(sendMsg)), outputMode)
+
+		if err := transfer.ExecuteZmodemSend(s, extractedPath); err != nil {
+			log.Printf("ziplab: zmodem send failed: %v", err)
+			msg := "\r\n|01Transfer failed.|07\r\n"
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		} else {
+			msg := "\r\n|10Transfer complete.|07\r\n"
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		}
+
+		cleanup()
+	}
+}
+
+// pauseEnterViewer waits for the user to press ENTER before continuing.
+func pauseEnterViewer(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode) {
+	prompt := "\r\n|07Press |15[ENTER]|07 to continue... "
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+	bufioReader := bufio.NewReader(s)
+	for {
+		r, _, err := bufioReader.ReadRune()
+		if err != nil {
+			return
+		}
+		if r == '\r' || r == '\n' {
+			return
+		}
+	}
 }

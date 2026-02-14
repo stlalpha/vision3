@@ -9,6 +9,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gliderlabs/ssh"
+	"golang.org/x/term"
+
+	"github.com/stlalpha/vision3/internal/ansi"
 )
 
 // createTestZipWithTimes creates a ZIP with entries that have specific modification times.
@@ -259,4 +264,10 @@ func TestFormatArchiveListing_ManyFiles(t *testing.T) {
 	if !strings.Contains(output, "50 file(s)") {
 		t.Error("output missing '50 file(s)' summary")
 	}
+}
+
+func TestRunZipLabView_Exists(t *testing.T) {
+	var fn func(ssh.Session, *term.Terminal, string, string, ansi.OutputMode)
+	fn = RunZipLabView
+	_ = fn
 }
