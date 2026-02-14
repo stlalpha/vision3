@@ -1,4 +1,3 @@
-> **Note:** This repository was originally forked from [stlalpha/vision3](https://github.com/stlalpha/vision3), which no longer exists. I am continuing to maintain this fork and welcome any involvement from the community.
 
 # ViSiON/3 BBS Software
 
