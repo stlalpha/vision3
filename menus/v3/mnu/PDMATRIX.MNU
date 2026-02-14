@@ -1,0 +1,9 @@
+{
+    "CLR": true,
+    "USEPROMPT": false,
+    "PROMPT1": "",
+    "PROMPT2": "",
+    "FALLBACK": "",
+    "ACS": "*",
+    "PASS": ""
+}

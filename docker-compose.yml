@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  vision3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vision3:latest
+    container_name: vision3-bbs
+    restart: unless-stopped
+    ports:
+      - "2222:2222"  # SSH port
+    volumes:
+      # Persistent data - these directories will be created on host
+      - ./configs:/vision3/configs
+      - ./data:/vision3/data
+      - ./menus:/vision3/menus
+    environment:
+      # Optional: Override default settings
+      - TZ=America/Los_Angeles
+    # Optional: Resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1.0'
+    #       memory: 512M
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 256M

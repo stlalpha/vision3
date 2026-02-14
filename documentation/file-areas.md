@@ -39,6 +39,7 @@ File areas are defined in `configs/file_areas.json`:
 ## File Storage
 
 Files are stored in the directory specified by the area's `path`:
+
 - Base directory: `data/files/`
 - Area directory: `data/files/{area-path}/`
 - Each file retains its original name
@@ -47,6 +48,7 @@ Files are stored in the directory specified by the area's `path`:
 ### File Metadata Structure
 
 Each area's `metadata.json` contains:
+
 ```json
 [
   {
@@ -78,6 +80,7 @@ Each area's `metadata.json` contains:
 ### Listing File Areas
 
 The `LISTFILEAR` function displays available areas:
+
 - Shows areas user has read access to
 - Displays area ID, tag, name, and file count
 - Uses templates: `FILEAREA.TOP`, `FILEAREA.MID`, `FILEAREA.BOT`
@@ -85,6 +88,7 @@ The `LISTFILEAR` function displays available areas:
 ### Selecting File Area
 
 The `SELECTFILEAREA` function allows area selection:
+
 - Displays area list first
 - Prompts for area number or tag
 - Updates user's current file area
@@ -93,6 +97,7 @@ The `SELECTFILEAREA` function allows area selection:
 ### Listing Files
 
 The `LISTFILES` function shows files in current area:
+
 - Displays filename, size, date, uploader, description
 - Shows marking status with `*` for tagged files
 - Paginated display (15 files per page)
@@ -101,36 +106,43 @@ The `LISTFILES` function shows files in current area:
 ### File Operations
 
 **Implemented:**
+
 - **Browse**: Navigate paginated file listings
 - **Mark/Unmark**: Tag files for batch download using file numbers
 - **Download**: ZMODEM transfer using `sz` command
 
 **In Development:**
+
 - **Upload**: Send files to BBS
 - **View**: Read text files or view archive contents
 
 ## Access Control
 
 ### Viewing Files
+
 - Empty `acs_list` allows public viewing
 - Restrict with: `s10`, `fD`, etc.
 
 ### Uploading Files
+
 - Controlled by `acs_upload` setting
 - Typically requires validation: `s10`
 
 ### Downloading Files
+
 - Controlled by `acs_download` setting
 - All files in an area share the same download permissions
 
 ## Creating a New File Area
 
 1. Create directory structure:
+
 ```bash
 mkdir -p data/files/myarea
 ```
 
-2. Add to `configs/file_areas.json`:
+1. Add to `configs/file_areas.json`:
+
 ```json
 {
   "id": 2,
@@ -144,12 +156,13 @@ mkdir -p data/files/myarea
 }
 ```
 
-3. Create empty metadata file:
+1. Create empty metadata file:
+
 ```bash
 echo '[]' > data/files/myarea/metadata.json
 ```
 
-4. Restart BBS or reload configuration
+1. Restart BBS or reload configuration
 
 ## File Display Templates
 
@@ -158,40 +171,47 @@ File listings use templates in `menus/v3/templates/`:
 ### Area List Templates
 
 **FILEAREA.TOP** - Header before area list
-```
+
+```text
 |07--- File Area List ---
 ```
 
 **FILEAREA.MID** - Template for each area
-```
+
+```text
  |07[^ID] |15^TAG - ^NA |07(^NF files)
 ```
 
 **FILEAREA.BOT** - Footer after area list
-```
+
+```text
 |07--- End of List ---
 ```
 
 ### File List Templates
 
 **FILELIST.TOP** - Header before file list
-```
+
+```text
 |07--- File List Top ---
 ```
 
 **FILELIST.MID** - Template for each file
-```
+
+```text
 |15^MARK|07^NUM |11^NAME |07^DATE ^SIZE ^DESC
 ```
 
 **FILELIST.BOT** - Footer with pagination
-```
+
+```text
 |07Page ^PAGE of ^TOTALPAGES
 ```
 
 ### Template Variables
 
 **Area Templates:**
+
 - `^ID` - Area ID number
 - `^TAG` - Area tag
 - `^NA` - Area name
@@ -199,6 +219,7 @@ File listings use templates in `menus/v3/templates/`:
 - `^NF` - Number of files
 
 **File Templates:**
+
 - `^MARK` - Selection marker (*) or space
 - `^NUM` - File number on page
 - `^NAME` - Filename
@@ -211,11 +232,13 @@ File listings use templates in `menus/v3/templates/`:
 ### Adding Files Manually
 
 1. Copy file to area directory:
+
 ```bash
 cp myfile.zip data/files/general/
 ```
 
-2. Update area's `metadata.json`:
+1. Update area's `metadata.json`:
+
 ```json
 {
   "id": "44444444-4444-4444-4444-444444444444",
@@ -234,15 +257,17 @@ Note: Generate a unique UUID for the `id` field.
 ### Removing Files
 
 1. Delete the file:
+
 ```bash
 rm data/files/general/oldfile.zip
 ```
 
-2. Remove entry from `metadata.json`
+1. Remove entry from `metadata.json`
 
 ### Batch Import
 
 For importing many files:
+
 1. Copy files to area directory
 2. Create script to generate metadata entries with UUIDs
 3. Append to existing `metadata.json`
@@ -258,9 +283,11 @@ For importing many files:
 ## File Transfer Protocols
 
 **Currently Implemented:**
+
 - **Zmodem**: Using external `sz` command for downloads
 
 **Planned:**
+
 - **Xmodem**: Fallback option
 - **Ymodem**: Batch transfers
 - **Upload support**: Using `rz` or similar
@@ -268,22 +295,26 @@ For importing many files:
 ## Troubleshooting
 
 ### Files Not Showing
+
 - Check user's access level vs `acs_list`
 - Verify `metadata.json` exists and is valid JSON
 - Ensure files referenced in metadata exist on disk
 
 ### Can't Change Areas
+
 - Verify area exists in `configs/file_areas.json`
 - Check ACS requirements
 - Area accepts both ID numbers and tags (case-insensitive)
 
 ### Download Issues
+
 - Ensure `sz` command is installed and in PATH
 - Check file permissions in area directory
 - Verify terminal supports ZMODEM protocol
 - User must have files marked before download
 
 ### Metadata Issues
+
 - File IDs must be valid UUIDs
 - `area_id` must match the area configuration
 - JSON syntax must be valid (use array format)
@@ -291,6 +322,7 @@ For importing many files:
 ## Future Enhancements
 
 Planned file system improvements:
+
 - Full upload implementation
 - View text files and ZIP contents inline
 - File searching across areas
@@ -303,6 +335,7 @@ Planned file system improvements:
 ## File Area Maintenance
 
 ### Regular Tasks
+
 - Verify metadata matches actual files
 - Remove orphaned metadata entries
 - Update descriptions for clarity
@@ -310,13 +343,15 @@ Planned file system improvements:
 - Monitor disk usage
 
 ### Storage Considerations
+
 - Plan for growth in popular areas
 - Set upload size limits
 - Implement user quotas
 - Archive old/unused files
 
 ### Security
+
 - Restrict executable uploads via ACS
 - Scan uploads for malware (when implemented)
 - Monitor for inappropriate content
-- Regular permission audits 
+- Regular permission audits

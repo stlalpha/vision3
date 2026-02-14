@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+vision3
+ViSiON3
+
+# Test files
+*_test.go
+*.test
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Data directories (use volumes instead)
+data/
+configs/*.json
+configs/ssh_host_*
+
+# Logs
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Documentation (not needed in container)
+docs/
+tasks/
+*.md
+!README.md
+
+# CI/CD
+.github/
+.beads/
+
+# Scripts
+setup.sh
+build-and-run.sh

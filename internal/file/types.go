@@ -15,8 +15,8 @@ type FileArea struct {
 	Path        string `json:"path"`         // Server filesystem path (relative to a base path, e.g., "utils")
 	ACSList     string `json:"acs_list"`     // ACS to list files in this area
 	ACSUpload   string `json:"acs_upload"`   // ACS to upload to this area
-	ACSDownload string `json:"acs_download"` // ACS to download from this area
-	// TODO: Add ACSView for archive viewing/ZIPLab?
+	ACSDownload  string `json:"acs_download"`              // ACS to download from this area
+	ConferenceID int    `json:"conference_id,omitempty"` // Conference this area belongs to (0=ungrouped)
 }
 
 // FileRecord holds metadata about a specific file within a FileArea.

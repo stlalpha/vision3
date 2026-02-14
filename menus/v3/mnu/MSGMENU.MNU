@@ -9,5 +9,6 @@
     "CLRSCRA": false,
     "CLRSCRB": true,
     "USERDAT": "",
-    "SYSOPDAT": ""
+    "SYSOPDAT": "",
+    "CLR": true
 } 

@@ -1,0 +1,20 @@
+{
+    "boardName": "My BBS",
+    "boardPhoneNumber": "555-555-5555",
+    "sysOpLevel": 255,
+    "coSysOpLevel": 250,
+    "logonLevel": 100,
+    "anonymousLevel": 5,
+    "sshEnabled": true,
+    "sshHost": "0.0.0.0",
+    "sshPort": 2222,
+    "telnetEnabled": true,
+    "telnetHost": "0.0.0.0",
+    "telnetPort": 2323,
+    "maxNodes": 10,
+    "maxConnectionsPerIP": 3,
+    "ipBlocklistPath": "configs/blocklist.txt",
+    "ipAllowlistPath": "configs/allowlist.txt",
+    "maxFailedLogins": 5,
+    "lockoutMinutes": 30
+}

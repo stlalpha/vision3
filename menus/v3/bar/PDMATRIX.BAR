@@ -1,0 +1,6 @@
+; Pre-login matrix menu
+; FORMAT: X,Y,HiLitedColor,RegularColor,HotKey,ReturnValue,DisplayText
+49,10,31,5,J,UNUSED, Journey onward.
+49,11,31,5,C,UNUSED, Create an account.
+49,12,31,5,A,UNUSED, Check your access.
+49,13,31,5,D,UNUSED, Disconnect.

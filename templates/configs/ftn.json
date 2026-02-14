@@ -1,0 +1,14 @@
+{
+    "dupe_db_path": "data/ftn/dupes.json",
+    "networks": {
+        "fsxnet": {
+            "enabled": false,
+            "own_address": "",
+            "inbound_path": "data/ftn/fsxnet/inbound",
+            "outbound_path": "data/ftn/fsxnet/outbound",
+            "temp_path": "data/ftn/fsxnet/temp",
+            "poll_interval_seconds": 300,
+            "links": []
+        }
+    }
+}

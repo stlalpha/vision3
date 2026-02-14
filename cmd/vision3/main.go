@@ -2,12 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,29 +16,30 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gliderlabs/ssh"
-	gossh "golang.org/x/crypto/ssh" // Alias standard crypto/ssh
+	"github.com/fsnotify/fsnotify"
+	"github.com/gliderlabs/ssh" // Keep for type compatibility
+	gossh "golang.org/x/crypto/ssh"
 	"golang.org/x/term"
 
 	// Local packages (Update paths)
-	"github.com/stlalpha/vision3/internal/ansi"
-	"github.com/stlalpha/vision3/internal/config"
-	"github.com/stlalpha/vision3/internal/file"
-	"github.com/stlalpha/vision3/internal/menu"
-	"github.com/stlalpha/vision3/internal/message"
-	"github.com/stlalpha/vision3/internal/session"
-	"github.com/stlalpha/vision3/internal/types"
-	"github.com/stlalpha/vision3/internal/user"
-	// Needed for test code / shared types? Keep imports but ensure they are still needed.
-	// Removed imports only used by test code
-	// terminal "golang.org/x/crypto/ssh/terminal" // Alias to avoid conflict
-	// "golang.org/x/text/encoding/charmap"
+	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/robbiew/vision3/internal/conference"
+	"github.com/robbiew/vision3/internal/config"
+	"github.com/robbiew/vision3/internal/file"
+	"github.com/robbiew/vision3/internal/menu"
+	"github.com/robbiew/vision3/internal/message"
+	"github.com/robbiew/vision3/internal/scheduler"
+	"github.com/robbiew/vision3/internal/sshserver"
+	"github.com/robbiew/vision3/internal/telnetserver"
+	"github.com/robbiew/vision3/internal/types"
+	"github.com/robbiew/vision3/internal/user"
 )
 
 var (
 	userMgr      *user.UserMgr
 	messageMgr   *message.MessageManager
 	fileMgr      *file.FileManager
+	confMgr      *conference.ConferenceManager
 	menuExecutor *menu.MenuExecutor
 	// globalConfig *config.GlobalConfig // Still commented out
 	nodeCounter         int32
@@ -46,8 +48,693 @@ var (
 	loadedStrings       config.StringsConfig
 	loadedTheme         config.ThemeConfig
 	// colorTestMode       bool   // Flag variable REMOVED
-	outputModeFlag string // Output mode flag (auto, utf8, cp437)
+	outputModeFlag  string             // Output mode flag (auto, utf8, cp437)
+	connectionTracker *ConnectionTracker // Global connection tracker
 )
+
+// IPList holds a list of IP addresses and CIDR ranges
+type IPList struct {
+	ips      map[string]bool   // Individual IP addresses
+	networks []*net.IPNet      // CIDR ranges
+}
+
+// IPLockoutTracker tracks failed login attempts per IP
+type IPLockoutTracker struct {
+	Attempts    int
+	LastAttempt time.Time
+	LockedUntil time.Time
+}
+
+// ConnectionTracker manages active connections and enforces limits
+type ConnectionTracker struct {
+	mu                  sync.Mutex
+	activeConnections   map[string]int                // IP address -> connection count
+	failedLogins        map[string]*IPLockoutTracker  // IP address -> lockout tracker
+	maxNodes            int
+	maxConnectionsPerIP int
+	totalConnections    int
+	blocklist           *IPList
+	allowlist           *IPList
+	blocklistPath       string                        // Path to blocklist file for watching
+	allowlistPath       string                        // Path to allowlist file for watching
+	maxFailedLogins     int
+	lockoutMinutes      int
+	watcher             *fsnotify.Watcher             // File system watcher for auto-reload
+	watcherDone         chan bool                     // Signal to stop watcher
+}
+
+// NewConnectionTracker creates a new connection tracker
+func NewConnectionTracker(maxNodes, maxConnectionsPerIP, maxFailedLogins, lockoutMinutes int, blocklistPath, allowlistPath string) *ConnectionTracker {
+	ct := &ConnectionTracker{
+		activeConnections:   make(map[string]int),
+		failedLogins:        make(map[string]*IPLockoutTracker),
+		maxNodes:            maxNodes,
+		maxConnectionsPerIP: maxConnectionsPerIP,
+		blocklist:           nil,
+		allowlist:           nil,
+		blocklistPath:       blocklistPath,
+		allowlistPath:       allowlistPath,
+		maxFailedLogins:     maxFailedLogins,
+		lockoutMinutes:      lockoutMinutes,
+	}
+
+	// Load initial IP lists
+	if blocklistPath != "" {
+		blocklist, err := LoadIPList(blocklistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to load initial blocklist: %v", err)
+		} else {
+			ct.blocklist = blocklist
+		}
+	}
+
+	if allowlistPath != "" {
+		allowlist, err := LoadIPList(allowlistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to load initial allowlist: %v", err)
+		} else {
+			ct.allowlist = allowlist
+		}
+	}
+
+	// Start watching files for changes
+	if err := ct.startWatching(); err != nil {
+		log.Printf("ERROR: Failed to start file watcher: %v", err)
+	}
+
+	return ct
+}
+
+// LoadIPList loads an IP list from a file
+// File format: one IP or CIDR range per line, # for comments
+func LoadIPList(filePath string) (*IPList, error) {
+	if filePath == "" {
+		return nil, nil
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil // File doesn't exist, not an error
+		}
+		return nil, fmt.Errorf("failed to read IP list %s: %w", filePath, err)
+	}
+
+	list := &IPList{
+		ips:      make(map[string]bool),
+		networks: make([]*net.IPNet, 0),
+	}
+
+	lines := strings.Split(string(data), "\n")
+	for lineNum, line := range lines {
+		// Trim whitespace
+		line = strings.TrimSpace(line)
+
+		// Skip empty lines and comments
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		// Check if it's a CIDR range
+		if strings.Contains(line, "/") {
+			_, network, err := net.ParseCIDR(line)
+			if err != nil {
+				log.Printf("WARN: Invalid CIDR in %s line %d: %s", filePath, lineNum+1, line)
+				continue
+			}
+			list.networks = append(list.networks, network)
+		} else {
+			// Individual IP address
+			ip := net.ParseIP(line)
+			if ip == nil {
+				log.Printf("WARN: Invalid IP in %s line %d: %s", filePath, lineNum+1, line)
+				continue
+			}
+			list.ips[ip.String()] = true
+		}
+	}
+
+	log.Printf("INFO: Loaded IP list from %s: %d IPs, %d CIDR ranges",
+		filePath, len(list.ips), len(list.networks))
+	return list, nil
+}
+
+// Contains checks if an IP address is in the list
+func (list *IPList) Contains(ipStr string) bool {
+	if list == nil {
+		return false
+	}
+
+	// Check individual IPs
+	if list.ips[ipStr] {
+		return true
+	}
+
+	// Check CIDR ranges
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+
+	for _, network := range list.networks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// CanAccept checks if a new connection from the given IP can be accepted
+func (ct *ConnectionTracker) CanAccept(remoteAddr net.Addr) (bool, string) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	return ct.canAcceptLocked(remoteAddr)
+}
+
+// canAcceptLocked performs the accept check without acquiring the lock.
+func (ct *ConnectionTracker) canAcceptLocked(remoteAddr net.Addr) (bool, string) {
+	// Extract IP from address (strip port)
+	ip := extractIP(remoteAddr)
+
+	// Check allowlist first - if IP is on allowlist, skip all other checks
+	if ct.allowlist != nil && ct.allowlist.Contains(ip) {
+		log.Printf("DEBUG: IP %s is on allowlist, bypassing all checks", ip)
+		return true, ""
+	}
+
+	// Check blocklist
+	if ct.blocklist != nil && ct.blocklist.Contains(ip) {
+		return false, "IP address is blocked"
+	}
+
+	// Check max nodes limit
+	if ct.maxNodes > 0 && ct.totalConnections >= ct.maxNodes {
+		return false, "maximum nodes reached"
+	}
+
+	// Check per-IP limit
+	if ct.maxConnectionsPerIP > 0 {
+		if count, exists := ct.activeConnections[ip]; exists && count >= ct.maxConnectionsPerIP {
+			return false, "maximum connections per IP reached"
+		}
+	}
+
+	return true, ""
+}
+
+// TryAccept atomically checks limits and registers the connection.
+// Returns (true, "") on success, (false, reason) on rejection.
+func (ct *ConnectionTracker) TryAccept(remoteAddr net.Addr) (bool, string) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	ok, reason := ct.canAcceptLocked(remoteAddr)
+	if !ok {
+		return false, reason
+	}
+
+	ip := extractIP(remoteAddr)
+	ct.activeConnections[ip]++
+	ct.totalConnections++
+
+	log.Printf("INFO: Connection added from %s. IP count: %d, Total: %d/%d",
+		ip, ct.activeConnections[ip], ct.totalConnections, ct.maxNodes)
+	return true, ""
+}
+
+// AddConnection registers a new connection from the given IP
+func (ct *ConnectionTracker) AddConnection(remoteAddr net.Addr) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	ip := extractIP(remoteAddr)
+	ct.activeConnections[ip]++
+	ct.totalConnections++
+
+	log.Printf("INFO: Connection added from %s. IP count: %d, Total: %d/%d",
+		ip, ct.activeConnections[ip], ct.totalConnections, ct.maxNodes)
+}
+
+// RemoveConnection unregisters a connection from the given IP
+func (ct *ConnectionTracker) RemoveConnection(remoteAddr net.Addr) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	ip := extractIP(remoteAddr)
+	if count, exists := ct.activeConnections[ip]; exists {
+		if count <= 1 {
+			delete(ct.activeConnections, ip)
+		} else {
+			ct.activeConnections[ip]--
+		}
+	}
+	if ct.totalConnections > 0 {
+		ct.totalConnections--
+	}
+
+	log.Printf("INFO: Connection removed from %s. IP count: %d, Total: %d/%d",
+		ip, ct.activeConnections[ip], ct.totalConnections, ct.maxNodes)
+}
+
+// GetStats returns current connection statistics
+func (ct *ConnectionTracker) GetStats() (totalConns, uniqueIPs int) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+	return ct.totalConnections, len(ct.activeConnections)
+}
+
+// extractIP extracts the IP address from a net.Addr, stripping the port
+func extractIP(addr net.Addr) string {
+	if tcpAddr, ok := addr.(*net.TCPAddr); ok {
+		return tcpAddr.IP.String()
+	}
+	// Fallback: parse string representation
+	host, _, err := net.SplitHostPort(addr.String())
+	if err != nil {
+		return addr.String() // Return as-is if parsing fails
+	}
+	return host
+}
+
+// IsIPLockedOut checks if an IP address is currently locked out due to failed login attempts.
+// Returns (isLocked, lockedUntil, remainingAttempts)
+func (ct *ConnectionTracker) IsIPLockedOut(ip string) (bool, time.Time, int) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	tracker, exists := ct.failedLogins[ip]
+	if !exists {
+		return false, time.Time{}, ct.maxFailedLogins
+	}
+
+	// Check if lockout has expired
+	if !tracker.LockedUntil.IsZero() && time.Now().Before(tracker.LockedUntil) {
+		return true, tracker.LockedUntil, 0
+	}
+
+	// Lockout expired, clear it
+	if !tracker.LockedUntil.IsZero() && time.Now().After(tracker.LockedUntil) {
+		delete(ct.failedLogins, ip)
+		return false, time.Time{}, ct.maxFailedLogins
+	}
+
+	remainingAttempts := ct.maxFailedLogins - tracker.Attempts
+	if remainingAttempts < 0 {
+		remainingAttempts = 0
+	}
+	return false, time.Time{}, remainingAttempts
+}
+
+// RecordFailedLoginAttempt records a failed login attempt from an IP address.
+// Returns true if the IP was just locked out.
+func (ct *ConnectionTracker) RecordFailedLoginAttempt(ip string) bool {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	// Don't track if feature is disabled
+	if ct.maxFailedLogins == 0 {
+		return false
+	}
+
+	tracker, exists := ct.failedLogins[ip]
+	if !exists {
+		tracker = &IPLockoutTracker{}
+		ct.failedLogins[ip] = tracker
+	}
+
+	tracker.Attempts++
+	tracker.LastAttempt = time.Now()
+
+	// Check if lockout threshold reached
+	if tracker.Attempts >= ct.maxFailedLogins {
+		tracker.LockedUntil = time.Now().Add(time.Duration(ct.lockoutMinutes) * time.Minute)
+		log.Printf("SECURITY: IP %s locked out after %d failed login attempts. Locked until %s",
+			ip, tracker.Attempts, tracker.LockedUntil.Format(time.RFC3339))
+		return true
+	}
+
+	log.Printf("SECURITY: Failed login attempt from IP %s (%d/%d)",
+		ip, tracker.Attempts, ct.maxFailedLogins)
+	return false
+}
+
+// ClearFailedLoginAttempts clears the failed login counter for an IP on successful authentication.
+func (ct *ConnectionTracker) ClearFailedLoginAttempts(ip string) {
+	ct.mu.Lock()
+	defer ct.mu.Unlock()
+
+	if tracker, exists := ct.failedLogins[ip]; exists {
+		if tracker.Attempts > 0 {
+			log.Printf("INFO: Cleared failed login attempts for IP %s (%d attempts)",
+				ip, tracker.Attempts)
+		}
+		delete(ct.failedLogins, ip)
+	}
+}
+
+// reloadIPLists reloads the blocklist and allowlist from disk.
+// Both lists are loaded outside the lock and swapped atomically under a single lock.
+func (ct *ConnectionTracker) reloadIPLists() {
+	log.Printf("INFO: Reloading IP filter lists...")
+
+	// Load both lists outside the lock (I/O can be slow)
+	var newBlocklist, newAllowlist *IPList
+
+	if ct.blocklistPath != "" {
+		bl, err := LoadIPList(ct.blocklistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to reload blocklist from %s: %v", ct.blocklistPath, err)
+		} else {
+			newBlocklist = bl
+		}
+	}
+
+	if ct.allowlistPath != "" {
+		al, err := LoadIPList(ct.allowlistPath)
+		if err != nil {
+			log.Printf("ERROR: Failed to reload allowlist from %s: %v", ct.allowlistPath, err)
+		} else {
+			newAllowlist = al
+		}
+	}
+
+	// Swap both lists atomically under a single lock
+	ct.mu.Lock()
+	if ct.blocklistPath != "" {
+		ct.blocklist = newBlocklist
+	}
+	if ct.allowlistPath != "" {
+		ct.allowlist = newAllowlist
+	}
+	ct.mu.Unlock()
+
+	log.Printf("INFO: IP filter lists reloaded")
+}
+
+// startWatching starts watching the IP list files for changes
+func (ct *ConnectionTracker) startWatching() error {
+	// Don't start watcher if no files to watch
+	if ct.blocklistPath == "" && ct.allowlistPath == "" {
+		log.Printf("DEBUG: No IP list files to watch, file watching disabled")
+		return nil
+	}
+
+	var err error
+	ct.watcher, err = fsnotify.NewWatcher()
+	if err != nil {
+		return fmt.Errorf("failed to create file watcher: %w", err)
+	}
+
+	ct.watcherDone = make(chan bool)
+
+	// Add files to watch
+	filesToWatch := []string{}
+	if ct.blocklistPath != "" {
+		if _, err := os.Stat(ct.blocklistPath); err == nil {
+			filesToWatch = append(filesToWatch, ct.blocklistPath)
+		} else {
+			log.Printf("WARN: Blocklist file %s does not exist, will not watch for changes", ct.blocklistPath)
+		}
+	}
+	if ct.allowlistPath != "" {
+		if _, err := os.Stat(ct.allowlistPath); err == nil {
+			filesToWatch = append(filesToWatch, ct.allowlistPath)
+		} else {
+			log.Printf("WARN: Allowlist file %s does not exist, will not watch for changes", ct.allowlistPath)
+		}
+	}
+
+	for _, file := range filesToWatch {
+		if err := ct.watcher.Add(file); err != nil {
+			log.Printf("ERROR: Failed to watch file %s: %v", file, err)
+		} else {
+			log.Printf("INFO: Watching %s for changes (auto-reload enabled)", file)
+		}
+	}
+
+	// Start watching in a goroutine
+	go ct.watchLoop()
+
+	return nil
+}
+
+// watchLoop handles file system events
+func (ct *ConnectionTracker) watchLoop() {
+	// Debounce timer to avoid reloading on rapid successive writes
+	var debounceTimer *time.Timer
+	debounceDuration := 500 * time.Millisecond
+
+	for {
+		select {
+		case event, ok := <-ct.watcher.Events:
+			if !ok {
+				return
+			}
+
+			// Only care about Write and Create events
+			if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create {
+				log.Printf("DEBUG: File change detected: %s (%s)", event.Name, event.Op)
+
+				// Reset debounce timer
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				debounceTimer = time.AfterFunc(debounceDuration, func() {
+					ct.reloadIPLists()
+				})
+			}
+
+		case err, ok := <-ct.watcher.Errors:
+			if !ok {
+				return
+			}
+			log.Printf("ERROR: File watcher error: %v", err)
+
+		case <-ct.watcherDone:
+			log.Printf("INFO: Stopping IP list file watcher")
+			return
+		}
+	}
+}
+
+// StopWatching stops the file watcher
+func (ct *ConnectionTracker) StopWatching() {
+	if ct.watcher != nil {
+		close(ct.watcherDone)
+		ct.watcher.Close()
+	}
+}
+
+// --- SSH Session Types (golang.org/x/crypto/ssh adapter) ---
+// Use gliderlabs/ssh types for compatibility
+
+// SessionContext provides session context information and implements gliderlabs/ssh.Context
+type SessionContext struct {
+	ctx         context.Context
+	sessionID   string
+	user        string
+	remoteAddr  net.Addr
+	localAddr   net.Addr
+	clientVer   string
+	serverVer   string
+	permissions *ssh.Permissions
+	mu          sync.Mutex
+	values      map[interface{}]interface{}
+}
+
+// context.Context methods
+func (sc *SessionContext) Value(key interface{}) interface{} {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if v, ok := sc.values[key]; ok {
+		return v
+	}
+	return sc.ctx.Value(key)
+}
+
+func (sc *SessionContext) Deadline() (deadline time.Time, ok bool) {
+	return sc.ctx.Deadline()
+}
+
+func (sc *SessionContext) Done() <-chan struct{} {
+	return sc.ctx.Done()
+}
+
+func (sc *SessionContext) Err() error {
+	return sc.ctx.Err()
+}
+
+// sync.Locker methods
+func (sc *SessionContext) Lock() {
+	sc.mu.Lock()
+}
+
+func (sc *SessionContext) Unlock() {
+	sc.mu.Unlock()
+}
+
+// gliderlabs/ssh.Context methods
+func (sc *SessionContext) User() string {
+	return sc.user
+}
+
+func (sc *SessionContext) SessionID() string {
+	return sc.sessionID
+}
+
+func (sc *SessionContext) ClientVersion() string {
+	return sc.clientVer
+}
+
+func (sc *SessionContext) ServerVersion() string {
+	return sc.serverVer
+}
+
+func (sc *SessionContext) RemoteAddr() net.Addr {
+	return sc.remoteAddr
+}
+
+func (sc *SessionContext) LocalAddr() net.Addr {
+	return sc.localAddr
+}
+
+func (sc *SessionContext) Permissions() *ssh.Permissions {
+	return sc.permissions
+}
+
+func (sc *SessionContext) SetValue(key, value interface{}) {
+	sc.mu.Lock()
+	defer sc.mu.Unlock()
+	if sc.values == nil {
+		sc.values = make(map[interface{}]interface{})
+	}
+	sc.values[key] = value
+}
+
+// SessionAdapter adapts golang.org/x/crypto/ssh to gliderlabs/ssh Session interface
+type SessionAdapter struct {
+	conn        *gossh.ServerConn
+	channel     gossh.Channel
+	requests    <-chan *gossh.Request
+	user        string
+	remoteAddr  net.Addr
+	localAddr   net.Addr
+	environ     []string
+	command     []string
+	rawCommand  string
+	subsystem   string
+	ptyMutex    sync.Mutex
+	pty         *ssh.Pty
+	winch       chan ssh.Window
+	hasPty      bool
+	ctx         *SessionContext
+	cancel      context.CancelFunc
+	signalsChan chan<- ssh.Signal
+	breakChan   chan<- bool
+}
+
+// Implement gossh.Channel methods
+func (s *SessionAdapter) Read(p []byte) (n int, err error) {
+	return s.channel.Read(p)
+}
+
+func (s *SessionAdapter) Write(p []byte) (n int, err error) {
+	return s.channel.Write(p)
+}
+
+func (s *SessionAdapter) CloseWrite() error {
+	return s.channel.CloseWrite()
+}
+
+func (s *SessionAdapter) SendRequest(name string, wantReply bool, payload []byte) (bool, error) {
+	return s.channel.SendRequest(name, wantReply, payload)
+}
+
+func (s *SessionAdapter) Stderr() io.ReadWriter {
+	return s.channel.Stderr()
+}
+
+// Implement Session interface methods
+func (s *SessionAdapter) User() string {
+	return s.user
+}
+
+func (s *SessionAdapter) RemoteAddr() net.Addr {
+	return s.remoteAddr
+}
+
+func (s *SessionAdapter) LocalAddr() net.Addr {
+	return s.localAddr
+}
+
+func (s *SessionAdapter) Context() context.Context {
+	return s.ctx
+}
+
+func (s *SessionAdapter) SessionID() string {
+	return s.ctx.sessionID
+}
+
+func (s *SessionAdapter) Environ() []string {
+	return s.environ
+}
+
+func (s *SessionAdapter) Command() []string {
+	return s.command
+}
+
+func (s *SessionAdapter) RawCommand() string {
+	return s.rawCommand
+}
+
+func (s *SessionAdapter) Subsystem() string {
+	return s.subsystem
+}
+
+func (s *SessionAdapter) PublicKey() ssh.PublicKey {
+	return nil // BBS uses password auth
+}
+
+func (s *SessionAdapter) Permissions() ssh.Permissions {
+	if s.ctx != nil && s.ctx.permissions != nil {
+		return *s.ctx.permissions
+	}
+	return ssh.Permissions{}
+}
+
+func (s *SessionAdapter) Pty() (ssh.Pty, <-chan ssh.Window, bool) {
+	s.ptyMutex.Lock()
+	defer s.ptyMutex.Unlock()
+	if s.hasPty && s.pty != nil {
+		return *s.pty, s.winch, true
+	}
+	return ssh.Pty{}, nil, false
+}
+
+func (s *SessionAdapter) Exit(code int) error {
+	// Send exit status
+	status := struct{ Status uint32 }{uint32(code)}
+	payload := gossh.Marshal(status)
+	s.SendRequest("exit-status", false, payload)
+	return s.Close()
+}
+
+func (s *SessionAdapter) Signals(c chan<- ssh.Signal) {
+	s.signalsChan = c
+}
+
+func (s *SessionAdapter) Break(c chan<- bool) {
+	s.breakChan = c
+}
+
+func (s *SessionAdapter) Close() error {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	return s.channel.Close()
+}
 
 // --- ANSI Test Server Code REMOVED ---
 
@@ -55,7 +742,16 @@ var (
 func sessionHandler(s ssh.Session) {
 	nodeID := atomic.AddInt32(&nodeCounter, 1)
 	remoteAddr := s.RemoteAddr().String()
-	log.Printf("Node %d: Connection from %s (User: %s, Session ID: %s)", nodeID, remoteAddr, s.User(), s.Context().SessionID())
+
+	// Extract session ID if available (type-specific)
+	sessionID := fmt.Sprintf("node-%d", nodeID)
+	if ctx, ok := s.Context().(interface{ SessionID() string }); ok {
+		sessionID = ctx.SessionID()
+	}
+
+	log.Printf("Node %d: Connection from %s (User: %s, Session ID: %s)", nodeID, remoteAddr, s.User(), sessionID)
+	log.Printf("Node %d: Environment: %v", nodeID, s.Environ())
+	log.Printf("Node %d: Command: %v", nodeID, s.Command())
 
 	// Add session to active sessions map
 	activeSessionsMutex.Lock()
@@ -100,31 +796,33 @@ func sessionHandler(s ssh.Session) {
 		s.Close() // Ensure the session is closed
 	}(capturedStartTime) // Pass only the startTime value
 
-	// Create the session state object *early*
-	sessionState := &session.BbsSession{
-		// Conn:    s.Conn,     // Need the underlying gossh.Conn if possible, might need context
-		Channel:    nil,         // Channel might not be directly available here, depends on gliderlabs/ssh context
-		User:       nil,         // Set after authentication
-		ID:         int(nodeID), // Use correct field name 'ID'
-		StartTime:  time.Now(),  // Record session start time
-		Pty:        nil,         // Will be set if/when PTY is granted
-		AutoRunLog: make(types.AutoRunTracker),
-	}
+	// Create the session state object *early* - COMMENTED OUT (not used, type mismatch)
+	// sessionState := &session.BbsSession{
+	// 	// Conn:    s.Conn,     // Need the underlying gossh.Conn if possible, might need context
+	// 	Channel:    nil,         // Channel might not be directly available here, depends on gliderlabs/ssh context
+	// 	User:       nil,         // Set after authentication
+	// 	ID:         int(nodeID), // Use correct field name 'ID'
+	// 	StartTime:  time.Now(),  // Record session start time
+	// 	Pty:        nil,         // Will be set if/when PTY is granted
+	// 	AutoRunLog: make(types.AutoRunTracker),
+	// }
 
 	// --- PTY Request Handling ---
-	ptyReq, winCh, isPty := s.Pty() // Get PTY info from the original ssh.Session 's'
+	ptyReq, winCh, isPty := s.Pty() // Get PTY info from SessionAdapter
+	var termWidth, termHeight atomic.Int32
+	termWidth.Store(80)  // Default terminal width
+	termHeight.Store(25) // Default terminal height
 	if isPty {
 		log.Printf("Node %d: PTY Request Accepted: %s", nodeID, ptyReq.Term)
-		// Store PTY info in session state
-		sessionState.Pty = &ptyReq // Store a pointer to the ptyReq
-		sessionState.Width = ptyReq.Window.Width
-		sessionState.Height = ptyReq.Window.Height
+		if ptyReq.Window.Width > 0 {
+			termWidth.Store(int32(ptyReq.Window.Width))
+		}
+		if ptyReq.Window.Height > 0 {
+			termHeight.Store(int32(ptyReq.Window.Height))
+		}
+		log.Printf("Node %d: Terminal size from PTY: %dx%d", nodeID, termWidth.Load(), termHeight.Load())
 	} else {
 		log.Printf("Node %d: No PTY Request received. Proceeding without PTY.", nodeID)
-		// Handle non-PTY sessions gracefully, maybe just print a message and exit?
-		// For a BBS, PTY is usually required.
-		// fmt.Fprintln(s, "PTY is required for BBS access.")
-		// return // Exit if no PTY? Or try to proceed?
 	}
 
 	// --- Determine Output Mode ---
@@ -142,7 +840,7 @@ func sessionHandler(s ssh.Session) {
 			termType := strings.ToLower(ptyReq.Term)
 			log.Printf("Node %d: Auto mode detecting based on TERM='%s'", nodeID, termType)
 			// Heuristic: Check for known CP437-preferring TERM types
-			if termType == "sync" || termType == "ansi" || termType == "scoansi" || strings.HasPrefix(termType, "vt100") {
+			if termType == "sync" || termType == "syncterm" || termType == "ansi" || termType == "scoansi" || strings.HasPrefix(termType, "vt100") {
 				log.Printf("Node %d: Auto mode selecting CP437 output for TERM='%s'", nodeID, termType)
 				effectiveMode = ansi.OutputModeCP437
 			} else {
@@ -161,56 +859,29 @@ func sessionHandler(s ssh.Session) {
 	log.Printf("Node %d: Creating terminal for session", nodeID)
 	terminal := term.NewTerminal(s, "") // Use session 's' as the R/W source for the terminal
 
-	// --- Simple Test Output ---
-	testMsg := "\r\n\x1b[31mSimple Test: RED\x1b[0m | \x1b[32mGREEN\x1b[0m | ASCII: Hello! 123?.,;\r\n"
-	log.Printf("Node %d: Writing simple test message...", nodeID)
-	_, testErr := terminal.Write([]byte(testMsg))
-	if testErr != nil {
-		log.Printf("Node %d: Error writing test message: %v", nodeID, testErr)
-	}
-	log.Printf("Node %d: Finished writing simple test message.", nodeID)
-	// ------------------------
-
-	// --- Attempt PTY/Environment Negotiation ---
-	// Send requests AFTER terminal is created, potentially influencing the PTY env
+	// Set initial terminal size from PTY request (term.NewTerminal defaults to 80 columns)
 	if isPty {
-		log.Printf("Node %d: PTY acquired. Attempting to configure environment.", nodeID)
-
-		// Helper to send environment variables (RFC 4254 Section 6.4)
-		sendEnv(s, "TERM", "xterm-256color")
-		// Attempt to force UTF-8 locale (common variables, might not be respected by Windows SSHd)
-		sendEnv(s, "LANG", "en_US.UTF-8")
-		sendEnv(s, "LC_ALL", "en_US.UTF-8")
-		sendEnv(s, "LC_CTYPE", "UTF-8")
-
-		// Short delay to allow server to potentially process requests
-		log.Printf("Node %d: Waiting briefly after sending env requests...", nodeID)
-		time.Sleep(150 * time.Millisecond) // Slightly longer pause
-		log.Printf("Node %d: Proceeding after environment configuration attempt.", nodeID)
-
-	} else {
-		log.Printf("Node %d: No PTY requested, skipping environment configuration.", nodeID)
+		tw, th := int(termWidth.Load()), int(termHeight.Load())
+		if tw > 0 && th > 0 {
+			_ = terminal.SetSize(tw, th)
+			log.Printf("Node %d: Set terminal size to %dx%d", nodeID, tw, th)
+		}
 	}
-	// -------------------------------------------
 
 	// --- Handle Window Size Changes ---
-	// Need to start this gouroutine regardless of initial PTY request
-	// because a PTY might be granted later or window size changes can occur
+	// Forward resize events to both our atomic values and the term.Terminal
 	go func() {
-		for win := range winCh { // Loop until the channel is closed
-			log.Printf("Node %d: Window resize event: %+v", nodeID, win)
-			// TODO: Check if SetSize is implemented and safe to call
-			// err := terminal.SetSize(win.Width, win.Height)
-			// if err != nil {
-			// 	log.Printf("Node %d: Error setting terminal size: %v", nodeID, err)
-			// }
-			// Store the latest window size if needed elsewhere
-			// currentWidth = win.Width
-			// currentHeight = win.Height
-
-			// If you need to redraw the screen on resize, signal the main loop here
-			// Example: send a special value on a channel, or set a flag
-			// redrawSignal <- true
+		for win := range winCh {
+			log.Printf("Node %d: Window resize event: %dx%d", nodeID, win.Width, win.Height)
+			if win.Width > 0 {
+				termWidth.Store(int32(win.Width))
+			}
+			if win.Height > 0 {
+				termHeight.Store(int32(win.Height))
+			}
+			if win.Width > 0 && win.Height > 0 {
+				_ = terminal.SetSize(win.Width, win.Height)
+			}
 		}
 		log.Printf("Node %d: Window change channel closed.", nodeID)
 	}()
@@ -241,6 +912,85 @@ func sessionHandler(s ssh.Session) {
 	var nextActionAfterLogin string          // << NEW: Variable to store the action after successful login
 	autoRunLog := make(types.AutoRunTracker) // Initialize tracker for this session
 
+	// Check if user is already authenticated via SSH
+	sshUsername := s.User()
+	if sshUsername != "" {
+		log.Printf("Node %d: SSH user '%s' detected, attempting auto-login", nodeID, sshUsername)
+		// Try to load the user from the database
+		sshUser, found := userMgr.GetUser(sshUsername)
+		if found && sshUser != nil {
+			// User exists in database, authenticate them automatically
+			authenticatedUser = sshUser
+			log.Printf("Node %d: SSH auto-login successful for user '%s' (Handle: %s)", nodeID, sshUsername, sshUser.Handle)
+			// Update user's terminal dimensions from detected PTY size
+			tw, th := int(termWidth.Load()), int(termHeight.Load())
+			if tw > 0 && th > 0 {
+				authenticatedUser.ScreenWidth = tw
+				authenticatedUser.ScreenHeight = th
+				log.Printf("Node %d: Updated user %s screen preferences to %dx%d", nodeID, sshUser.Handle, tw, th)
+				if saveErr := userMgr.SaveUsers(); saveErr != nil {
+					log.Printf("ERROR: Node %d: Failed to save user screen preferences: %v", nodeID, saveErr)
+				}
+			}
+			// Set default message area if not already set
+			if authenticatedUser.CurrentMessageAreaID == 0 && messageMgr != nil {
+				for _, area := range messageMgr.ListAreas() {
+					if area.ACSRead == "" || authenticatedUser.AccessLevel > 0 {
+						authenticatedUser.CurrentMessageAreaID = area.ID
+						authenticatedUser.CurrentMessageAreaTag = area.Tag
+						authenticatedUser.CurrentMsgConferenceID = area.ConferenceID
+						if confMgr != nil {
+							if conf, ok := confMgr.GetByID(area.ConferenceID); ok {
+								authenticatedUser.CurrentMsgConferenceTag = conf.Tag
+							}
+						}
+						break
+					}
+				}
+			}
+			// Set default file area if not already set
+			if authenticatedUser.CurrentFileAreaID == 0 && fileMgr != nil {
+				for _, area := range fileMgr.ListAreas() {
+					if area.ACSList == "" || authenticatedUser.AccessLevel > 0 {
+						authenticatedUser.CurrentFileAreaID = area.ID
+						authenticatedUser.CurrentFileAreaTag = area.Tag
+						authenticatedUser.CurrentFileConferenceID = area.ConferenceID
+						if confMgr != nil {
+							if conf, ok := confMgr.GetByID(area.ConferenceID); ok {
+								authenticatedUser.CurrentFileConferenceTag = conf.Tag
+							}
+						}
+						break
+					}
+				}
+			}
+			// Persist defaults
+			if saveErr := userMgr.SaveUsers(); saveErr != nil {
+				log.Printf("ERROR: Node %d: Failed to save user default area selections: %v", nodeID, saveErr)
+			}
+
+			currentMenuName = "MAIN" // Skip LOGIN, go directly to MAIN menu
+			nextActionAfterLogin = "MAIN"
+		} else {
+			log.Printf("Node %d: SSH user '%s' not found in BBS database, requiring manual login", nodeID, sshUsername)
+			// User not in database, proceed with normal LOGIN flow
+		}
+	}
+
+	// Pre-login matrix screen for telnet users (no SSH auto-login)
+	if authenticatedUser == nil && sshUsername == "" {
+		matrixAction, matrixErr := menuExecutor.RunMatrixScreen(s, terminal, userMgr, int(nodeID), effectiveMode)
+		if matrixErr != nil {
+			log.Printf("Node %d: Matrix screen error: %v", nodeID, matrixErr)
+			return
+		}
+		if matrixAction == "DISCONNECT" {
+			log.Printf("Node %d: User selected disconnect from matrix screen", nodeID)
+			return
+		}
+		// matrixAction == "LOGIN" — proceed to normal login loop
+	}
+
 	// Login Loop
 	for authenticatedUser == nil {
 		if currentMenuName == "" || currentMenuName == "LOGOFF" {
@@ -254,7 +1004,7 @@ func sessionHandler(s ssh.Session) {
 		// Pass nodeID directly as int, use sessionStartTime from context
 		// Pass the session's autoRunLog
 		// Pass "" for currentAreaName during login
-		nextMenuName, authUser, execErr := menuExecutor.Run(s, terminal, userMgr, nil, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "")
+		nextMenuName, authUser, execErr := menuExecutor.Run(s, terminal, userMgr, nil, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "", int(termWidth.Load()), int(termHeight.Load()))
 		if execErr != nil {
 			// Log the error and decide how to proceed
 			log.Printf("Node %d: Error executing menu '%s': %v", nodeID, currentMenuName, execErr)
@@ -300,6 +1050,22 @@ func sessionHandler(s ssh.Session) {
 	}
 	log.Printf("Node %d: Entering main loop for authenticated user: %s", nodeID, authenticatedUser.Handle)
 
+	// Apply user's stored screen size preferences (caps terminal to user setting)
+	if authenticatedUser.ScreenHeight > 0 {
+		th := int32(authenticatedUser.ScreenHeight)
+		if th < termHeight.Load() || termHeight.Load() == 25 {
+			termHeight.Store(th)
+		}
+	}
+	if authenticatedUser.ScreenWidth > 0 {
+		tw := int32(authenticatedUser.ScreenWidth)
+		if tw < termWidth.Load() || termWidth.Load() == 80 {
+			termWidth.Store(tw)
+		}
+	}
+	_ = terminal.SetSize(int(termWidth.Load()), int(termHeight.Load()))
+	log.Printf("Node %d: Effective terminal size for %s: %dx%d", nodeID, authenticatedUser.Handle, termWidth.Load(), termHeight.Load())
+
 	// << NEW: Set the initial menu for the main loop based on the action returned from login
 	parts := strings.SplitN(nextActionAfterLogin, ":", 2) // Split action like "GOTO:MENU"
 	if len(parts) == 2 {
@@ -325,7 +1091,7 @@ func sessionHandler(s ssh.Session) {
 		// Pass nodeID directly as int, use sessionStartTime from context
 		// Pass the session's autoRunLog
 		// Pass "" for currentAreaName for now (TODO: Pass actual session area name)
-		nextMenuName, _, execErr := menuExecutor.Run(s, terminal, userMgr, authenticatedUser, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "")
+		nextMenuName, _, execErr := menuExecutor.Run(s, terminal, userMgr, authenticatedUser, currentMenuName, int(nodeID), sessionStartTime, autoRunLog, effectiveMode, "", int(termWidth.Load()), int(termHeight.Load()))
 		if execErr != nil {
 			log.Printf("Node %d: Error executing menu '%s': %v", nodeID, currentMenuName, execErr)
 			fmt.Fprintf(terminal, "\r\nSystem error during menu execution: %v\r\n", execErr)
@@ -339,6 +1105,48 @@ func sessionHandler(s ssh.Session) {
 	}
 
 	log.Printf("Node %d: Session handler finished for %s.", nodeID, authenticatedUser.Handle)
+}
+
+// libsshSessionHandler adapts libssh sessions to the existing BBS session handler
+func libsshSessionHandler(sess *sshserver.Session) error {
+	// Create adapter that implements ssh.Session interface
+	adapter := sshserver.NewBBSSessionAdapter(sess)
+
+	// Atomically check limits and register connection
+	canAccept, reason := connectionTracker.TryAccept(adapter.RemoteAddr())
+	if !canAccept {
+		log.Printf("INFO: Rejecting SSH connection from %s: %s", adapter.RemoteAddr(), reason)
+		fmt.Fprintf(adapter, "\r\nConnection rejected: %s\r\n", reason)
+		fmt.Fprintf(adapter, "Please try again later.\r\n")
+		time.Sleep(2 * time.Second) // Brief delay before closing
+		return fmt.Errorf("connection limit exceeded: %s", reason)
+	}
+
+	// Connection is registered; ensure it's removed when done
+	defer connectionTracker.RemoveConnection(adapter.RemoteAddr())
+
+	// Call the existing session handler with the adapter
+	sessionHandler(adapter)
+
+	return nil
+}
+
+// telnetSessionHandler adapts telnet sessions to the existing BBS session handler
+func telnetSessionHandler(adapter *telnetserver.TelnetSessionAdapter) {
+	// Atomically check limits and register connection
+	canAccept, reason := connectionTracker.TryAccept(adapter.RemoteAddr())
+	if !canAccept {
+		log.Printf("INFO: Rejecting Telnet connection from %s: %s", adapter.RemoteAddr(), reason)
+		fmt.Fprintf(adapter, "\r\nConnection rejected: %s\r\n", reason)
+		fmt.Fprintf(adapter, "Please try again later.\r\n")
+		time.Sleep(2 * time.Second) // Brief delay before closing
+		return
+	}
+
+	// Connection is registered; ensure it's removed when done
+	defer connectionTracker.RemoveConnection(adapter.RemoteAddr())
+
+	sessionHandler(adapter)
 }
 
 // --- Test Functions REMOVED ---
@@ -393,6 +1201,35 @@ func main() {
 		defer logFile.Close()
 	}
 
+	// Load server configuration
+	serverConfig, err := config.LoadServerConfig(rootConfigPath)
+	if err != nil {
+		log.Fatalf("Failed to load server configuration: %v", err)
+	}
+
+	// Initialize connection tracker with configured limits and IP filter file paths
+	// This will load the initial lists and start watching for file changes
+	connectionTracker = NewConnectionTracker(
+		serverConfig.MaxNodes,
+		serverConfig.MaxConnectionsPerIP,
+		serverConfig.MaxFailedLogins,
+		serverConfig.LockoutMinutes,
+		serverConfig.IPBlocklistPath,
+		serverConfig.IPAllowlistPath,
+	)
+	defer connectionTracker.StopWatching() // Ensure file watcher is stopped on shutdown
+
+	log.Printf("INFO: Connection security configured - Max Nodes: %d, Max Connections Per IP: %d, Max Failed Logins: %d, Lockout: %d min",
+		serverConfig.MaxNodes, serverConfig.MaxConnectionsPerIP, serverConfig.MaxFailedLogins, serverConfig.LockoutMinutes)
+
+	// Log IP filter status
+	if serverConfig.IPBlocklistPath != "" {
+		log.Printf("INFO: IP blocklist enabled from %s (auto-reload on file change)", serverConfig.IPBlocklistPath)
+	}
+	if serverConfig.IPAllowlistPath != "" {
+		log.Printf("INFO: IP allowlist enabled from %s (auto-reload on file change)", serverConfig.IPAllowlistPath)
+	}
+
 	// Load global strings configuration from the new location
 	loadedStrings, err = config.LoadStrings(rootConfigPath)
 	if err != nil {
@@ -411,6 +1248,24 @@ func main() {
 		log.Fatalf("Failed to load door configuration: %v", err)
 	}
 
+	// Load FTN configuration early so message manager can use per-network tearlines.
+	ftnConfig, ftnErr := config.LoadFTNConfig(rootConfigPath)
+	if ftnErr != nil {
+		log.Printf("ERROR: Failed to load FTN config: %v. Echomail disabled.", ftnErr)
+	}
+	networkTearlines := make(map[string]string)
+	if ftnErr == nil {
+		for name, netCfg := range ftnConfig.Networks {
+			if strings.TrimSpace(netCfg.Tearline) == "" {
+				continue
+			}
+			networkTearlines[strings.ToLower(strings.TrimSpace(name))] = netCfg.Tearline
+		}
+	}
+	if len(networkTearlines) == 0 {
+		networkTearlines = nil
+	}
+
 	// Load oneliners (Assuming they are still global for now, adjust if needed)
 	// oneliners, err := config.LoadOneLiners(filepath.Join(dataPath, "oneliners.dat")) // Example path
 	// if err != nil {
@@ -426,11 +1281,12 @@ func main() {
 		log.Fatalf("Failed to initialize user manager: %v", err)
 	}
 
-	// Initialize MessageManager (using dataPath)
-	messageMgr, err = message.NewMessageManager(dataPath) // Pass the base data directory
+	// Initialize MessageManager (areas config from configs/, message data from data/)
+	messageMgr, err = message.NewMessageManager(dataPath, rootConfigPath, serverConfig.BoardName, networkTearlines)
 	if err != nil {
 		log.Fatalf("Failed to initialize message manager: %v", err)
 	}
+	defer messageMgr.Close() // Ensure JAM bases are closed on shutdown
 
 	// Initialize FileManager (using dataPath)
 	fileMgr, err = file.NewFileManager(dataPath, rootConfigPath)
@@ -438,50 +1294,388 @@ func main() {
 		log.Fatalf("Failed to initialize file manager: %v", err)
 	}
 
-	// Initialize MenuExecutor with new paths, loaded theme, and message manager
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, messageMgr, fileMgr)
+	// Initialize ConferenceManager (non-fatal if conferences.json is missing)
+	confMgr, err = conference.NewConferenceManager(rootConfigPath)
+	if err != nil {
+		log.Printf("WARN: Failed to initialize conference manager: %v. Conferences disabled.", err)
+		confMgr = nil
+	}
 
-	// Load Host Key
-	hostKeyPath := filepath.Join(rootConfigPath, "ssh_host_rsa_key") // Example host key path
-	hostKeySigner := loadHostKey(hostKeyPath)
+	// Initialize MenuExecutor with new paths, loaded theme, server config, message manager, and connection tracker
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker)
 
-	sshPort := 2222
-	sshHost := "0.0.0.0"
-	log.Printf("INFO: Configuring BBS SSH server on %s:%d...", sshHost, sshPort)
+	if ftnErr == nil && len(ftnConfig.Networks) > 0 {
+		log.Printf("INFO: Internal FTN tosser disabled; use external tosser (e.g., hpt).")
+	}
 
-	algorithms := gossh.SupportedAlgorithms() // drop insecure algos.
-	server := &ssh.Server{
-		Addr:    fmt.Sprintf("%s:%d", sshHost, sshPort),
-		Handler: sessionHandler,
-		ServerConfigCallback: func(ctx ssh.Context) *gossh.ServerConfig {
-			cfg := &gossh.ServerConfig{
-				Config: gossh.Config{
-					KeyExchanges: algorithms.KeyExchanges,
-					Ciphers:      algorithms.Ciphers,
-					MACs:         algorithms.MACs,
-				},
+	// Load event scheduler configuration
+	eventsConfig, eventsErr := config.LoadEventsConfig(rootConfigPath)
+	if eventsErr != nil {
+		log.Printf("WARN: Failed to load events config: %v", eventsErr)
+		eventsConfig = config.EventsConfig{Enabled: false}
+	}
+
+	// Start event scheduler if enabled
+	var eventScheduler *scheduler.Scheduler
+	var schedulerCtx context.Context
+	var schedulerCancel context.CancelFunc
+	if eventsConfig.Enabled {
+		historyPath := filepath.Join(dataPath, "logs", "event_history.json")
+		eventScheduler = scheduler.NewScheduler(eventsConfig, historyPath)
+		schedulerCtx, schedulerCancel = context.WithCancel(context.Background())
+		defer func() {
+			if schedulerCancel != nil {
+				log.Printf("INFO: Shutting down event scheduler...")
+				schedulerCancel()
 			}
-			return cfg
-		},
+		}()
+
+		go eventScheduler.Start(schedulerCtx)
+		log.Printf("INFO: Event scheduler started with %d events", len(eventsConfig.Events))
+	} else {
+		log.Printf("INFO: Event scheduler disabled")
 	}
 
-	server.AddHostKey(hostKeySigner)
+	// Host key path for libssh
+	hostKeyPath := filepath.Join(rootConfigPath, "ssh_host_rsa_key")
 
-	// Revert log message back to original
-	log.Printf("INFO: Starting BBS server on %s:%d...", sshHost, sshPort)
-	if err := server.ListenAndServe(); err != nil {
-		if !errors.Is(err, ssh.ErrServerClosed) {
-			log.Fatalf("FATAL: Failed to start BBS server: %v", err)
-		} else {
-			log.Println("INFO: BBS server closed gracefully.")
+	// Verify host key exists
+	if _, err := os.Stat(hostKeyPath); err != nil {
+		log.Fatalf("FATAL: Host key not found at %s: %v", hostKeyPath, err)
+	}
+	log.Printf("INFO: Host key found at %s", hostKeyPath)
+
+	// Ensure at least one protocol is enabled
+	if !serverConfig.SSHEnabled && !serverConfig.TelnetEnabled {
+		log.Fatalf("FATAL: Neither SSH nor Telnet is enabled in config. Enable at least one protocol.")
+	}
+
+	// Start SSH server if enabled
+	var server *sshserver.Server
+	if serverConfig.SSHEnabled {
+		sshPort := serverConfig.SSHPort
+		sshHost := serverConfig.SSHHost
+		log.Printf("INFO: Configuring libssh SSH server on %s:%d...", sshHost, sshPort)
+
+		var err error
+		server, err = sshserver.NewServer(sshserver.Config{
+			HostKeyPath:    hostKeyPath,
+			Port:           sshPort,
+			SessionHandler: libsshSessionHandler,
+		})
+		if err != nil {
+			log.Fatalf("FATAL: Failed to create SSH server: %v", err)
 		}
+		defer server.Close()
+		defer sshserver.Cleanup()
+
+		if err := server.Listen(); err != nil {
+			log.Fatalf("FATAL: Failed to start SSH server: %v", err)
+		}
+
+		log.Printf("INFO: SSH server ready - connect via: ssh <username>@%s -p %d", sshHost, sshPort)
+	} else {
+		log.Printf("INFO: SSH server disabled in config")
 	}
-	log.Println("INFO: BBS Application shutting down.")
+
+	// Start telnet server if enabled
+	if serverConfig.TelnetEnabled {
+		telnetPort := serverConfig.TelnetPort
+		telnetHost := serverConfig.TelnetHost
+		log.Printf("INFO: Configuring telnet server on %s:%d...", telnetHost, telnetPort)
+
+		telnetSrv, telnetErr := telnetserver.NewServer(telnetserver.Config{
+			Port:           telnetPort,
+			Host:           telnetHost,
+			SessionHandler: telnetSessionHandler,
+		})
+		if telnetErr != nil {
+			log.Fatalf("FATAL: Failed to create telnet server: %v", telnetErr)
+		}
+		defer telnetSrv.Close()
+
+		go func() {
+			if listenErr := telnetSrv.ListenAndServe(); listenErr != nil {
+				log.Printf("ERROR: Telnet server error: %v", listenErr)
+			}
+		}()
+
+		log.Printf("INFO: Telnet server ready - connect via: telnet %s %d", telnetHost, telnetPort)
+	} else {
+		log.Printf("INFO: Telnet server disabled in config")
+	}
+
+	// Main accept loop — SSH accepts if enabled, otherwise block on signal
+	if server != nil {
+		for {
+			if err := server.Accept(); err != nil {
+				log.Printf("ERROR: Failed to accept connection: %v", err)
+				time.Sleep(100 * time.Millisecond)
+			}
+		}
+	} else {
+		// Telnet-only mode: block until interrupted
+		log.Printf("INFO: Running in telnet-only mode")
+		select {}
+	}
 
 }
 
+// --- SSH Helper Functions ---
+
+// parsePtyRequest parses a PTY request payload
+func parsePtyRequest(payload []byte) (ssh.Pty, bool) {
+	if len(payload) < 4 {
+		return ssh.Pty{}, false
+	}
+	termLen := binary.BigEndian.Uint32(payload[:4])
+	if len(payload) < int(4+termLen+16) {
+		return ssh.Pty{}, false
+	}
+	term := string(payload[4 : 4+termLen])
+	w := binary.BigEndian.Uint32(payload[4+termLen:])
+	h := binary.BigEndian.Uint32(payload[8+termLen:])
+	return ssh.Pty{
+		Term: term,
+		Window: ssh.Window{
+			Width:  int(w),
+			Height: int(h),
+		},
+	}, true
+}
+
+// parseWinchRequest parses a window-change request payload
+func parseWinchRequest(payload []byte) (ssh.Window, bool) {
+	if len(payload) < 8 {
+		return ssh.Window{}, false
+	}
+	w := binary.BigEndian.Uint32(payload[:4])
+	h := binary.BigEndian.Uint32(payload[4:8])
+	return ssh.Window{Width: int(w), Height: int(h)}, true
+}
+
+// generateSessionID generates a unique session ID
+func generateSessionID() string {
+	return fmt.Sprintf("%d-%d", time.Now().UnixNano(), atomic.AddInt32(&nodeCounter, 1))
+}
+
+// handleSSHConnection handles an SSH connection
+func handleSSHConnection(tcpConn net.Conn, sshConfig *gossh.ServerConfig) {
+	defer tcpConn.Close()
+
+	remoteAddr := tcpConn.RemoteAddr().String()
+	log.Printf("New TCP connection from %s", remoteAddr)
+
+	// Set a deadline for the handshake to prevent hanging connections
+	tcpConn.SetDeadline(time.Now().Add(30 * time.Second))
+
+	// Perform SSH handshake
+	log.Printf("DEBUG: Starting SSH handshake with %s", remoteAddr)
+	sshConn, chans, reqs, err := gossh.NewServerConn(tcpConn, sshConfig)
+	if err != nil {
+		log.Printf("ERROR: SSH handshake failed from %s: %v", remoteAddr, err)
+		log.Printf("DEBUG: This typically means algorithm negotiation failed or client disconnected")
+		return
+	}
+	defer sshConn.Close()
+
+	// Clear the handshake deadline so the session doesn't timeout after 30s
+	tcpConn.SetDeadline(time.Time{})
+
+	log.Printf("SSH handshake successful from %s (user: %s)", tcpConn.RemoteAddr(), sshConn.User())
+
+	// Discard global requests
+	go gossh.DiscardRequests(reqs)
+
+	// Handle incoming channels
+	for newChannel := range chans {
+		if newChannel.ChannelType() != "session" {
+			newChannel.Reject(gossh.UnknownChannelType, "unknown channel type")
+			log.Printf("Rejected channel type: %s", newChannel.ChannelType())
+			continue
+		}
+
+		// Accept session channel
+		channel, requests, err := newChannel.Accept()
+		if err != nil {
+			log.Printf("Failed to accept channel: %v", err)
+			continue
+		}
+
+		// Handle session in goroutine
+		go handleSessionChannel(sshConn, channel, requests)
+	}
+}
+
+// handleSessionChannel processes a session channel and its requests
+func handleSessionChannel(conn *gossh.ServerConn, channel gossh.Channel, requests <-chan *gossh.Request) {
+	defer channel.Close()
+
+	// Create session adapter
+	baseCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sessionID := generateSessionID()
+
+	sessionCtx := &SessionContext{
+		ctx:        baseCtx,
+		sessionID:  sessionID,
+		user:       conn.User(),
+		remoteAddr: conn.RemoteAddr(),
+		localAddr:  conn.LocalAddr(),
+		clientVer:  string(conn.ClientVersion()),
+		serverVer:  string(conn.ServerVersion()),
+		values:     make(map[interface{}]interface{}),
+	}
+
+	adapter := &SessionAdapter{
+		conn:       conn,
+		channel:    channel,
+		requests:   requests,
+		user:       conn.User(),
+		remoteAddr: conn.RemoteAddr(),
+		localAddr:  conn.LocalAddr(),
+		environ:    make([]string, 0),
+		command:    make([]string, 0),
+		ctx:        sessionCtx,
+		cancel:     cancel,
+		winch:      make(chan ssh.Window, 1),
+	}
+
+	// Process channel requests until shell/exec
+	shellRequested := false
+	for req := range requests {
+		switch req.Type {
+		case "pty-req":
+			pty, ok := parsePtyRequest(req.Payload)
+			if ok {
+				adapter.ptyMutex.Lock()
+				adapter.pty = &pty
+				adapter.hasPty = true
+				select {
+				case adapter.winch <- pty.Window:
+				default:
+				}
+				adapter.ptyMutex.Unlock()
+				req.Reply(true, nil)
+				log.Printf("PTY Request accepted: Term=%s, Width=%d, Height=%d",
+					pty.Term, pty.Window.Width, pty.Window.Height)
+			} else {
+				req.Reply(false, nil)
+				log.Printf("PTY Request failed to parse")
+			}
+
+		case "window-change":
+			win, ok := parseWinchRequest(req.Payload)
+			if ok && adapter.hasPty {
+				adapter.ptyMutex.Lock()
+				adapter.pty.Window = win
+				select {
+				case adapter.winch <- win:
+				default:
+				}
+				adapter.ptyMutex.Unlock()
+				req.Reply(true, nil)
+				log.Printf("Window change: %dx%d", win.Width, win.Height)
+			} else {
+				req.Reply(false, nil)
+			}
+
+		case "env":
+			// Parse KEY=VALUE from payload
+			if len(req.Payload) >= 8 {
+				keyLen := binary.BigEndian.Uint32(req.Payload[:4])
+				if len(req.Payload) >= int(8+keyLen) {
+					key := string(req.Payload[4 : 4+keyLen])
+					valLen := binary.BigEndian.Uint32(req.Payload[4+keyLen:])
+					if len(req.Payload) >= int(8+keyLen+valLen) {
+						val := string(req.Payload[8+keyLen : 8+keyLen+valLen])
+						adapter.environ = append(adapter.environ, fmt.Sprintf("%s=%s", key, val))
+					}
+				}
+			}
+			req.Reply(true, nil)
+
+		case "shell":
+			req.Reply(true, nil)
+			shellRequested = true
+			log.Printf("Shell request accepted")
+			// Continue processing requests in background for window-change
+			go func() {
+				for req := range requests {
+					if req.Type == "window-change" {
+						win, ok := parseWinchRequest(req.Payload)
+						if ok && adapter.hasPty {
+							adapter.ptyMutex.Lock()
+							adapter.pty.Window = win
+							select {
+							case adapter.winch <- win:
+							default:
+							}
+							adapter.ptyMutex.Unlock()
+							req.Reply(true, nil)
+						} else {
+							req.Reply(false, nil)
+						}
+					} else {
+						req.Reply(false, nil)
+					}
+				}
+			}()
+			// Invoke BBS session handler
+			sessionHandler(adapter)
+			return
+
+		case "exec":
+			// Parse command
+			if len(req.Payload) >= 4 {
+				cmdLen := binary.BigEndian.Uint32(req.Payload[:4])
+				if len(req.Payload) >= int(4+cmdLen) {
+					cmd := string(req.Payload[4 : 4+cmdLen])
+					adapter.command = strings.Fields(cmd)
+				}
+			}
+			req.Reply(true, nil)
+			shellRequested = true
+			log.Printf("Exec request: %v", adapter.command)
+			// Background request processing (same as shell)
+			go func() {
+				for req := range requests {
+					if req.Type == "window-change" {
+						win, ok := parseWinchRequest(req.Payload)
+						if ok && adapter.hasPty {
+							adapter.ptyMutex.Lock()
+							adapter.pty.Window = win
+							select {
+							case adapter.winch <- win:
+							default:
+							}
+							adapter.ptyMutex.Unlock()
+							req.Reply(true, nil)
+						} else {
+							req.Reply(false, nil)
+						}
+					} else {
+						req.Reply(false, nil)
+					}
+				}
+			}()
+			sessionHandler(adapter)
+			return
+
+		default:
+			req.Reply(false, nil)
+		}
+	}
+
+	// Channel closed without shell/exec request
+	if !shellRequested {
+		log.Printf("Channel closed without shell/exec request")
+	}
+}
+
 // --- Helper Functions (Existing loadHostKey, sendEnv) ---
-func loadHostKey(path string) ssh.Signer {
+func loadHostKey(path string) gossh.Signer {
 	keyBytes, err := os.ReadFile(path)
 	if err != nil {
 		log.Fatalf("FATAL: Failed to read host key %s: %v", path, err)
@@ -491,10 +1685,11 @@ func loadHostKey(path string) ssh.Signer {
 		log.Fatalf("FATAL: Failed to parse host key %s: %v", path, err)
 	}
 	log.Printf("INFO: Host key loaded successfully from %s", path)
+	log.Printf("DEBUG: Host key type: %s", signer.PublicKey().Type())
 	return signer
 }
 
-func sendEnv(s ssh.Session, name, value string) {
+func sendEnv(s *SessionAdapter, name, value string) {
 	payload := &bytes.Buffer{}
 	binary.Write(payload, binary.BigEndian, uint32(len(name)))
 	payload.WriteString(name)

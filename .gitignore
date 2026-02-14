@@ -9,6 +9,12 @@
 *.dylib
 log
 
+bin/
+DOS/
+scripts/
+doors/
+configs/
+
 # Test binary, built with `go test -c`
 *.test
 
@@ -35,10 +41,17 @@ go.work.sum
 /cmd/vision3/vision3
 /cmd/ansitest/ansitest
 /cmd/strings-decoder/strings-decoder
+/jamutil
+/helper
+tmp/
+/tmp/*
 
-# SSH host keys (all of them, including public keys)
+# Config files (contain site-specific settings, FTN addresses, passwords)
+# Actual config files are ignored, but templates/ directory is tracked
+configs/*.json
+
+# SSH host keys (generated during setup, not tracked in git)
 configs/ssh_host_*
-!configs/ssh_host_keys.example
 
 # Logs and debug files
 *.log

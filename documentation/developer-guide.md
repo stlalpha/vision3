@@ -10,7 +10,7 @@ cd cmd/vision3 && go build
 
 ## Architecture
 
-```
+```bash
 cmd/vision3/main.go → SSH Server → Session Handler → Menu Executor → Runnable Functions
 ```
 
@@ -25,6 +25,7 @@ cmd/vision3/main.go → SSH Server → Session Handler → Menu Executor → Run
 ### New Runnable Function
 
 1. Add to `internal/menu/executor.go`:
+
 ```go
 func runMyFeature(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
     userManager *user.UserMgr, currentUser *user.User, nodeNumber int, 
@@ -39,19 +40,22 @@ func runMyFeature(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 }
 ```
 
-2. Register in `registerAppRunnables()`:
+1. Register in `registerAppRunnables()`:
+
 ```go
 registry["MYFEATURE"] = runMyFeature
 ```
 
-3. Use in menu (.MNU file):
-```
+1. Use in menu (.MNU file):
+
+```ini
 HOTKEY:M:RUN:MYFEATURE
 ```
 
 ### New Door
 
 Add to `configs/doors.json`:
+
 ```json
 [
   {
@@ -77,6 +81,7 @@ Add to `configs/doors.json`:
 ## Common Patterns
 
 ### ANSI Display
+
 ```go
 // Load ANSI file
 rawContent, err := ansi.GetAnsiFileContent(filepath.Join(e.MenuSetPath, "ansi", "file.ans"))
@@ -100,6 +105,7 @@ if wErr != nil {
 ```
 
 ### User Input
+
 ```go
 // Read line input
 input, err := terminal.ReadLine()
@@ -115,6 +121,7 @@ password, err := terminal.ReadPassword("Password: ")
 ```
 
 ### Path Management
+
 ```go
 ansPath := filepath.Join(e.MenuSetPath, "ansi", "file.ans")
 configPath := filepath.Join(e.RootConfigPath, "config.json")
@@ -139,4 +146,4 @@ dataPath := filepath.Join("data", "users", "users.json")
 
 - **Import errors**: Make sure all imports use `github.com/stlalpha/vision3/internal/...`
 - **ANSI display issues**: Always use `terminalio.WriteProcessedBytes()` for output
-- **Path issues**: Use `e.MenuSetPath` for menu files, `e.RootConfigPath` for configs 
+- **Path issues**: Use `e.MenuSetPath` for menu files, `e.RootConfigPath` for configs

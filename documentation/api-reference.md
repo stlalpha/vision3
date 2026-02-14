@@ -4,14 +4,16 @@ This document provides a reference for the main packages and interfaces in ViSiO
 
 ## Package Overview
 
-```
+```text
 internal/
 ├── ansi/         # ANSI and pipe code processing
 ├── config/       # Configuration loading and structures
 ├── editor/       # Text editor implementation
 ├── file/         # File area management
+├── ftn/          # FTN packet (.PKT) library
+├── jam/          # JAM message base implementation
 ├── menu/         # Menu system execution
-├── message/      # Message base management
+├── message/      # Message area management (JAM-backed)
 ├── session/      # Session state management
 ├── terminalio/   # Terminal I/O with encoding support
 ├── transfer/     # File transfer protocols
@@ -68,23 +70,81 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, ...) (string,
 
 ### message
 
-Message area and message management.
+Message area management backed by JAM message bases.
 
 ```go
-// MessageManager handles message operations
+// MessageManager handles message operations via JAM bases
 type MessageManager struct {
-    // Internal fields
+    // Internal fields: dataPath, areasPath, areasByID, areasByTag,
+    // bases (map[int]*jam.Base), boardName, sync.RWMutex
 }
 
 // Key methods:
-func NewMessageManager(dataPath string) (*MessageManager, error)
+func NewMessageManager(dataPath, configPath, boardName string) (*MessageManager, error)
+func (m *MessageManager) Close() error
 func (m *MessageManager) ListAreas() []*MessageArea
 func (m *MessageManager) GetAreaByID(id int) (*MessageArea, bool)
 func (m *MessageManager) GetAreaByTag(tag string) (*MessageArea, bool)
-func (m *MessageManager) AddMessage(areaID int, msg Message) error
-func (m *MessageManager) GetMessagesForArea(areaID int, sinceMessageID string) ([]Message, error)
+func (m *MessageManager) AddMessage(areaID int, from, to, subject, body, replyMsgID string) (int, error)
+func (m *MessageManager) GetMessage(areaID, msgNum int) (*DisplayMessage, error)
 func (m *MessageManager) GetMessageCountForArea(areaID int) (int, error)
-func (m *MessageManager) GetNewMessageCount(areaID int, sinceMessageID string) (int, error)
+func (m *MessageManager) GetNewMessageCount(areaID int, username string) (int, error)
+func (m *MessageManager) GetLastRead(areaID int, username string) (int, error)
+func (m *MessageManager) SetLastRead(areaID int, username string, msgNum int) error
+func (m *MessageManager) GetNextUnreadMessage(areaID int, username string) (int, error)
+func (m *MessageManager) GetBase(areaID int) (*jam.Base, error)
+```
+
+### jam
+
+JAM (Joaquim-Andrew-Mats) binary message base implementation.
+
+```go
+// Base represents an open JAM message base (4 files: .jhr/.jdt/.jdx/.jlr)
+type Base struct {
+    // Thread-safe with sync.RWMutex
+}
+
+// Key methods:
+func Open(basePath string) (*Base, error)
+func Create(basePath string) (*Base, error)
+func (b *Base) Close() error
+func (b *Base) GetMessageCount() (int, error)
+func (b *Base) ReadMessage(msgNum int) (*Message, error)
+func (b *Base) ReadMessageHeader(msgNum int) (*MessageHeader, error)
+func (b *Base) WriteMessage(msg *Message) (int, error)
+func (b *Base) WriteMessageExt(msg *Message, msgType MessageType, echoTag, boardName string) (int, error)
+func (b *Base) UpdateMessageHeader(msgNum int, hdr *MessageHeader) error
+func (b *Base) DeleteMessage(msgNum int) error
+func (b *Base) GetLastRead(username string) (int, error)
+func (b *Base) SetLastRead(username string, msgNum int) error
+func (b *Base) GetNextUnreadMessage(username string) (int, error)
+func (b *Base) GetUnreadCount(username string) (int, error)
+
+// Address handling:
+func ParseAddress(s string) (*FidoAddress, error)
+func (a *FidoAddress) String() string   // 4D: "Z:N/N.P"
+func (a *FidoAddress) String2D() string // 2D: "N/N" (for SEEN-BY/PATH)
+```
+
+### ftn
+
+FidoNet Technology Network Type-2+ packet library.
+
+```go
+// Key types:
+type PacketHeader struct { /* 58-byte .PKT header */ }
+type PackedMessage struct { MsgType, OrigNode, DestNode, OrigNet, DestNet, Attr uint16; DateTime, To, From, Subject, Body string }
+type ParsedBody struct { Area string; Kludges []string; Text string; SeenBy, Path []string }
+
+// Key functions:
+func NewPacketHeader(origZone, origNet, origNode, origPoint, destZone, destNet, destNode, destPoint uint16, password string) *PacketHeader
+func ReadPacket(r io.Reader) (*PacketHeader, []*PackedMessage, error)
+func WritePacket(w io.Writer, hdr *PacketHeader, msgs []*PackedMessage) error
+func ParsePackedMessageBody(body string) *ParsedBody
+func FormatPackedMessageBody(parsed *ParsedBody) string
+func FormatFTNDateTime(t time.Time) string
+func ParseFTNDateTime(s string) (time.Time, error)
 ```
 
 ### file
@@ -192,28 +252,44 @@ type User struct {
     CurrentMessageAreaTag  string
     CurrentFileAreaID      int
     CurrentFileAreaTag     string
-    LastReadMessageIDs     map[int]string
     // Additional fields...
 }
 ```
 
-### Message
+### MessageArea
 
 ```go
-type Message struct {
-    ID           uuid.UUID
-    AreaID       int
-    FromUserName string
-    FromNodeID   string
-    ToUserName   string
-    ToNodeID     string
-    Subject      string
-    Body         string
-    PostedAt     time.Time
-    ReplyToID    uuid.UUID
-    IsPrivate    bool
-    Path         []string
-    // Additional fields...
+type MessageArea struct {
+    ID           int    `json:"id"`
+    Tag          string `json:"tag"`
+    Name         string `json:"name"`
+    Description  string `json:"description"`
+    ACSRead      string `json:"acs_read"`
+    ACSWrite     string `json:"acs_write"`
+    ConferenceID int    `json:"conference_id"`
+    BasePath     string `json:"base_path"`      // Relative path to JAM base files
+    AreaType     string `json:"area_type"`       // "local", "echomail", "netmail"
+    EchoTag      string `json:"echo_tag"`        // FTN echo tag
+    OriginAddr   string `json:"origin_addr"`     // FTN origin address
+}
+```
+
+### DisplayMessage
+
+Used by the UI layer for message display (returned by `GetMessage`):
+
+```go
+type DisplayMessage struct {
+    MsgNum    int       // 1-based message number
+    From      string
+    To        string
+    Subject   string
+    DateTime  time.Time
+    Body      string
+    IsPrivate bool
+    AreaID    int
+    MsgID     string    // FTN MSGID (for replies)
+    ReplyID   string    // MSGID of parent message
 }
 ```
 
@@ -253,10 +329,13 @@ Currently implemented functions that can be called via `RUN:`:
 - `LASTCALLERS` - Show recent callers
 - `LISTUSERS` - List all users
 - `ONELINER` - One-liner system
-- `LISTMSGAR` - List message areas
-- `COMPOSEMSG` - Compose new message
-- `READMSGS` - Read messages
-- `NEWSCAN` - Scan for new messages
+- `LISTMSGAR` - List message areas (grouped by conference)
+- `SELECTMSGAREA` - Select a message area
+- `COMPOSEMSG` - Compose new message in current area
+- `PROMPTANDCOMPOSEMESSAGE` - Select area then compose
+- `READMSGS` - Read messages (random-access, JAM-backed)
+- `NEWSCAN` - Scan for new messages (per-user lastread via JAM)
+- `NEWSCANCONFIG` - Configure personal newscan tagged areas
 - `LISTFILES` - List files in current area
 - `LISTFILEAR` - List file areas
 - `SELECTFILEAREA` - Select file area
@@ -275,6 +354,7 @@ if err != nil {
 ## Logging
 
 The system uses Go's standard `log` package. Log entries include:
+
 - Node number
 - User information (when available)
 - Severity level (INFO, WARN, ERROR, DEBUG)
@@ -282,9 +362,10 @@ The system uses Go's standard `log` package. Log entries include:
 ## Session Context
 
 Sessions carry context including:
+
 - SSH session reference
 - Terminal instance
 - User reference (after authentication)
 - Node ID
 - Start time
-- Auto-run tracker 
+- Auto-run tracker

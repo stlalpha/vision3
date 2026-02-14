@@ -69,12 +69,13 @@ Dropfiles provide user/session information to door programs.
 ### DOOR.SYS
 
 Standard format used by many doors:
-```
+
+```ini
 1                    # COM port
 38400                # Baud rate
 N                    # Parity
 1                    # Node number
-Felonius            # User name
+Felonius             # User name
 10                   # Security level
 60                   # Time left
 ANSI                 # Emulation
@@ -84,8 +85,9 @@ ANSI                 # Emulation
 ### CHAIN.TXT
 
 WWIV-style dropfile:
-```
-Felonius            # User name
+
+```ini
+Felonius             # User name
 10                   # Security level
 60                   # Time left
 1                    # User ID
@@ -100,6 +102,7 @@ Set `dropfile_type` to `"NONE"` if the door doesn't need one.
 ### Step 1: Install the Door Program
 
 Place door files in appropriate directory:
+
 ```bash
 mkdir -p /opt/doors/mydoor
 cp mydoor.exe /opt/doors/mydoor/
@@ -108,6 +111,7 @@ cp mydoor.exe /opt/doors/mydoor/
 ### Step 2: Configure the Door
 
 Add to `configs/doors.json`:
+
 ```json
 [
   {
@@ -125,7 +129,8 @@ Add to `configs/doors.json`:
 ### Step 3: Add to Menu
 
 Edit menu file (e.g., `menus/v3/mnu/DOORS.MNU`):
-```
+
+```ini
 HOTKEY:M:DOOR:MYDOOR
 ```
 
@@ -141,6 +146,7 @@ HOTKEY:M:DOOR:MYDOOR
 ### Raw Terminal Mode
 
 For interactive doors that need direct terminal control:
+
 ```json
 "requires_raw_terminal": true
 ```
@@ -152,6 +158,7 @@ For interactive doors that need direct terminal control:
 ### Standard I/O Mode
 
 For simple doors that use standard input/output:
+
 ```json
 "requires_raw_terminal": false
 ```
@@ -303,6 +310,7 @@ Similar setup but using DOSEMU instead of DOSBox.
 ### Multi-Node Setup
 
 For doors that support multiple nodes:
+
 ```json
 "working_directory": "/opt/doors/mydoor/node{NODE}"
 ```
@@ -310,6 +318,7 @@ For doors that support multiple nodes:
 ### Custom Dropfiles
 
 Some doors need specific dropfile formats. You may need to:
+
 1. Generate custom format in code
 2. Use a wrapper script
 3. Modify the door
@@ -317,6 +326,7 @@ Some doors need specific dropfile formats. You may need to:
 ### Wrapper Scripts
 
 Create wrapper scripts for complex setups:
+
 ```bash
 #!/bin/bash
 # door-wrapper.sh
@@ -329,6 +339,7 @@ cd /opt/doors/mydoor
 ## Popular BBS Doors
 
 Common doors to consider:
+
 - **Games**: LORD, TradeWars 2002, Usurper
 - **Utilities**: File managers, user listers
 - **Communication**: Inter-BBS chat, messaging
@@ -337,9 +348,10 @@ Common doors to consider:
 ## Future Enhancements
 
 Planned door system improvements:
+
 - Native door SDK
 - Better dropfile support
 - Door usage statistics
 - Time banking system
 - Door chaining support
-- Automatic door installation 
+- Automatic door installation

@@ -15,7 +15,7 @@ import (
 	"golang.org/x/text/encoding/charmap"
 
 	// Use the internal ansi package for Cp437ToUnicode
-	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/robbiew/vision3/internal/ansi"
 )
 
 // --- ANSI Test Code (Moved from cmd/vision3/main.go) ---

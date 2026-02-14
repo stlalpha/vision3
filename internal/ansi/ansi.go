@@ -119,22 +119,22 @@ var UnicodeToCP437 = map[rune]byte{
 
 // Common pipe code replacements map - Based on ViSiON/2 GenTypes.pas VColor array
 var pipeCodeReplacements = map[string]string{
-	// ViSiON/2 Color Codes (|00 - |15)
+	// ViSiON/2 Color Codes (|00 - |15) - Standard DOS/CGA palette
 	"|00": "\x1B[0;30m", // Black
-	"|01": "\x1B[0;31m", // Red
+	"|01": "\x1B[0;34m", // Blue
 	"|02": "\x1B[0;32m", // Green
-	"|03": "\x1B[0;33m", // Brown
-	"|04": "\x1B[0;34m", // Blue
+	"|03": "\x1B[0;36m", // Cyan
+	"|04": "\x1B[0;31m", // Red
 	"|05": "\x1B[0;35m", // Magenta
-	"|06": "\x1B[0;36m", // Cyan
-	"|07": "\x1B[0;37m", // Gray (Standard White)
+	"|06": "\x1B[0;33m", // Brown/Yellow
+	"|07": "\x1B[0;37m", // Light Gray
 	"|08": "\x1B[1;30m", // Dark Gray (Bright Black)
-	"|09": "\x1B[1;31m", // Bright Red
-	"|10": "\x1B[1;32m", // Bright Green
-	"|11": "\x1B[1;33m", // Yellow (Bright Yellow)
-	"|12": "\x1B[1;34m", // Bright Blue
-	"|13": "\x1B[1;35m", // Bright Magenta
-	"|14": "\x1B[1;36m", // Bright Cyan
+	"|09": "\x1B[1;34m", // Light Blue (Bright Blue)
+	"|10": "\x1B[1;32m", // Light Green (Bright Green)
+	"|11": "\x1B[1;36m", // Light Cyan (Bright Cyan)
+	"|12": "\x1B[1;31m", // Light Red (Bright Red)
+	"|13": "\x1B[1;35m", // Light Magenta (Bright Magenta)
+	"|14": "\x1B[1;33m", // Yellow (Bright Yellow)
 	"|15": "\x1B[1;37m", // White (Bright White)
 
 	// Background Colors (|B0 - |B7)
@@ -146,6 +146,14 @@ var pipeCodeReplacements = map[string]string{
 	"|B5": "\x1B[45m", // Magenta BG
 	"|B6": "\x1B[46m", // Cyan BG
 	"|B7": "\x1B[47m", // Gray BG (Standard White BG)
+	"|B8": "\x1B[100m", // Bright Black BG
+	"|B9": "\x1B[101m", // Bright Red BG
+	"|B10": "\x1B[102m", // Bright Green BG
+	"|B11": "\x1B[103m", // Bright Yellow BG
+	"|B12": "\x1B[104m\x1B[48;5;12m", // Bright Blue BG (16-color + 256-color)
+	"|B13": "\x1B[105m", // Bright Magenta BG
+	"|B14": "\x1B[106m", // Bright Cyan BG
+	"|B15": "\x1B[107m", // Bright White BG
 
 	// Other standard codes (using common ANSI)
 	"|CL": "\x1B[2J\x1B[H", // Clear screen and home cursor
@@ -156,6 +164,7 @@ var pipeCodeReplacements = map[string]string{
 
 // GetAnsiFileContent reads an ANSI file and returns its raw byte content.
 // It replaces the previous DisplayAnsiFile which incorrectly wrote directly.
+// SAUCE metadata (if present) is automatically stripped from the returned content.
 func GetAnsiFileContent(filename string) ([]byte, error) {
 	log.Printf("DEBUG: Reading ANSI file content for %s", filename)
 
@@ -166,13 +175,66 @@ func GetAnsiFileContent(filename string) ([]byte, error) {
 		return nil, fmt.Errorf("failed to read ansi file %s: %w", filename, err)
 	}
 
+	// Strip SAUCE metadata if present
+	data = stripSAUCE(data)
+
 	// Return the raw data. Caller is responsible for processing/displaying.
 	return data, nil
 }
 
+// stripSAUCE removes SAUCE metadata from ANSI art file content.
+// SAUCE (Standard Architecture for Universal Comment Extensions) is a 128-byte
+// metadata record appended to the end of ANSI art files, preceded by an EOF marker (0x1A).
+// This function detects and removes the SAUCE record and EOF marker to prevent
+// the metadata from being displayed as garbage characters.
+func stripSAUCE(data []byte) []byte {
+	const sauceSize = 128
+	const eofMarker = 0x1A
+
+	// SAUCE record must be at least 128 bytes
+	if len(data) < sauceSize {
+		return data
+	}
+
+	// Check if the last 128 bytes start with "SAUCE"
+	sauceStart := len(data) - sauceSize
+	if !bytes.HasPrefix(data[sauceStart:], []byte("SAUCE")) {
+		// No SAUCE metadata present
+		return data
+	}
+
+	log.Printf("DEBUG: SAUCE metadata detected, stripping from content")
+
+	// Search backwards from the SAUCE record to find the EOF marker (0x1A)
+	// The EOF marker should be immediately before the SAUCE record,
+	// but there may be comment blocks in between.
+	eofPos := -1
+	for i := sauceStart - 1; i >= 0; i-- {
+		if data[i] == eofMarker {
+			eofPos = i
+			break
+		}
+		// Don't search too far back (safety limit: 64KB of comments max)
+		if sauceStart-i > 65536 {
+			break
+		}
+	}
+
+	// If we found the EOF marker, return content up to (but not including) it
+	if eofPos >= 0 {
+		log.Printf("DEBUG: Found EOF marker at position %d, trimming content", eofPos)
+		return data[:eofPos]
+	}
+
+	// If no EOF marker found, just remove the SAUCE record itself
+	// This handles malformed SAUCE or files without the EOF marker
+	log.Printf("DEBUG: No EOF marker found, removing SAUCE record only")
+	return data[:sauceStart]
+}
+
 // Strategy 1: Use VT100 Line Drawing Mode
 func DisplayWithVT100LineDrawing(session ssh.Session, filename string) error {
-	data, err := os.ReadFile(filename)
+	data, err := GetAnsiFileContent(filename)
 	if err != nil {
 		return err
 	}
@@ -285,7 +347,7 @@ func DisplayWithVT100LineDrawing(session ssh.Session, filename string) error {
 
 // Strategy 2: Use ASCII Fallbacks
 func DisplayWithASCIIFallback(session ssh.Session, filename string) error {
-	data, err := os.ReadFile(filename)
+	data, err := GetAnsiFileContent(filename)
 	if err != nil {
 		return err
 	}
@@ -382,7 +444,7 @@ func DisplayWithASCIIFallback(session ssh.Session, filename string) error {
 
 // Strategy 3: Use Standard UTF-8 Conversion
 func DisplayWithStandardUTF8(session ssh.Session, filename string) error {
-	data, err := os.ReadFile(filename)
+	data, err := GetAnsiFileContent(filename)
 	if err != nil {
 		return err
 	}
@@ -454,7 +516,7 @@ func DisplayWithStandardUTF8(session ssh.Session, filename string) error {
 
 // Strategy 4: Use Raw Bytes (After Pipe Code Replacement)
 func DisplayWithRawBytes(session ssh.Session, filename string) error {
-	data, err := os.ReadFile(filename)
+	data, err := GetAnsiFileContent(filename)
 	if err != nil {
 		return err
 	}
@@ -478,6 +540,15 @@ func ReplacePipeCodes(data []byte) []byte {
 	for i < dataLen {
 		// Check for potential |XX code
 		if data[i] == '|' && i+2 < dataLen {
+			if i+3 < dataLen {
+				code := string(data[i : i+4])
+				if replacement, ok := pipeCodeReplacements[code]; ok {
+					// Valid |XXX code found, write ANSI replacement
+					buf.WriteString(replacement)
+					i += 4   // Advance past |XXX
+					continue // Continue loop
+				}
+			}
 			code := string(data[i : i+3])
 			if replacement, ok := pipeCodeReplacements[code]; ok {
 				// Valid |XX code found, write ANSI replacement
@@ -529,7 +600,7 @@ func DisplayComprehensiveSolution(session ssh.Session, filename string) error {
 	*/
 
 	// Read the ANS file
-	data, err := os.ReadFile(filename)
+	data, err := GetAnsiFileContent(filename)
 	if err != nil {
 		return fmt.Errorf("failed to read file '%s': %w", filename, err)
 	}

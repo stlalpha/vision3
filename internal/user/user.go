@@ -35,7 +35,11 @@ type User struct {
 	// NumLogons is TimesCalled
 	TimeLimit   int    `json:"timeLimit"`   // Added for T (in minutes)
 	PrivateNote string `json:"privateNote"` // Added for Z
-	// TODO: Add fields for current message/file conference if C/X needed
+	// Conference tracking for ACS codes C (message conference) and X (file conference)
+	CurrentMsgConferenceID   int    `json:"current_msg_conference_id,omitempty"`
+	CurrentMsgConferenceTag  string `json:"current_msg_conference_tag,omitempty"`
+	CurrentFileConferenceID  int    `json:"current_file_conference_id,omitempty"`
+	CurrentFileConferenceTag string `json:"current_file_conference_tag,omitempty"`
 	GroupLocation         string         `json:"group_location,omitempty"`           // Added Group / Location field
 	CurrentMessageAreaID  int            `json:"current_message_area_id,omitempty"`  // Added for default area tracking
 	CurrentMessageAreaTag string         `json:"current_message_area_tag,omitempty"` // Added for default area tracking
@@ -45,6 +49,14 @@ type User struct {
 	CurrentFileAreaID  int         `json:"current_file_area_id,omitempty"`  // Added for default file area tracking
 	CurrentFileAreaTag string      `json:"current_file_area_tag,omitempty"` // Added for default file area tracking
 	TaggedFileIDs      []uuid.UUID `json:"tagged_file_ids,omitempty"`       // List of FileRecord IDs marked for batch download
+
+	// Message System Related
+	TaggedMessageAreaIDs []int `json:"tagged_message_area_ids,omitempty"` // List of message area IDs tagged for newscan
+
+	// Terminal Preferences
+	ScreenWidth  int `json:"screenWidth,omitempty"`  // Detected/preferred terminal width (default 80)
+	ScreenHeight int `json:"screenHeight,omitempty"` // Detected/preferred terminal height (default 25)
+	MsgHdr       int `json:"msgHdr,omitempty"`       // Selected message header style (1-14, 0=unset)
 }
 
 // CallRecord stores information about a single call session.

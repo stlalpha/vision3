@@ -2,8 +2,9 @@ package terminalio
 
 import (
 	"io"
+	"unicode/utf8"
 
-	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/robbiew/vision3/internal/ansi"
 )
 
 // Helper to find the end of an ANSI sequence
@@ -41,16 +42,78 @@ func findAnsiEnd(data []byte, start int) int {
 	}
 }
 
-// WriteProcessedBytes writes rawBytes to the writer, handling ANSI escapes
-// and character encoding based on the specified mode.
-// In CP437 mode, input bytes >= 128 are passed through directly.
-// In UTF8 mode, input bytes >= 128 are assumed to be CP437 and converted to UTF8 runes.
+// WriteProcessedBytes writes rawBytes to the writer.
+// For raw CP437 data (ANS files), bytes pass through directly.
+// For UTF-8 strings destined for CP437 terminals, callers should use
+// WriteStringCP437 instead, which handles rune-to-byte conversion.
 func WriteProcessedBytes(writer io.Writer, rawBytes []byte, mode ansi.OutputMode) error {
-	// If mode is CP437, pass bytes directly as the terminal handles the encoding.
-	// If mode is UTF8 or anything else, also pass directly for now.
-	// The complex conversion logic was causing issues with raw CP437 bytes.
-	// TODO: Revisit if conversion *from* UTF8 *to* CP437 is ever needed here.
 	_, err := writer.Write(rawBytes)
+	return err
+}
+
+// WriteStringCP437 writes a UTF-8 string (e.g., from strings.json) to a
+// CP437 terminal, converting multi-byte UTF-8 runes to their CP437 byte
+// equivalents. ANSI escape sequences are passed through untouched.
+// In non-CP437 modes, bytes are written as-is (UTF-8 passthrough).
+func WriteStringCP437(writer io.Writer, data []byte, mode ansi.OutputMode) error {
+	if mode != ansi.OutputModeCP437 {
+		_, err := writer.Write(data)
+		return err
+	}
+
+	// Fast path: if no multi-byte UTF-8, pass through directly
+	hasMultibyte := false
+	for _, b := range data {
+		if b >= 0xC0 {
+			hasMultibyte = true
+			break
+		}
+	}
+	if !hasMultibyte {
+		_, err := writer.Write(data)
+		return err
+	}
+
+	// Convert UTF-8 runes to CP437 bytes, preserving ANSI escapes
+	out := make([]byte, 0, len(data))
+	i := 0
+	for i < len(data) {
+		b := data[i]
+
+		// Pass ANSI escape sequences through untouched
+		if b == 0x1B {
+			end := findAnsiEnd(data, i)
+			out = append(out, data[i:end]...)
+			i = end
+			continue
+		}
+
+		// ASCII byte — pass through
+		if b < 0x80 {
+			out = append(out, b)
+			i++
+			continue
+		}
+
+		// Try to decode as multi-byte UTF-8 rune
+		r, size := utf8.DecodeRune(data[i:])
+		if r != utf8.RuneError || size > 1 {
+			// Valid multi-byte UTF-8 rune — convert to CP437
+			if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
+				out = append(out, cp437Byte)
+			} else {
+				out = append(out, '?')
+			}
+			i += size
+			continue
+		}
+
+		// Invalid UTF-8 / single high byte — pass through as raw
+		out = append(out, b)
+		i++
+	}
+
+	_, err := writer.Write(out)
 	return err
 }
 

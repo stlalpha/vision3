@@ -1,0 +1,141 @@
+{
+  "_comment": "Event Scheduler Configuration - IMPORTANT: Update command paths and arguments for your system. {BBS_ROOT} will be replaced with the BBS installation directory at runtime.",
+  "enabled": false,
+  "max_concurrent_events": 3,
+  "events": [
+    {
+      "id": "example_every_minute",
+      "name": "Example: Every Minute",
+      "schedule": "* * * * *",
+      "comment": "Runs every minute. Cron format: minute hour day month weekday",
+      "command": "/bin/date",
+      "args": ["+Event executed at %Y-%m-%d %H:%M:%S"],
+      "working_directory": "/tmp",
+      "timeout_seconds": 60,
+      "enabled": false
+    },
+    {
+      "id": "example_hourly",
+      "name": "Example: Hourly Task",
+      "schedule": "@hourly",
+      "comment": "Special schedule: @hourly, @daily, @weekly, @monthly, @yearly",
+      "command": "/bin/echo",
+      "args": ["Hourly task executed at {DATETIME}"],
+      "working_directory": "/tmp",
+      "timeout_seconds": 60,
+      "enabled": false
+    },
+    {
+      "id": "example_daily_maintenance",
+      "name": "Example: Daily Maintenance at 3am",
+      "schedule": "0 3 * * *",
+      "comment": "Runs at 3:00 AM every day. Format: 0 3 * * * (minute=0, hour=3)",
+      "command": "/bin/echo",
+      "args": ["Daily maintenance running"],
+      "working_directory": "/tmp",
+      "timeout_seconds": 3600,
+      "enabled": false
+    },
+    {
+      "id": "example_binkd_poll_simple",
+      "name": "Example: Simple Binkd Poll",
+      "schedule": "*/15 * * * *",
+      "comment": "Simple binkd poll every 15 minutes (polls all configured nodes). Adjust paths for your system.",
+      "command": "/usr/local/bin/binkd",
+      "args": ["-p"],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 300,
+      "enabled": false
+    },
+    {
+      "id": "example_binkd_poll_specific",
+      "name": "Example: Binkd Poll Specific Node",
+      "schedule": "*/30 * * * *",
+      "comment": "Poll a specific node every 30 minutes. Update command path, node address, and config path for your setup.",
+      "command": "/usr/local/bin/binkd",
+      "args": [
+        "-P",
+        "21:4/158@fsxnet",
+        "-D",
+        "{BBS_ROOT}/data/ftn/binkd.conf"
+      ],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 300,
+      "enabled": false
+    },
+    {
+      "id": "example_hpt_toss",
+      "name": "Example: HPT Toss Echomail",
+      "schedule": "@hourly",
+      "comment": "Toss echomail using HPT. Update command and config paths for your system.",
+      "command": "/usr/local/bin/hpt",
+      "args": [
+        "toss",
+        "-c",
+        "{BBS_ROOT}/data/ftn/hpt.conf"
+      ],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 600,
+      "enabled": false
+    },
+    {
+      "id": "example_hpt_scan_pack",
+      "name": "Example: HPT Scan and Pack",
+      "schedule": "0 */2 * * *",
+      "comment": "Scan and pack echomail every 2 hours. Update command and config paths.",
+      "command": "/usr/local/bin/hpt",
+      "args": [
+        "scan",
+        "pack",
+        "-c",
+        "{BBS_ROOT}/data/ftn/hpt.conf"
+      ],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 900,
+      "enabled": false
+    },
+    {
+      "id": "example_with_placeholders",
+      "name": "Example: Using Placeholders",
+      "schedule": "0 * * * *",
+      "comment": "Demonstrates placeholder usage: {TIMESTAMP}, {EVENT_ID}, {EVENT_NAME}, {BBS_ROOT}, {DATE}, {TIME}, {DATETIME}",
+      "command": "/bin/echo",
+      "args": [
+        "Event {EVENT_ID} ({EVENT_NAME}) ran at {DATETIME} - Unix timestamp: {TIMESTAMP}"
+      ],
+      "working_directory": "/tmp",
+      "timeout_seconds": 30,
+      "enabled": false
+    },
+    {
+      "id": "example_backup_with_placeholders",
+      "name": "Example: Backup with Date Placeholders",
+      "schedule": "0 2 * * *",
+      "comment": "Daily backup at 2 AM using placeholders for dated filenames",
+      "command": "/usr/bin/tar",
+      "args": [
+        "-czf",
+        "/backups/bbs-{DATE}.tar.gz",
+        "{BBS_ROOT}/data",
+        "--exclude=*.log"
+      ],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 7200,
+      "enabled": false
+    },
+    {
+      "id": "example_shell_script",
+      "name": "Example: Run Shell Script with Multiple Commands",
+      "schedule": "0 4 * * *",
+      "comment": "Run a complex shell script at 4 AM using /bin/sh -c",
+      "command": "/bin/sh",
+      "args": [
+        "-c",
+        "cd {BBS_ROOT} && ./cleanup.sh && ./optimize.sh && echo 'Maintenance complete at {DATETIME}' >> logs/maintenance.log"
+      ],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 1800,
+      "enabled": false
+    }
+  ]
+}

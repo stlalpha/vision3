@@ -344,4 +344,206 @@ func LoadThemeConfig(menuSetPath string) (ThemeConfig, error) {
 	return theme, nil
 }
 
-// Add other shared config structs here later if needed.
+// FTNLinkConfig defines an FTN link (uplink/downlink node).
+type FTNLinkConfig struct {
+	Address   string   `json:"address"`    // e.g., "21:1/100"
+	Password  string   `json:"password"`   // Packet password
+	Name      string   `json:"name"`       // Human-readable name
+	EchoAreas []string `json:"echo_areas"` // Echo tags routed to this link
+}
+
+// FTNNetworkConfig holds settings for a single FTN network (e.g., FSXNet, FidoNet).
+type FTNNetworkConfig struct {
+	Enabled      bool            `json:"enabled"`
+	OwnAddress   string          `json:"own_address"`           // e.g., "21:3/110"
+	InboundPath  string          `json:"inbound_path"`          // e.g., "data/ftn/fsxnet/inbound"
+	OutboundPath string          `json:"outbound_path"`         // e.g., "data/ftn/fsxnet/outbound"
+	TempPath     string          `json:"temp_path"`             // e.g., "data/ftn/fsxnet/temp"
+	PollSeconds  int             `json:"poll_interval_seconds"` // 0 = manual only
+	Tearline     string          `json:"tearline,omitempty"`    // Custom tearline text for echomail (optional)
+	Links        []FTNLinkConfig `json:"links"`
+}
+
+// FTNConfig holds all FTN (FidoNet Technology Network) echomail settings.
+// Loaded from configs/ftn.json.
+type FTNConfig struct {
+	DupeDBPath string                      `json:"dupe_db_path"` // e.g., "data/ftn/dupes.json"
+	Networks   map[string]FTNNetworkConfig `json:"networks"`
+}
+
+// ServerConfig defines server-wide settings
+type ServerConfig struct {
+	BoardName           string `json:"boardName"`
+	BoardPhoneNumber    string `json:"boardPhoneNumber"`
+	SysOpLevel          int    `json:"sysOpLevel"`
+	CoSysOpLevel        int    `json:"coSysOpLevel"`
+	LogonLevel          int    `json:"logonLevel"`
+	AnonymousLevel      int    `json:"anonymousLevel"`
+	SSHPort             int    `json:"sshPort"`
+	SSHHost             string `json:"sshHost"`
+	SSHEnabled          bool   `json:"sshEnabled"`
+	TelnetPort          int    `json:"telnetPort"`
+	TelnetHost          string `json:"telnetHost"`
+	TelnetEnabled       bool   `json:"telnetEnabled"`
+	MaxNodes            int    `json:"maxNodes"`
+	MaxConnectionsPerIP int    `json:"maxConnectionsPerIP"`
+	IPBlocklistPath     string `json:"ipBlocklistPath"`
+	IPAllowlistPath     string `json:"ipAllowlistPath"`
+	MaxFailedLogins     int    `json:"maxFailedLogins"`
+	LockoutMinutes      int    `json:"lockoutMinutes"`
+}
+
+// EventConfig defines a scheduled event configuration
+type EventConfig struct {
+	ID                string            `json:"id"`
+	Name              string            `json:"name"`
+	Schedule          string            `json:"schedule"` // Cron syntax
+	Command           string            `json:"command"`
+	Args              []string          `json:"args"`
+	WorkingDirectory  string            `json:"working_directory"`
+	TimeoutSeconds    int               `json:"timeout_seconds"`
+	Enabled           bool              `json:"enabled"`
+	EnvironmentVars   map[string]string `json:"environment_vars,omitempty"`
+	RunAfter          string            `json:"run_after,omitempty"`           // Event ID to run after
+	DelayAfterSeconds int               `json:"delay_after_seconds,omitempty"` // Delay after RunAfter completes
+}
+
+// EventsConfig is the root configuration for the event scheduler
+type EventsConfig struct {
+	Enabled             bool          `json:"enabled"`
+	MaxConcurrentEvents int           `json:"max_concurrent_events"`
+	Events              []EventConfig `json:"events"`
+}
+
+// LoadServerConfig loads the server configuration from config.json
+func LoadServerConfig(configPath string) (ServerConfig, error) {
+	filePath := filepath.Join(configPath, "config.json")
+	log.Printf("INFO: Loading server configuration from %s", filePath)
+
+	// Default config values
+	defaultConfig := ServerConfig{
+		BoardName:           "ViSiON/3 BBS",
+		BoardPhoneNumber:    "",
+		SysOpLevel:          255,
+		CoSysOpLevel:        250,
+		LogonLevel:          100,
+		AnonymousLevel:      5,
+		SSHPort:             2222,
+		SSHHost:             "0.0.0.0",
+		SSHEnabled:          true,
+		TelnetPort:          2323,
+		TelnetHost:          "0.0.0.0",
+		TelnetEnabled:       false,
+		MaxNodes:            10,
+		MaxConnectionsPerIP: 3,
+		MaxFailedLogins:     5,
+		LockoutMinutes:      30,
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("WARN: config.json not found at %s. Using default settings.", filePath)
+			return defaultConfig, nil
+		}
+		return defaultConfig, fmt.Errorf("failed to read config file %s: %w", filePath, err)
+	}
+
+	var config ServerConfig
+	// Initialize with defaults before unmarshalling
+	config = defaultConfig
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		log.Printf("ERROR: Failed to parse config JSON from %s: %v. Using default settings.", filePath, err)
+		return defaultConfig, fmt.Errorf("failed to parse config JSON from %s: %w", filePath, err)
+	}
+
+	log.Printf("INFO: Successfully loaded server configuration from %s", filePath)
+	return config, nil
+}
+
+// LoadFTNConfig loads FTN network configuration from ftn.json.
+// Returns an empty config (no networks) if the file does not exist.
+func LoadFTNConfig(configPath string) (FTNConfig, error) {
+	filePath := filepath.Join(configPath, "ftn.json")
+	log.Printf("INFO: Loading FTN configuration from %s", filePath)
+
+	defaultConfig := FTNConfig{
+		Networks: make(map[string]FTNNetworkConfig),
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("INFO: ftn.json not found at %s. FTN disabled.", filePath)
+			return defaultConfig, nil
+		}
+		return defaultConfig, fmt.Errorf("failed to read FTN config file %s: %w", filePath, err)
+	}
+
+	var config FTNConfig
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		log.Printf("ERROR: Failed to parse FTN config JSON from %s: %v", filePath, err)
+		return defaultConfig, fmt.Errorf("failed to parse FTN config JSON from %s: %w", filePath, err)
+	}
+
+	if config.Networks == nil {
+		config.Networks = make(map[string]FTNNetworkConfig)
+	}
+
+	enabledCount := 0
+	for name, net := range config.Networks {
+		if net.Enabled {
+			enabledCount++
+			log.Printf("INFO: FTN network %q enabled: address=%s", name, net.OwnAddress)
+		}
+	}
+	log.Printf("INFO: Loaded FTN configuration: %d network(s), %d enabled", len(config.Networks), enabledCount)
+
+	return config, nil
+}
+
+// LoadEventsConfig loads the event scheduler configuration from events.json
+func LoadEventsConfig(configPath string) (EventsConfig, error) {
+	filePath := filepath.Join(configPath, "events.json")
+	log.Printf("INFO: Loading event scheduler configuration from %s", filePath)
+
+	defaultConfig := EventsConfig{
+		Enabled:             false,
+		MaxConcurrentEvents: 3,
+		Events:              []EventConfig{},
+	}
+
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("INFO: events.json not found at %s. Event scheduler disabled.", filePath)
+			return defaultConfig, nil
+		}
+		return defaultConfig, fmt.Errorf("failed to read events config file %s: %w", filePath, err)
+	}
+
+	var config EventsConfig
+	err = json.Unmarshal(data, &config)
+	if err != nil {
+		log.Printf("ERROR: Failed to parse events config JSON from %s: %v", filePath, err)
+		return defaultConfig, fmt.Errorf("failed to parse events config JSON from %s: %w", filePath, err)
+	}
+
+	// Set default max concurrent events if not specified
+	if config.MaxConcurrentEvents <= 0 {
+		config.MaxConcurrentEvents = 3
+	}
+
+	enabledCount := 0
+	for _, event := range config.Events {
+		if event.Enabled {
+			enabledCount++
+		}
+	}
+
+	log.Printf("INFO: Loaded event scheduler configuration: %d event(s), %d enabled", len(config.Events), enabledCount)
+
+	return config, nil
+}
