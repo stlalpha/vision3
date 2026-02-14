@@ -424,12 +424,22 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		placeholders["|TL"] = strconv.Itoa(int(remainingSeconds / 60))
 	}
 
-	// Convert raw CP437 ANS content to UTF-8 before substitution so the
-	// writer pipeline receives unambiguous UTF-8 (avoids CP437 bytes being
-	// misinterpreted as UTF-8 which produces stray '?' characters).
-	utf8Content := string(ansi.CP437BytesToUTF8(rawAnsiContent))
-	for key, val := range placeholders {
-		utf8Content = strings.ReplaceAll(utf8Content, key, val)
+	// Branch based on output mode to preserve encoding correctness
+	var statsDisplayBytes []byte
+	if outputMode == ansi.OutputModeUTF8 {
+		// UTF-8 mode: Convert CP437→UTF-8 first, then substitute placeholders
+		utf8Content := string(ansi.CP437BytesToUTF8(rawAnsiContent))
+		for key, val := range placeholders {
+			utf8Content = strings.ReplaceAll(utf8Content, key, val)
+		}
+		statsDisplayBytes = []byte(utf8Content)
+	} else {
+		// CP437 mode: Substitute placeholders directly on raw bytes
+		// (WriteProcessedBytes will pass them through unchanged)
+		statsDisplayBytes = rawAnsiContent
+		for key, val := range placeholders {
+			statsDisplayBytes = bytes.ReplaceAll(statsDisplayBytes, []byte(key), []byte(val))
+		}
 	}
 
 	// Use WriteProcessedBytes for ClearScreen
@@ -438,8 +448,6 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		// Log error but continue if possible
 		log.Printf("ERROR: Node %d: Failed clearing screen for SHOWSTATS: %v", nodeNumber, wErr)
 	}
-
-	statsDisplayBytes := []byte(utf8Content)
 	wErr = terminalio.WriteProcessedBytes(terminal, statsDisplayBytes, outputMode)
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing processed YOURSTAT.ANS: %v", nodeNumber, wErr)
