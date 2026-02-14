@@ -421,6 +421,52 @@ searchLoop:
 	return nil
 }
 
+// UpdateFileRecord finds a file record by ID and applies the given update function.
+func (fm *FileManager) UpdateFileRecord(fileID uuid.UUID, updateFunc func(*FileRecord)) error {
+	fm.muFiles.Lock()
+	defer fm.muFiles.Unlock()
+
+	var foundAreaID int = -1
+	var foundIndex int = -1
+
+searchLoop:
+	for areaID, records := range fm.fileRecords {
+		for i := range records {
+			if records[i].ID == fileID {
+				foundAreaID = areaID
+				foundIndex = i
+				break searchLoop
+			}
+		}
+	}
+
+	if foundAreaID == -1 {
+		return fmt.Errorf("file record with ID %s not found", fileID)
+	}
+
+	updateFunc(&fm.fileRecords[foundAreaID][foundIndex])
+	filename := fm.fileRecords[foundAreaID][foundIndex].Filename
+
+	fm.muFiles.Unlock()
+	err := fm.saveFileRecords(foundAreaID)
+	fm.muFiles.Lock()
+
+	if err != nil {
+		log.Printf("ERROR: Failed to save file records after updating %s (ID: %s): %v", filename, fileID, err)
+		return err
+	}
+
+	log.Printf("DEBUG: Updated file record '%s' (ID: %s).", filename, fileID)
+	return nil
+}
+
+// UpdateFileDescription updates the description of a file record.
+func (fm *FileManager) UpdateFileDescription(fileID uuid.UUID, description string) error {
+	return fm.UpdateFileRecord(fileID, func(r *FileRecord) {
+		r.Description = description
+	})
+}
+
 // GetFilePath returns the full, absolute path to a file given its record ID.
 // It checks that the file exists and constructs the path safely.
 func (fm *FileManager) GetFilePath(fileID uuid.UUID) (string, error) {
