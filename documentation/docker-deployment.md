@@ -12,7 +12,7 @@ This guide covers deploying ViSiON/3 using Docker and Docker Compose.
 1. **Clone the repository:**
 
    ```bash
-   git clone https://github.com/robbiew/vision3.git
+   git clone https://github.com/stlalpha/vision3.git
    cd vision3
    ```
 
@@ -258,5 +258,5 @@ For production deployments:
 For issues related to Docker deployment:
 
 - Check logs: `docker-compose logs -f`
-- GitHub Issues: <https://github.com/robbiew/vision3/issues>
+- GitHub Issues: <https://github.com/stlalpha/vision3/issues>
 - Include Docker version, OS, and error logs when reporting issues

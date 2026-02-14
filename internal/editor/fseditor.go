@@ -4,7 +4,7 @@ import (
 	"io"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/ansi"
 )
 
 // FSEditor is the full-screen message editor

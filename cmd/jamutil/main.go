@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/robbiew/vision3/internal/jam"
+	"github.com/stlalpha/vision3/internal/jam"
 )
 
 const version = "1.0.0"

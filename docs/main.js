@@ -4,7 +4,7 @@
     'use strict';
 
     /* Fade-in sections on scroll */
-    var sections = document.querySelectorAll('section, .hero');
+    var sections = document.querySelectorAll('section');
 
     if (!('IntersectionObserver' in window)) {
         sections.forEach(function (section) {
@@ -70,13 +70,48 @@ function playRingTone(audioContext, startTime) {
     playTone(audioContext, [440, 480], 2.0, startTime);
 }
 
-function playPhonePickup() {
-    // Play phone pickup click sound
-    var click = new Audio('audio/phone-pickup.mp3');
-    click.volume = 0.6;
-    click.play().catch(function (err) {
-        console.error('Phone pickup click failed:', err);
+// Audio pool -- pre-unlocked on first user gesture
+var audioPool = {
+    pickupA: null,
+    pickupB: null,
+    modem: null,
+    unlocked: false
+};
+
+function unlockAudioPool() {
+    if (audioPool.unlocked) return;
+    audioPool.unlocked = true;
+
+    // Create two pickup instances (sequence uses it twice)
+    audioPool.pickupA = new Audio('audio/phone-pickup.mp3');
+    audioPool.pickupA.volume = 0.6;
+    audioPool.pickupB = new Audio('audio/phone-pickup.mp3');
+    audioPool.pickupB.volume = 0.6;
+
+    audioPool.modem = new Audio('audio/modem-handshake.mp3');
+    audioPool.modem.volume = 0.8;
+
+    // iOS/Android unlock: play and immediately pause each element
+    [audioPool.pickupA, audioPool.pickupB, audioPool.modem].forEach(function (el) {
+        el.play().then(function () {
+            el.pause();
+            el.currentTime = 0;
+        }).catch(function () {
+            // silence errors on browsers that don't need this
+        });
     });
+}
+
+var pickupIndex = 0;
+function playPhonePickup() {
+    var el = pickupIndex === 0 ? audioPool.pickupA : audioPool.pickupB;
+    pickupIndex++;
+    if (el) {
+        el.currentTime = 0;
+        el.play().catch(function (err) {
+            console.error('Phone pickup click failed:', err);
+        });
+    }
 }
 
 // Typewriter text output
@@ -105,8 +140,9 @@ function buildStatusBar(isOnline) {
     var statusBar = document.querySelector('.telix-status-bar');
     if (!statusBar) return;
 
+    var isMobile = window.innerWidth <= 600;
     var leftContent = 'Unregistered';
-    var middleContent = '| ANSI-BBS | 38400-N81 FAX | | | |';
+    var middleContent = isMobile ? 'ANSI-BBS | 38400-N81' : '| ANSI-BBS | 38400-N81 FAX | | | |';
     var rightContent = isOnline ? 'Online 00:00' : 'Offline';
 
     statusBar.innerHTML =
@@ -121,13 +157,16 @@ function runDialerSequence(splash) {
     var audioContext = new (window.AudioContext || window.webkitAudioContext)();
     var phoneDigits = '13145673833';
 
+    // Resume AudioContext if suspended (iOS Safari)
+    if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+
     // Clear the "Click to connect..." prompt
     var prompt = terminal.querySelector('.telix-prompt');
     if (prompt) prompt.remove();
 
-    // Preload modem screech
-    var modemAudio = new Audio('audio/modem-handshake.mp3');
-    modemAudio.volume = 0.8;
+    var modemAudio = audioPool.modem;
 
     // Phase 1: Type AT&F, wait for OK
     typeText(terminal, 'AT&F\n', function () {
@@ -190,19 +229,17 @@ function runDialerSequence(splash) {
 
                                                     // Phase 7: Wait 1.5s, phone pickup click
                                                     setTimeout(function () {
-                                                        console.log('Phone pickup click...');
                                                         playPhonePickup();
 
                                                         // Phase 8: Wait 0.5s, then modem screech (plays once, ~5s)
                                                         setTimeout(function () {
-                                                            console.log('Starting modem handshake audio...');
-
                                                             // Play screech file once
-                                                            modemAudio.play().then(function() {
-                                                                console.log('Modem audio playing successfully');
-                                                            }).catch(function (err) {
-                                                                console.error('Modem audio playback failed:', err);
-                                                            });
+                                                            if (modemAudio) {
+                                                                modemAudio.currentTime = 0;
+                                                                modemAudio.play().catch(function (err) {
+                                                                    console.error('Modem audio playback failed:', err);
+                                                                });
+                                                            }
 
                                                             // Phase 9: CONNECT after screech finishes (~18.5s)
                                                             setTimeout(function () {
@@ -263,6 +300,7 @@ function runDialerSequence(splash) {
         splash.removeEventListener('click', clickHandler);
         splash.removeEventListener('keydown', keyHandler);
         splash.style.cursor = 'default';
+        unlockAudioPool();
         runDialerSequence(splash);
     }
 
@@ -286,8 +324,6 @@ function runDialerSequence(splash) {
     'use strict';
 
     var keymap = {
-        'a': '#about',
-        'A': '#about',
         'f': '#features',
         'F': '#features',
         'g': '#get-started',
