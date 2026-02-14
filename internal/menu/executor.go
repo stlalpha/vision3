@@ -301,6 +301,8 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["READMSGS"] = runReadMsgs                               // <-- ADDED: Register message reading runnable
 	registry["NEWSCAN"] = runNewscan                                 // <-- ADDED: Register newscan runnable
 	registry["LISTFILES"] = runListFiles                             // <-- ADDED: Register file list runnable
+	registry["VIEW_FILE"] = runViewFile                              // View file (archives show listing, text gets paged)
+	registry["TYPE_TEXT_FILE"] = runTypeTextFile                      // Type text file with paging
 	registry["LISTFILEAR"] = runListFileAreas                        // <-- ADDED: Register file area list runnable
 	registry["SELECTFILEAREA"] = runSelectFileArea                   // <-- ADDED: Register file area selection runnable
 	registry["SELECTMSGAREA"] = runSelectMessageArea                 // Register message area selection runnable
@@ -6879,7 +6881,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 		// 4.5 Display Prompt (Use a standard file list prompt or configure one)
 		// TODO: Use configurable prompt string
-		prompt := "\r\n|07File Cmd (|15N|07=Next, |15P|07=Prev, |15#|07=Mark, |15D|07=Download, |15Q|07=Quit): |15"
+		prompt := "\r\n|07File Cmd (|15N|07=Next, |15P|07=Prev, |15#|07=Mark, |15V|07=View, |15D|07=Download, |15Q|07=Quit): |15"
 		wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 		if wErr != nil {
 			// Handle error
@@ -7117,14 +7119,36 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			}
 			filesOnPage, _ = e.FileMgr.GetFilesForAreaPaginated(currentAreaID, currentPage, filesPerPage)
 			continue
-		case "V": // View (Placeholder)
-			log.Printf("DEBUG: Node %d: View command entered (Not Implemented)", nodeNumber)
-			msg := "\r\n|01View function not yet implemented.|07\r\n"
-			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-			if wErr != nil { /* Log? */
+		case "V": // View file
+			log.Printf("DEBUG: Node %d: View command entered in file list", nodeNumber)
+			viewPrompt := "\r\n|07Enter file # to view (or |15ENTER|07 to cancel): |15"
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(viewPrompt)), outputMode)
+			viewInput, viewErr := terminal.ReadLine()
+			if viewErr != nil {
+				if errors.Is(viewErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+				continue
 			}
-			time.Sleep(1 * time.Second)
-			// Stay on the same page
+			viewNum := strings.TrimSpace(viewInput)
+			if viewNum == "" {
+				continue
+			}
+			fileNumToView, parseErr := strconv.Atoi(viewNum)
+			if parseErr != nil || fileNumToView <= 0 {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Invalid file number.|07\r\n")), outputMode)
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+			viewIndex := fileNumToView - 1 - (currentPage-1)*filesPerPage
+			if viewIndex < 0 || viewIndex >= len(filesOnPage) {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File number not on current page.|07\r\n")), outputMode)
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+			fileToView := filesOnPage[viewIndex]
+			viewFileByRecord(e, s, terminal, &fileToView, outputMode)
+			continue
 		case "A": // Area Change (Placeholder/Not implemented here, handled by menu?)
 			log.Printf("DEBUG: Node %d: Area Change command entered (Handled by menu)", nodeNumber)
 			msg := "\r\n|01Use menu options to change area.|07\r\n"
