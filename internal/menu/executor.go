@@ -6655,7 +6655,7 @@ func (e *MenuExecutor) runUploadFiles(
 			}
 
 			if result.Description != "" {
-				description = result.Description
+				description = sanitizeControlChars(strings.TrimSpace(result.Description))
 				log.Printf("INFO: Node %d: Using FILE_ID.DIZ description for %s: %q", nodeNumber, nf.name, description)
 			}
 		}
