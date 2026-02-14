@@ -4,7 +4,7 @@
     'use strict';
 
     /* Fade-in sections on scroll */
-    var sections = document.querySelectorAll('section, .hero');
+    var sections = document.querySelectorAll('section');
 
     if (!('IntersectionObserver' in window)) {
         sections.forEach(function (section) {

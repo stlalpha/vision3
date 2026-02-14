@@ -7,7 +7,7 @@
     <title>ViSiON/3 BBS</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -93,14 +93,21 @@
                     <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">To</span><span class="msg-bracket">]</span>: <span class="msg-value">All</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">Area</span><span class="msg-bracket">]</span>: <span class="msg-value">General</span></span></span>
                 </div>
                 <div class="msg-body">
-                    <p>Hey y'all - if you want to install the current vision3 bbs code on your own machine - execute these commands in a terminal:</p>
+                    <p>Docker (Recommended):</p>
+                    <p>&nbsp;</p>
+                    <p>git clone https://github.com/stlalpha/vision3.git</p>
+                    <p>cd vision3</p>
+                    <p>docker-compose up -d</p>
+                    <p>&nbsp;</p>
+                    <p>Manual:</p>
                     <p>&nbsp;</p>
                     <p>git clone https://github.com/stlalpha/vision3.git</p>
                     <p>cd vision3</p>
                     <p>./setup.sh</p>
-                    <p>cd cmd/vision3 && ./vision3</p>
+                    <p>./build.sh</p>
+                    <p>./bin/vision3</p>
                     <p>&nbsp;</p>
-                    <p>Connect from another terminal:</p>
+                    <p>Listens on port 2222. Default login: felonius / password</p>
                     <p>ssh felonius@localhost -p 2222</p>
                 </div>
             </div>

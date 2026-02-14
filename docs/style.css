@@ -22,7 +22,7 @@
     --bg-secondary: #111118;
     --bg-card: #15151f;
     --text-primary: #c8c8d4;
-    --text-secondary: #8888a0;
+    --text-secondary: #9999b0;
     --text-heading: #e0e0f0;
     --blue-bright: #4466ff;
     --blue-glow: #3355dd;
@@ -31,7 +31,7 @@
     --border-color: #252540;
     --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
     --font-dos: 'IBM VGA', 'Courier New', monospace;
-    --font-body: 'Inter', -apple-system, sans-serif;
+    --font-body: 'IBM Plex Mono', -apple-system, sans-serif;
 }
 
 html {
@@ -367,7 +367,7 @@ section:nth-of-type(even) {
     width: 100%;
     height: auto;
     border: 1px solid var(--border-color);
-    border-radius: 4px;
+    border-radius: 0;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -469,7 +469,7 @@ section:nth-of-type(even) {
     font-weight: 600;
     text-decoration: none;
     padding: 0.75rem 2rem;
-    border-radius: 4px;
+    border-radius: 0;
     transition: all 0.2s ease;
 }
 
@@ -541,7 +541,7 @@ section:nth-of-type(even) {
     .hero-logo { max-width: 220px; }
     .tagline { font-size: 1.1rem; }
     section { padding: 3rem 0; }
-    .ansi-header { font-size: 0.5rem; }
+    .ansi-header { display: none; }
     .bbs-menu { grid-template-columns: 1fr; }
     .cta-buttons { flex-direction: column; align-items: center; }
 }
