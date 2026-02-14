@@ -217,12 +217,17 @@ func (p *Processor) removeFilesFromZip(zipPath string, patterns []string) error 
 	}
 
 	removed := 0
+	seen := make(map[string]bool)
 	for _, f := range r.File {
 		if shouldRemoveFile(f.Name, patterns) {
 			log.Printf("INFO: removing ad file from archive: %s", f.Name)
 			removed++
 			continue
 		}
+		if seen[f.Name] {
+			continue
+		}
+		seen[f.Name] = true
 
 		fw, err := w.CreateHeader(&f.FileHeader)
 		if err != nil {
@@ -474,8 +479,14 @@ func (p *Processor) addFileToZip(zipPath, name string, data []byte) error {
 		w.SetComment(r.Comment)
 	}
 
-	// Copy existing entries
+	// Copy existing entries, skipping duplicates of the new file
+	seen := make(map[string]bool)
 	for _, f := range r.File {
+		if seen[f.Name] {
+			continue
+		}
+		seen[f.Name] = true
+
 		fw, err := w.CreateHeader(&f.FileHeader)
 		if err != nil {
 			w.Close()
@@ -507,7 +518,13 @@ func (p *Processor) addFileToZip(zipPath, name string, data []byte) error {
 
 	r.Close()
 
-	// Add the new file
+	// Add the new file (skip if already seen from existing entries)
+	if seen[name] {
+		w.Close()
+		outFile.Close()
+		os.Remove(tmpPath)
+		return fmt.Errorf("entry %s already exists in archive", name)
+	}
 	fw, err := w.Create(name)
 	if err != nil {
 		w.Close()

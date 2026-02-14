@@ -185,64 +185,6 @@ func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, r
 	}
 }
 
-// displayArchiveListing shows ZIP archive contents with paging on the terminal.
-func displayArchiveListing(s ssh.Session, terminal *term.Terminal, filePath string, filename string, outputMode ansi.OutputMode, termHeight int) {
-	r, err := zip.OpenReader(filePath)
-	if err != nil {
-		log.Printf("ERROR: Failed to open archive %s: %v", filePath, err)
-		msg := "\r\n|01Error reading archive.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		time.Sleep(1 * time.Second)
-		return
-	}
-	defer r.Close()
-
-	header := fmt.Sprintf("\r\n|15--- Archive Contents: %s ---|07\r\n\r\n", filename)
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode)
-
-	colHeader := "|14  Size       Date       Time     Name|07\r\n"
-	colHeader += "|08----------  ----------  -------  --------------------------------|07\r\n"
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(colHeader)), outputMode)
-
-	linesPerPage := termHeight - 6
-	if linesPerPage < 5 {
-		linesPerPage = 5
-	}
-
-	lineCount := 0
-	totalSize := uint64(0)
-	fileCount := 0
-
-	for _, f := range r.File {
-		mod := f.Modified
-		sizeStr := formatFileSize(int64(f.UncompressedSize64))
-		dateStr := mod.Format("01/02/2006")
-		timeStr := mod.Format("15:04")
-
-		line := fmt.Sprintf("|07%10s  %s  %s  |15%s|07\r\n", sizeStr, dateStr, timeStr, f.Name)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
-
-		totalSize += f.UncompressedSize64
-		fileCount++
-		lineCount++
-
-		if lineCount >= linesPerPage {
-			if !pauseMore(s, terminal, outputMode) {
-				return
-			}
-			lineCount = 0
-		}
-	}
-
-	summary := "\r\n|08----------                       --------------------------------|07\r\n"
-	summary += fmt.Sprintf("|07%10s                       |15%d file(s)|07\r\n", formatFileSize(int64(totalSize)), fileCount)
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(summary)), outputMode)
-
-	footer := "\r\n|15--- End of Archive ---|07\r\n"
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(footer)), outputMode)
-	pauseEnter(s, terminal, outputMode)
-}
-
 // displayTextWithPaging shows text file contents with paging on the terminal.
 func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath string, filename string, outputMode ansi.OutputMode, termHeight int) {
 	f, err := os.Open(filePath)
