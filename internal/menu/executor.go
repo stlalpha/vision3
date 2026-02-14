@@ -2968,6 +2968,7 @@ func runNewMailScan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		log.Printf("WARN: Node %d: JAM base not open for PRIVMAIL area: %v", nodeNumber, err)
 		return currentUser, "", nil
 	}
+	defer base.Close()
 
 	// Get total message count
 	totalMessages, err := e.MessageMgr.GetMessageCountForArea(privmailArea.ID)
@@ -8437,6 +8438,7 @@ func runReadPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
+	defer base.Close()
 
 	// Get total message count
 	totalMessages, err := e.MessageMgr.GetMessageCountForArea(privmailArea.ID)

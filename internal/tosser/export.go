@@ -38,6 +38,7 @@ func (t *Tosser) ScanAndExport() TossResult {
 			log.Printf("WARN: Export: cannot get base for area %d (%s): %v", area.ID, area.Tag, err)
 			continue
 		}
+		defer base.Close()
 
 		count, err := base.GetMessageCount()
 		if err != nil {

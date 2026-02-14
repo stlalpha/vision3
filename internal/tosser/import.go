@@ -173,6 +173,7 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 	if err != nil {
 		return fmt.Errorf("get base for area %d: %w", area.ID, err)
 	}
+	defer base.Close()
 
 	// Update SEEN-BY and PATH with our address
 	own2D := t.ownAddr.String2D()
