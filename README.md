@@ -1,5 +1,3 @@
-> **Note:** This repository was originally forked from [stlalpha/vision3](https://github.com/stlalpha/vision3), which no longer exists. I am continuing to maintain this fork and welcome any involvement from the community.
-
 # ViSiON/3 BBS Software
 
 ![ViSiON/3](ViSiON3.png)
@@ -395,7 +393,7 @@ All configuration files use JSON format and support comments for documentation.
 
 Contributions are welcome! Please feel free to submit issues and pull requests.
 
-## Acknowledgments (from the original ViSiON/2 BBS project by stlalpha)
+## Acknowledgments
 
 This project is built in tribute to ViSiON/2 and my friend Crimson Blade.
 
