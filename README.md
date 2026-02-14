@@ -49,7 +49,7 @@ Are you the kind of person who can wrangle a Go codebase while arguing about why
 - Turn it into a web app
 - Modernize away what makes it a BBS
 
-If this sounds like your particular flavor of madness, email: **robbiew at gmail.com**
+If this sounds like your particular flavor of madness, email: **stlalpha@vision3bbs.com**
 
 ### 🎨 Period-Correct ANSI Artists & Art
 
@@ -217,7 +217,7 @@ vision3/
 The easiest way to run ViSiON/3 is using Docker:
 
 ```bash
-git clone https://github.com/robbiew/vision3.git
+git clone https://github.com/stlalpha/vision3.git
 cd vision3
 docker-compose up -d
 ```
@@ -245,7 +245,7 @@ brew install libssh
 
 1. **Clone the repository:**
     ```bash
-    git clone https://github.com/robbiew/vision3.git
+    git clone https://github.com/stlalpha/vision3.git
     cd vision3
     ```
 
