@@ -7007,9 +7007,46 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 // wrapAnsiString wraps a string containing ANSI codes to a given width.
 // NOTE: This is a simplified version and does NOT perfectly handle ANSI state across wrapped lines.
 // It primarily prevents lines from exceeding the terminal width visually.
+// containsAnsiArt detects if text contains ANSI art by checking for cursor positioning
+// or other non-color ANSI escape sequences. ANSI art should not be word-wrapped.
+func containsAnsiArt(text string) bool {
+	// Check for cursor positioning commands: ESC[<row>;<col>H or ESC[<row>;<col>f
+	// Also check for save/restore cursor, cursor up/down/forward/back
+	// These indicate the text is using absolute positioning (ANSI art)
+	ansiArtPatterns := []string{
+		"\x1b[",   // Start of ANSI sequence
+	}
+
+	hasAnsiSequence := false
+	for _, pattern := range ansiArtPatterns {
+		if strings.Contains(text, pattern) {
+			hasAnsiSequence = true
+			break
+		}
+	}
+
+	if !hasAnsiSequence {
+		return false
+	}
+
+	// Look for specific ANSI art indicators:
+	// - Cursor positioning: ESC[n;mH or ESC[n;mf
+	// - Cursor movement: ESC[nA, ESC[nB, ESC[nC, ESC[nD
+	// - Save/restore cursor: ESC[s, ESC[u
+	ansiArtIndicators := regexp.MustCompile(`\x1b\[(\d+;\d+[HhFf]|\d*[ABCDsu])`)
+	return ansiArtIndicators.MatchString(text)
+}
+
 func wrapAnsiString(text string, width int) []string {
 	if width <= 0 {
 		return strings.Split(text, "\n") // No wrapping if width is invalid
+	}
+
+	// Check if this is ANSI art (contains cursor positioning or movement commands)
+	// ANSI art should NOT be word-wrapped as it uses absolute positioning
+	if containsAnsiArt(text) {
+		// Just split by newlines, don't word-wrap
+		return strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n")
 	}
 
 	var wrappedLines []string
