@@ -140,8 +140,11 @@ func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 	// Restore terminal before closing PTY
 	restoreTerminal()
 
-	// Close PTY and wait for output goroutine
+	// Close PTY and wait for both goroutines
 	_ = ptmx.Close()
+	if !hasInterrupt {
+		<-inputDone // Wait for input goroutine even without interrupt support
+	}
 	<-outputDone
 
 	return cmdErr

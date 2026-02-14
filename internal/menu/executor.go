@@ -6438,6 +6438,20 @@ func formatQuote(originalMsg *message.DisplayMessage, quotePrefix string) string
 	return builder.String()
 }
 
+// sanitizeControlChars strips control characters from user input to prevent
+// ANSI/terminal injection. Preserves tabs and newlines.
+func sanitizeControlChars(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\t' || r == '\n' || r == '\r' {
+			return r
+		}
+		if r < 0x20 || r == 0x7f {
+			return -1 // strip
+		}
+		return r
+	}, s)
+}
+
 // scanDirectoryFiles returns a map of filename -> file size for all files in a directory,
 // excluding metadata.json.
 func scanDirectoryFiles(dir string) (map[string]int64, error) {
@@ -6451,6 +6465,10 @@ func scanDirectoryFiles(dir string) (map[string]int64, error) {
 			info, err := entry.Info()
 			if err != nil {
 				log.Printf("WARN: Failed to get info for file %s: %v", entry.Name(), err)
+				continue
+			}
+			if !info.Mode().IsRegular() {
+				log.Printf("WARN: Skipping non-regular file %s", entry.Name())
 				continue
 			}
 			files[entry.Name()] = info.Size()
@@ -6612,7 +6630,7 @@ func (e *MenuExecutor) runUploadFiles(
 			continue
 		}
 
-		description = strings.TrimSpace(description)
+		description = sanitizeControlChars(strings.TrimSpace(description))
 		if len(description) > 60 {
 			description = description[:60]
 		}
@@ -6636,6 +6654,9 @@ func (e *MenuExecutor) runUploadFiles(
 			log.Printf("ERROR: Node %d: Failed to add file record for %s: %v", nodeNumber, nf.name, addErr)
 			errMsg := fmt.Sprintf("\r\n|01Failed to register '%s'.|07\r\n", nf.name)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+			if removeErr := os.Remove(filepath.Join(targetDir, nf.name)); removeErr != nil {
+				log.Printf("ERROR: Node %d: Failed to clean up orphaned file %s: %v", nodeNumber, nf.name, removeErr)
+			}
 			continue
 		}
 
