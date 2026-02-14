@@ -74,6 +74,12 @@ func NewInputHandler(input io.Reader) *InputHandler {
 	}
 }
 
+// readByteWithTimeout reads a single byte with an optional timeout.
+//
+// NOTE: Known limitation - timeout may not work when data is buffered.
+// If data exists in bufio.Reader, ReadByte() returns immediately regardless
+// of deadline. Deadline only affects underlying Read() when buffer is empty.
+// This is an acceptable trade-off for buffered I/O performance.
 func (ih *InputHandler) readByteWithTimeout(timeout time.Duration) (byte, error) {
 	if ih.readDeadlineIO != nil {
 		if err := ih.readDeadlineIO.SetReadDeadline(time.Now().Add(timeout)); err != nil {

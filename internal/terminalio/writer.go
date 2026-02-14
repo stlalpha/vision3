@@ -28,21 +28,29 @@ func writeUTF8Mode(writer io.Writer, data []byte) error {
 		}
 		span := data[spanStart:i]
 
-		if utf8.Valid(span) {
-			out = append(out, span...)
-			continue
-		}
-
-		for _, sb := range span {
-			if sb < 0x80 {
-				out = append(out, sb)
-				continue
-			}
-			mapped := ansi.Cp437ToUnicode[sb]
-			if mapped == 0 {
-				out = append(out, '?')
+		// Process span rune-by-rune to preserve valid UTF-8 while mapping invalid bytes to CP437
+		// This handles mixed UTF-8 + CP437 content correctly
+		pos := 0
+		for pos < len(span) {
+			r, size := utf8.DecodeRune(span[pos:])
+			if r == utf8.RuneError && size == 1 {
+				// Invalid UTF-8 byte - treat as CP437
+				sb := span[pos]
+				if sb < 0x80 {
+					out = append(out, sb)
+				} else {
+					mapped := ansi.Cp437ToUnicode[sb]
+					if mapped == 0 {
+						out = append(out, '?')
+					} else {
+						out = append(out, []byte(string(mapped))...)
+					}
+				}
+				pos++
 			} else {
-				out = append(out, []byte(string(mapped))...)
+				// Valid UTF-8 rune - preserve as-is
+				out = append(out, span[pos:pos+size]...)
+				pos += size
 			}
 		}
 	}
