@@ -285,7 +285,7 @@ This launches dosemu2 without COM1 serial redirection, giving you a direct inter
 
 dosemu2 uses `~/.dosemu/drive_c/` as the virtual C: drive. Place DOS door programs there:
 
-```
+```text
 ~/.dosemu/drive_c/
 ├── doors/
 │   ├── darkness/         # Darkness door files

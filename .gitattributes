@@ -1,3 +1,7 @@
-
-# Use bd merge for beads JSONL files
-.beads/issues.jsonl merge=beads
+# ANSI art and template files should be treated as binary
+*.ANS binary
+*.MID binary
+*.TOP binary
+*.BOT binary
+menus/v3/templates/* binary
+menus/v3/ansi/* binary
