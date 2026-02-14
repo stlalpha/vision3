@@ -221,5 +221,14 @@ func (p *Processor) DisplayPipeline(w io.Writer, nfo *NFOConfig, ansiContent []b
 		}
 	}
 
-	return p.RunPipeline(archivePath, statusFn)
+	result := p.RunPipeline(archivePath, statusFn)
+
+	// Move cursor below all NFO content so subsequent output doesn't overwrite
+	if nfo != nil {
+		if maxRow := nfo.MaxRow(); maxRow > 0 {
+			w.Write([]byte(fmt.Sprintf("\x1b[%d;1H", maxRow+1)))
+		}
+	}
+
+	return result
 }

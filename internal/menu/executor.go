@@ -7056,7 +7056,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 			// 1. Check if any files are marked
 			if len(currentUser.TaggedFileIDs) == 0 {
-				msg := "\\r\\n|07No files marked for download. Use |15#|07 to mark files.|07\\r\\n"
+				msg := "\r\n|07No files marked for download. Use |15#|07 to mark files.|07\r\n"
 				wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				if wErr != nil { /* Log? */
 				}
@@ -7070,7 +7070,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			// Need to position this prompt carefully, perhaps near the bottom prompt line.
 			// For now, just display it after the main prompt. TODO: Improve positioning.
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.SaveCursor()), outputMode)
-			terminalio.WriteProcessedBytes(terminal, []byte("\\r\\n\\x1b[K"), outputMode) // Newline, clear line
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n\x1b[K"), outputMode) // Newline, clear line
 
 			proceed, err := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()), outputMode) // Restore cursor after prompt
@@ -7081,7 +7081,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 					return nil, "LOGOFF", io.EOF
 				}
 				log.Printf("ERROR: Node %d: Error getting download confirmation: %v", nodeNumber, err)
-				msg := "\\r\\n|01Error during confirmation.|07\\r\\n"
+				msg := "\r\n|01Error during confirmation.|07\r\n"
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(1 * time.Second)
 				continue // Back to file list
@@ -7089,14 +7089,14 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 			if !proceed {
 				log.Printf("DEBUG: Node %d: User cancelled download.", nodeNumber)
-				terminalio.WriteProcessedBytes(terminal, []byte("\\r\\n|07Download cancelled.|07"), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Download cancelled.|07")), outputMode)
 				time.Sleep(500 * time.Millisecond)
 				continue // Back to file list
 			}
 
 			// 3. Process downloads
 			log.Printf("INFO: Node %d: User %s starting download of %d files.", nodeNumber, currentUser.Handle, len(currentUser.TaggedFileIDs))
-			terminalio.WriteProcessedBytes(terminal, []byte("\\r\\n|07Preparing download...\\r\\n"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Preparing download...\r\n")), outputMode)
 			time.Sleep(500 * time.Millisecond) // Small pause
 
 			successCount := 0
@@ -7128,14 +7128,14 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			if len(filesToDownload) > 0 {
 				// **** Actual ZMODEM Transfer using sz ****
 				log.Printf("INFO: Node %d: Attempting ZMODEM transfer for files: %v", nodeNumber, filenamesOnly)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15Initiating ZMODEM transfer (sz)...\\r\\n")), outputMode)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the ZMODEM receive function in your terminal.\\r\\n")), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15Initiating ZMODEM transfer (sz)...\r\n")), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the ZMODEM receive function in your terminal.\r\n")), outputMode)
 
 				// 1. Find sz executable
 				szPath, err := exec.LookPath("sz")
 				if err != nil {
 					log.Printf("ERROR: Node %d: 'sz' command not found in PATH: %v", nodeNumber, err)
-					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Error: 'sz' command not found on server. Cannot start download.\\r\\n")), outputMode)
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Error: 'sz' command not found on server. Cannot start download.\r\n")), outputMode)
 					failCount = len(filesToDownload) // Mark all as failed
 				} else {
 					// 2. Prepare arguments - Re-add -e flag
@@ -7156,13 +7156,13 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 					if transferErr != nil {
 						// sz likely exited with an error (transfer failed or cancelled)
 						log.Printf("ERROR: Node %d: 'sz' command execution failed: %v", nodeNumber, transferErr)
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01ZMODEM transfer failed or was cancelled.\\r\\n")), outputMode)
+						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01ZMODEM transfer failed or was cancelled.\r\n")), outputMode)
 						failCount = len(filesToDownload) // Assume all failed if sz returns error
 						successCount = 0
 					} else {
 						// sz exited successfully (transfer presumed complete)
 						log.Printf("INFO: Node %d: 'sz' command completed successfully.", nodeNumber)
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07ZMODEM transfer complete.\\r\\n")), outputMode)
+						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07ZMODEM transfer complete.\r\n")), outputMode)
 						successCount = len(filesToDownload) // Assume all succeeded if sz exits cleanly
 						failCount = 0                       // Reset fail count determined earlier
 
@@ -7183,7 +7183,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 			} else {
 				log.Printf("WARN: Node %d: No valid file paths found for tagged files.", nodeNumber)
-				msg := "\\r\\n|01Could not find any of the marked files on the server.|07\\r\\n"
+				msg := "\r\n|01Could not find any of the marked files on the server.|07\r\n"
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				failCount = len(currentUser.TaggedFileIDs) // Mark all as failed if none were found
 			}
@@ -7194,12 +7194,12 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			if err := userManager.UpdateUser(currentUser); err != nil {
 				log.Printf("ERROR: Node %d: Failed to save user data after download attempt: %v", nodeNumber, err)
 				// Inform user? State might be inconsistent.
-				terminalio.WriteProcessedBytes(terminal, []byte("\\r\\n|01Error saving user state after download.|07"), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error saving user state after download.|07")), outputMode)
 			}
 
 			// 5. Final status message
 			statusMsg := fmt.Sprintf("|07Download attempt finished. Success: %d, Failed: %d.|07\r\n", successCount, failCount)
-			terminalio.WriteProcessedBytes(terminal, []byte(statusMsg), outputMode)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(statusMsg)), outputMode)
 			time.Sleep(2 * time.Second)
 
 			// Go back to the file list (will redraw with cleared marks)

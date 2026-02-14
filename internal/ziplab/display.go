@@ -194,6 +194,17 @@ func ParseNFO(filePath string) (*NFOConfig, error) {
 	return nfo, nil
 }
 
+// MaxRow returns the highest row number used by any NFO entry.
+func (n *NFOConfig) MaxRow() int {
+	maxRow := 0
+	for _, entry := range n.Entries {
+		if entry.Row > maxRow {
+			maxRow = entry.Row
+		}
+	}
+	return maxRow
+}
+
 // DOSColorToANSI converts a DOS color attribute (bg*16 + fg) to ANSI components.
 // Returns foreground color (0-15), background color (0-7), and whether bold is needed.
 func DOSColorToANSI(dosAttr int) (fg int, bg int, bold bool) {
