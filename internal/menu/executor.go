@@ -20,6 +20,8 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
 	"github.com/robbiew/vision3/internal/ansi"
@@ -291,6 +293,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTUSERS"] = runListUsers                             // Register the user list runnable
 	registry["PENDINGVALIDATIONNOTICE"] = runPendingValidationNotice // SysOp notice for new users awaiting validation
 	registry["VALIDATEUSER"] = runValidateUser                       // Validate user accounts from admin menu
+	registry["NEWUSERVAL"] = runNewUserValidation                    // Prompt to validate new users if any pending
 	registry["UNVALIDATEUSER"] = runUnvalidateUser                   // Remove validation from user accounts
 	registry["BANUSER"] = runBanUser                                 // Quick-ban user accounts
 	registry["DELETEUSER"] = runDeleteUser                           // Soft-delete user accounts (data preserved)
@@ -408,9 +411,12 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		placeholders["|TL"] = strconv.Itoa(int(remainingSeconds / 60))
 	}
 
-	substitutedContent := string(rawAnsiContent)
+	// Convert raw CP437 ANS content to UTF-8 before substitution so the
+	// writer pipeline receives unambiguous UTF-8 (avoids CP437 bytes being
+	// misinterpreted as UTF-8 which produces stray '?' characters).
+	utf8Content := string(ansi.CP437BytesToUTF8(rawAnsiContent))
 	for key, val := range placeholders {
-		substitutedContent = strings.ReplaceAll(substitutedContent, key, val)
+		utf8Content = strings.ReplaceAll(utf8Content, key, val)
 	}
 
 	// Use WriteProcessedBytes for ClearScreen
@@ -420,9 +426,7 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		log.Printf("ERROR: Node %d: Failed clearing screen for SHOWSTATS: %v", nodeNumber, wErr)
 	}
 
-	// Log hex bytes before writing
-	statsDisplayBytes := []byte(substitutedContent)
-	// log.Printf("DEBUG: Node %d: Writing SHOWSTATS content bytes (hex): %x", nodeNumber, statsDisplayBytes)
+	statsDisplayBytes := []byte(utf8Content)
 	wErr = terminalio.WriteProcessedBytes(terminal, statsDisplayBytes, outputMode)
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing processed YOURSTAT.ANS: %v", nodeNumber, wErr)
@@ -435,46 +439,15 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... " // Fallback
 	}
 
-	// Prepare bytes for the specific mode
-	var pauseBytesToWrite []byte
-	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-	if outputMode == ansi.OutputModeCP437 {
-		var cp437Buf bytes.Buffer
-		for _, r := range string(processedPausePrompt) {
-			if r < 128 {
-				cp437Buf.WriteByte(byte(r))
-			} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
-				cp437Buf.WriteByte(cp437Byte)
-			} else {
-				cp437Buf.WriteByte('?')
-			}
+	log.Printf("DEBUG: Node %d: Displaying SHOWSTATS pause prompt (centered)", nodeNumber)
+	err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during SHOWSTATS pause.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
 		}
-		pauseBytesToWrite = cp437Buf.Bytes()
-	} else {
-		pauseBytesToWrite = processedPausePrompt
-	}
-
-	log.Printf("DEBUG: Node %d: Writing SHOWSTATS pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
-	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing SHOWSTATS pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
-	wErr = terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
-	if wErr != nil {
-		log.Printf("ERROR: Node %d: Failed writing SHOWSTATS pause prompt: %v", nodeNumber, wErr)
-	}
-	bufioReader := bufio.NewReader(s)
-	for {
-		r, _, err := bufioReader.ReadRune()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Printf("INFO: Node %d: User disconnected during SHOWSTATS pause.", nodeNumber)
-				return nil, "LOGOFF", io.EOF // Updated return (Signal logoff)
-			}
-			log.Printf("ERROR: Failed reading input during SHOWSTATS pause: %v", err)
-			return nil, "", err // Updated return
-		}
-		if r == '\r' || r == '\n' {
-			break
-		}
+		log.Printf("ERROR: Failed during SHOWSTATS pause: %v", err)
+		return nil, "", err
 	}
 	return nil, "", nil // Updated return (Success)
 }
@@ -948,6 +921,16 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	if askPrompt == "" {
 		log.Printf("ERROR: Required string 'AskOneLiner' is missing or empty in strings configuration.")
 		return nil, "", fmt.Errorf("missing AskOneLiner string in configuration")
+	}
+
+	// Position the prompt on the last row of the terminal.
+	if ptyReq, _, isPty := s.Pty(); isPty && ptyReq.Window.Height > 0 {
+		lastRow := ptyReq.Window.Height
+		posCmd := fmt.Sprintf("\x1b[%d;1H", lastRow)
+		wErr = terminalio.WriteProcessedBytes(terminal, []byte(posCmd), outputMode)
+		if wErr != nil {
+			log.Printf("WARN: Node %d: Failed positioning cursor for ONELINER ask prompt: %v", nodeNumber, wErr)
+		}
 	}
 
 	log.Printf("DEBUG: Node %d: Calling promptYesNo for ONELINER add prompt", nodeNumber)
@@ -2431,55 +2414,21 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		return nil, "", wErr
 	}
 
-	// 5. Wait for Enter using configured PauseString (logic remains the same)
+	// 5. Wait for Enter using configured PauseString
 	pausePrompt := e.LoadedStrings.PauseString
 	if pausePrompt == "" {
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... " // Fallback
 	}
-	if !strings.HasPrefix(pausePrompt, "\r\n") && !strings.HasPrefix(pausePrompt, "\n") {
-		pausePrompt = "\r\n" + pausePrompt
-	}
 
-	var pauseBytesToWrite []byte
-	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-	if outputMode == ansi.OutputModeCP437 {
-		var cp437Buf bytes.Buffer
-		for _, r := range string(processedPausePrompt) {
-			if r < 128 {
-				cp437Buf.WriteByte(byte(r))
-			} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
-				cp437Buf.WriteByte(cp437Byte)
-			} else {
-				cp437Buf.WriteByte('?')
-			}
+	log.Printf("DEBUG: Node %d: Displaying LASTCALLERS pause prompt (centered)", nodeNumber)
+	err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during LASTCALLERS pause.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
 		}
-		pauseBytesToWrite = cp437Buf.Bytes()
-	} else {
-		pauseBytesToWrite = processedPausePrompt
-	}
-
-	log.Printf("DEBUG: Node %d: Writing LASTCALLERS pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
-	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing LASTCALLERS pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
-	wErr = terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
-	if wErr != nil {
-		log.Printf("ERROR: Node %d: Failed writing LASTCALLERS pause prompt: %v", nodeNumber, wErr)
-	}
-
-	bufioReader := bufio.NewReader(s)
-	for {
-		r, _, err := bufioReader.ReadRune()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Printf("INFO: Node %d: User disconnected during LASTCALLERS pause.", nodeNumber)
-				return nil, "LOGOFF", io.EOF
-			}
-			log.Printf("ERROR: Node %d: Failed reading input during LASTCALLERS pause: %v", nodeNumber, err)
-			return nil, "", err
-		}
-		if r == '\r' || r == '\n' { // Check for CR or LF
-			break
-		}
+		log.Printf("ERROR: Node %d: Failed during LASTCALLERS pause: %v", nodeNumber, err)
+		return nil, "", err
 	}
 
 	return nil, "", nil // Success
@@ -3249,48 +3198,14 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 }
 
-// loginPausePrompt displays the configured pause prompt and waits for Enter.
+// loginPausePrompt displays the configured pause prompt (centered) and waits for Enter.
 func (e *MenuExecutor) loginPausePrompt(s ssh.Session, terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) error {
 	pausePrompt := e.LoadedStrings.PauseString
 	if pausePrompt == "" {
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
 
-	// Process pipe codes and convert to CP437 if needed
-	var pauseBytesToWrite []byte
-	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-	if outputMode == ansi.OutputModeCP437 {
-		var cp437Buf bytes.Buffer
-		for _, r := range string(processedPausePrompt) {
-			if r < 128 {
-				cp437Buf.WriteByte(byte(r))
-			} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
-				cp437Buf.WriteByte(cp437Byte)
-			} else {
-				cp437Buf.WriteByte('?')
-			}
-		}
-		pauseBytesToWrite = cp437Buf.Bytes()
-	} else {
-		pauseBytesToWrite = processedPausePrompt
-	}
-
-	wErr := terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
-	if wErr != nil {
-		return wErr
-	}
-
-	bufioReader := bufio.NewReader(s)
-	for {
-		r, _, err := bufioReader.ReadRune()
-		if err != nil {
-			return err
-		}
-		if r == '\r' || r == '\n' {
-			break
-		}
-	}
-	return nil
+	return writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode)
 }
 
 // RunLoginSequence is the exported entry point for running the login sequence from main.go.
@@ -3326,6 +3241,7 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		"DISPLAYFILE": runLoginDisplayFile,
 		"RUNDOOR":     runLoginDoor,
 		"FASTLOGIN":   runFastLogin,
+		"NEWUSERVAL":  runNewUserValidation,
 	}
 
 	for i, item := range loginSequence {
@@ -3434,6 +3350,118 @@ var ansiBg = map[int]int{
 
 // colorCodeToAnsi converts a DOS-style color code (0-255) to ANSI escape sequence.
 // Assumes Color = Background*16 + Foreground
+// calculateVisibleWidth calculates the visible width of text, excluding ANSI escape sequences.
+// This is used for centering text that contains color codes.
+func calculateVisibleWidth(text string) int {
+	width := 0
+	inEscape := false
+
+	for i := 0; i < len(text); i++ {
+		ch := text[i]
+
+		if ch == '\x1b' {
+			// Start of ANSI escape sequence
+			inEscape = true
+			continue
+		}
+
+		if inEscape {
+			// Skip characters until we hit a letter (end of ANSI sequence)
+			if (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') {
+				inEscape = false
+			}
+			continue
+		}
+
+		// Count visible characters (excluding control characters)
+		if ch >= 32 {
+			width++
+		}
+	}
+
+	return width
+}
+
+// writeCenteredPausePrompt writes a centered pause prompt and waits for Enter.
+// Returns error on write/read failure or io.EOF on disconnect.
+func writeCenteredPausePrompt(s ssh.Session, terminal *term.Terminal, pausePrompt string, outputMode ansi.OutputMode) error {
+	// Check if we need to add newline before pause (handle it separately from centering)
+	needsNewline := !strings.HasPrefix(pausePrompt, "\r\n") && !strings.HasPrefix(pausePrompt, "\n")
+
+	// Strip any leading newlines from the prompt text for processing
+	pauseText := pausePrompt
+	if strings.HasPrefix(pauseText, "\r\n") {
+		pauseText = strings.TrimPrefix(pauseText, "\r\n")
+	} else if strings.HasPrefix(pauseText, "\n") {
+		pauseText = strings.TrimPrefix(pauseText, "\n")
+	}
+
+	// Process pipe codes and convert to CP437 if needed
+	var pauseBytesToWrite []byte
+	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pauseText))
+	if outputMode == ansi.OutputModeCP437 {
+		var cp437Buf bytes.Buffer
+		for _, r := range string(processedPausePrompt) {
+			if r < 128 {
+				cp437Buf.WriteByte(byte(r))
+			} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
+				cp437Buf.WriteByte(cp437Byte)
+			} else {
+				cp437Buf.WriteByte('?')
+			}
+		}
+		pauseBytesToWrite = cp437Buf.Bytes()
+	} else {
+		pauseBytesToWrite = processedPausePrompt
+	}
+
+	// Write newline first if needed
+	if needsNewline {
+		wErr := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		if wErr != nil {
+			return wErr
+		}
+	}
+
+	// Center the pause prompt if PTY info is available
+	ptyReq, _, isPty := s.Pty()
+	if isPty && ptyReq.Window.Width > 0 {
+		// Calculate visible text width (excluding ANSI escape sequences)
+		visibleWidth := calculateVisibleWidth(string(pauseBytesToWrite))
+		termWidth := int(ptyReq.Window.Width)
+
+		if visibleWidth < termWidth {
+			// Calculate centering offset
+			leftPadding := (termWidth - visibleWidth) / 2
+			if leftPadding > 0 {
+				// Move cursor to center position
+				centerPosBytes := []byte(fmt.Sprintf("\r\x1b[%dC", leftPadding))
+				wErr := terminalio.WriteProcessedBytes(terminal, centerPosBytes, outputMode)
+				if wErr != nil {
+					log.Printf("WARN: Failed positioning for centered pause: %v", wErr)
+				}
+			}
+		}
+	}
+
+	wErr := terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
+	if wErr != nil {
+		return wErr
+	}
+
+	bufioReader := bufio.NewReader(s)
+	for {
+		r, _, err := bufioReader.ReadRune()
+		if err != nil {
+			return err
+		}
+		if r == '\r' || r == '\n' {
+			break
+		}
+	}
+	return nil
+}
+
 func colorCodeToAnsi(code int) string {
 	fgCode := code % 16
 	bgCode := code / 16
@@ -3683,8 +3711,10 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 	hasPtyHeight := isPty && ptyReq.Window.Height > 0
 
 	if hasPtyHeight {
-		// --- Dynamic Lightbar Logic (if terminal height is known) ---
-		log.Printf("DEBUG: Terminal height known (%d), using lightbar prompt.", ptyReq.Window.Height)
+		// --- Inline Lightbar Logic (prints at current cursor position) ---
+		log.Printf("DEBUG: Terminal height known (%d), using inline lightbar prompt.", ptyReq.Window.Height)
+
+		// Hide cursor during selection
 		wErr := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
 		if wErr != nil {
 			log.Printf("WARN: Node %d: Failed hiding cursor for Yes/No prompt: %v", nodeNumber, wErr)
@@ -3696,8 +3726,6 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 			}
 		}()
 
-		promptRow := ptyReq.Window.Height // Use last row
-		promptCol := 3
 		yesLabel := strings.TrimSpace(e.LoadedStrings.YesPromptText)
 		if yesLabel == "" {
 			yesLabel = "Yes"
@@ -3709,153 +3737,102 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 
 		yesOptionText := " " + yesLabel + " "
 		noOptionText := " " + noLabel + " "
-		yesNoSpacing := 2  // Spaces between prompt and first option (after cursor)
+		yesNoSpacing := 2  // Spaces between prompt and first option
 		optionSpacing := 2 // Spaces between Yes and No
 		highlightColor := e.Theme.YesNoHighlightColor
 		regularColor := e.Theme.YesNoRegularColor
 
-		// Use WriteProcessedBytes for ANSI codes
-		saveCursorBytes := []byte(ansi.SaveCursor())
-		log.Printf("DEBUG: Node %d: Writing prompt save cursor bytes (hex): %x", nodeNumber, saveCursorBytes) // Use nodeNumber
-		wErr = terminalio.WriteProcessedBytes(terminal, saveCursorBytes, outputMode)
-		if wErr != nil {
-			log.Printf("WARN: Failed saving cursor: %v", wErr)
-		}
-		defer func() {
-			restoreCursorBytes := []byte(ansi.RestoreCursor())
-			log.Printf("DEBUG: Node %d: Writing prompt restore cursor bytes (hex): %x", nodeNumber, restoreCursorBytes) // Use nodeNumber
-			wErr := terminalio.WriteProcessedBytes(terminal, restoreCursorBytes, outputMode)
-			if wErr != nil {
-				log.Printf("WARN: Failed restoring cursor: %v", wErr)
-			}
-		}()
-
-		// Clear the prompt line first
-		clearCmdBytes := []byte(fmt.Sprintf("\x1b[%d;1H\x1b[2K", promptRow))                               // Move + Clear line
-		log.Printf("DEBUG: Node %d: Writing prompt clear line bytes (hex): %x", nodeNumber, clearCmdBytes) // Use nodeNumber
-		wErr = terminalio.WriteProcessedBytes(terminal, clearCmdBytes, outputMode)
-		if wErr != nil {
-			log.Printf("WARN: Failed clearing prompt line: %v", wErr)
-		}
-
-		// Move to prompt column and display prompt text
-		promptPosCmdBytes := []byte(fmt.Sprintf("\x1b[%d;%dH", promptRow, promptCol))
-		log.Printf("DEBUG: Node %d: Writing prompt position bytes (hex): %x", nodeNumber, promptPosCmdBytes) // Use nodeNumber
-		wErr = terminalio.WriteProcessedBytes(terminal, promptPosCmdBytes, outputMode)
-		if wErr != nil {
-			log.Printf("WARN: Failed positioning for prompt: %v", wErr)
-		}
-
+		// Write the prompt text inline
 		promptDisplayBytes := ansi.ReplacePipeCodes([]byte(promptText))
-		log.Printf("DEBUG: Node %d: Writing prompt text bytes (hex): %x", nodeNumber, promptDisplayBytes) // Use nodeNumber
+		log.Printf("DEBUG: Node %d: Writing prompt text bytes (hex): %x", nodeNumber, promptDisplayBytes)
 		err := terminalio.WriteStringCP437(terminal, promptDisplayBytes, outputMode)
 		if err != nil {
-			log.Printf("ERROR: Node %d: Failed writing Yes/No prompt text (lightbar mode): %v", nodeNumber, err) // Use nodeNumber
+			log.Printf("ERROR: Node %d: Failed writing Yes/No prompt text (lightbar mode): %v", nodeNumber, err)
 			return false, fmt.Errorf("failed writing prompt text: %w", err)
 		}
 
-		_, currentCursorCol, err := requestCursorPosition(s, terminal)
-		if err != nil {
-			log.Printf("ERROR: Failed getting cursor position for Yes/No prompt: %v", err)
-			// Fallback to text prompt if cursor position fails?
-			// For now, return error, as layout depends on it.
-			return false, fmt.Errorf("failed getting cursor position: %w", err)
+		// Add spacing before options
+		spacingBytes := []byte(strings.Repeat(" ", yesNoSpacing))
+		wErr = terminalio.WriteProcessedBytes(terminal, spacingBytes, outputMode)
+		if wErr != nil {
+			log.Printf("WARN: Failed writing spacing: %v", wErr)
 		}
 
-		yesOptionCol := currentCursorCol + yesNoSpacing
-		noOptionCol := yesOptionCol + len(yesOptionText) + optionSpacing
-
-		yesOption := LightbarOption{
-			X: yesOptionCol, Y: promptRow,
-			Text: yesOptionText, HotKey: "Y",
-			HighlightColor: highlightColor, RegularColor: regularColor,
+		// Save cursor position - this is where options will be drawn
+		wErr = terminalio.WriteProcessedBytes(terminal, []byte(ansi.SaveCursor()), outputMode)
+		if wErr != nil {
+			log.Printf("WARN: Failed saving cursor for options: %v", wErr)
 		}
-		noOption := LightbarOption{
-			X: noOptionCol, Y: promptRow,
-			Text: noOptionText, HotKey: "N",
-			HighlightColor: highlightColor, RegularColor: regularColor,
-		}
-		options := []LightbarOption{noOption, yesOption} // No=0, Yes=1
-		selectedIndex := 0                               // Default to 'No'
 
-		drawOptions := func(currentSelection int) {
-			// Use WriteProcessedBytes within drawOptions
-			saveCursorBytes := []byte(ansi.SaveCursor())
-			log.Printf("DEBUG: Node %d: Writing prompt drawOpt save cursor bytes (hex): %x", nodeNumber, saveCursorBytes) // Use nodeNumber
-			wErr := terminalio.WriteProcessedBytes(terminal, saveCursorBytes, outputMode)
+		// Track current selection
+		selectedIndex := 0 // Default to 'No' (index 0)
+
+		// Function to draw the inline options (only the options, not the prompt)
+		drawInlineOptions := func(currentSelection int) {
+			// Restore cursor to where options start
+			wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()), outputMode)
 			if wErr != nil {
-				log.Printf("WARN: Failed saving cursor in drawOptions: %v", wErr)
+				log.Printf("WARN: Failed restoring cursor for options: %v", wErr)
 			}
-			defer func() {
-				restoreCursorBytes := []byte(ansi.RestoreCursor())
-				log.Printf("DEBUG: Node %d: Writing prompt drawOpt restore cursor bytes (hex): %x", nodeNumber, restoreCursorBytes) // Use nodeNumber
-				wErr := terminalio.WriteProcessedBytes(terminal, restoreCursorBytes, outputMode)
-				if wErr != nil {
-					log.Printf("WARN: Failed restoring cursor in drawOptions: %v", wErr)
-				}
-			}()
 
-			for i, opt := range options {
-				if opt.X <= 0 || opt.Y <= 0 {
-					log.Printf("WARN: Invalid coordinates for Yes/No option %d: X=%d, Y=%d", i, opt.X, opt.Y)
-					continue
-				}
-				posCmdBytes := []byte(fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X))
-				log.Printf("DEBUG: Node %d: Writing prompt option %d position bytes (hex): %x", nodeNumber, i, posCmdBytes) // Use nodeNumber
-				wErr = terminalio.WriteProcessedBytes(terminal, posCmdBytes, outputMode)
-				if wErr != nil {
-					log.Printf("WARN: Failed positioning cursor for option %d: %v", i, wErr)
-				}
+			// Clear from cursor to end of line to remove old options
+			wErr = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[K"), outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Failed clearing old options: %v", wErr)
+			}
 
-				colorCode := opt.RegularColor
-				if i == currentSelection {
-					colorCode = opt.HighlightColor
-				}
-				ansiColorSequenceBytes := []byte(colorCodeToAnsi(colorCode))
-				log.Printf("DEBUG: Node %d: Writing prompt option %d color bytes (hex): %x", nodeNumber, i, ansiColorSequenceBytes) // Use nodeNumber
-				wErr = terminalio.WriteProcessedBytes(terminal, ansiColorSequenceBytes, outputMode)
-				if wErr != nil {
-					log.Printf("WARN: Failed setting color for option %d: %v", i, wErr)
-				}
+			// Draw No option
+			noColorCode := regularColor
+			if currentSelection == 0 {
+				noColorCode = highlightColor
+			}
+			noColorBytes := []byte(colorCodeToAnsi(noColorCode))
+			wErr = terminalio.WriteProcessedBytes(terminal, noColorBytes, outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Failed setting No color: %v", wErr)
+			}
+			wErr = terminalio.WriteProcessedBytes(terminal, []byte(noOptionText), outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Failed writing No option: %v", wErr)
+			}
+			wErr = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Failed resetting attributes: %v", wErr)
+			}
 
-				optionTextBytes := []byte(opt.Text)
-				log.Printf("DEBUG: Node %d: Writing prompt option %d text bytes (hex): %x", nodeNumber, i, optionTextBytes) // Use nodeNumber
-				wErr = terminalio.WriteProcessedBytes(terminal, optionTextBytes, outputMode)
-				if wErr != nil {
-					log.Printf("WARN: Failed writing text for option %d: %v", i, wErr)
-				}
+			// Add spacing between options
+			wErr = terminalio.WriteProcessedBytes(terminal, []byte(strings.Repeat(" ", optionSpacing)), outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Failed writing option spacing: %v", wErr)
+			}
 
-				resetBytes := []byte("\x1b[0m")                                                                         // Reset attributes
-				log.Printf("DEBUG: Node %d: Writing prompt option %d reset bytes (hex): %x", nodeNumber, i, resetBytes) // Use nodeNumber
-				wErr = terminalio.WriteProcessedBytes(terminal, resetBytes, outputMode)
-				if wErr != nil {
-					log.Printf("WARN: Failed resetting attributes for option %d: %v", i, wErr)
-				}
+			// Draw Yes option
+			yesColorCode := regularColor
+			if currentSelection == 1 {
+				yesColorCode = highlightColor
+			}
+			yesColorBytes := []byte(colorCodeToAnsi(yesColorCode))
+			wErr = terminalio.WriteProcessedBytes(terminal, yesColorBytes, outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Failed setting Yes color: %v", wErr)
+			}
+			wErr = terminalio.WriteProcessedBytes(terminal, []byte(yesOptionText), outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Failed writing Yes option: %v", wErr)
+			}
+			wErr = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
+			if wErr != nil {
+				log.Printf("WARN: Failed resetting attributes: %v", wErr)
 			}
 		}
 
-		drawOptions(selectedIndex)
+		// Draw initial options
+		drawInlineOptions(selectedIndex)
 
 		bufioReader := bufio.NewReader(s)
 		for {
-			// Move cursor back to where prompt ended for input visual
-			posCmd := fmt.Sprintf("\x1b[%d;%dH", promptRow, currentCursorCol)
-			log.Printf("DEBUG: Node %d: Repositioning cursor for input bytes (hex): %x", nodeNumber, []byte(posCmd)) // Use nodeNumber
-			wErr := terminalio.WriteProcessedBytes(terminal, []byte(posCmd), outputMode)
-			if wErr != nil {
-				log.Printf("WARN: Failed positioning cursor for input: %v", wErr)
-			}
-
 			r, _, err := bufioReader.ReadRune()
 			if err != nil {
-				// Clear line on error using WriteProcessedBytes
-				clearCmd := fmt.Sprintf("\x1b[%d;1H\x1b[2K", promptRow)
-				log.Printf("DEBUG: Node %d: Writing prompt clear on read error bytes (hex): %x", nodeNumber, []byte(clearCmd)) // Use nodeNumber
-				wErr := terminalio.WriteProcessedBytes(terminal, []byte(clearCmd), outputMode)
-				if wErr != nil {
-					log.Printf("WARN: Failed clearing line on read error: %v", wErr)
-				}
-
 				if errors.Is(err, io.EOF) {
 					return false, io.EOF
 				}
@@ -3897,19 +3874,17 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 			}
 
 			if selectionMade {
-				// Clear line on selection using WriteProcessedBytes
-				clearCmdBytes := []byte(fmt.Sprintf("\x1b[%d;1H\x1b[2K", promptRow))
-				log.Printf("DEBUG: Node %d: Writing prompt final clear bytes (hex): %x", nodeNumber, clearCmdBytes) // Use nodeNumber
-				wErr := terminalio.WriteProcessedBytes(terminal, clearCmdBytes, outputMode)
+				// Restore to option position, clear to end of line, then move to next line
+				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()+"\x1b[K\r\n"), outputMode)
 				if wErr != nil {
-					log.Printf("WARN: Failed clearing line on selection: %v", wErr)
+					log.Printf("WARN: Failed clearing options on selection: %v", wErr)
 				}
 				return result, nil
 			}
 
 			if newSelectedIndex != selectedIndex {
 				selectedIndex = newSelectedIndex
-				drawOptions(selectedIndex)
+				drawInlineOptions(selectedIndex)
 			}
 		}
 		// Lightbar logic ends here
@@ -4061,52 +4036,21 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		return nil, "", wErr
 	}
 
-	// 5. Wait for Enter using configured PauseString (logic remains the same)
+	// 5. Wait for Enter using configured PauseString (centered)
 	pausePrompt := e.LoadedStrings.PauseString
 	if pausePrompt == "" {
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... " // Fallback
 	}
 
-	var pauseBytesToWrite []byte
-	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-	if outputMode == ansi.OutputModeCP437 {
-		var cp437Buf bytes.Buffer
-		for _, r := range string(processedPausePrompt) {
-			if r < 128 {
-				cp437Buf.WriteByte(byte(r))
-			} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
-				cp437Buf.WriteByte(cp437Byte)
-			} else {
-				cp437Buf.WriteByte('?')
-			}
+	log.Printf("DEBUG: Node %d: Displaying USERLIST pause prompt (centered)", nodeNumber)
+	err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during USERLIST pause.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
 		}
-		pauseBytesToWrite = cp437Buf.Bytes()
-	} else {
-		pauseBytesToWrite = processedPausePrompt
-	}
-
-	log.Printf("DEBUG: Node %d: Writing USERLIST pause prompt. Mode: %d, Bytes: %q", nodeNumber, outputMode, string(pauseBytesToWrite))
-	// Log hex bytes before writing
-	log.Printf("DEBUG: Node %d: Writing USERLIST pause bytes (hex): %x", nodeNumber, pauseBytesToWrite)
-	wErr = terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
-	if wErr != nil {
-		log.Printf("ERROR: Node %d: Failed writing USERLIST pause prompt: %v", nodeNumber, wErr)
-	}
-
-	bufioReader := bufio.NewReader(s)
-	for {
-		r, _, err := bufioReader.ReadRune()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Printf("INFO: Node %d: User disconnected during USERLIST pause.", nodeNumber)
-				return nil, "LOGOFF", io.EOF
-			}
-			log.Printf("ERROR: Node %d: Failed reading input during USERLIST pause: %v", nodeNumber, err)
-			return nil, "", err
-		}
-		if r == '\r' || r == '\n' { // Check for CR or LF
-			break
-		}
+		log.Printf("ERROR: Node %d: Failed during USERLIST pause: %v", nodeNumber, err)
+		return nil, "", err
 	}
 
 	return nil, "", nil // Success
@@ -4296,6 +4240,10 @@ func adminUserLightbarBrowser(s ssh.Session, terminal *term.Terminal, users []*u
 }
 
 func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	// Hide cursor on entry, show on exit
+	_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+	defer terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+
 	if currentUser == nil || userManager == nil {
 		return nil, "", nil
 	}
@@ -4323,14 +4271,10 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	selectedIndex := 0
 	topIndex := 0
 	termHeight := 24
-	termWidth := 80
 	if ptyReq, _, ok := s.Pty(); ok && ptyReq.Window.Height > 0 {
 		termHeight = ptyReq.Window.Height
-		if ptyReq.Window.Width > 0 {
-			termWidth = ptyReq.Window.Width
-		}
 	}
-	pageSize := termHeight - 13
+	pageSize := termHeight - 14 // Reduced by 1 to account for header row
 	if pageSize < 3 {
 		pageSize = 3
 	}
@@ -4340,7 +4284,8 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 
 	titleRow := 1
 	sepTopRow := 2
-	listStartRow := 3
+	headerRow := 3    // Column header labels
+	listStartRow := 4 // First user row (after header)
 	sepMidRow := listStartRow + pageSize
 	detailStartRow := sepMidRow + 1
 	statusRow := termHeight - 1
@@ -4360,13 +4305,19 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode); err != nil {
 			return err
 		}
-		if err := writeAt(titleRow, 1, "|15Admin User Browser|07"); err != nil {
+		if err := writeAt(titleRow, 1, "|15ViSiON|03/|153 |08- |14User Editor|07"); err != nil {
 			return err
 		}
-		if err := writeAt(sepTopRow, 1, "|08--------------------------------------------------------------------------------|07"); err != nil {
+		if err := clearRow(sepTopRow); err != nil {
 			return err
 		}
-		if err := writeAt(sepMidRow, 1, "|08--------------------------------------------------------------------------------|07"); err != nil {
+		// Render column header - aligned with data columns
+		// Format: prefix(2) handle(22) space(3) date(10) space(3) ID:(3+4) space(3) L:(2+3) space(2) status(2)
+		headerText := fmt.Sprintf("|08  %-22s   %-10s   %-7s   %-5s|07", "Handle", "Created", "ID", "Level")
+		if err := writeAt(headerRow, 1, headerText); err != nil {
+			return err
+		}
+		if err := clearRow(sepMidRow); err != nil {
 			return err
 		}
 		for r := detailStartRow; r <= statusRow; r++ {
@@ -4377,47 +4328,68 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		return nil
 	}
 
+	// Calculate visual display width (excluding pipe codes)
+	visualWidth := func(s string) int {
+		width := 0
+		i := 0
+		for i < len(s) {
+			if s[i] == '|' && i+2 < len(s) && s[i+1] >= '0' && s[i+1] <= '9' && s[i+2] >= '0' && s[i+2] <= '9' {
+				i += 3 // Skip pipe code
+			} else {
+				width++
+				i++
+			}
+		}
+		return width
+	}
+
 	pendingChanges := make(map[string]interface{})
+	// Track original UpdatedAt timestamps for optimistic locking (indexed by user ID)
+	originalTimestamps := make(map[int]time.Time)
+	for _, u := range users {
+		if u != nil {
+			originalTimestamps[u.ID] = u.UpdatedAt
+		}
+	}
 
 	renderActionBar := func() error {
 		var barText string
 		if len(pendingChanges) > 0 {
-			barText = "[S] Save Changes  [X] Abort  [Q] Quit"
+			barText = "|08[|15S|08] |14Save Changes  |08[|15X|08] |14Abort  |08[|15Q|08] |14Quit|07"
 		} else {
 			sel := users[selectedIndex]
 			// Dynamic labels based on user state
+			validateLabel := "Validate"
+			validateColor := "|10" // Green for validate
+			if sel.Validated {
+				validateLabel = "Un-Validate"
+				validateColor = "|11" // Yellow for un-validate
+			}
 			banLabel := "Ban"
+			banColor := "|12" // Red for ban
 			if sel.AccessLevel == 0 && !sel.Validated {
 				banLabel = "Un-Ban"
+				banColor = "|10" // Green for un-ban
 			}
 			deleteLabel := "Delete"
+			deleteColor := "|12" // Red for delete
 			if sel.DeletedUser {
 				deleteLabel = "Un-Delete"
+				deleteColor = "|10" // Green for un-delete
 			}
-			barText = fmt.Sprintf("[0] %s  [9] %s  [Q] Quit", banLabel, deleteLabel)
-		}
-		maxWidth := termWidth - 1 // never touch last column
-		if maxWidth < 10 {
-			maxWidth = 10
-		}
-		if len(barText) > maxWidth {
-			barText = barText[:maxWidth]
-		}
-		startCol := (termWidth-len(barText))/2 + 1
-		if startCol < 1 {
-			startCol = 1
-		}
-		if startCol+len(barText)-1 >= termWidth {
-			trimLen := termWidth - startCol
-			if trimLen > 0 && trimLen < len(barText) {
-				barText = barText[:trimLen]
-			}
+			barText = fmt.Sprintf("|08[|15H|08] %s%s  |08[|15P|08] |14Change PW  |08[|150|08] %s%s  |08[|159|08] %s%s  |08[|15Q|08] |11Quit|07", validateColor, validateLabel, banColor, banLabel, deleteColor, deleteLabel)
 		}
 		if err := clearRow(actionRow); err != nil {
 			return err
 		}
-		cmd := fmt.Sprintf("\x1b[%d;%dH\x1b[7m%s\x1b[0m", actionRow, startCol, barText)
-		return terminalio.WriteProcessedBytes(terminal, []byte(cmd), outputMode)
+		// Center the action bar
+		textWidth := visualWidth(barText)
+		padding := (80 - textWidth) / 2
+		if padding < 1 {
+			padding = 1
+		}
+		centeredText := strings.Repeat(" ", padding) + barText
+		return writeAt(actionRow, 1, centeredText)
 	}
 
 	renderList := func() error {
@@ -4434,14 +4406,20 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 			} else if !u.Validated {
 				status = "NV"
 			}
+			// Check if user is currently online (actual session tracking)
+			onlineIndicator := " "
+			if userManager.IsUserOnline(u.ID) {
+				onlineIndicator = "*" // Asterisk indicates user is currently online
+			}
 			prefix := "  "
+			lineStart := ""
+			lineEnd := ""
 			if idx == selectedIndex {
 				prefix = "» "
+				lineStart = "\x1b[46;30m" // Dark cyan background, black foreground
+				lineEnd = "\x1b[0m"       // Reset colors
 			}
-			line := fmt.Sprintf("%s%-22s   %-10s   ID:%-4d   L:%-3d  %-2s", prefix, adminTruncate(u.Handle, 22), adminDate(u.CreatedAt), u.ID, u.AccessLevel, status)
-			if idx == selectedIndex {
-				line = "\x1b[7m" + line + "\x1b[0m"
-			}
+			line := fmt.Sprintf("%s%s%-22s   %-10s   ID:%-4d   L:%-3d  %-2s%s%s", lineStart, prefix, adminTruncate(u.Handle, 22), adminDate(u.CreatedAt), u.ID, u.AccessLevel, status, onlineIndicator, lineEnd)
 			if err := writeAt(row, 1, line); err != nil {
 				return err
 			}
@@ -4460,27 +4438,54 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 
 		getFieldValue := func(fieldName string, originalValue string) string {
 			if val, ok := pendingChanges[fieldName]; ok {
-				return fmt.Sprintf("*%s", adminTruncate(val.(string), 23))
+				return fmt.Sprintf("|14*|03%s|07", adminTruncate(val.(string), 23))
 			}
 			return adminTruncate(originalValue, 24)
 		}
 
 		getIntFieldValue := func(fieldName string, originalValue int) string {
 			if val, ok := pendingChanges[fieldName]; ok {
-				return fmt.Sprintf("*%d", val.(int))
+				return fmt.Sprintf("|14*|03%d|07", val.(int))
 			}
 			return fmt.Sprintf("%d", originalValue)
 		}
 
 		getBoolFieldValue := func(fieldName string, originalValue bool) string {
 			if val, ok := pendingChanges[fieldName]; ok {
-				return fmt.Sprintf("*%t", val.(bool))
+				return fmt.Sprintf("|14*|03%t|07", val.(bool))
 			}
 			return fmt.Sprintf("%t", originalValue)
 		}
 
+		// Calculate visual display width (excluding pipe codes)
+		visualWidth := func(s string) int {
+			width := 0
+			i := 0
+			for i < len(s) {
+				if s[i] == '|' && i+2 < len(s) && s[i+1] >= '0' && s[i+1] <= '9' && s[i+2] >= '0' && s[i+2] <= '9' {
+					i += 3 // Skip pipe code
+				} else {
+					width++
+					i++
+				}
+			}
+			return width
+		}
+
 		lineTwoCol := func(leftLabel, leftValue, rightLabel, rightValue string) string {
-			return fmt.Sprintf("|15%-14s:|07 %-24s |15%-14s:|07 %-24s", leftLabel, leftValue, rightLabel, rightValue)
+			// Calculate padding needed to align second column at position 45
+			leftLabelWidth := visualWidth(leftLabel)
+			leftValueWidth := visualWidth(leftValue)
+			totalLeft := leftLabelWidth + 2 + leftValueWidth // label + ": " + value
+			paddingNeeded := 45 - totalLeft
+			if paddingNeeded < 2 {
+				paddingNeeded = 2 // Minimum 2 spaces
+			}
+			padding := ""
+			for i := 0; i < paddingNeeded; i++ {
+				padding += " "
+			}
+			return fmt.Sprintf("%s|08: |03%s%s%s|08: |03%s|07", leftLabel, leftValue, padding, rightLabel, rightValue)
 		}
 
 		deletedStatus := "No"
@@ -4492,15 +4497,22 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 			}
 		}
 
+		// Draw separator line above edit area
+		separator := "|08" + strings.Repeat("-", 79) + "|07"
+		if err := writeAt(sepMidRow, 1, separator); err != nil {
+			return err
+		}
+
 		lines := []string{
-			lineTwoCol("[A] User Name", getFieldValue("username", sel.Username), "[B] Real Name", getFieldValue("realname", sel.RealName)),
-			lineTwoCol("[C] Phone", getFieldValue("phone", sel.PhoneNumber), "[D] Group/Loc", getFieldValue("grouploc", sel.GroupLocation)),
-			lineTwoCol("[E] Note", getFieldValue("note", sel.PrivateNote), "[F] Flags", getFieldValue("flags", sel.Flags)),
-			lineTwoCol("[G] Level", getIntFieldValue("level", sel.AccessLevel), "[I] Validated", getBoolFieldValue("validated", sel.Validated)),
-			lineTwoCol("Calls", fmt.Sprintf("%d", sel.TimesCalled), "Uploads", fmt.Sprintf("%d", sel.NumUploads)),
-			lineTwoCol("FilePoints", fmt.Sprintf("%d", sel.FilePoints), "Posts", fmt.Sprintf("%d", sel.MessagesPosted)),
-			lineTwoCol("Created", adminTime(sel.CreatedAt), "Last Login", adminTime(sel.LastLogin)),
-			lineTwoCol("Deleted", deletedStatus, "Deleted At", deletedAtStr),
+			// Editable fields (A-H) in LEFT column, read-only stats in RIGHT column
+			lineTwoCol("|08[|14A|08]|11 User Name", getFieldValue("username", sel.Username), "|11Calls", fmt.Sprintf("%d", sel.TimesCalled)),
+			lineTwoCol("|08[|14B|08]|11 Real Name", getFieldValue("realname", sel.RealName), "|11Uploads", fmt.Sprintf("%d", sel.NumUploads)),
+			lineTwoCol("|08[|14C|08]|11 Phone", getFieldValue("phone", sel.PhoneNumber), "|11FilePoints", fmt.Sprintf("%d", sel.FilePoints)),
+			lineTwoCol("|08[|14D|08]|11 Group/Loc", getFieldValue("grouploc", sel.GroupLocation), "|11Posts", fmt.Sprintf("%d", sel.MessagesPosted)),
+			lineTwoCol("|08[|14E|08]|11 Note", getFieldValue("note", sel.PrivateNote), "|11Created", adminTime(sel.CreatedAt)),
+			lineTwoCol("|08[|14F|08]|11 Flags", getFieldValue("flags", sel.Flags), "|11Last Login", adminTime(sel.LastLogin)),
+			lineTwoCol("|08[|14G|08]|11 Level", getIntFieldValue("level", sel.AccessLevel), "|11Deleted", deletedStatus),
+			lineTwoCol("|08[|14H|08]|11 Validated", getBoolFieldValue("validated", sel.Validated), "|11Deleted At", deletedAtStr),
 		}
 		for i, line := range lines {
 			if err := writeAt(detailStartRow+i, 1, line); err != nil {
@@ -4520,6 +4532,10 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	}
 
 	readFieldInput := func(fieldLabel string, currentValue string, maxLen int) (string, error) {
+		// Show cursor for input
+		_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+		defer terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+
 		prompt := fmt.Sprintf("|15%s:|07 ", fieldLabel)
 		if err := writeAt(statusRow, 1, prompt); err != nil {
 			return "", err
@@ -4637,6 +4653,19 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 				// Save changes
 				target := users[selectedIndex]
 
+				// Optimistic locking: Check if user data changed since we started editing
+				currentUserData, found := userManager.GetUserByID(target.ID)
+				if !found {
+					statusMessage = "|01Failed to verify user data - user not found!|07"
+					refresh = true
+					continue
+				}
+				if !currentUserData.UpdatedAt.Equal(originalTimestamps[target.ID]) {
+					statusMessage = "|01User data changed by another admin! Please refresh (X) and try again.|07"
+					refresh = true
+					continue
+				}
+
 				// Protect User ID 1 from critical changes
 				if target.ID == 1 {
 					// Check if trying to change level below sysop
@@ -4708,10 +4737,67 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 						target.DeletedAt = nil
 					}
 				}
+				if val, ok := pendingChanges["password"]; ok {
+					// Hash the new password using bcrypt
+					newPassword := val.(string)
+					hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+					if hashErr != nil {
+						statusMessage = fmt.Sprintf("|01Failed to hash password: %v|07", hashErr)
+						refresh = true
+						continue
+					}
+					target.PasswordHash = string(hashedPassword)
+				}
+
+				// Update timestamp for optimistic locking
+				target.UpdatedAt = time.Now()
 
 				if updateErr := userManager.UpdateUser(target); updateErr != nil {
 					statusMessage = fmt.Sprintf("|01Save failed: %v|07", updateErr)
 				} else {
+					// Update original timestamp after successful save
+					originalTimestamps[target.ID] = target.UpdatedAt
+
+					// Log all admin changes for audit trail
+					for fieldName, newValue := range pendingChanges {
+						oldValue := ""
+						// Get old value based on field name
+						switch fieldName {
+						case "username":
+							oldValue = currentUserData.Username
+						case "realname":
+							oldValue = currentUserData.RealName
+						case "phone":
+							oldValue = currentUserData.PhoneNumber
+						case "grouploc":
+							oldValue = currentUserData.GroupLocation
+						case "note":
+							oldValue = currentUserData.PrivateNote
+						case "flags":
+							oldValue = currentUserData.Flags
+						case "level":
+							oldValue = fmt.Sprintf("%d", currentUserData.AccessLevel)
+						case "validated":
+							oldValue = fmt.Sprintf("%t", currentUserData.Validated)
+						case "deleted":
+							oldValue = fmt.Sprintf("%t", currentUserData.DeletedUser)
+						case "password":
+							// Don't log actual password values for security
+							oldValue = "********"
+							newValue = "********"
+						}
+						logEntry := user.AdminActivityLogEntry(
+							currentUser.Handle,
+							currentUser.ID,
+							target.ID,
+							target.Handle,
+							fieldName,
+							oldValue,
+							fmt.Sprintf("%v", newValue),
+						)
+						_ = userManager.LogAdminActivity(logEntry) // Log errors but don't fail save
+					}
+
 					statusMessage = fmt.Sprintf("|10Changes saved for %s.|07", target.Username)
 					pendingChanges = make(map[string]interface{})
 					users = sortedUsersByID(userManager.GetAllUsers())
@@ -4864,7 +4950,7 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 				}
 				refresh = true
 			}
-		case 'i', 'I':
+		case 'h', 'H':
 			// Toggle validated status
 			sel := users[selectedIndex]
 			if sel.ID == 1 && sel.Validated {
@@ -4883,6 +4969,23 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 				} else {
 					delete(pendingChanges, "validated")
 					statusMessage = "|08No change.|07"
+				}
+				refresh = true
+			}
+		case 'p', 'P':
+			// Change password
+			if newPassword, editErr := readFieldInput("New Password", "", 50); editErr == nil {
+				if newPassword != "" {
+					pendingChanges["password"] = newPassword
+					statusMessage = "|10Password marked for update.|07"
+				} else {
+					delete(pendingChanges, "password")
+					statusMessage = "|08Password change cancelled.|07"
+				}
+				refresh = true
+			} else {
+				if editErr.Error() != "cancelled" {
+					statusMessage = fmt.Sprintf("|01Error: %v|07", editErr)
 				}
 				refresh = true
 			}
@@ -4928,20 +5031,7 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 			}
 			refresh = true
 		case '\r', '\n':
-			sel := users[selectedIndex]
-			banAction := "ban"
-			if sel.AccessLevel == 0 && !sel.Validated {
-				banAction = "un-ban"
-			}
-			deleteAction := "delete"
-			if sel.DeletedUser {
-				deleteAction = "un-delete"
-			}
-			if len(pendingChanges) > 0 {
-				statusMessage = fmt.Sprintf("|08Press [A-G,I] to edit, [0] %s, [9] %s, [S] save, [X] abort.|07", banAction, deleteAction)
-			} else {
-				statusMessage = fmt.Sprintf("|08Press [I] toggle validated, [0] %s, [9] %s, [Q] quit.|07", banAction, deleteAction)
-			}
+			// Enter/Return pressed - do nothing (removed help text display)
 		case 27:
 			time.Sleep(20 * time.Millisecond)
 			seq := make([]byte, 0, 8)
@@ -5010,48 +5100,32 @@ func runPendingValidationNotice(e *MenuExecutor, s ssh.Session, terminal *term.T
 func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running VALIDATEUSER", nodeNumber)
 
-	if currentUser == nil {
-		msg := "\r\n|01Error: You must be logged in to validate users.|07\r\n"
-		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		time.Sleep(1 * time.Second)
+	// Hide cursor on entry, show on exit
+	_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+	defer terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+
+	if currentUser == nil || userManager == nil {
 		return nil, "", nil
 	}
-
-	if userManager == nil {
-		msg := "\r\n|01Error: User manager is not available.|07\r\n"
-		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		time.Sleep(1 * time.Second)
-		return nil, "", nil
-	}
-
 	sysOpACS := fmt.Sprintf("S%d", e.ServerCfg.SysOpLevel)
 	if !checkACS(sysOpACS, currentUser, s, terminal, sessionStartTime) {
-		msg := "\r\n|01Access denied.|07\r\n"
-		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Access denied.|07\r\n")), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
 
-	regularUserLevel := e.ServerCfg.RegularUserLevel
-	if regularUserLevel <= 0 {
-		regularUserLevel = 10
-	}
-
-	allUsers := userManager.GetAllUsers()
-	pendingUsers := make([]*user.User, 0)
+	// Filter to only show unvalidated users
+	allUsers := sortedUsersByID(userManager.GetAllUsers())
+	users := make([]*user.User, 0)
 	for _, u := range allUsers {
-		if u == nil {
-			continue
-		}
-		if !u.Validated {
-			pendingUsers = append(pendingUsers, u)
+		if u != nil && !u.Validated {
+			users = append(users, u)
 		}
 	}
 
-	if len(pendingUsers) == 0 {
+	if len(users) == 0 {
 		_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-		msg := "\r\n|10No users are pending validation.|07"
-		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|10No users pending validation.|07")), outputMode)
 		if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode); pauseErr != nil {
 			if errors.Is(pauseErr, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -5061,83 +5135,363 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return nil, "", nil
 	}
 
-	sort.Slice(pendingUsers, func(i, j int) bool {
-		return pendingUsers[i].ID < pendingUsers[j].ID
-	})
-
+	reader := bufio.NewReader(s)
 	selectedIndex := 0
 	topIndex := 0
-	pageSize := 10
-	reader := bufio.NewReader(s)
-
-	truncate := func(input string, max int) string {
-		runes := []rune(strings.TrimSpace(input))
-		if len(runes) <= max {
-			return string(runes)
-		}
-		if max <= 1 {
-			return string(runes[:max])
-		}
-		return string(runes[:max-1]) + "…"
+	termHeight := 24
+	if ptyReq, _, ok := s.Pty(); ok && ptyReq.Window.Height > 0 {
+		termHeight = ptyReq.Window.Height
+	}
+	pageSize := termHeight - 14 // Reduced by 1 to account for header row
+	if pageSize < 3 {
+		pageSize = 3
+	}
+	if pageSize > 12 {
+		pageSize = 12
 	}
 
-	render := func() error {
+	titleRow := 1
+	sepTopRow := 2
+	headerRow := 3    // Column header labels
+	listStartRow := 4 // First user row (after header)
+	sepMidRow := listStartRow + pageSize
+	detailStartRow := sepMidRow + 1
+	statusRow := termHeight - 1
+	actionRow := termHeight
+
+	writeAt := func(row, col int, text string) error {
+		cmd := fmt.Sprintf("\x1b[%d;%dH\x1b[2K%s", row, col, text)
+		return terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(cmd)), outputMode)
+	}
+
+	clearRow := func(row int) error {
+		cmd := fmt.Sprintf("\x1b[%d;1H\x1b[2K", row)
+		return terminalio.WriteProcessedBytes(terminal, []byte(cmd), outputMode)
+	}
+
+	renderHeader := func() error {
 		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode); err != nil {
 			return err
 		}
-
-		var b strings.Builder
-		b.WriteString("\r\n|15User Validation|07\r\n")
-		b.WriteString(fmt.Sprintf("|07Enter validates selected user to level |15%d|07. |08[Up/Down]|07 move, |08Q|07 quit.\r\n", regularUserLevel))
-		b.WriteString("|08-------------------------------------------------------------------------------|07\r\n")
-
-		endIndex := topIndex + pageSize
-		if endIndex > len(pendingUsers) {
-			endIndex = len(pendingUsers)
+		if err := writeAt(titleRow, 1, "|15ViSiON|03/|113 |08- |14Validate Pending Users|07"); err != nil {
+			return err
 		}
+		if err := clearRow(sepTopRow); err != nil {
+			return err
+		}
+		// Render column header - aligned with data columns
+		// Format: prefix(2) handle(22) space(3) date(10) space(3) ID:(3+4) space(3) L:(2+3) space(2) status(2)
+		headerText := fmt.Sprintf("|08  %-22s   %-10s   %-7s   %-5s|07", "Handle", "Created", "ID", "Level")
+		if err := writeAt(headerRow, 1, headerText); err != nil {
+			return err
+		}
+		if err := clearRow(sepMidRow); err != nil {
+			return err
+		}
+		for r := detailStartRow; r <= statusRow; r++ {
+			if err := clearRow(r); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 
+	// Calculate visual display width (excluding pipe codes)
+	visualWidth := func(s string) int {
+		width := 0
+		i := 0
+		for i < len(s) {
+			if s[i] == '|' && i+2 < len(s) && s[i+1] >= '0' && s[i+1] <= '9' && s[i+2] >= '0' && s[i+2] <= '9' {
+				i += 3 // Skip pipe code
+			} else {
+				width++
+				i++
+			}
+		}
+		return width
+	}
+
+	pendingChanges := make(map[string]interface{})
+	// Track original UpdatedAt timestamps for optimistic locking (indexed by user ID)
+	originalTimestamps := make(map[int]time.Time)
+	for _, u := range users {
+		if u != nil {
+			originalTimestamps[u.ID] = u.UpdatedAt
+		}
+	}
+
+	renderActionBar := func() error {
+		var barText string
+		if len(pendingChanges) > 0 {
+			barText = "|08[|15S|08] |14Save Changes  |08[|15X|08] |14Abort  |08[|15Q|08] |14Quit|07"
+		} else {
+			sel := users[selectedIndex]
+			// Dynamic labels based on user state
+			validateLabel := "Validate"
+			validateColor := "|10" // Green for validate
+			if sel.Validated {
+				validateLabel = "Un-Validate"
+				validateColor = "|11" // Yellow for un-validate
+			}
+			banLabel := "Ban"
+			banColor := "|12" // Red for ban
+			if sel.AccessLevel == 0 && !sel.Validated {
+				banLabel = "Un-Ban"
+				banColor = "|10" // Green for un-ban
+			}
+			deleteLabel := "Delete"
+			deleteColor := "|12" // Red for delete
+			if sel.DeletedUser {
+				deleteLabel = "Un-Delete"
+				deleteColor = "|10" // Green for un-delete
+			}
+			barText = fmt.Sprintf("|08[|15H|08] %s%s  |08[|15P|08] |14Change PW  |08[|150|08] %s%s  |08[|159|08] %s%s  |08[|15Q|08] |11Quit|07", validateColor, validateLabel, banColor, banLabel, deleteColor, deleteLabel)
+		}
+		if err := clearRow(actionRow); err != nil {
+			return err
+		}
+		// Center the action bar
+		textWidth := visualWidth(barText)
+		padding := (80 - textWidth) / 2
+		if padding < 1 {
+			padding = 1
+		}
+		centeredText := strings.Repeat(" ", padding) + barText
+		return writeAt(actionRow, 1, centeredText)
+	}
+
+	renderList := func() error {
+		endIndex := topIndex + pageSize
+		if endIndex > len(users) {
+			endIndex = len(users)
+		}
+		row := listStartRow
 		for idx := topIndex; idx < endIndex; idx++ {
-			u := pendingUsers[idx]
+			u := users[idx]
+			status := "NV"
+			if u.DeletedUser {
+				status = "DEL"
+			}
+			// Check if user is currently online (actual session tracking)
+			onlineIndicator := " "
+			if userManager.IsUserOnline(u.ID) {
+				onlineIndicator = "*" // Asterisk indicates user is currently online
+			}
 			prefix := "  "
+			lineStart := ""
+			lineEnd := ""
 			if idx == selectedIndex {
 				prefix = "» "
+				lineStart = "\x1b[46;30m" // Dark cyan background, black foreground
+				lineEnd = "\x1b[0m"       // Reset colors
 			}
-			line := fmt.Sprintf("%s%-22s  @%-18s ID:%-4d L:%-3d", prefix, truncate(u.Handle, 22), truncate(u.Username, 18), u.ID, u.AccessLevel)
-			if idx == selectedIndex {
-				b.WriteString("\x1b[7m")
-				b.WriteString(line)
-				b.WriteString("\x1b[0m\r\n")
-			} else {
-				b.WriteString("|07")
-				b.WriteString(line)
-				b.WriteString("|07\r\n")
+			line := fmt.Sprintf("%s%s%-22s   %-10s   ID:%-4d   L:%-3d  %-2s%s%s", lineStart, prefix, adminTruncate(u.Handle, 22), adminDate(u.CreatedAt), u.ID, u.AccessLevel, status, onlineIndicator, lineEnd)
+			if err := writeAt(row, 1, line); err != nil {
+				return err
+			}
+			row++
+		}
+		for ; row < listStartRow+pageSize; row++ {
+			if err := clearRow(row); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	renderDetails := func(message string) error {
+		sel := users[selectedIndex]
+
+		getFieldValue := func(fieldName string, originalValue string) string {
+			if val, ok := pendingChanges[fieldName]; ok {
+				return fmt.Sprintf("|14*|03%s|07", adminTruncate(val.(string), 23))
+			}
+			return adminTruncate(originalValue, 24)
+		}
+
+		getIntFieldValue := func(fieldName string, originalValue int) string {
+			if val, ok := pendingChanges[fieldName]; ok {
+				return fmt.Sprintf("|14*|03%d|07", val.(int))
+			}
+			return fmt.Sprintf("%d", originalValue)
+		}
+
+		getBoolFieldValue := func(fieldName string, originalValue bool) string {
+			if val, ok := pendingChanges[fieldName]; ok {
+				return fmt.Sprintf("|14*|03%t|07", val.(bool))
+			}
+			return fmt.Sprintf("%t", originalValue)
+		}
+
+		// Calculate visual display width (excluding pipe codes)
+		visualWidth := func(s string) int {
+			width := 0
+			i := 0
+			for i < len(s) {
+				if s[i] == '|' && i+2 < len(s) && s[i+1] >= '0' && s[i+1] <= '9' && s[i+2] >= '0' && s[i+2] <= '9' {
+					i += 3 // Skip pipe code
+				} else {
+					width++
+					i++
+				}
+			}
+			return width
+		}
+
+		lineTwoCol := func(leftLabel, leftValue, rightLabel, rightValue string) string {
+			// Calculate padding needed to align second column at position 45
+			leftLabelWidth := visualWidth(leftLabel)
+			leftValueWidth := visualWidth(leftValue)
+			totalLeft := leftLabelWidth + 2 + leftValueWidth // label + ": " + value
+			paddingNeeded := 45 - totalLeft
+			if paddingNeeded < 2 {
+				paddingNeeded = 2 // Minimum 2 spaces
+			}
+			padding := ""
+			for i := 0; i < paddingNeeded; i++ {
+				padding += " "
+			}
+			return fmt.Sprintf("%s|08: |03%s%s%s|08: |03%s|07", leftLabel, leftValue, padding, rightLabel, rightValue)
+		}
+
+		deletedStatus := "No"
+		deletedAtStr := ""
+		if sel.DeletedUser {
+			deletedStatus = "Yes"
+			if sel.DeletedAt != nil {
+				deletedAtStr = adminTime(*sel.DeletedAt)
 			}
 		}
 
-		for idx := endIndex; idx < topIndex+pageSize; idx++ {
-			b.WriteString("\r\n")
+		// Draw separator line above edit area
+		separator := "|08" + strings.Repeat("-", 79) + "|07"
+		if err := writeAt(sepMidRow, 1, separator); err != nil {
+			return err
 		}
 
-		sel := pendingUsers[selectedIndex]
-		createdAt := "N/A"
-		if !sel.CreatedAt.IsZero() {
-			createdAt = sel.CreatedAt.Format("2006-01-02 15:04")
+		lines := []string{
+			// Editable fields (A-H) in LEFT column, read-only stats in RIGHT column
+			lineTwoCol("|08[|14A|08]|11 User Name", getFieldValue("username", sel.Username), "|11Calls", fmt.Sprintf("%d", sel.TimesCalled)),
+			lineTwoCol("|08[|14B|08]|11 Real Name", getFieldValue("realname", sel.RealName), "|11Uploads", fmt.Sprintf("%d", sel.NumUploads)),
+			lineTwoCol("|08[|14C|08]|11 Phone", getFieldValue("phone", sel.PhoneNumber), "|11FilePoints", fmt.Sprintf("%d", sel.FilePoints)),
+			lineTwoCol("|08[|14D|08]|11 Group/Loc", getFieldValue("grouploc", sel.GroupLocation), "|11Posts", fmt.Sprintf("%d", sel.MessagesPosted)),
+			lineTwoCol("|08[|14E|08]|11 Note", getFieldValue("note", sel.PrivateNote), "|11Created", adminTime(sel.CreatedAt)),
+			lineTwoCol("|08[|14F|08]|11 Flags", getFieldValue("flags", sel.Flags), "|11Last Login", adminTime(sel.LastLogin)),
+			lineTwoCol("|08[|14G|08]|11 Level", getIntFieldValue("level", sel.AccessLevel), "|11Deleted", deletedStatus),
+			lineTwoCol("|08[|14H|08]|11 Validated", getBoolFieldValue("validated", sel.Validated), "|11Deleted At", deletedAtStr),
+		}
+		for i, line := range lines {
+			if err := writeAt(detailStartRow+i, 1, line); err != nil {
+				return err
+			}
+		}
+		if message != "" {
+			if err := writeAt(statusRow, 1, message); err != nil {
+				return err
+			}
+		} else {
+			if err := clearRow(statusRow); err != nil {
+				return err
+			}
+		}
+		return renderActionBar()
+	}
+
+	readFieldInput := func(fieldLabel string, currentValue string, maxLen int) (string, error) {
+		// Show cursor for input
+		_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+		defer terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+
+		prompt := fmt.Sprintf("|15%s:|07 ", fieldLabel)
+		if err := writeAt(statusRow, 1, prompt); err != nil {
+			return "", err
 		}
 
-		b.WriteString("|08-------------------------------------------------------------------------------|07\r\n")
-		b.WriteString(fmt.Sprintf("|15Handle:|07 %-24s |15Username:|07 %s\r\n", truncate(sel.Handle, 24), truncate(sel.Username, 28)))
-		b.WriteString(fmt.Sprintf("|15Real Name:|07 %-21s |15Phone:|07 %s\r\n", truncate(sel.RealName, 21), truncate(sel.PhoneNumber, 29)))
-		b.WriteString(fmt.Sprintf("|15Group/Location:|07 %-16s |15Created:|07 %s\r\n", truncate(sel.GroupLocation, 16), createdAt))
-		b.WriteString(fmt.Sprintf("|15Current Level:|07 %-4d |15Validated:|07 %t\r\n", sel.AccessLevel, sel.Validated))
+		// Position cursor after prompt
+		cursorPos := len(fieldLabel) + 3
+		cmd := fmt.Sprintf("\x1b[%d;%dH", statusRow, cursorPos)
+		if err := terminalio.WriteProcessedBytes(terminal, []byte(cmd), outputMode); err != nil {
+			return "", err
+		}
 
-		return terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(b.String())), outputMode)
+		// Show current value
+		if err := terminalio.WriteProcessedBytes(terminal, []byte(currentValue), outputMode); err != nil {
+			return "", err
+		}
+
+		input := []rune(currentValue)
+		cursorIdx := len(input)
+
+		for {
+			r, _, readErr := reader.ReadRune()
+			if readErr != nil {
+				return "", readErr
+			}
+
+			switch r {
+			case '\r', '\n':
+				return string(input), nil
+			case 27: // ESC
+				return "", fmt.Errorf("cancelled")
+			case 127, 8: // Backspace
+				if cursorIdx > 0 {
+					input = append(input[:cursorIdx-1], input[cursorIdx:]...)
+					cursorIdx--
+					if err := writeAt(statusRow, 1, prompt+string(input)+"  "); err != nil {
+						return "", err
+					}
+					cmd := fmt.Sprintf("\x1b[%d;%dH", statusRow, cursorPos+cursorIdx)
+					if err := terminalio.WriteProcessedBytes(terminal, []byte(cmd), outputMode); err != nil {
+						return "", err
+					}
+				}
+			default:
+				if r >= 32 && r < 127 && len(input) < maxLen {
+					input = append(input[:cursorIdx], append([]rune{r}, input[cursorIdx:]...)...)
+					cursorIdx++
+					if err := writeAt(statusRow, 1, prompt+string(input)); err != nil {
+						return "", err
+					}
+					cmd := fmt.Sprintf("\x1b[%d;%dH", statusRow, cursorPos+cursorIdx)
+					if err := terminalio.WriteProcessedBytes(terminal, []byte(cmd), outputMode); err != nil {
+						return "", err
+					}
+				}
+			}
+		}
+	}
+
+	moveUp := func() {
+		if selectedIndex > 0 {
+			selectedIndex--
+			if selectedIndex < topIndex {
+				topIndex = selectedIndex
+			}
+		}
+	}
+	moveDown := func() {
+		if selectedIndex < len(users)-1 {
+			selectedIndex++
+			if selectedIndex >= topIndex+pageSize {
+				topIndex = selectedIndex - pageSize + 1
+			}
+		}
+	}
+
+	if err := renderHeader(); err != nil {
+		return nil, "", err
+	}
+	if err := renderList(); err != nil {
+		return nil, "", err
+	}
+	if err := renderActionBar(); err != nil {
+		return nil, "", err
+	}
+	if err := renderDetails(""); err != nil {
+		return nil, "", err
 	}
 
 	for {
-		if err := render(); err != nil {
-			return nil, "", err
-		}
-
 		r, _, err := reader.ReadRune()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -5146,69 +5500,431 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 			return nil, "", err
 		}
 
-		moveUp := func() {
-			if selectedIndex > 0 {
-				selectedIndex--
-				if selectedIndex < topIndex {
-					topIndex = selectedIndex
-				}
-			}
-		}
-		moveDown := func() {
-			if selectedIndex < len(pendingUsers)-1 {
-				selectedIndex++
-				if selectedIndex >= topIndex+pageSize {
-					topIndex = selectedIndex - pageSize + 1
-				}
-			}
-		}
+		refresh := false
+		statusMessage := ""
 
 		switch r {
 		case 'k', 'K', 'w', 'W':
-			moveUp()
-		case 'j', 'J', 's', 'S':
-			moveDown()
-		case 'q', 'Q':
-			return nil, "", nil
-		case '\r', '\n':
-			targetUser := pendingUsers[selectedIndex]
-			confirmPrompt := fmt.Sprintf("\r\n\r\n|07Validate |15%s|07 and set access level to |15%d|07 (Regular User)? @", targetUser.Handle, regularUserLevel)
-			confirm, confirmErr := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber)
-			if confirmErr != nil {
-				if errors.Is(confirmErr, io.EOF) {
-					return nil, "LOGOFF", io.EOF
+			if len(pendingChanges) == 0 {
+				moveUp()
+				refresh = true
+			}
+		case 'j', 'J':
+			if len(pendingChanges) == 0 {
+				moveDown()
+				refresh = true
+			}
+		case 's', 'S':
+			if len(pendingChanges) > 0 {
+				// Save changes
+				target := users[selectedIndex]
+
+				// Optimistic locking: Check if user data changed since we started editing
+				currentUserData, found := userManager.GetUserByID(target.ID)
+				if !found {
+					statusMessage = "|01Failed to verify user data - user not found!|07"
+					refresh = true
+					continue
 				}
-				return nil, "", confirmErr
-			}
+				if !currentUserData.UpdatedAt.Equal(originalTimestamps[target.ID]) {
+					statusMessage = "|01User data changed by another admin! Please refresh (X) and try again.|07"
+					refresh = true
+					continue
+				}
 
-			if !confirm {
-				continue
-			}
-
-			targetUser.Validated = true
-			targetUser.AccessLevel = regularUserLevel
-
-			if updateErr := userManager.UpdateUser(targetUser); updateErr != nil {
-				msg := fmt.Sprintf("\r\n\r\n|01Failed to update user: %v|07", updateErr)
-				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-				if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode); pauseErr != nil {
-					if errors.Is(pauseErr, io.EOF) {
-						return nil, "LOGOFF", io.EOF
+				// Protect User ID 1 from critical changes
+				if target.ID == 1 {
+					// Check if trying to change level below sysop
+					if val, ok := pendingChanges["level"]; ok {
+						if val.(int) < e.ServerCfg.SysOpLevel {
+							statusMessage = "|01Cannot lower User #1 below SysOp level!|07"
+							delete(pendingChanges, "level")
+							refresh = true
+							continue
+						}
 					}
-					return nil, "", pauseErr
+					// Check if trying to unvalidate
+					if val, ok := pendingChanges["validated"]; ok {
+						if !val.(bool) {
+							statusMessage = "|01Cannot unvalidate User #1!|07"
+							delete(pendingChanges, "validated")
+							refresh = true
+							continue
+						}
+					}
+					// Check if trying to delete
+					if val, ok := pendingChanges["deleted"]; ok {
+						if val.(bool) {
+							statusMessage = "|01Cannot delete User #1!|07"
+							delete(pendingChanges, "deleted")
+							refresh = true
+							continue
+						}
+					}
 				}
-				return nil, "", updateErr
-			}
+				if val, ok := pendingChanges["username"]; ok {
+					target.Username = val.(string)
+				}
+				if val, ok := pendingChanges["realname"]; ok {
+					target.RealName = val.(string)
+				}
+				if val, ok := pendingChanges["phone"]; ok {
+					target.PhoneNumber = val.(string)
+				}
+				if val, ok := pendingChanges["grouploc"]; ok {
+					target.GroupLocation = val.(string)
+				}
+				if val, ok := pendingChanges["note"]; ok {
+					target.PrivateNote = val.(string)
+				}
+				if val, ok := pendingChanges["flags"]; ok {
+					target.Flags = val.(string)
+				}
+				if val, ok := pendingChanges["level"]; ok {
+					target.AccessLevel = val.(int)
+				}
+				if val, ok := pendingChanges["validated"]; ok {
+					target.Validated = val.(bool)
+					// When validating, ensure level is set to regular user level if currently 0
+					if target.Validated && target.AccessLevel == 0 {
+						target.AccessLevel = e.ServerCfg.RegularUserLevel
+						if target.AccessLevel <= 0 {
+							target.AccessLevel = 10
+						}
+					}
+				}
+				if val, ok := pendingChanges["deleted"]; ok {
+					target.DeletedUser = val.(bool)
+					if target.DeletedUser {
+						now := time.Now()
+						target.DeletedAt = &now
+					} else {
+						// Clear the deletion timestamp when undeleting
+						target.DeletedAt = nil
+					}
+				}
+				if val, ok := pendingChanges["password"]; ok {
+					// Hash the new password using bcrypt
+					newPassword := val.(string)
+					hashedPassword, hashErr := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+					if hashErr != nil {
+						statusMessage = fmt.Sprintf("|01Failed to hash password: %v|07", hashErr)
+						refresh = true
+						continue
+					}
+					target.PasswordHash = string(hashedPassword)
+				}
 
-			success := fmt.Sprintf("\r\n\r\n|10User validated: |15%s|10 (Regular User level |15%d|10).|07", targetUser.Handle, targetUser.AccessLevel)
-			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(success)), outputMode)
-			if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode); pauseErr != nil {
-				if errors.Is(pauseErr, io.EOF) {
-					return nil, "LOGOFF", io.EOF
+				// Update timestamp for optimistic locking
+				target.UpdatedAt = time.Now()
+
+				if updateErr := userManager.UpdateUser(target); updateErr != nil {
+					statusMessage = fmt.Sprintf("|01Save failed: %v|07", updateErr)
+				} else {
+					// Update original timestamp after successful save
+					originalTimestamps[target.ID] = target.UpdatedAt
+
+					// Log all admin changes for audit trail
+					for fieldName, newValue := range pendingChanges {
+						oldValue := ""
+						// Get old value based on field name
+						switch fieldName {
+						case "username":
+							oldValue = currentUserData.Username
+						case "realname":
+							oldValue = currentUserData.RealName
+						case "phone":
+							oldValue = currentUserData.PhoneNumber
+						case "grouploc":
+							oldValue = currentUserData.GroupLocation
+						case "note":
+							oldValue = currentUserData.PrivateNote
+						case "flags":
+							oldValue = currentUserData.Flags
+						case "level":
+							oldValue = fmt.Sprintf("%d", currentUserData.AccessLevel)
+						case "validated":
+							oldValue = fmt.Sprintf("%t", currentUserData.Validated)
+						case "deleted":
+							oldValue = fmt.Sprintf("%t", currentUserData.DeletedUser)
+						case "password":
+							// Don't log actual password values for security
+							oldValue = "********"
+							newValue = "********"
+						}
+						logEntry := user.AdminActivityLogEntry(
+							currentUser.Handle,
+							currentUser.ID,
+							target.ID,
+							target.Handle,
+							fieldName,
+							oldValue,
+							fmt.Sprintf("%v", newValue),
+						)
+						_ = userManager.LogAdminActivity(logEntry) // Log errors but don't fail save
+					}
+
+					statusMessage = fmt.Sprintf("|10Changes saved for %s.|07", target.Username)
+					pendingChanges = make(map[string]interface{})
+					// Refresh the user list (user may no longer be unvalidated)
+					allUsers = sortedUsersByID(userManager.GetAllUsers())
+					users = make([]*user.User, 0)
+					for _, u := range allUsers {
+						if u != nil && !u.Validated {
+							users = append(users, u)
+						}
+					}
+					// If user was validated and removed from list, adjust selection
+					if len(users) == 0 {
+						_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|10All users have been validated!|07")), outputMode)
+						if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode); pauseErr != nil {
+							if errors.Is(pauseErr, io.EOF) {
+								return nil, "LOGOFF", io.EOF
+							}
+							return nil, "", pauseErr
+						}
+						return nil, "", nil
+					}
+					if selectedIndex >= len(users) {
+						selectedIndex = len(users) - 1
+					}
+					if topIndex > selectedIndex {
+						topIndex = selectedIndex
+					}
+					// Need full re-render after list change
+					if err := renderHeader(); err != nil {
+						return nil, "", err
+					}
 				}
-				return nil, "", pauseErr
+				refresh = true
+			} else {
+				moveDown()
+				refresh = true
 			}
-			return nil, "", nil
+		case 'q', 'Q':
+			if len(pendingChanges) > 0 {
+				statusMessage = "|11Unsaved changes! Press [S] to save or [X] to abort.|07"
+			} else {
+				return nil, "", nil
+			}
+		case 'x', 'X':
+			if len(pendingChanges) > 0 {
+				pendingChanges = make(map[string]interface{})
+				statusMessage = "|11Changes discarded.|07"
+				refresh = true
+			}
+		case 'a', 'A':
+			sel := users[selectedIndex]
+			if newVal, editErr := readFieldInput("User Name", sel.Username, 30); editErr == nil {
+				if newVal != sel.Username {
+					pendingChanges["username"] = newVal
+					statusMessage = "|10Field marked for update.|07"
+				} else {
+					delete(pendingChanges, "username")
+					statusMessage = "|08No change.|07"
+				}
+				refresh = true
+			} else {
+				if editErr.Error() != "cancelled" {
+					statusMessage = fmt.Sprintf("|01Error: %v|07", editErr)
+				}
+				refresh = true
+			}
+		case 'b', 'B':
+			// Edit Real Name field
+			sel := users[selectedIndex]
+			if newVal, editErr := readFieldInput("Real Name", sel.RealName, 50); editErr == nil {
+				if newVal != sel.RealName {
+					pendingChanges["realname"] = newVal
+					statusMessage = "|10Field marked for update.|07"
+				} else {
+					delete(pendingChanges, "realname")
+					statusMessage = "|08No change.|07"
+				}
+				refresh = true
+			} else {
+				if editErr.Error() != "cancelled" {
+					statusMessage = fmt.Sprintf("|01Error: %v|07", editErr)
+				}
+				refresh = true
+			}
+		case 'c', 'C':
+			sel := users[selectedIndex]
+			if newVal, editErr := readFieldInput("Phone", sel.PhoneNumber, 20); editErr == nil {
+				if newVal != sel.PhoneNumber {
+					pendingChanges["phone"] = newVal
+					statusMessage = "|10Field marked for update.|07"
+				} else {
+					delete(pendingChanges, "phone")
+					statusMessage = "|08No change.|07"
+				}
+				refresh = true
+			} else {
+				if editErr.Error() != "cancelled" {
+					statusMessage = fmt.Sprintf("|01Error: %v|07", editErr)
+				}
+				refresh = true
+			}
+		case 'd', 'D':
+			sel := users[selectedIndex]
+			if newVal, editErr := readFieldInput("Group/Location", sel.GroupLocation, 30); editErr == nil {
+				if newVal != sel.GroupLocation {
+					pendingChanges["grouploc"] = newVal
+					statusMessage = "|10Field marked for update.|07"
+				} else {
+					delete(pendingChanges, "grouploc")
+					statusMessage = "|08No change.|07"
+				}
+				refresh = true
+			} else {
+				if editErr.Error() != "cancelled" {
+					statusMessage = fmt.Sprintf("|01Error: %v|07", editErr)
+				}
+				refresh = true
+			}
+		case 'e', 'E':
+			sel := users[selectedIndex]
+			if newVal, editErr := readFieldInput("Note", sel.PrivateNote, 50); editErr == nil {
+				if newVal != sel.PrivateNote {
+					pendingChanges["note"] = newVal
+					statusMessage = "|10Field marked for update.|07"
+				} else {
+					delete(pendingChanges, "note")
+					statusMessage = "|08No change.|07"
+				}
+				refresh = true
+			} else {
+				if editErr.Error() != "cancelled" {
+					statusMessage = fmt.Sprintf("|01Error: %v|07", editErr)
+				}
+				refresh = true
+			}
+		case 'f', 'F':
+			sel := users[selectedIndex]
+			if newVal, editErr := readFieldInput("Flags", sel.Flags, 20); editErr == nil {
+				if newVal != sel.Flags {
+					pendingChanges["flags"] = newVal
+					statusMessage = "|10Field marked for update.|07"
+				} else {
+					delete(pendingChanges, "flags")
+					statusMessage = "|08No change.|07"
+				}
+				refresh = true
+			} else {
+				if editErr.Error() != "cancelled" {
+					statusMessage = fmt.Sprintf("|01Error: %v|07", editErr)
+				}
+				refresh = true
+			}
+		case 'g', 'G':
+			sel := users[selectedIndex]
+			levelStr := fmt.Sprintf("%d", sel.AccessLevel)
+			if newVal, editErr := readFieldInput("Level", levelStr, 3); editErr == nil {
+				if level, parseErr := strconv.Atoi(newVal); parseErr == nil {
+					// Protect User #1 from level reduction
+					if sel.ID == 1 && level < e.ServerCfg.SysOpLevel {
+						statusMessage = "|01Cannot lower User #1 below SysOp level!|07"
+						refresh = true
+					} else if level != sel.AccessLevel {
+						pendingChanges["level"] = level
+						statusMessage = "|10Field marked for update.|07"
+						refresh = true
+					} else {
+						delete(pendingChanges, "level")
+						statusMessage = "|08No change.|07"
+						refresh = true
+					}
+				} else {
+					statusMessage = "|01Invalid number.|07"
+					refresh = true
+				}
+			} else {
+				if editErr.Error() != "cancelled" {
+					statusMessage = fmt.Sprintf("|01Error: %v|07", editErr)
+				}
+				refresh = true
+			}
+		case 'h', 'H':
+			// Toggle validated status
+			sel := users[selectedIndex]
+			if sel.ID == 1 && sel.Validated {
+				// Don't allow unvalidating User #1
+				statusMessage = "|01Cannot unvalidate User #1!|07"
+				refresh = true
+			} else {
+				newValidated := !sel.Validated
+				if newValidated != sel.Validated {
+					pendingChanges["validated"] = newValidated
+					if newValidated {
+						statusMessage = "|10Validated status marked for update.|07"
+					} else {
+						statusMessage = "|11Unvalidated status marked for update.|07"
+					}
+				} else {
+					delete(pendingChanges, "validated")
+					statusMessage = "|08No change.|07"
+				}
+				refresh = true
+			}
+		case 'p', 'P':
+			// Change password
+			if newPassword, editErr := readFieldInput("New Password", "", 50); editErr == nil {
+				if newPassword != "" {
+					pendingChanges["password"] = newPassword
+					statusMessage = "|10Password marked for update.|07"
+				} else {
+					delete(pendingChanges, "password")
+					statusMessage = "|08Password change cancelled.|07"
+				}
+				refresh = true
+			} else {
+				if editErr.Error() != "cancelled" {
+					statusMessage = fmt.Sprintf("|01Error: %v|07", editErr)
+				}
+				refresh = true
+			}
+		case '0':
+			// Toggle ban user (sets level 0, unvalidated) or unban (restore to regular level)
+			sel := users[selectedIndex]
+			if sel.ID == 1 {
+				statusMessage = "|01Cannot ban User #1!|07"
+			} else {
+				// Check if user is currently banned
+				isBanned := sel.AccessLevel == 0 && !sel.Validated
+				if isBanned {
+					// Unban: restore to regular user level and validate
+					pendingChanges["validated"] = true
+					pendingChanges["level"] = e.ServerCfg.RegularUserLevel
+					statusMessage = fmt.Sprintf("|10Un-ban marked for update (level %d, validated).|07", e.ServerCfg.RegularUserLevel)
+				} else {
+					// Ban: set level 0 and unvalidated
+					pendingChanges["validated"] = false
+					pendingChanges["level"] = 0
+					statusMessage = "|01Ban marked for update (level 0, unvalidated).|07"
+				}
+			}
+			refresh = true
+		case '9':
+			// Toggle delete user (soft delete)
+			sel := users[selectedIndex]
+			if sel.ID == 1 {
+				statusMessage = "|01Cannot delete User #1!|07"
+			} else {
+				newDeleted := !sel.DeletedUser
+				if newDeleted != sel.DeletedUser {
+					pendingChanges["deleted"] = newDeleted
+					if newDeleted {
+						statusMessage = "|01Delete marked for update (soft delete).|07"
+					} else {
+						statusMessage = "|10Undelete marked for update (restore user).|07"
+					}
+				} else {
+					delete(pendingChanges, "deleted")
+					statusMessage = "|08No change.|07"
+				}
+			}
+			refresh = true
 		case 27:
 			time.Sleep(20 * time.Millisecond)
 			seq := make([]byte, 0, 8)
@@ -5222,15 +5938,93 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 			if len(seq) >= 2 && seq[0] == 91 { // '['
 				switch seq[1] {
 				case 65: // Up
-					moveUp()
+					if len(pendingChanges) == 0 {
+						moveUp()
+						refresh = true
+					}
 				case 66: // Down
-					moveDown()
+					if len(pendingChanges) == 0 {
+						moveDown()
+						refresh = true
+					}
 				}
 			} else {
-				return nil, "", nil
+				if len(pendingChanges) > 0 {
+					statusMessage = "|11Unsaved changes! Press [S] to save or [X] to abort.|07"
+				} else {
+					return nil, "", nil
+				}
+			}
+		}
+
+		if refresh {
+			if err := renderList(); err != nil {
+				return nil, "", err
+			}
+			if err := renderDetails(statusMessage); err != nil {
+				return nil, "", err
 			}
 		}
 	}
+}
+
+// runNewUserValidation checks for unvalidated users and prompts to review them.
+func runNewUserValidation(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running NEWUSERVAL", nodeNumber)
+
+	if currentUser == nil {
+		return nil, "", nil
+	}
+
+	if userManager == nil {
+		return nil, "", nil
+	}
+
+	// Security level check is handled by login.json sec_level field
+
+	// Get all unvalidated users
+	allUsers := userManager.GetAllUsers()
+	pendingCount := 0
+	for _, u := range allUsers {
+		if u != nil && !u.Validated {
+			pendingCount++
+		}
+	}
+
+	if pendingCount == 0 {
+		msg := "\r\n|08No new users to validate...|07\r\n"
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Display count and prompt
+	var countText string
+	if pendingCount == 1 {
+		countText = "1 new user"
+	} else {
+		countText = fmt.Sprintf("%d new users", pendingCount)
+	}
+
+	promptText := fmt.Sprintf("\r\n|15%s.|07 Review?", countText)
+	_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(promptText)), outputMode)
+
+	// Use canonical Y/N prompt
+	answer, err := e.promptYesNo(s, terminal, "", outputMode, nodeNumber)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return nil, "", err
+	}
+
+	if answer {
+		// User said Yes - launch validate user
+		return runValidateUser(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode)
+	}
+
+	// User said No - continue
+	return nil, "", nil
 }
 
 // runUnvalidateUser removes validation status from a user account.
@@ -5441,7 +6235,6 @@ func runBanUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMan
 	return nil, "", nil
 }
 
-
 // runDeleteUser soft-deletes a user by setting DeletedUser=true and recording the deletion timestamp.
 func runDeleteUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running DELETEUSER", nodeNumber)
@@ -5553,6 +6346,7 @@ func runDeleteUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, user
 
 	return nil, "", nil
 }
+
 // runShowVersion displays static version information.
 func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running SHOWVERSION", nodeNumber)
@@ -5575,44 +6369,16 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		log.Printf("WARN: Node %d: PauseString is empty in config/strings.json. No pause prompt will be shown for SHOWVERSION.", nodeNumber)
 		// Don't use a hardcoded fallback. If it's empty, it's empty.
 	} else {
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode) // Add newline before pause only if prompt exists
-		var pauseBytesToWrite []byte
-		processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-		if outputMode == ansi.OutputModeCP437 {
-			var cp437Buf bytes.Buffer
-			for _, r := range string(processedPausePrompt) {
-				if r < 128 {
-					cp437Buf.WriteByte(byte(r))
-				} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
-					cp437Buf.WriteByte(cp437Byte)
-				} else {
-					cp437Buf.WriteByte('?')
-				}
-			}
-			pauseBytesToWrite = cp437Buf.Bytes()
-		} else {
-			pauseBytesToWrite = processedPausePrompt
-		}
-		wErr = terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
-		if wErr != nil {
-			log.Printf("ERROR: Node %d: Failed writing SHOWVERSION pause prompt: %v", nodeNumber, wErr)
-		}
-	}
-
-	bufioReader := bufio.NewReader(s)
-	for {
-		r, _, err := bufioReader.ReadRune()
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode) // Add newline before pause
+		log.Printf("DEBUG: Node %d: Displaying SHOWVERSION pause prompt (centered)", nodeNumber)
+		err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				log.Printf("INFO: Node %d: User disconnected during SHOWVERSION pause.", nodeNumber)
 				return nil, "LOGOFF", io.EOF
 			}
-			log.Printf("ERROR: Node %d: Failed reading input during SHOWVERSION pause: %v", nodeNumber, err)
-			return nil, "", err // Return error on read failure
-		}
-		// Correct rune literals for Enter key check (CR or LF)
-		if r == '\r' || r == '\n' {
-			break
+			log.Printf("ERROR: Node %d: Failed during SHOWVERSION pause: %v", nodeNumber, err)
+			return nil, "", err
 		}
 	}
 
@@ -7100,49 +7866,21 @@ func runListFileAreas(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, u
 		return nil, "", err
 	}
 
-	// Wait for Enter using configured PauseString
+	// Wait for Enter using configured PauseString (centered)
 	pausePrompt := e.LoadedStrings.PauseString
 	if pausePrompt == "" {
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... " // Fallback
 	}
 
-	var pauseBytesToWrite []byte
-	processedPausePrompt := ansi.ReplacePipeCodes([]byte(pausePrompt))
-	if outputMode == ansi.OutputModeCP437 {
-		var cp437Buf bytes.Buffer
-		for _, r := range string(processedPausePrompt) {
-			if r < 128 {
-				cp437Buf.WriteByte(byte(r))
-			} else if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
-				cp437Buf.WriteByte(cp437Byte)
-			} else {
-				cp437Buf.WriteByte('?')
-			}
+	log.Printf("DEBUG: Node %d: Displaying LISTFILEAR pause prompt (centered)", nodeNumber)
+	err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during LISTFILEAR pause.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
 		}
-		pauseBytesToWrite = cp437Buf.Bytes()
-	} else {
-		pauseBytesToWrite = processedPausePrompt
-	}
-
-	wErr := terminalio.WriteProcessedBytes(terminal, pauseBytesToWrite, outputMode)
-	if wErr != nil {
-		log.Printf("ERROR: Node %d: Failed writing LISTFILEAR pause prompt: %v", nodeNumber, wErr)
-	}
-
-	bufioReader := bufio.NewReader(s)
-	for {
-		r, _, err := bufioReader.ReadRune()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				log.Printf("INFO: Node %d: User disconnected during LISTFILEAR pause.", nodeNumber)
-				return nil, "LOGOFF", io.EOF
-			}
-			log.Printf("ERROR: Node %d: Failed reading input during LISTFILEAR pause: %v", nodeNumber, err)
-			return nil, "", err
-		}
-		if r == '\r' || r == '\n' {
-			break
-		}
+		log.Printf("ERROR: Node %d: Failed during LISTFILEAR pause: %v", nodeNumber, err)
+		return nil, "", err
 	}
 
 	return nil, "", nil // Success, return to current menu (FILEM)

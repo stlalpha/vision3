@@ -1,8 +1,7 @@
 {
   "CLR": true,
   "USEPROMPT": true,
-  "PROMPT1": "|15[V]|07 Validate user account |08[|15|PV|08]",
-  "PROMPT2": "|08[|07|TIME|08] |08[|15TL:|07|TL|08]|15 |08-|15>|07 ",
+  "PROMPT1": "|08[|07|TIME|08] |08[|15TL:|07|TL|08]|15 |08-|15>|07 ",
   "FALLBACK": "MAIN",
   "ACS": "",
   "PASS": ""

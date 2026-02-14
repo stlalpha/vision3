@@ -29,6 +29,7 @@ type User struct {
 	RealName         string    `json:"realName"`
 	PhoneNumber      string    `json:"phoneNumber"`
 	CreatedAt        time.Time `json:"createdAt"`
+	UpdatedAt        time.Time `json:"updatedAt"` // For optimistic locking - tracks last modification
 	Validated        bool      `json:"validated"`
 	FilePoints       int       `json:"filePoints"`    // Added for P
 	NumUploads       int       `json:"numUploads"`    // Added for E
