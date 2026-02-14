@@ -30,6 +30,8 @@ The goal is **consistent rendering** for all user-visible text, prompts, ANSI te
   - `WriteProcessedBytes(...)` is the central mode-aware write path.
   - CP437 mode routes through conversion logic.
   - UTF-8 mode converts raw CP437 high bytes to UTF-8 when needed while preserving ANSI escapes.
+  - **Rune-by-rune decoding**: Preserves valid UTF-8 while mapping invalid bytes to CP437.
+  - Handles mixed encoding content correctly without corruption.
 
 ## Audit Commands
 
@@ -47,11 +49,30 @@ grep -RInE 'WriteProcessedBytes\(.*OutputModeCP437|OutputModeCP437\)' internal/m
 grep -RInE 'WriteProcessedBytes\(.*\[]byte\("\|' internal/menu
 ```
 
-## Current Status (2026-02-13)
+## Recent Improvements (2026-02-14)
 
-- Menu/runtime output paths are normalized to `terminalio` helpers.
-- One remaining `terminal.Write(...)` occurrence is a commented historical line in `internal/menu/executor.go`.
-- `internal/ansi/ansi.go` still contains direct `session.Write(...)` in ANSI utility/display functions; treat this package as a specialized rendering layer and keep mode behavior explicit there.
+### Mixed UTF-8 + CP437 Handling
+- **Fix Applied**: `terminalio.WriteProcessedBytes` now uses rune-by-rune decoding
+- **Before**: Entire span treated as CP437 if ANY byte was invalid UTF-8
+- **After**: Preserves valid UTF-8 sequences, only maps invalid bytes to CP437
+- **Impact**: Correctly handles mixed content (e.g., UTF-8 text with CP437 box drawing)
+- **Implementation**: `internal/terminalio/writer.go` lines 31-52
+
+### ANSI Renderer Styled Spaces
+- **Fix Applied**: Preserves spaces with non-default styles (background colors)
+- **Before**: Trailing space trimming removed styled spaces
+- **After**: Checks `cell.Style != "\x1b[0m"` when finding rightmost character
+- **Impact**: ANSI art background colors no longer stripped
+- **Implementation**: `internal/menu/ansi_renderer.go` lines 365-372
+
+## Current Status (2026-02-14)
+
+- ✅ Menu/runtime output paths are normalized to `terminalio` helpers
+- ✅ Mixed UTF-8 + CP437 content handled correctly (rune-by-rune decoding)
+- ✅ ANSI renderer preserves styled spaces with background colors
+- ⚠️ Template file corruption documented: DOORLIST.BOT, DOORLIST.TOP contain U+FFFD (see `menus/v3/templates/README-ENCODING-ISSUES.md`)
+- One remaining `terminal.Write(...)` occurrence is a commented historical line in `internal/menu/executor.go`
+- `internal/ansi/ansi.go` still contains direct `session.Write(...)` in ANSI utility/display functions; treat this package as a specialized rendering layer and keep mode behavior explicit there
 
 ## Change Checklist (for future PRs)
 
