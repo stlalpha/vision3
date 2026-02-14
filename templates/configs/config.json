@@ -4,6 +4,7 @@
     "timezone": "America/Los_Angeles",
     "sysOpLevel": 255,
     "coSysOpLevel": 250,
+    "regularUserLevel": 10,
     "logonLevel": 50,
     "anonymousLevel": 5,
     "sshEnabled": true,

@@ -331,6 +331,11 @@ func (um *UserMgr) Authenticate(username, password string) (*User, bool) { // Re
 		um.mu.RUnlock()
 		return nil, false
 	}
+	// Deny login if user is deleted
+	if user.DeletedUser {
+		um.mu.RUnlock()
+		return nil, false
+	}
 	// Copy the password hash while holding the read lock
 	passwordHash := user.PasswordHash
 	um.mu.RUnlock()

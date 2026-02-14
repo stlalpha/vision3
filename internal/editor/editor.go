@@ -9,7 +9,6 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/robbiew/vision3/internal/ansi"
 	"github.com/robbiew/vision3/internal/config"
-	"github.com/robbiew/vision3/internal/terminalio"
 )
 
 func resolveEditorPaths() (menuSetPath, rootConfigPath string) {
@@ -43,16 +42,9 @@ func resolveEditorPaths() (menuSetPath, rootConfigPath string) {
 }
 
 // RunEditor takes initial text, the input/output streams from the SSH session,
-// the terminal type string (TERM environment variable), runs a full-screen
-// editor, and returns the final text content, whether it was saved, and any error.
-func RunEditor(initialContent string, input io.Reader, output io.Writer, termType string) (content string, saved bool, err error) {
-	// Determine output mode based on terminal type
-	outputMode := ansi.OutputModeUTF8
-	termLower := strings.ToLower(termType)
-	if termLower == "ansi" || termLower == "sync" || termLower == "syncterm" || termLower == "scoansi" {
-		outputMode = ansi.OutputModeCP437
-	}
-
+// the output mode (CP437 or UTF-8), runs a full-screen editor, and returns
+// the final text content, whether it was saved, and any error.
+func RunEditor(initialContent string, input io.Reader, output io.Writer, outputMode ansi.OutputMode) (content string, saved bool, err error) {
 	// Get session from input (must be ssh.Session)
 	session, ok := input.(ssh.Session)
 	if !ok {
@@ -76,14 +68,6 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, termTyp
 	}
 	if termHeight < 24 {
 		termHeight = 24
-	}
-
-	// Wrap output with CP437 encoder if needed
-	var wrappedOutput io.Writer
-	if outputMode == ansi.OutputModeCP437 {
-		wrappedOutput = terminalio.NewSelectiveCP437Writer(output)
-	} else {
-		wrappedOutput = output
 	}
 
 	menuSetPath, rootConfigPath := resolveEditorPaths()
@@ -110,8 +94,10 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, termTyp
 		}
 	}
 
-	// Create the full-screen editor
-	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
+	// Create the full-screen editor — pass raw output writer; WriteProcessedBytes
+	// handles CP437/UTF-8 conversion so wrapping with SelectiveCP437Writer would
+	// double-encode and corrupt CP437 box-drawing characters.
+	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
 
 	// Load initial content
 	if initialContent != "" {
@@ -146,15 +132,8 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, termTyp
 }
 
 // RunEditorWithMetadata is an extended version that accepts message metadata
-func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Writer, termType string,
+func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Writer, outputMode ansi.OutputMode,
 	subject, recipient string, isAnon bool, quoteFrom, quoteTitle, quoteDate, quoteTime string, quoteIsAnon bool, quoteLines []string) (content string, saved bool, err error) {
-
-	// Determine output mode based on terminal type
-	outputMode := ansi.OutputModeUTF8
-	termLower := strings.ToLower(termType)
-	if termLower == "ansi" || termLower == "sync" || termLower == "syncterm" || termLower == "scoansi" {
-		outputMode = ansi.OutputModeCP437
-	}
 
 	// Get session from input (must be ssh.Session)
 	session, ok := input.(ssh.Session)
@@ -181,14 +160,6 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 		termHeight = 24
 	}
 
-	// Wrap output with CP437 encoder if needed
-	var wrappedOutput io.Writer
-	if outputMode == ansi.OutputModeCP437 {
-		wrappedOutput = terminalio.NewSelectiveCP437Writer(output)
-	} else {
-		wrappedOutput = output
-	}
-
 	menuSetPath, rootConfigPath := resolveEditorPaths()
 
 	// Load theme colors for Yes/No lightbar prompts
@@ -213,8 +184,10 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 		}
 	}
 
-	// Create the full-screen editor
-	editor := NewFSEditor(session, wrappedOutput, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
+	// Create the full-screen editor — pass raw output writer; WriteProcessedBytes
+	// handles CP437/UTF-8 conversion so wrapping with SelectiveCP437Writer would
+	// double-encode and corrupt CP437 box-drawing characters.
+	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
 
 	// Set metadata
 	editor.SetMetadata(subject, recipient, isAnon)

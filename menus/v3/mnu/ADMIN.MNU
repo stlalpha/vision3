@@ -1,0 +1,9 @@
+{
+  "CLR": true,
+  "USEPROMPT": true,
+  "PROMPT1": "|08[|07|TIME|08] |15Admin|07 Menu |08-|15> |07",
+  "PROMPT2": "",
+  "FALLBACK": "ADMIN",
+  "ACS": "S255",
+  "PASS": ""
+}

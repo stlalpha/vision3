@@ -30,8 +30,9 @@ type User struct {
 	PhoneNumber      string    `json:"phoneNumber"`
 	CreatedAt        time.Time `json:"createdAt"`
 	Validated        bool      `json:"validated"`
-	FilePoints       int       `json:"filePoints"` // Added for P
-	NumUploads       int       `json:"numUploads"` // Added for E
+	FilePoints       int       `json:"filePoints"`    // Added for P
+	NumUploads       int       `json:"numUploads"`    // Added for E
+	MessagesPosted   int       `json:"messagesPosted,omitempty"` // Number of messages posted by user
 	// NumLogons is TimesCalled
 	TimeLimit   int    `json:"timeLimit"`   // Added for T (in minutes)
 	PrivateNote string `json:"privateNote"` // Added for Z
@@ -57,6 +58,10 @@ type User struct {
 	ScreenWidth  int `json:"screenWidth,omitempty"`  // Detected/preferred terminal width (default 80)
 	ScreenHeight int `json:"screenHeight,omitempty"` // Detected/preferred terminal height (default 25)
 	MsgHdr       int `json:"msgHdr,omitempty"`       // Selected message header style (1-14, 0=unset)
+
+	// Soft Delete (user marked as deleted but data preserved)
+	DeletedUser bool       `json:"deletedUser,omitempty"` // True if user is soft-deleted
+	DeletedAt   *time.Time `json:"deletedAt,omitempty"`   // Timestamp when user was deleted (nil if not deleted)
 }
 
 // CallRecord stores information about a single call session.

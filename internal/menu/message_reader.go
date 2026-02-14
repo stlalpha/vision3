@@ -802,20 +802,11 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return ""
 	}
 
-	// Get TERM env var
-	termType := "vt100"
-	for _, env := range s.Environ() {
-		if strings.HasPrefix(env, "TERM=") {
-			termType = strings.TrimPrefix(env, "TERM=")
-			break
-		}
-	}
-
 	terminalio.WriteProcessedBytes(terminal, []byte("\r\nLaunching editor...\r\n"), outputMode)
 
 	// Start with empty editor - user will use /Q command to quote if desired
 	// Pass message metadata for quoting (from, title, date, time, isAnon, lines)
-	replyBody, saved, editErr := editor.RunEditorWithMetadata("", s, s, termType, newSubject, currentMsg.To, false,
+	replyBody, saved, editErr := editor.RunEditorWithMetadata("", s, s, outputMode, newSubject, currentMsg.To, false,
 		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines)
 	if editErr != nil {
 		log.Printf("ERROR: Node %d: Editor failed: %v", nodeNumber, editErr)
@@ -839,6 +830,10 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError saving reply message.\r\n"), outputMode)
 		time.Sleep(2 * time.Second)
 	} else {
+		currentUser.MessagesPosted++
+		if err := userManager.UpdateUser(currentUser); err != nil {
+			log.Printf("ERROR: Node %d: Failed to update MessagesPosted for user %s: %v", nodeNumber, currentUser.Handle, err)
+		}
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\nReply posted successfully!\r\n"), outputMode)
 		time.Sleep(1 * time.Second)
 		*totalMsgCount++
