@@ -3,7 +3,6 @@ package menu
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"strings"
 )
 
@@ -25,6 +24,13 @@ type ANSIRenderer struct {
 
 // NewANSIRenderer creates a new renderer with given dimensions
 func NewANSIRenderer(width, height int) *ANSIRenderer {
+	// Validate dimensions and use sensible defaults
+	if width <= 0 {
+		width = 80
+	}
+	if height <= 0 {
+		height = 25
+	}
 	buffer := make([][]ANSICell, height)
 	for i := range buffer {
 		buffer[i] = make([]ANSICell, width)
@@ -98,8 +104,8 @@ func (r *ANSIRenderer) Render(text string) {
 			r.CursorX++
 			// Don't auto-wrap! ANSI art uses explicit positioning.
 			// If text exceeds buffer width, just clip it (stay at edge).
-			if r.CursorX > r.Width {
-				r.CursorX = r.Width // Stay at right edge, clip further characters
+			if r.CursorX >= r.Width {
+				r.CursorX = r.Width - 1 // Stay at right edge (last valid column)
 			}
 		}
 		lastChar = ch // Track last character for \n handling
@@ -209,31 +215,23 @@ func (r *ANSIRenderer) handleEscapeSequence(seq string) bool {
 			if len(params) > 1 && params[1] > 0 {
 				col = params[1]
 			}
-			origRow, origCol := row, col
 			r.CursorY = row - 1 // Convert to 0-based
 			r.CursorX = col - 1
-			// Clamp to bounds
-			clamped := false
+			// Clamp to bounds (silently - common for ANSI art designed for different terminal sizes)
 			if r.CursorY < 0 {
 				r.CursorY = 0
-				clamped = true
 			}
 			if r.CursorY >= r.Height {
 				r.CursorY = r.Height - 1
-				clamped = true
 			}
 			if r.CursorX < 0 {
 				r.CursorX = 0
-				clamped = true
 			}
 			if r.CursorX >= r.Width {
 				r.CursorX = r.Width - 1
-				clamped = true
 			}
-			// Log if cursor positioning would exceed buffer bounds
-			if clamped && (origCol > r.Width || origRow > r.Height) {
-				log.Printf("ANSI: Cursor position ESC[%d;%dH clamped to (%d,%d) - ANSI may be designed for wider terminal", origRow, origCol, r.CursorX, r.CursorY)
-			}
+			// Silently clamp cursor positioning that exceeds buffer bounds
+			// (common for ANSI art designed for different terminal sizes)
 			return true
 
 		case 'J': // Erase display

@@ -26,7 +26,7 @@ type AdminActivityLog struct {
 // AdminActivityLogEntry creates a formatted log entry for a single field change
 func AdminActivityLogEntry(adminUsername string, adminID int, targetUserID int, targetHandle string, fieldName string, oldValue string, newValue string) AdminActivityLog {
 	return AdminActivityLog{
-		Timestamp:     time.Now(),
+		Timestamp:     time.Now().UTC(),
 		AdminUsername: adminUsername,
 		AdminID:       adminID,
 		TargetUserID:  targetUserID,
