@@ -264,6 +264,15 @@ func evaluateCondition(condition string, u *user.User, s ssh.Session, terminal *
 		return false // Treat empty condition as failing
 	}
 
+	// Handle multi-character keyword conditions before single-char parsing
+	upper := strings.ToUpper(condition)
+	switch upper {
+	case "SYSOP":
+		return u.AccessLevel >= 255
+	case "COSYSOP":
+		return u.AccessLevel >= 250
+	}
+
 	code := strings.ToUpper(condition[0:1])
 	value := ""
 	if len(condition) > 1 {

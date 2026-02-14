@@ -324,6 +324,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTDOORS"] = runListDoors                             // List available doors
 	registry["OPENDOOR"] = runOpenDoor                               // Prompt and open a door
 	registry["DOORINFO"] = runDoorInfo                               // Show door information
+	registry["UPLOADFILE"] = runUploadFile                            // ZMODEM file upload
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
@@ -6483,6 +6484,38 @@ func scanDirectoryFiles(dir string) (map[string]int64, error) {
 	return files, nil
 }
 
+// runUploadFile is the RunnableFunc wrapper for UPLOADFILE menu commands.
+func runUploadFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	if currentUser == nil {
+		msg := "\r\n|01Error: You must be logged in to upload files.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	currentAreaID := currentUser.CurrentFileAreaID
+	currentAreaTag := currentUser.CurrentFileAreaTag
+	if currentAreaID <= 0 {
+		msg := "\r\n|01Error: No file area selected.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
+	if err := e.runUploadFiles(s, terminal, currentUser, userManager, currentAreaID, currentAreaTag, outputMode, nodeNumber, sessionStartTime); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", err
+		}
+		log.Printf("ERROR: Node %d: Upload failed: %v", nodeNumber, err)
+	}
+
+	// Reload user to get updated NumUploads
+	if reloaded, exists := userManager.GetUser(strings.ToLower(currentUser.Username)); exists {
+		currentUser = reloaded
+	}
+	return currentUser, "", nil
+}
+
 // runUploadFiles handles the ZMODEM upload workflow for the current file area.
 func (e *MenuExecutor) runUploadFiles(
 	s ssh.Session,
@@ -6662,6 +6695,8 @@ func (e *MenuExecutor) runUploadFiles(
 
 		// Prompt for description if ZipLab didn't extract one
 		if description == "" {
+			pauseEnter(s, terminal, outputMode)
+			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 			descPrompt := fmt.Sprintf("\r\n|15%s|07 (%d bytes)\r\n|11Desc:|07 ", nf.name, nf.size)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(descPrompt)), outputMode)
 
