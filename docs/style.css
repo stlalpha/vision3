@@ -616,7 +616,7 @@ section:nth-of-type(even) {
 
 .telix-terminal {
     flex: 1;
-    padding: 0;
+    padding: 1rem;
     font-family: var(--font-dos);
     font-size: 1rem;
     line-height: 1.6;
@@ -624,6 +624,7 @@ section:nth-of-type(even) {
     white-space: pre-wrap;
     overflow: hidden;
     text-align: left;
+    word-break: break-all;
 }
 
 .telix-prompt {
@@ -659,4 +660,18 @@ section:nth-of-type(even) {
 /* Lock scroll while splash is visible */
 body.splash-active {
     overflow: hidden;
+}
+
+/* ---- Splash mobile ---- */
+@media (width <= 600px) {
+    .telix-terminal {
+        font-size: 0.8rem;
+        line-height: 1.5;
+        padding: 0.75rem;
+    }
+
+    .telix-status-bar {
+        font-size: 0.65rem;
+        padding: 0 0.25rem;
+    }
 }
