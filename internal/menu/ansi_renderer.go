@@ -362,10 +362,12 @@ func (r *ANSIRenderer) ExtractLines() []string {
 		var line bytes.Buffer
 		lastStyle := ""
 
-		// Find the rightmost non-space character to trim trailing spaces
+		// Find the rightmost non-space character OR styled space (preserve background colors)
+		// Spaces with non-default styles (e.g. background colors) should not be trimmed
 		rightmost := -1
 		for x := r.Width - 1; x >= 0; x-- {
-			if r.Buffer[y][x].Char != ' ' {
+			cell := r.Buffer[y][x]
+			if cell.Char != ' ' || cell.Style != "\x1b[0m" {
 				rightmost = x
 				break
 			}

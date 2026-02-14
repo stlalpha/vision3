@@ -2,6 +2,7 @@ package message
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -13,6 +14,9 @@ import (
 
 	"github.com/stlalpha/vision3/internal/jam"
 )
+
+// ErrAreaNotFound is returned when a message area doesn't exist.
+var ErrAreaNotFound = errors.New("message area not found")
 
 type threadIndex struct {
 	total      int
@@ -139,13 +143,14 @@ func (mm *MessageManager) loadMessageAreas() error {
 
 // openBase opens a JAM base on-demand. The caller must close it when done.
 // This method does not hold any locks and should be called after releasing mm.mu.
+// Returns ErrAreaNotFound if the area doesn't exist.
 func (mm *MessageManager) openBase(areaID int) (*jam.Base, *MessageArea, error) {
 	mm.mu.RLock()
 	area, exists := mm.areasByID[areaID]
 	mm.mu.RUnlock()
 
 	if !exists {
-		return nil, nil, fmt.Errorf("message area %d not found", areaID)
+		return nil, nil, ErrAreaNotFound
 	}
 
 	basePath := mm.resolveBasePath(area)
@@ -314,7 +319,10 @@ func (mm *MessageManager) GetMessage(areaID, msgNum int) (*DisplayMessage, error
 func (mm *MessageManager) GetMessageCountForArea(areaID int) (int, error) {
 	b, _, err := mm.openBase(areaID)
 	if err != nil {
-		return 0, nil // Return 0 if area doesn't exist
+		if errors.Is(err, ErrAreaNotFound) {
+			return 0, nil // Return 0 if area doesn't exist
+		}
+		return 0, err // Propagate I/O and other errors
 	}
 	defer b.Close()
 
@@ -327,7 +335,10 @@ func (mm *MessageManager) GetMessageCountForArea(areaID int) (int, error) {
 func (mm *MessageManager) GetThreadReplyCount(areaID int, msgNum int, subject string) (int, error) {
 	b, _, err := mm.openBase(areaID)
 	if err != nil {
-		return 0, nil // Return 0 if area doesn't exist
+		if errors.Is(err, ErrAreaNotFound) {
+			return 0, nil // Return 0 if area doesn't exist
+		}
+		return 0, err // Propagate I/O and other errors
 	}
 	defer b.Close()
 
@@ -410,7 +421,10 @@ func (mm *MessageManager) invalidateThreadIndex(areaID int) {
 func (mm *MessageManager) GetNewMessageCount(areaID int, username string) (int, error) {
 	b, _, err := mm.openBase(areaID)
 	if err != nil {
-		return 0, nil // Return 0 if area doesn't exist
+		if errors.Is(err, ErrAreaNotFound) {
+			return 0, nil // Return 0 if area doesn't exist
+		}
+		return 0, err // Propagate I/O and other errors
 	}
 	defer b.Close()
 
@@ -422,7 +436,10 @@ func (mm *MessageManager) GetNewMessageCount(areaID int, username string) (int, 
 func (mm *MessageManager) GetLastRead(areaID int, username string) (int, error) {
 	b, _, err := mm.openBase(areaID)
 	if err != nil {
-		return 0, nil // Return 0 if area doesn't exist
+		if errors.Is(err, ErrAreaNotFound) {
+			return 0, nil // Return 0 if area doesn't exist
+		}
+		return 0, err // Propagate I/O and other errors
 	}
 	defer b.Close()
 
@@ -452,7 +469,10 @@ func (mm *MessageManager) SetLastRead(areaID int, username string, msgNum int) e
 func (mm *MessageManager) GetNextUnreadMessage(areaID int, username string) (int, error) {
 	b, _, err := mm.openBase(areaID)
 	if err != nil {
-		return 0, nil // Return 0 if area doesn't exist
+		if errors.Is(err, ErrAreaNotFound) {
+			return 0, nil // Return 0 if area doesn't exist
+		}
+		return 0, err // Propagate I/O and other errors
 	}
 	defer b.Close()
 
