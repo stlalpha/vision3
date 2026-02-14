@@ -3,6 +3,7 @@ package jam
 import (
 	"fmt"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -10,6 +11,7 @@ var (
 	lockRetryDelay = 200 * time.Millisecond
 	lockTimeout    = 30 * time.Second
 	lockStaleAfter = 10 * time.Minute
+	lockMu         sync.RWMutex // Protects lock configuration variables for thread-safe test access
 )
 
 // acquireFileLock serializes cross-process writes to a JAM base using a .bsy lock file.
@@ -19,7 +21,15 @@ func (b *Base) acquireFileLock() (func(), error) {
 		return func() {}, nil
 	}
 	lockPath := b.BasePath + ".bsy"
-	deadline := time.Now().Add(lockTimeout)
+
+	// Read lock config under mutex for thread safety
+	lockMu.RLock()
+	timeout := lockTimeout
+	retryDelay := lockRetryDelay
+	staleAfter := lockStaleAfter
+	lockMu.RUnlock()
+
+	deadline := time.Now().Add(timeout)
 
 	for {
 		f, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0644)
@@ -33,7 +43,7 @@ func (b *Base) acquireFileLock() (func(), error) {
 		}
 
 		if info, statErr := os.Stat(lockPath); statErr == nil {
-			if time.Since(info.ModTime()) > lockStaleAfter {
+			if time.Since(info.ModTime()) > staleAfter {
 				_ = os.Remove(lockPath)
 				continue
 			}
@@ -42,7 +52,7 @@ func (b *Base) acquireFileLock() (func(), error) {
 		if time.Now().After(deadline) {
 			return nil, fmt.Errorf("jam: timeout waiting for lock %s", lockPath)
 		}
-		time.Sleep(lockRetryDelay)
+		time.Sleep(retryDelay)
 	}
 	return func() {
 		_ = os.Remove(lockPath)
