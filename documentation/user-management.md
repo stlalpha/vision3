@@ -82,6 +82,13 @@ Users are stored as a JSON array. Each user account contains:
 
 After authentication, the system applies these preferences: if a user's stored screen dimensions are smaller than the detected PTY size (or the PTY defaults to 80x25), the stored values cap the effective terminal dimensions. ANSI art is truncated to fit the effective height to prevent scrolling.
 
+#### Soft Delete
+
+- `deletedUser` - Boolean flag indicating the user is soft-deleted (default: false)
+- `deletedAt` - Timestamp when the user was deleted (only set if deletedUser is true)
+
+Soft-deleted users cannot log in and are hidden from public user listings, but all their data (messages, files, call history) is preserved and attributed to them. They remain visible in admin views.
+
 #### System State
 
 - `current_message_area_id` - Current message area ID
@@ -226,7 +233,18 @@ New accounts are created with:
 - `accessLevel: 1` — minimal access level
 - `timeLimit: 60` — 60-minute time limit per call
 
-The SysOp must manually validate the user by editing `data/users/users.json` (or a future in-BBS user editor) and setting `validated` to `true` and an appropriate `accessLevel` (typically 10 for regular users).
+The SysOp can now validate users in-BBS from the admin menu:
+
+1. Go to MAIN menu and press `X` (SysOp level `s100` required)
+2. Press `V` to run user validation
+3. Select a user from the pending unvalidated user list
+4. Confirm validation (access level is set to configured regular user level)
+
+SysOp accounts now also receive an automatic notification on MAIN menu entry when there are pending unvalidated users.
+
+Regular-user validation level is configurable in `configs/config.json` as `regularUserLevel` (default `10`).
+
+Manual editing of `data/users/users.json` is still supported when the BBS is stopped.
 
 ### Modifying Users
 
@@ -369,16 +387,85 @@ fmt.Println(string(hash))
 
 ### Validating New Users
 
-Change `validated` from `false` to `true` and set appropriate `accessLevel` (typically 10).
+Recommended: use the in-BBS admin menu (`X` from MAIN, then `V`) to set `validated=true` and assign access level.
+
+Manual alternative: change `validated` from `false` to `true` and set appropriate `accessLevel` (typically 10) while the BBS is stopped.
+
+Additional admin actions:
+
+- `U` in ADMIN menu: set a user to unvalidated
+- `E` in ADMIN menu, then press `0`: toggle ban/unban a user
+- `E` in ADMIN menu, then press `9`: toggle delete/undelete a user (soft delete)
 
 ### Banning Users
 
-Options:
+The ban feature sets a user's access level to 0 and marks them as unvalidated, preventing login.
 
-1. Set `accessLevel` to 0
-2. Set `validated` to false
-3. Add a ban flag (e.g., 'B') and use `!fB` in ACS strings
-4. Delete the user entry (permanent)
+#### How to Ban a User
+
+**Option 1: From Admin User Browser**
+1. Press `X` from MAIN menu to enter Admin menu
+2. Press `E` to run Edit Users (Admin List Users)
+3. Navigate to the user you want to ban
+4. Press `0` to toggle ban status (bans if not banned, or unbans if already banned)
+5. Press `S` to save changes
+
+Note: Pressing `0` toggles the ban status. If a user is already banned (level 0, unvalidated), pressing `0` will unban them by restoring them to the regular user level (default 10) and setting validated to true.
+
+**Option 2: Manual Edit (while BBS is stopped)**
+1. Stop the BBS
+2. Edit `data/users/users.json`
+3. Set `"accessLevel": 0` and `"validated": false`
+4. Restart the BBS
+
+**Alternative Methods:**
+1. Add a ban flag (e.g., 'B') and use `!fB` in ACS strings
+2. Soft-delete the user (see below)
+3. Permanently delete the user entry from JSON (not recommended)
+
+**IMPORTANT: User #1 Protection**
+
+User #1 is protected from administrative actions that could lock you out of the system:
+- Cannot be banned (pressing `0` shows an error message)
+- Cannot be deleted (pressing `9` shows an error message)
+- Cannot be unvalidated (pressing `U` shows an error message)
+- Cannot have access level reduced below SysOp level when saving changes
+
+This protection ensures you always have access to the system administration features.
+
+### Deleting Users (Soft Delete)
+
+The soft-delete feature marks users as deleted without removing their data. This is the recommended approach for removing user accounts.
+
+#### How to Delete a User
+
+**Option 1: From Admin User Browser**
+1. Press `X` from MAIN menu to enter Admin menu
+2. Press `E` to run Edit Users (Admin List Users)
+3. Navigate to the user you want to delete
+4. Press `9` to toggle deletion (marks for delete if not deleted, or undeletes if already deleted)
+5. Press `S` to save changes
+
+Note: Pressing `9` toggles the deletion status. If a user is already deleted, pressing `9` will undelete them and clear the deletion timestamp.
+
+**Option 2: Manual Edit (while BBS is stopped)**
+1. Stop the BBS
+2. Edit `data/users/users.json`
+3. Set `"deletedUser": true` and `"deletedAt": "2026-02-14T12:00:00Z"`
+4. Restart the BBS
+
+#### Effects of Soft Delete
+
+When a user is soft-deleted:
+- **Cannot log in**: Authentication is denied even with correct credentials
+- **Hidden from public views**: Does not appear in user listings or searches
+- **Visible in admin tools**: Still appears in Admin User Browser with 'DEL' status
+- **Data preserved**: All messages, files, uploads, and call history remain intact
+- **Attribution maintained**: Their posts and files remain attributed to their handle
+
+#### Future: Purge Deleted Users
+
+A future enhancement will add a "purge deleted users" function to permanently remove soft-deleted users and their data after a configurable retention period (e.g., 30/60/90 days).
 
 ### Promoting Users
 
@@ -412,7 +499,7 @@ The following user management features are planned:
 
 - Full in-BBS user editor
 - Password change function
-- User purge utilities
+- **User purge utilities** - Permanently remove soft-deleted users after retention period
 - Import/export tools
 - User statistics and reports
 - Time bank system
@@ -425,6 +512,7 @@ The following user management features are planned:
 - Check username (case-insensitive)
 - Verify `validated` is true
 - Check `accessLevel` > 0
+- **Check if user is soft-deleted** (`deletedUser` should be false)
 - Ensure password is correct
 - Check for duplicate usernames
 

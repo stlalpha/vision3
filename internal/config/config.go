@@ -437,6 +437,7 @@ type ServerConfig struct {
 	Timezone            string `json:"timezone,omitempty"`
 	SysOpLevel          int    `json:"sysOpLevel"`
 	CoSysOpLevel        int    `json:"coSysOpLevel"`
+	RegularUserLevel    int    `json:"regularUserLevel"`
 	LogonLevel          int    `json:"logonLevel"`
 	AnonymousLevel      int    `json:"anonymousLevel"`
 	SSHPort             int    `json:"sshPort"`
@@ -488,6 +489,7 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		Timezone:            "",
 		SysOpLevel:          255,
 		CoSysOpLevel:        250,
+		RegularUserLevel:    10,
 		LogonLevel:          100,
 		AnonymousLevel:      5,
 		SSHPort:             2222,
