@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/ansi"
 )
 
 // CommandType represents a special editor command

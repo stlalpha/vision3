@@ -22,16 +22,16 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
-	"github.com/robbiew/vision3/internal/ansi"
-	"github.com/robbiew/vision3/internal/conference"
-	"github.com/robbiew/vision3/internal/config"
-	"github.com/robbiew/vision3/internal/editor"
-	"github.com/robbiew/vision3/internal/file"
-	"github.com/robbiew/vision3/internal/message"
-	"github.com/robbiew/vision3/internal/terminalio" // <-- Added import
-	"github.com/robbiew/vision3/internal/transfer"
-	"github.com/robbiew/vision3/internal/types"
-	"github.com/robbiew/vision3/internal/user"
+	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/conference"
+	"github.com/stlalpha/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/editor"
+	"github.com/stlalpha/vision3/internal/file"
+	"github.com/stlalpha/vision3/internal/message"
+	"github.com/stlalpha/vision3/internal/terminalio" // <-- Added import
+	"github.com/stlalpha/vision3/internal/transfer"
+	"github.com/stlalpha/vision3/internal/types"
+	"github.com/stlalpha/vision3/internal/user"
 	"golang.org/x/term"
 )
 

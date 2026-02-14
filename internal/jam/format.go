@@ -8,7 +8,7 @@ import (
 
 // Version is the ViSiON/3 version string. Set via build flags:
 //
-//	-ldflags "-X github.com/robbiew/vision3/internal/jam.Version=1.0.0"
+//	-ldflags "-X github.com/stlalpha/vision3/internal/jam.Version=1.0.0"
 var Version = "0.1.0"
 
 // AddTearline appends a tearline to the message text.

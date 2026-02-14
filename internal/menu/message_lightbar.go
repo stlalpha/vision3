@@ -10,8 +10,8 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/robbiew/vision3/internal/ansi"
-	"github.com/robbiew/vision3/internal/terminalio"
+	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/terminalio"
 	"golang.org/x/term"
 )
 

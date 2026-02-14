@@ -16,10 +16,10 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
-	"github.com/robbiew/vision3/internal/ansi"
-	"github.com/robbiew/vision3/internal/config"
-	"github.com/robbiew/vision3/internal/terminalio"
-	"github.com/robbiew/vision3/internal/user"
+	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/terminalio"
+	"github.com/stlalpha/vision3/internal/user"
 	"golang.org/x/term"
 )
 

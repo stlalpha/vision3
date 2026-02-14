@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/gliderlabs/ssh"
-	"github.com/robbiew/vision3/internal/ansi"
-	"github.com/robbiew/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/config"
 )
 
 func resolveEditorPaths() (menuSetPath, rootConfigPath string) {

@@ -2,12 +2,23 @@ package scheduler
 
 import (
 	"context"
+	"os/exec"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/robbiew/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/config"
 )
+
+// lookPath finds the absolute path to a command, skipping the test if not found.
+func lookPath(t *testing.T, name string) string {
+	t.Helper()
+	path, err := exec.LookPath(name)
+	if err != nil {
+		t.Skipf("command %q not found in PATH, skipping", name)
+	}
+	return path
+}
 
 func TestExecuteEvent_Success(t *testing.T) {
 	s := &Scheduler{}
@@ -15,7 +26,7 @@ func TestExecuteEvent_Success(t *testing.T) {
 	event := config.EventConfig{
 		ID:             "test_success",
 		Name:           "Test Success Event",
-		Command:        "/bin/echo",
+		Command:        lookPath(t, "echo"),
 		Args:           []string{"Hello, World!"},
 		TimeoutSeconds: 5,
 	}
@@ -38,10 +49,13 @@ func TestExecuteEvent_Success(t *testing.T) {
 func TestExecuteEvent_Failure(t *testing.T) {
 	s := &Scheduler{}
 
+	shPath := lookPath(t, "sh")
+
 	event := config.EventConfig{
 		ID:             "test_failure",
 		Name:           "Test Failure Event",
-		Command:        "/bin/false",
+		Command:        shPath,
+		Args:           []string{"-c", "exit 1"},
 		TimeoutSeconds: 5,
 	}
 
@@ -62,7 +76,7 @@ func TestExecuteEvent_Timeout(t *testing.T) {
 	event := config.EventConfig{
 		ID:             "test_timeout",
 		Name:           "Test Timeout Event",
-		Command:        "/bin/sleep",
+		Command:        lookPath(t, "sleep"),
 		Args:           []string{"10"},
 		TimeoutSeconds: 1,
 	}
@@ -86,7 +100,7 @@ func TestExecuteEvent_WithEnvironmentVars(t *testing.T) {
 	event := config.EventConfig{
 		ID:             "test_env",
 		Name:           "Test Environment Variables",
-		Command:        "/bin/sh",
+		Command:        lookPath(t, "sh"),
 		Args:           []string{"-c", "echo $TEST_VAR"},
 		EnvironmentVars: map[string]string{
 			"TEST_VAR": "test_value",
@@ -115,7 +129,6 @@ func TestBuildSubstitutions(t *testing.T) {
 
 	subs := s.buildSubstitutions(event)
 
-	// Verify all expected placeholders are present
 	expectedKeys := []string{"{TIMESTAMP}", "{EVENT_ID}", "{EVENT_NAME}", "{BBS_ROOT}", "{DATE}", "{TIME}", "{DATETIME}"}
 	for _, key := range expectedKeys {
 		if _, exists := subs[key]; !exists {
@@ -123,7 +136,6 @@ func TestBuildSubstitutions(t *testing.T) {
 		}
 	}
 
-	// Verify values are reasonable
 	if subs["{EVENT_ID}"] != "test_placeholders" {
 		t.Errorf("Expected EVENT_ID to be 'test_placeholders', got %s", subs["{EVENT_ID}"])
 	}
@@ -136,17 +148,23 @@ func TestBuildSubstitutions(t *testing.T) {
 func TestPlaceholderSubstitutionInWorkingDirectory(t *testing.T) {
 	s := &Scheduler{}
 
+	// Create a temp directory so the working directory actually exists
+	tmpDir := t.TempDir()
+
 	event := config.EventConfig{
 		ID:               "test_workdir",
 		Name:             "Test Working Directory Substitution",
-		Command:          "/bin/pwd",
-		WorkingDirectory: "{BBS_ROOT}/data/test",
+		Command:          lookPath(t, "pwd"),
+		WorkingDirectory: tmpDir,
 		TimeoutSeconds:   5,
 	}
 
 	result := s.executeEvent(context.Background(), event)
 
-	// Check that the working directory was substituted
+	if !result.Success {
+		t.Errorf("Expected success, got failure: %v", result.Error)
+	}
+
 	if strings.Contains(result.Output, "{BBS_ROOT}") {
 		t.Error("Working directory placeholder was not substituted")
 	}
