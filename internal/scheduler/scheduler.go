@@ -5,7 +5,7 @@ import (
 	"log"
 	"sync"
 
-	"github.com/robbiew/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/config"
 	"github.com/robfig/cron/v3"
 )
 

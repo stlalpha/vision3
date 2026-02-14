@@ -15,7 +15,7 @@ import (
 	"golang.org/x/text/encoding/charmap"
 
 	// Use the internal ansi package for Cp437ToUnicode
-	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/ansi"
 )
 
 // --- ANSI Test Code (Moved from cmd/vision3/main.go) ---
@@ -199,9 +199,9 @@ func testCharacterSetSwitching(session ssh.Session) {
 	fmt.Fprintln(session, "\x1B[1;37m=== Test 6: Character Set Switching ===\x1B[0m")
 	fmt.Fprintln(session, "Trying different terminal character set switching sequences...")
 	fmt.Fprintln(session)
-	fmt.Fprint(session, "ISO 8859-1: \x1B%@")
+	session.Write([]byte("ISO 8859-1: \x1B%@"))
 	session.Write(testChars)
-	fmt.Fprintln(session, "\x1B%G")
+	session.Write([]byte("\x1B%G\n"))
 	fmt.Fprintln(session)
 	fmt.Fprint(session, "DEC Special: ")
 	for _, b := range testChars {
@@ -213,7 +213,7 @@ func testCharacterSetSwitching(session ssh.Session) {
 	}
 	fmt.Fprintln(session, "\x1B(B")
 	fmt.Fprintln(session)
-	fmt.Fprint(session, "UTF-8:      \x1B%G")
+	session.Write([]byte("UTF-8:      \x1B%G"))
 	w := bufio.NewWriter(session)
 	for _, b := range testChars {
 		r := ansi.Cp437ToUnicode[b]
@@ -385,8 +385,8 @@ func printTerminalInfo(session ssh.Session) {
 	fmt.Fprintln(session)
 	fmt.Fprintln(session, "Testing character set switching sequences:")
 	fmt.Fprintln(session, "  Default UTF-8")
-	fmt.Fprintln(session, "  Switch to ISO 8859-1: \x1B%@Test\x1B%G")
-	fmt.Fprintln(session, "  Switch to UTF-8: \x1B%GTest")
+	session.Write([]byte("  Switch to ISO 8859-1: \x1B%@Test\x1B%G\n"))
+	session.Write([]byte("  Switch to UTF-8: \x1B%GTest\n"))
 	fmt.Fprintln(session)
 	fmt.Fprintln(session, "If you see boxes or question marks instead of special characters")
 	fmt.Fprintln(session, "above, your terminal may not support UTF-8 properly.")

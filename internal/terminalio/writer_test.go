@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/ansi"
 )
 
 func TestWriteProcessedBytes_UTF8Mode_MapsCP437InvalidSpan(t *testing.T) {

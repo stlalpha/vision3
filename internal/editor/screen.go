@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robbiew/vision3/internal/ansi"
-	"github.com/robbiew/vision3/internal/terminalio"
+	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/terminalio"
 )
 
 // Screen handles all screen rendering and ANSI control

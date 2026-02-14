@@ -4,7 +4,7 @@ import (
 	"io"
 	"unicode/utf8"
 
-	"github.com/robbiew/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/ansi"
 )
 
 func writeUTF8Mode(writer io.Writer, data []byte) error {

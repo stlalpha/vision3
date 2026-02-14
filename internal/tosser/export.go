@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/robbiew/vision3/internal/ftn"
-	"github.com/robbiew/vision3/internal/jam"
-	"github.com/robbiew/vision3/internal/message"
+	"github.com/stlalpha/vision3/internal/ftn"
+	"github.com/stlalpha/vision3/internal/jam"
+	"github.com/stlalpha/vision3/internal/message"
 )
 
 // ScanAndExport finds unsent echomail messages (DateProcessed=0) and
