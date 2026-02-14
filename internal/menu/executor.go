@@ -7214,7 +7214,18 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 				continue
 			}
 			fileToView := filesOnPage[viewIndex]
-			viewFileByRecord(e, s, terminal, &fileToView, outputMode)
+			if e.FileMgr.IsSupportedArchive(fileToView.Filename) {
+				viewFilePath, pathErr := e.FileMgr.GetFilePath(fileToView.ID)
+				if pathErr != nil {
+					log.Printf("ERROR: Node %d: Failed to get path for file %s: %v", nodeNumber, fileToView.ID, pathErr)
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error locating file.|07\r\n")), outputMode)
+					time.Sleep(1 * time.Second)
+				} else {
+					ziplab.RunZipLabView(s, terminal, viewFilePath, fileToView.Filename, outputMode)
+				}
+			} else {
+				viewFileByRecord(e, s, terminal, &fileToView, outputMode)
+			}
 			continue
 		case "A": // Area Change (Placeholder/Not implemented here, handled by menu?)
 			log.Printf("DEBUG: Node %d: Area Change command entered (Handled by menu)", nodeNumber)

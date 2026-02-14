@@ -18,6 +18,7 @@ import (
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
+	"github.com/stlalpha/vision3/internal/ziplab"
 )
 
 // findFileInArea searches for a file by name (case-insensitive) in the given area.
@@ -140,10 +141,10 @@ func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 		return retUser, retAction, retErr
 	}
 
-	_, termHeight := getTerminalSize(s)
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
-		displayArchiveListing(s, terminal, filePath, record.Filename, outputMode, termHeight)
+		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
+		_, termHeight := getTerminalSize(s)
 		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight)
 	}
 
@@ -176,11 +177,10 @@ func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, r
 		return
 	}
 
-	_, termHeight := getTerminalSize(s)
-
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
-		displayArchiveListing(s, terminal, filePath, record.Filename, outputMode, termHeight)
+		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
+		_, termHeight := getTerminalSize(s)
 		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight)
 	}
 }
