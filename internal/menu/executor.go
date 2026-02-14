@@ -30,6 +30,7 @@ import (
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/terminalio" // <-- Added import
 	"github.com/stlalpha/vision3/internal/transfer"
+	"github.com/stlalpha/vision3/internal/ziplab"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
 	"golang.org/x/term"
@@ -6617,20 +6618,65 @@ func (e *MenuExecutor) runUploadFiles(
 			continue
 		}
 
-		// Prompt for description
-		descPrompt := fmt.Sprintf("\r\n|15%s|07 (%d bytes)\r\n|11Desc:|07 ", nf.name, nf.size)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(descPrompt)), outputMode)
+		// ZipLab processing for supported archive types
+		var description string
+		filePath := filepath.Join(targetDir, nf.name)
 
-		description, err := terminal.ReadLine()
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return err
-			}
-			log.Printf("ERROR: Node %d: Failed to read description for %s: %v", nodeNumber, nf.name, err)
-			continue
+		zlCfg, zlErr := ziplab.LoadConfig(e.RootConfigPath)
+		if zlErr != nil {
+			log.Printf("WARN: Node %d: Failed to load ZipLab config: %v", nodeNumber, zlErr)
 		}
 
-		description = sanitizeControlChars(strings.TrimSpace(description))
+		if zlErr == nil && zlCfg.Enabled && zlCfg.RunOnUpload && zlCfg.IsArchiveSupported(nf.name) {
+			log.Printf("INFO: Node %d: Running ZipLab pipeline on %s", nodeNumber, nf.name)
+
+			proc := ziplab.NewProcessor(zlCfg, e.RootConfigPath)
+
+			// Load ZIPLAB.ANS and ZIPLAB.NFO for visual display
+			ansiPath := filepath.Join(e.MenuSetPath, "ansi", "ZIPLAB.ANS")
+			nfoPath := filepath.Join(e.MenuSetPath, "ansi", "ZIPLAB.NFO")
+
+			ansiContent, _ := ansi.GetAnsiFileContent(ansiPath)
+			nfo, _ := ziplab.ParseNFO(nfoPath)
+
+			var result ziplab.PipelineResult
+			if ansiContent != nil {
+				result = proc.DisplayPipeline(terminal, nfo, ansiContent, filePath)
+			} else {
+				result = proc.RunPipeline(filePath, nil)
+			}
+
+			if !result.Success {
+				log.Printf("ERROR: Node %d: ZipLab pipeline failed for %s: %v", nodeNumber, nf.name, result.Error)
+				errMsg := fmt.Sprintf("\r\n|01ZipLab processing failed for '%s'.|07\r\n", nf.name)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+				time.Sleep(2 * time.Second)
+				continue
+			}
+
+			if result.Description != "" {
+				description = result.Description
+				log.Printf("INFO: Node %d: Using FILE_ID.DIZ description for %s: %q", nodeNumber, nf.name, description)
+			}
+		}
+
+		// Prompt for description if ZipLab didn't extract one
+		if description == "" {
+			descPrompt := fmt.Sprintf("\r\n|15%s|07 (%d bytes)\r\n|11Desc:|07 ", nf.name, nf.size)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(descPrompt)), outputMode)
+
+			descInput, err := terminal.ReadLine()
+			if err != nil {
+				if errors.Is(err, io.EOF) {
+					return err
+				}
+				log.Printf("ERROR: Node %d: Failed to read description for %s: %v", nodeNumber, nf.name, err)
+				continue
+			}
+
+			description = sanitizeControlChars(strings.TrimSpace(descInput))
+		}
+
 		if len(description) > 60 {
 			description = description[:60]
 		}
