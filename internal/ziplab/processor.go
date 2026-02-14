@@ -119,12 +119,16 @@ func (p *Processor) extractZip(zipPath, destDir string) error {
 		}
 
 		if f.FileInfo().IsDir() {
-			os.MkdirAll(targetPath, 0755)
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return fmt.Errorf("failed to create directory %s: %w", targetPath, err)
+			}
 			continue
 		}
 
 		// Ensure parent directory exists
-		os.MkdirAll(filepath.Dir(targetPath), 0755)
+		if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			return fmt.Errorf("failed to create parent directory for %s: %w", targetPath, err)
+		}
 
 		outFile, err := os.Create(targetPath)
 		if err != nil {
@@ -237,7 +241,14 @@ func (p *Processor) removeFilesFromZip(zipPath string, patterns []string) error 
 				os.Remove(tmpPath)
 				return fmt.Errorf("failed to read entry %s: %w", f.Name, err)
 			}
-			io.Copy(fw, rc)
+			if _, err := io.Copy(fw, rc); err != nil {
+				rc.Close()
+				w.Close()
+				outFile.Close()
+				r.Close()
+				os.Remove(tmpPath)
+				return fmt.Errorf("failed to copy data for %s: %w", f.Name, err)
+			}
 			rc.Close()
 		}
 	}
@@ -482,7 +493,14 @@ func (p *Processor) addFileToZip(zipPath, name string, data []byte) error {
 				os.Remove(tmpPath)
 				return err
 			}
-			io.Copy(fw, rc)
+			if _, err := io.Copy(fw, rc); err != nil {
+				rc.Close()
+				w.Close()
+				outFile.Close()
+				r.Close()
+				os.Remove(tmpPath)
+				return fmt.Errorf("failed to copy data for %s: %w", f.Name, err)
+			}
 			rc.Close()
 		}
 	}
@@ -528,7 +546,6 @@ func (p *Processor) runExternalCommand(command string, args []string, archivePat
 	}
 
 	timeout := 60 * time.Second
-	// Note: timeout from step config would be applied by the caller
 
 	cmd := exec.Command(command, expandedArgs...)
 	cmd.Dir = workDir

@@ -6462,18 +6462,23 @@ func scanDirectoryFiles(dir string) (map[string]int64, error) {
 	}
 	files := make(map[string]int64)
 	for _, entry := range entries {
-		if !entry.IsDir() && entry.Name() != "metadata.json" {
-			info, err := entry.Info()
-			if err != nil {
-				log.Printf("WARN: Failed to get info for file %s: %v", entry.Name(), err)
-				continue
-			}
-			if !info.Mode().IsRegular() {
-				log.Printf("WARN: Skipping non-regular file %s", entry.Name())
-				continue
-			}
-			files[entry.Name()] = info.Size()
+		if entry.IsDir() || entry.Name() == "metadata.json" {
+			continue
 		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			log.Printf("WARN: Skipping symlink %s", entry.Name())
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			log.Printf("WARN: Failed to get info for file %s: %v", entry.Name(), err)
+			continue
+		}
+		if !info.Mode().IsRegular() {
+			log.Printf("WARN: Skipping non-regular file %s", entry.Name())
+			continue
+		}
+		files[entry.Name()] = info.Size()
 	}
 	return files, nil
 }
@@ -6512,14 +6517,7 @@ func (e *MenuExecutor) runUploadFiles(
 		return fmt.Errorf("failed to resolve upload directory: %w", err)
 	}
 
-	// 3. Get baseline of existing files on disk
-	filesBefore, err := scanDirectoryFiles(targetDir)
-	if err != nil {
-		log.Printf("ERROR: Node %d: Failed to scan directory before upload: %v", nodeNumber, err)
-		return fmt.Errorf("failed to scan upload directory: %w", err)
-	}
-
-	// 4. Build set of existing filenames in metadata for duplicate checking
+	// 3. Build set of existing filenames in metadata for duplicate checking
 	existingFiles := e.FileMgr.GetFilesForArea(currentAreaID)
 	existingNames := make(map[string]bool)
 	for _, f := range existingFiles {
@@ -6541,11 +6539,19 @@ func (e *MenuExecutor) runUploadFiles(
 		return nil
 	}
 
-	// 6. Execute ZMODEM receive
+	// 6. Create temp directory for receiving uploads
+	incomingDir, err := os.MkdirTemp(targetDir, ".incoming-*")
+	if err != nil {
+		log.Printf("ERROR: Node %d: Failed to create incoming directory: %v", nodeNumber, err)
+		return fmt.Errorf("failed to create incoming directory: %w", err)
+	}
+	defer os.RemoveAll(incomingDir)
+
+	// 7. Execute ZMODEM receive into temp directory
 	msg = "\r\n|15Starting ZMODEM receive...|07\r\n"
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
-	transferErr := transfer.ExecuteZmodemReceive(s, targetDir)
+	transferErr := transfer.ExecuteZmodemReceive(s, incomingDir)
 	if transferErr != nil {
 		log.Printf("ERROR: Node %d: ZMODEM receive failed: %v", nodeNumber, transferErr)
 		errMsg := "\r\n|01ZMODEM receive failed.|07\r\n"
@@ -6554,23 +6560,20 @@ func (e *MenuExecutor) runUploadFiles(
 		return nil
 	}
 
-	// 7. Scan for new files
-	filesAfter, err := scanDirectoryFiles(targetDir)
+	// 8. Scan received files from temp directory
+	receivedFiles, err := scanDirectoryFiles(incomingDir)
 	if err != nil {
-		log.Printf("ERROR: Node %d: Failed to scan directory after upload: %v", nodeNumber, err)
+		log.Printf("ERROR: Node %d: Failed to scan incoming directory: %v", nodeNumber, err)
 		return nil
 	}
 
-	// Determine new files (present after but not before)
 	type newFileInfo struct {
 		name string
 		size int64
 	}
 	var newFiles []newFileInfo
-	for filename, size := range filesAfter {
-		if _, existed := filesBefore[filename]; !existed {
-			newFiles = append(newFiles, newFileInfo{name: filename, size: size})
-		}
+	for filename, size := range receivedFiles {
+		newFiles = append(newFiles, newFileInfo{name: filename, size: size})
 	}
 
 	if len(newFiles) == 0 {
@@ -6587,17 +6590,18 @@ func (e *MenuExecutor) runUploadFiles(
 
 	log.Printf("INFO: Node %d: Detected %d new file(s) after upload", nodeNumber, len(newFiles))
 
-	// 8. Process each new file
+	// 9. Process each new file
 	successCount := 0
 	duplicateCount := 0
 
 	for _, nf := range newFiles {
+		incomingPath := filepath.Join(incomingDir, nf.name)
+
 		// Validate filename (defense in depth — rz -r should prevent this, but be safe)
 		safeName := filepath.Base(nf.name)
 		if safeName != nf.name || safeName == "." || safeName == ".." || strings.Contains(nf.name, "..") || filepath.IsAbs(nf.name) {
 			log.Printf("ERROR: Node %d: Rejected unsafe filename: %s", nodeNumber, nf.name)
-			filePath := filepath.Join(targetDir, nf.name)
-			os.Remove(filePath)
+			os.Remove(incomingPath)
 			errMsg := fmt.Sprintf("\r\n|01'%s' rejected: invalid filename.|07\r\n", nf.name)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 			continue
@@ -6607,20 +6611,16 @@ func (e *MenuExecutor) runUploadFiles(
 		if existingNames[strings.ToLower(nf.name)] {
 			log.Printf("WARN: Node %d: Duplicate file rejected: %s", nodeNumber, nf.name)
 			duplicateCount++
-
-			filePath := filepath.Join(targetDir, nf.name)
-			if removeErr := os.Remove(filePath); removeErr != nil {
-				log.Printf("ERROR: Node %d: Failed to remove duplicate file %s: %v", nodeNumber, nf.name, removeErr)
-			}
+			os.Remove(incomingPath)
 
 			dupMsg := fmt.Sprintf("\r\n|09'%s' already exists in this area. Rejected.|07\r\n", nf.name)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(dupMsg)), outputMode)
 			continue
 		}
 
-		// ZipLab processing for supported archive types
+		// ZipLab processing for supported archive types (runs on file in incoming dir)
 		var description string
-		filePath := filepath.Join(targetDir, nf.name)
+		filePath := incomingPath
 
 		zlCfg, zlErr := ziplab.LoadConfig(e.RootConfigPath)
 		if zlErr != nil {
@@ -6677,8 +6677,8 @@ func (e *MenuExecutor) runUploadFiles(
 			description = sanitizeControlChars(strings.TrimSpace(descInput))
 		}
 
-		if len(description) > 60 {
-			description = description[:60]
+		if len([]rune(description)) > 60 {
+			description = string([]rune(description)[:60])
 		}
 		if description == "" {
 			description = "No description"
@@ -6696,11 +6696,20 @@ func (e *MenuExecutor) runUploadFiles(
 			DownloadCount: 0,
 		}
 
+		// Move file from incoming to target directory
+		finalPath := filepath.Join(targetDir, nf.name)
+		if moveErr := os.Rename(incomingPath, finalPath); moveErr != nil {
+			log.Printf("ERROR: Node %d: Failed to move %s to area: %v", nodeNumber, nf.name, moveErr)
+			errMsg := fmt.Sprintf("\r\n|01Failed to accept '%s'.|07\r\n", nf.name)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+			continue
+		}
+
 		if addErr := e.FileMgr.AddFileRecord(record); addErr != nil {
 			log.Printf("ERROR: Node %d: Failed to add file record for %s: %v", nodeNumber, nf.name, addErr)
 			errMsg := fmt.Sprintf("\r\n|01Failed to register '%s'.|07\r\n", nf.name)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
-			if removeErr := os.Remove(filepath.Join(targetDir, nf.name)); removeErr != nil {
+			if removeErr := os.Remove(finalPath); removeErr != nil {
 				log.Printf("ERROR: Node %d: Failed to clean up orphaned file %s: %v", nodeNumber, nf.name, removeErr)
 			}
 			continue

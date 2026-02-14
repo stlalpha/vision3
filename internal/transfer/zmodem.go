@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -103,12 +102,8 @@ func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 		log.Printf("DEBUG: (%s) Goroutine: Copying session stdin -> PTY starting...", cmd.Path)
 		n, err := io.Copy(ptmx, s)
 		log.Printf("DEBUG: (%s) Goroutine: Copying session stdin -> PTY finished. Bytes: %d, Error: %v", cmd.Path, n, err)
-		if err != nil && err != io.EOF && !errors.Is(err, os.ErrClosed) && !errors.Is(err, syscall.EIO) {
-			if strings.Contains(err.Error(), "read interrupted") {
-				log.Printf("DEBUG: (%s) Input goroutine interrupted (expected during shutdown)", cmd.Path)
-			} else {
-				log.Printf("WARN: (%s) Error copying session stdin to PTY: %v", cmd.Path, err)
-			}
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) && !errors.Is(err, syscall.EIO) && !errors.Is(err, syscall.EINTR) {
+			log.Printf("WARN: (%s) Error copying session stdin to PTY: %v", cmd.Path, err)
 		}
 	}()
 	go func() {
@@ -116,12 +111,8 @@ func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 		log.Printf("DEBUG: (%s) Goroutine: Copying PTY stdout -> session starting...", cmd.Path)
 		n, err := io.Copy(s, ptmx)
 		log.Printf("DEBUG: (%s) Goroutine: Copying PTY stdout -> session finished. Bytes: %d, Error: %v", cmd.Path, n, err)
-		if err != nil && err != io.EOF && !errors.Is(err, os.ErrClosed) && !errors.Is(err, syscall.EIO) {
-			if strings.Contains(err.Error(), "input/output error") {
-				log.Printf("DEBUG: (%s) Output goroutine I/O error (expected during shutdown)", cmd.Path)
-			} else {
-				log.Printf("WARN: (%s) Error copying PTY stdout to session stdout: %v", cmd.Path, err)
-			}
+		if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, os.ErrClosed) && !errors.Is(err, syscall.EIO) {
+			log.Printf("WARN: (%s) Error copying PTY stdout to session stdout: %v", cmd.Path, err)
 		}
 	}()
 

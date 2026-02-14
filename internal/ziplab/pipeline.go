@@ -179,8 +179,12 @@ func (p *Processor) handleScanFailure(archivePath string) {
 	switch p.config.ScanFailBehavior {
 	case "quarantine":
 		if p.config.QuarantinePath != "" {
-			os.MkdirAll(p.config.QuarantinePath, 0755)
-			dest := p.config.QuarantinePath + "/" + filepath.Base(archivePath)
+			if err := os.MkdirAll(p.config.QuarantinePath, 0755); err != nil {
+				log.Printf("ERROR: Failed to create quarantine directory %s: %v", p.config.QuarantinePath, err)
+				os.Remove(archivePath)
+				return
+			}
+			dest := filepath.Join(p.config.QuarantinePath, filepath.Base(archivePath))
 			if err := os.Rename(archivePath, dest); err != nil {
 				log.Printf("ERROR: Failed to quarantine %s: %v", archivePath, err)
 				os.Remove(archivePath)
