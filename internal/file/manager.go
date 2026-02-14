@@ -481,6 +481,29 @@ searchLoop:
 	return fullPath, nil
 }
 
+// GetAreaUploadPath returns the absolute filesystem path for an area's file directory.
+func (fm *FileManager) GetAreaUploadPath(areaID int) (string, error) {
+	fm.muAreas.RLock()
+	defer fm.muAreas.RUnlock()
+
+	area, exists := fm.fileAreas[areaID]
+	if !exists {
+		return "", fmt.Errorf("file area %d not found", areaID)
+	}
+
+	absBasePath, err := filepath.Abs(fm.basePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute base path: %w", err)
+	}
+
+	fullPath := filepath.Join(absBasePath, area.Path)
+	if !strings.HasPrefix(fullPath, absBasePath) {
+		return "", fmt.Errorf("area path outside base directory")
+	}
+
+	return fullPath, nil
+}
+
 // IsSupportedArchive checks if the filename suggests a supported archive type.
 // Currently only supports .zip (case-insensitive).
 func (fm *FileManager) IsSupportedArchive(filename string) bool {

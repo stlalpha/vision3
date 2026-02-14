@@ -6436,6 +6436,232 @@ func formatQuote(originalMsg *message.DisplayMessage, quotePrefix string) string
 	return builder.String()
 }
 
+// scanDirectoryFiles returns a map of filename -> file size for all files in a directory,
+// excluding metadata.json.
+func scanDirectoryFiles(dir string) (map[string]int64, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read directory: %w", err)
+	}
+	files := make(map[string]int64)
+	for _, entry := range entries {
+		if !entry.IsDir() && entry.Name() != "metadata.json" {
+			info, err := entry.Info()
+			if err != nil {
+				log.Printf("WARN: Failed to get info for file %s: %v", entry.Name(), err)
+				continue
+			}
+			files[entry.Name()] = info.Size()
+		}
+	}
+	return files, nil
+}
+
+// runUploadFiles handles the ZMODEM upload workflow for the current file area.
+func (e *MenuExecutor) runUploadFiles(
+	s ssh.Session,
+	terminal *term.Terminal,
+	currentUser *user.User,
+	userManager *user.UserMgr,
+	currentAreaID int,
+	currentAreaTag string,
+	outputMode ansi.OutputMode,
+	nodeNumber int,
+	sessionStartTime time.Time,
+) error {
+	log.Printf("INFO: Node %d: User %s starting upload to area %d (%s)", nodeNumber, currentUser.Handle, currentAreaID, currentAreaTag)
+
+	// 1. Check upload ACS
+	area, areaExists := e.FileMgr.GetAreaByID(currentAreaID)
+	if !areaExists {
+		return fmt.Errorf("file area %d not found", currentAreaID)
+	}
+
+	if area.ACSUpload != "" && !checkACS(area.ACSUpload, currentUser, s, terminal, sessionStartTime) {
+		log.Printf("WARN: Node %d: User %s denied upload access to area %s (ACS: %s)", nodeNumber, currentUser.Handle, currentAreaTag, area.ACSUpload)
+		msg := "\r\n|01You do not have permission to upload to this area.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(2 * time.Second)
+		return nil
+	}
+
+	// 2. Determine target directory
+	targetDir, err := e.FileMgr.GetAreaUploadPath(currentAreaID)
+	if err != nil {
+		return fmt.Errorf("failed to resolve upload directory: %w", err)
+	}
+
+	// 3. Get baseline of existing files on disk
+	filesBefore, err := scanDirectoryFiles(targetDir)
+	if err != nil {
+		log.Printf("ERROR: Node %d: Failed to scan directory before upload: %v", nodeNumber, err)
+		return fmt.Errorf("failed to scan upload directory: %w", err)
+	}
+
+	// 4. Build set of existing filenames in metadata for duplicate checking
+	existingFiles := e.FileMgr.GetFilesForArea(currentAreaID)
+	existingNames := make(map[string]bool)
+	for _, f := range existingFiles {
+		existingNames[strings.ToLower(f.Filename)] = true
+	}
+
+	// 5. Display instructions
+	msg := fmt.Sprintf("\r\n|15Uploading to: |14%s|07\r\n\r\n|11Start the ZMODEM send in your terminal.|07\r\n|07After transfer, you will be prompted for file descriptions.\r\n\r\n|07Press |15ENTER|07 to begin or |15Q|07 to cancel: ", area.Name)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+
+	input, err := terminal.ReadLine()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return err
+		}
+		return nil
+	}
+	if strings.ToUpper(strings.TrimSpace(input)) == "Q" {
+		return nil
+	}
+
+	// 6. Execute ZMODEM receive
+	msg = "\r\n|15Starting ZMODEM receive...|07\r\n"
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+
+	transferErr := transfer.ExecuteZmodemReceive(s, targetDir)
+	if transferErr != nil {
+		log.Printf("ERROR: Node %d: ZMODEM receive failed: %v", nodeNumber, transferErr)
+		errMsg := "\r\n|01ZMODEM receive failed.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+		time.Sleep(2 * time.Second)
+		return nil
+	}
+
+	// 7. Scan for new files
+	filesAfter, err := scanDirectoryFiles(targetDir)
+	if err != nil {
+		log.Printf("ERROR: Node %d: Failed to scan directory after upload: %v", nodeNumber, err)
+		return nil
+	}
+
+	// Determine new files (present after but not before)
+	type newFileInfo struct {
+		name string
+		size int64
+	}
+	var newFiles []newFileInfo
+	for filename, size := range filesAfter {
+		if _, existed := filesBefore[filename]; !existed {
+			newFiles = append(newFiles, newFileInfo{name: filename, size: size})
+		}
+	}
+
+	if len(newFiles) == 0 {
+		msg = "\r\n|07No new files detected.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(2 * time.Second)
+		return nil
+	}
+
+	// Sort by name for consistent ordering
+	sort.Slice(newFiles, func(i, j int) bool {
+		return newFiles[i].name < newFiles[j].name
+	})
+
+	log.Printf("INFO: Node %d: Detected %d new file(s) after upload", nodeNumber, len(newFiles))
+
+	// 8. Process each new file
+	successCount := 0
+	duplicateCount := 0
+
+	for _, nf := range newFiles {
+		// Validate filename (defense in depth — rz -r should prevent this, but be safe)
+		safeName := filepath.Base(nf.name)
+		if safeName != nf.name || safeName == "." || safeName == ".." || strings.Contains(nf.name, "..") || filepath.IsAbs(nf.name) {
+			log.Printf("ERROR: Node %d: Rejected unsafe filename: %s", nodeNumber, nf.name)
+			filePath := filepath.Join(targetDir, nf.name)
+			os.Remove(filePath)
+			errMsg := fmt.Sprintf("\r\n|01'%s' rejected: invalid filename.|07\r\n", nf.name)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+			continue
+		}
+
+		// Check for duplicate in metadata
+		if existingNames[strings.ToLower(nf.name)] {
+			log.Printf("WARN: Node %d: Duplicate file rejected: %s", nodeNumber, nf.name)
+			duplicateCount++
+
+			filePath := filepath.Join(targetDir, nf.name)
+			if removeErr := os.Remove(filePath); removeErr != nil {
+				log.Printf("ERROR: Node %d: Failed to remove duplicate file %s: %v", nodeNumber, nf.name, removeErr)
+			}
+
+			dupMsg := fmt.Sprintf("\r\n|09'%s' already exists in this area. Rejected.|07\r\n", nf.name)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(dupMsg)), outputMode)
+			continue
+		}
+
+		// Prompt for description
+		descPrompt := fmt.Sprintf("\r\n|15%s|07 (%d bytes)\r\n|11Desc:|07 ", nf.name, nf.size)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(descPrompt)), outputMode)
+
+		description, err := terminal.ReadLine()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return err
+			}
+			log.Printf("ERROR: Node %d: Failed to read description for %s: %v", nodeNumber, nf.name, err)
+			continue
+		}
+
+		description = strings.TrimSpace(description)
+		if len(description) > 60 {
+			description = description[:60]
+		}
+		if description == "" {
+			description = "No description"
+		}
+
+		// Create and add FileRecord
+		record := file.FileRecord{
+			ID:            uuid.New(),
+			AreaID:        currentAreaID,
+			Filename:      nf.name,
+			Description:   description,
+			Size:          nf.size,
+			UploadedAt:    time.Now(),
+			UploadedBy:    currentUser.Handle,
+			DownloadCount: 0,
+		}
+
+		if addErr := e.FileMgr.AddFileRecord(record); addErr != nil {
+			log.Printf("ERROR: Node %d: Failed to add file record for %s: %v", nodeNumber, nf.name, addErr)
+			errMsg := fmt.Sprintf("\r\n|01Failed to register '%s'.|07\r\n", nf.name)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+			continue
+		}
+
+		log.Printf("INFO: Node %d: Added file record for %s (ID: %s)", nodeNumber, nf.name, record.ID)
+		successCount++
+		existingNames[strings.ToLower(nf.name)] = true
+	}
+
+	// 9. Update user upload count
+	if successCount > 0 {
+		currentUser.NumUploads += successCount
+		if updateErr := userManager.UpdateUser(currentUser); updateErr != nil {
+			log.Printf("ERROR: Node %d: Failed to update user upload count: %v", nodeNumber, updateErr)
+		}
+	}
+
+	// 10. Display summary
+	summary := fmt.Sprintf("\r\n|15Upload complete.|07 Added: |15%d|07", successCount)
+	if duplicateCount > 0 {
+		summary += fmt.Sprintf("  Rejected (duplicate): |09%d|07", duplicateCount)
+	}
+	summary += "\r\n"
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(summary)), outputMode)
+	time.Sleep(2 * time.Second)
+
+	return nil
+}
+
 // runListFiles displays a paginated list of files in the current file area.
 func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running LISTFILES", nodeNumber)
@@ -6865,14 +7091,32 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 			// Go back to the file list (will redraw with cleared marks)
 			continue
-		case "U": // Upload (Placeholder)
-			log.Printf("DEBUG: Node %d: Upload command entered (Not Implemented)", nodeNumber)
-			msg := "\r\n|01Upload function not yet implemented.|07\r\n"
-			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-			if wErr != nil { /* Log? */
+		case "U": // Upload Files
+			log.Printf("DEBUG: Node %d: Upload command entered for area %d (%s)", nodeNumber, currentAreaID, currentAreaTag)
+			uploadErr := e.runUploadFiles(s, terminal, currentUser, userManager, currentAreaID, currentAreaTag, outputMode, nodeNumber, sessionStartTime)
+			if uploadErr != nil {
+				if errors.Is(uploadErr, io.EOF) {
+					return nil, "LOGOFF", uploadErr
+				}
+				log.Printf("ERROR: Node %d: Upload failed: %v", nodeNumber, uploadErr)
 			}
-			time.Sleep(1 * time.Second)
-			// Stay on the same page
+			// Reload user to get updated NumUploads
+			if reloaded, exists := userManager.GetUser(strings.ToLower(currentUser.Username)); exists {
+				currentUser = reloaded
+			}
+			// Refresh file count and page data
+			totalFiles, _ = e.FileMgr.GetFileCountForArea(currentAreaID)
+			if filesPerPage > 0 {
+				totalPages = (totalFiles + filesPerPage - 1) / filesPerPage
+			}
+			if totalPages == 0 {
+				totalPages = 1
+			}
+			if currentPage > totalPages {
+				currentPage = totalPages
+			}
+			filesOnPage, _ = e.FileMgr.GetFilesForAreaPaginated(currentAreaID, currentPage, filesPerPage)
+			continue
 		case "V": // View (Placeholder)
 			log.Printf("DEBUG: Node %d: View command entered (Not Implemented)", nodeNumber)
 			msg := "\r\n|01View function not yet implemented.|07\r\n"

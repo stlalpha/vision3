@@ -8,7 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sync"
+	"strings"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -41,7 +41,7 @@ func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 	if err != nil {
 		return fmt.Errorf("failed to start pty for command '%s': %w", cmd.Path, err)
 	}
-	defer func() { _ = ptmx.Close() }()
+	// ptmx is closed explicitly during shutdown sequence below
 
 	// Handle window resizing.
 	go func() {
@@ -84,38 +84,65 @@ func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 			}
 		}
 	}
-	defer restoreTerminal()
+	// restoreTerminal is called explicitly during shutdown sequence below
+
+	// --- SetReadInterrupt for clean shutdown ---
+	readInterrupt := make(chan struct{})
+	hasInterrupt := false
+	if ri, ok := s.(interface{ SetReadInterrupt(<-chan struct{}) }); ok {
+		ri.SetReadInterrupt(readInterrupt)
+		defer ri.SetReadInterrupt(nil)
+		hasInterrupt = true
+	}
 
 	// --- I/O Copying ---
-	var wg sync.WaitGroup
-	wg.Add(2)
+	inputDone := make(chan struct{})
+	outputDone := make(chan struct{})
 	go func() {
-		defer wg.Done()
+		defer close(inputDone)
 		log.Printf("DEBUG: (%s) Goroutine: Copying session stdin -> PTY starting...", cmd.Path)
 		n, err := io.Copy(ptmx, s)
 		log.Printf("DEBUG: (%s) Goroutine: Copying session stdin -> PTY finished. Bytes: %d, Error: %v", cmd.Path, n, err)
 		if err != nil && err != io.EOF && !errors.Is(err, os.ErrClosed) && !errors.Is(err, syscall.EIO) {
-			log.Printf("WARN: (%s) Error copying session stdin to PTY: %v", cmd.Path, err)
+			if strings.Contains(err.Error(), "read interrupted") {
+				log.Printf("DEBUG: (%s) Input goroutine interrupted (expected during shutdown)", cmd.Path)
+			} else {
+				log.Printf("WARN: (%s) Error copying session stdin to PTY: %v", cmd.Path, err)
+			}
 		}
-		// Signal ptmx writer is closed, which might unblock reader
-		// log.Printf("DEBUG: (%s) Goroutine: Closing PTY master fd after stdin copy.", cmd.Path) // Keep this commented, defer handles closing.
-		// ptmx.Close() // Let the main defer handle closing
 	}()
 	go func() {
-		defer wg.Done()
+		defer close(outputDone)
 		log.Printf("DEBUG: (%s) Goroutine: Copying PTY stdout -> session starting...", cmd.Path)
 		n, err := io.Copy(s, ptmx)
 		log.Printf("DEBUG: (%s) Goroutine: Copying PTY stdout -> session finished. Bytes: %d, Error: %v", cmd.Path, n, err)
 		if err != nil && err != io.EOF && !errors.Is(err, os.ErrClosed) && !errors.Is(err, syscall.EIO) {
-			log.Printf("WARN: (%s) Error copying PTY stdout to session stdout: %v", cmd.Path, err)
+			if strings.Contains(err.Error(), "input/output error") {
+				log.Printf("DEBUG: (%s) Output goroutine I/O error (expected during shutdown)", cmd.Path)
+			} else {
+				log.Printf("WARN: (%s) Error copying PTY stdout to session stdout: %v", cmd.Path, err)
+			}
 		}
 	}()
 
-	log.Printf("DEBUG: (%s) Waiting for I/O goroutines to finish...", cmd.Path)
-	wg.Wait()
-	log.Printf("DEBUG: (%s) I/O copying finished. Waiting for command completion...", cmd.Path)
+	// Wait for command to complete, then clean shutdown
+	log.Printf("DEBUG: (%s) Waiting for command completion...", cmd.Path)
 	cmdErr := cmd.Wait()
 	log.Printf("DEBUG: (%s) Command finished. Error: %v", cmd.Path, cmdErr)
+
+	// Interrupt the input goroutine's blocked Read() so it exits without
+	// consuming the user's next keypress
+	close(readInterrupt)
+	if hasInterrupt {
+		<-inputDone
+	}
+
+	// Restore terminal before closing PTY
+	restoreTerminal()
+
+	// Close PTY and wait for output goroutine
+	_ = ptmx.Close()
+	<-outputDone
 
 	return cmdErr
 }
@@ -183,8 +210,8 @@ func ExecuteZmodemReceive(s ssh.Session, targetDir string) error {
 	}
 	log.Printf("DEBUG: Found 'rz' command at: %s", rzPath)
 
-	// 3. Construct command: rz [-b] [-e]
-	args := []string{"-b"} // Binary, Escape control chars
+	// 3. Construct command: rz -b -r
+	args := []string{"-b", "-r"} // Binary mode, Restricted mode (prevents path traversal)
 	cmd := exec.Command(rzPath, args...)
 	cmd.Dir = absTargetDir // Run rz in the target directory
 
