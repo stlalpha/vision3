@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -177,6 +178,18 @@ func (e *MenuExecutor) GetServerConfig() config.ServerConfig {
 	e.configMu.RLock()
 	defer e.configMu.RUnlock()
 	return e.ServerCfg
+}
+
+// remoteIPFromSession extracts the IP address from an SSH session's remote address,
+// correctly handling both IPv4 and IPv6 addresses with ports.
+func remoteIPFromSession(s ssh.Session) string {
+	host, _, err := net.SplitHostPort(s.RemoteAddr().String())
+	if err != nil {
+		// If no port, use the full address and strip brackets
+		return strings.Trim(s.RemoteAddr().String(), "[]")
+	}
+	// Strip IPv6 brackets if present
+	return strings.Trim(host, "[]")
 }
 
 func (e *MenuExecutor) showUndefinedMenuInput(terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber int) {
@@ -1192,12 +1205,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 	}
 
 	// Get remote IP address for lockout checking
-	remoteAddr := s.RemoteAddr().String()
-	// Extract just the IP (remove port if present)
-	remoteIP := remoteAddr
-	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
-		remoteIP = remoteAddr[:idx]
-	}
+	remoteIP := remoteIPFromSession(s)
 
 	// Check if this IP is currently locked out
 	if e.IPLockoutCheck != nil {
@@ -2058,12 +2066,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 	}
 
 	// Get remote IP address for lockout checking
-	remoteAddr := s.RemoteAddr().String()
-	// Extract just the IP (remove port if present)
-	remoteIP := remoteAddr
-	if idx := strings.LastIndex(remoteAddr, ":"); idx != -1 {
-		remoteIP = remoteAddr[:idx]
-	}
+	remoteIP := remoteIPFromSession(s)
 
 	// Check if this IP is currently locked out
 	if e.IPLockoutCheck != nil {

@@ -352,7 +352,7 @@ func writeBatchFile(ctx *DoorCtx, batchPath, driveCNodeDir string) error {
 
 	b.WriteString("exitemu" + crlf)
 
-	return os.WriteFile(batchPath, []byte(b.String()), 0644)
+	return os.WriteFile(batchPath, []byte(b.String()), 0600)
 }
 
 // --- DOS Door Executor ---
