@@ -7,7 +7,7 @@
     <title>ViSiON/3 BBS</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -24,8 +24,7 @@
     <!-- BBS Nav -->
     <nav class="bbs-nav">
         <div class="container">
-            <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">A</span><span class="nav-bracket">]</span> <a href="#about"><span class="fade-1">A</span><span class="fade-2">b</span><span class="fade-3">o</span><span class="fade-2">u</span><span class="fade-1">t</span></a></span>
-            <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">F</span><span class="nav-bracket">]</span> <a href="#features"><span class="fade-1">F</span><span class="fade-2">e</span><span class="fade-3">atur</span><span class="fade-2">e</span><span class="fade-1">s</span></a></span>
+<span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">F</span><span class="nav-bracket">]</span> <a href="#features"><span class="fade-1">F</span><span class="fade-2">e</span><span class="fade-3">atur</span><span class="fade-2">e</span><span class="fade-1">s</span></a></span>
             <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">G</span><span class="nav-bracket">]</span> <a href="#get-started"><span class="fade-1">G</span><span class="fade-2">e</span><span class="fade-3">t Start</span><span class="fade-2">e</span><span class="fade-1">d</span></a></span>
             <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">J</span><span class="nav-bracket">]</span> <a href="#get-involved"><span class="fade-1">G</span><span class="fade-2">e</span><span class="fade-3">t Involv</span><span class="fade-2">e</span><span class="fade-1">d</span></a></span>
             <span class="nav-item"><span class="nav-bracket">[</span><span class="nav-key">H</span><span class="nav-bracket">]</span> <a href="#history"><span class="fade-1">H</span><span class="fade-2">i</span><span class="fade-3">sto</span><span class="fade-2">r</span><span class="fade-1">y</span></a></span>
@@ -36,35 +35,13 @@
     <header class="hero">
         <div class="container">
             <img src="ViSiON3.png" alt="ViSiON/3 BBS" class="hero-logo">
-            <p class="tagline">A modern resurrection of the classic BBS experience</p>
-            <p class="subtitle">SSH connectivity because you have no idea what a modem is.</p>
-            <p class="subtitle">Written in Go because we're not animals.</p>
+            <p class="tagline">A modern resurrection of the classic ViSiON/2 BBS software, by people who were around and involved when it was really cool.</p>
+            <p class="subtitle">We're rebuilding the BBS experience the way it should have evolved -- if the internet hadn't come along and ruined everything.</p>
         </div>
     </header>
 
-    <!-- About -->
-    <section class="about" id="about">
-        <div class="container">
-<div class="ansi-header" aria-label="About">
-<span class="row-1">▄▀▀▄  █▀▀▄  ▄▀▀▄  █  █  ▀██▀</span>
-<span class="row-2">█▀▀█  █▀▀▄  █  █  █  █   █</span>
-<span class="row-3">▀  ▀  ▀▀▀   ▀▀▀   ▀▀▀    ▀</span>
-</div>
-            <div class="msg-post">
-                <div class="msg-header">
-                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">What This Is</span> <span class="msg-right"><span class="msg-number">1</span> <span class="msg-number-of">of</span> <span class="msg-number">4</span></span></span>
-                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Author</span><span class="msg-bracket">]</span>: <span class="msg-value">felonius</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">When</span><span class="msg-bracket">]</span>: <span class="msg-value">02/11/26</span></span></span>
-                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">To</span><span class="msg-bracket">]</span>: <span class="msg-value">All</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">Area</span><span class="msg-bracket">]</span>: <span class="msg-value">General</span></span></span>
-                </div>
-                <div class="msg-body">
-                    <p>This is a ground-up rewrite of ViSiON/2 BBS in Go. You connect over SSH, not dialup -- but everything else is the real deal. Menus, message bases, file areas, door games, ANSI art. We didn't modernize away what makes it a BBS. We're not going to turn it into a web app. We're not adding a REST API. If you want that, there are plenty of other projects that would love to have you.</p>
 
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Features -->
+<!-- Features -->
     <section class="features" id="features">
         <div class="container">
 <div class="ansi-header" aria-label="Features">
@@ -111,19 +88,26 @@
 </div>
             <div class="msg-post">
                 <div class="msg-header">
-                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">Running Your Own</span> <span class="msg-right"><span class="msg-number">2</span> <span class="msg-number-of">of</span> <span class="msg-number">4</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">Running Your Own</span> <span class="msg-right"><span class="msg-number">1</span> <span class="msg-number-of">of</span> <span class="msg-number">3</span></span></span>
                     <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Author</span><span class="msg-bracket">]</span>: <span class="msg-value">felonius</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">When</span><span class="msg-bracket">]</span>: <span class="msg-value">02/11/26</span></span></span>
                     <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">To</span><span class="msg-bracket">]</span>: <span class="msg-value">All</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">Area</span><span class="msg-bracket">]</span>: <span class="msg-value">General</span></span></span>
                 </div>
                 <div class="msg-body">
-                    <p>Hey y'all - if you want to install the current vision3 bbs code on your own machine - execute these commands in a terminal:</p>
+                    <p>Docker (Recommended):</p>
+                    <p>&nbsp;</p>
+                    <p>git clone https://github.com/stlalpha/vision3.git</p>
+                    <p>cd vision3</p>
+                    <p>docker-compose up -d</p>
+                    <p>&nbsp;</p>
+                    <p>Manual:</p>
                     <p>&nbsp;</p>
                     <p>git clone https://github.com/stlalpha/vision3.git</p>
                     <p>cd vision3</p>
                     <p>./setup.sh</p>
-                    <p>cd cmd/vision3 && ./vision3</p>
+                    <p>./build.sh</p>
+                    <p>./bin/vision3</p>
                     <p>&nbsp;</p>
-                    <p>Connect from another terminal:</p>
+                    <p>Listens on port 2222. Default login: felonius / password</p>
                     <p>ssh felonius@localhost -p 2222</p>
                 </div>
             </div>
@@ -140,7 +124,7 @@
 </div>
             <div class="msg-post">
                 <div class="msg-header">
-                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">We Need You</span> <span class="msg-right"><span class="msg-number">3</span> <span class="msg-number-of">of</span> <span class="msg-number">4</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">We Need You</span> <span class="msg-right"><span class="msg-number">2</span> <span class="msg-number-of">of</span> <span class="msg-number">3</span></span></span>
                     <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Author</span><span class="msg-bracket">]</span>: <span class="msg-value">felonius</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">When</span><span class="msg-bracket">]</span>: <span class="msg-value">02/11/26</span></span></span>
                     <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">To</span><span class="msg-bracket">]</span>: <span class="msg-value">All</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">Area</span><span class="msg-bracket">]</span>: <span class="msg-value">General</span></span></span>
                 </div>
@@ -168,7 +152,7 @@
 </div>
             <div class="msg-post">
                 <div class="msg-header">
-                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">Where It Came From</span> <span class="msg-right"><span class="msg-number">4</span> <span class="msg-number-of">of</span> <span class="msg-number">4</span></span></span>
+                    <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Title</span><span class="msg-bracket">]</span>: <span class="msg-value">Where It Came From</span> <span class="msg-right"><span class="msg-number">3</span> <span class="msg-number-of">of</span> <span class="msg-number">3</span></span></span>
                     <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">Author</span><span class="msg-bracket">]</span>: <span class="msg-value">felonius</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">When</span><span class="msg-bracket">]</span>: <span class="msg-value">02/11/26</span></span></span>
                     <span class="msg-line"><span class="msg-bracket">[</span><span class="msg-label">To</span><span class="msg-bracket">]</span>: <span class="msg-value">All</span> <span class="msg-right"><span class="msg-bracket">[</span><span class="msg-label">Area</span><span class="msg-bracket">]</span>: <span class="msg-value">General</span></span></span>
                 </div>
