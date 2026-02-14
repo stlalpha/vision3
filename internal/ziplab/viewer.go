@@ -4,6 +4,8 @@ import (
 	"archive/zip"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 )
 
 // viewerFormatFileSize returns a human-readable file size string.
@@ -57,4 +59,59 @@ func formatArchiveListing(w io.Writer, zipPath string, filename string, termHeig
 	fmt.Fprintf(w, "\r\n|07[|15#|07]=Extract  [|15Q|07]=Quit\r\n")
 
 	return fileCount, nil
+}
+
+// extractSingleEntry extracts a single file from a ZIP archive by 1-based index.
+// Returns the path to the extracted file, a cleanup function that removes the
+// temp directory, and any error. On error, cleanup is handled internally and
+// the returned cleanup is a no-op.
+func extractSingleEntry(zipPath string, entryNum int) (string, func(), error) {
+	noop := func() {}
+
+	if entryNum < 1 {
+		return "", noop, fmt.Errorf("entry number must be >= 1, got %d", entryNum)
+	}
+
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return "", noop, fmt.Errorf("failed to open archive: %w", err)
+	}
+	defer r.Close()
+
+	if entryNum > len(r.File) {
+		return "", noop, fmt.Errorf("entry %d out of range (archive has %d entries)", entryNum, len(r.File))
+	}
+
+	entry := r.File[entryNum-1]
+
+	tmpDir, err := os.MkdirTemp("", "ziplab-extract-*")
+	if err != nil {
+		return "", noop, fmt.Errorf("failed to create temp dir: %w", err)
+	}
+
+	cleanup := func() { os.RemoveAll(tmpDir) }
+
+	// Use Base to prevent zip slip
+	destPath := filepath.Join(tmpDir, filepath.Base(entry.Name))
+
+	rc, err := entry.Open()
+	if err != nil {
+		cleanup()
+		return "", noop, fmt.Errorf("failed to open entry: %w", err)
+	}
+	defer rc.Close()
+
+	outFile, err := os.Create(destPath)
+	if err != nil {
+		cleanup()
+		return "", noop, fmt.Errorf("failed to create output file: %w", err)
+	}
+	defer outFile.Close()
+
+	if _, err := io.Copy(outFile, rc); err != nil {
+		cleanup()
+		return "", noop, fmt.Errorf("failed to extract file: %w", err)
+	}
+
+	return destPath, cleanup, nil
 }

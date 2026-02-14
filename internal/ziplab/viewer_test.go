@@ -143,6 +143,94 @@ func TestFormatArchiveListing_CorruptZip(t *testing.T) {
 	}
 }
 
+func TestExtractSingleEntry_ValidFile(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "test.zip")
+	modTime := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+
+	entries := []struct{ Name, Content string }{
+		{"first.txt", "first file content"},
+		{"subdir/second.txt", "second file content"},
+	}
+	createTestZipWithTimes(t, zipPath, entries, modTime)
+
+	// Extract entry #2 (1-based)
+	path, cleanup, err := extractSingleEntry(zipPath, 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	defer cleanup()
+
+	// Verify filename is base name only (zip slip prevention)
+	if filepath.Base(path) != "second.txt" {
+		t.Errorf("expected filename 'second.txt', got %q", filepath.Base(path))
+	}
+
+	// Verify content matches
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read extracted file: %v", err)
+	}
+	if string(data) != "second file content" {
+		t.Errorf("expected 'second file content', got %q", string(data))
+	}
+}
+
+func TestExtractSingleEntry_InvalidIndex(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "test.zip")
+	modTime := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+
+	entries := []struct{ Name, Content string }{
+		{"only.txt", "only file"},
+	}
+	createTestZipWithTimes(t, zipPath, entries, modTime)
+
+	// Index 0 is invalid (1-based)
+	_, _, err := extractSingleEntry(zipPath, 0)
+	if err == nil {
+		t.Error("expected error for index 0, got nil")
+	}
+
+	// Index out of range
+	_, _, err = extractSingleEntry(zipPath, 5)
+	if err == nil {
+		t.Error("expected error for out-of-range index, got nil")
+	}
+}
+
+func TestExtractSingleEntry_Cleanup(t *testing.T) {
+	dir := t.TempDir()
+	zipPath := filepath.Join(dir, "test.zip")
+	modTime := time.Date(2025, 6, 15, 0, 0, 0, 0, time.UTC)
+
+	entries := []struct{ Name, Content string }{
+		{"cleanup.txt", "cleanup test"},
+	}
+	createTestZipWithTimes(t, zipPath, entries, modTime)
+
+	path, cleanup, err := extractSingleEntry(zipPath, 1)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// File should exist
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("extracted file should exist: %v", err)
+	}
+
+	// Get temp dir path
+	tempDir := filepath.Dir(path)
+
+	// Call cleanup
+	cleanup()
+
+	// Temp dir should be gone
+	if _, err := os.Stat(tempDir); !os.IsNotExist(err) {
+		t.Errorf("temp dir should be removed after cleanup, got err: %v", err)
+	}
+}
+
 func TestFormatArchiveListing_ManyFiles(t *testing.T) {
 	dir := t.TempDir()
 	zipPath := filepath.Join(dir, "many.zip")
