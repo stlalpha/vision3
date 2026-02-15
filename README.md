@@ -113,7 +113,7 @@ Do we need a Discord? Do you want to host it? Contact me!
 *   Menu System Loading & Execution (`.MNU`, `.CFG`, `.ANS` files)
 *   Access Control System (ACS) Evaluation with basic operators (`!`, `&`, `|`, `()`)
 *   Menu Password Protection
-*   Message Areas: JAM format (echomail/netmail ready), conferences, full-screen reader with scrolling/lightbar menu, 14 customizable header styles, thread searching, replies with quoting, vi-style editor, newscan, last read tracking
+*   Message Areas: JAM format (echomail/netmail ready), conferences, full-screen reader with scrolling/lightbar menu, unlimited customizable header styles with lightbar selection, thread searching, replies with quoting, vi-style editor, newscan, last read tracking
 *   Private Mail: User-to-user private messaging with MSG_PRIVATE flag, send/read/list functions
 *   File Areas (basic implementation):
     *   List files
@@ -204,7 +204,7 @@ vision3/
 │   ├── cfg/                # Menu configuration files
 │   ├── mnu/                # Menu definition files
 │   └── templates/          # Display templates
-│       └── message_headers/ # 14 customizable message header styles
+│       └── message_headers/ # Customizable message header styles (unlimited, 14 included)
 ├── docs/                   # GitHub Pages website (vision3bbs.com)
 ├── documentation/          # Project documentation
 └── tasks/                  # Development task tracking
