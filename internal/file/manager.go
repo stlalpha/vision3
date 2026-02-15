@@ -421,6 +421,52 @@ searchLoop:
 	return nil
 }
 
+// UpdateFileRecord finds a file record by ID and applies the given update function.
+func (fm *FileManager) UpdateFileRecord(fileID uuid.UUID, updateFunc func(*FileRecord)) error {
+	fm.muFiles.Lock()
+	defer fm.muFiles.Unlock()
+
+	var foundAreaID int = -1
+	var foundIndex int = -1
+
+searchLoop:
+	for areaID, records := range fm.fileRecords {
+		for i := range records {
+			if records[i].ID == fileID {
+				foundAreaID = areaID
+				foundIndex = i
+				break searchLoop
+			}
+		}
+	}
+
+	if foundAreaID == -1 {
+		return fmt.Errorf("file record with ID %s not found", fileID)
+	}
+
+	updateFunc(&fm.fileRecords[foundAreaID][foundIndex])
+	filename := fm.fileRecords[foundAreaID][foundIndex].Filename
+
+	fm.muFiles.Unlock()
+	err := fm.saveFileRecords(foundAreaID)
+	fm.muFiles.Lock()
+
+	if err != nil {
+		log.Printf("ERROR: Failed to save file records after updating %s (ID: %s): %v", filename, fileID, err)
+		return err
+	}
+
+	log.Printf("DEBUG: Updated file record '%s' (ID: %s).", filename, fileID)
+	return nil
+}
+
+// UpdateFileDescription updates the description of a file record.
+func (fm *FileManager) UpdateFileDescription(fileID uuid.UUID, description string) error {
+	return fm.UpdateFileRecord(fileID, func(r *FileRecord) {
+		r.Description = description
+	})
+}
+
 // GetFilePath returns the full, absolute path to a file given its record ID.
 // It checks that the file exists and constructs the path safely.
 func (fm *FileManager) GetFilePath(fileID uuid.UUID) (string, error) {
@@ -477,6 +523,29 @@ searchLoop:
 	// if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 	// 	return "", fmt.Errorf("file '%s' not found on disk at expected path '%s'", safeFilename, fullPath)
 	// }
+
+	return fullPath, nil
+}
+
+// GetAreaUploadPath returns the absolute filesystem path for an area's file directory.
+func (fm *FileManager) GetAreaUploadPath(areaID int) (string, error) {
+	fm.muAreas.RLock()
+	defer fm.muAreas.RUnlock()
+
+	area, exists := fm.fileAreas[areaID]
+	if !exists {
+		return "", fmt.Errorf("file area %d not found", areaID)
+	}
+
+	absBasePath, err := filepath.Abs(fm.basePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to get absolute base path: %w", err)
+	}
+
+	fullPath := filepath.Join(absBasePath, area.Path)
+	if !strings.HasPrefix(fullPath, absBasePath) {
+		return "", fmt.Errorf("area path outside base directory")
+	}
 
 	return fullPath, nil
 }
