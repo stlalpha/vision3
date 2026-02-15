@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -72,12 +73,12 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Load the MSGHDR template file
 	hdrTemplatePath := filepath.Join(e.MenuSetPath, "templates", "message_headers",
-		fmt.Sprintf("MSGHDR.%d", hdrStyle))
+		fmt.Sprintf("MSGHDR.%d.ans", hdrStyle))
 	hdrTemplateBytes, hdrErr := os.ReadFile(hdrTemplatePath)
 	if hdrErr != nil {
-		log.Printf("ERROR: Node %d: Failed to load MSGHDR.%d: %v", nodeNumber, hdrStyle, hdrErr)
+		log.Printf("ERROR: Node %d: Failed to load MSGHDR.%d.ans: %v", nodeNumber, hdrStyle, hdrErr)
 		// Fallback to style 2 (simple text format)
-		hdrTemplatePath = filepath.Join(e.MenuSetPath, "templates", "message_headers", "MSGHDR.2")
+		hdrTemplatePath = filepath.Join(e.MenuSetPath, "templates", "message_headers", "MSGHDR.2.ans")
 		hdrTemplateBytes, hdrErr = os.ReadFile(hdrTemplatePath)
 		if hdrErr != nil {
 			msg := "\r\n|01Error loading message header template.|07\r\n"
@@ -140,8 +141,8 @@ readerLoop:
 		}
 		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel, !templateUsesUserNote, replyCount)
 
-		// Process template with substitutions
-		processedHeader := processDataFile(hdrTemplateBytes, substitutions)
+		// Process template with substitutions (auto-detects @CODE@ or |X format)
+		processedHeader := processTemplate(hdrTemplateBytes, substitutions)
 
 		// Process message body and pre-format all lines
 		area, _ := e.MessageMgr.GetAreaByID(currentAreaID)
@@ -1032,8 +1033,88 @@ func displayReaderHelp(terminal *term.Terminal, outputMode ansi.OutputMode) {
 	time.Sleep(2 * time.Second)
 }
 
-// runGetHeaderType allows the user to select a message header style (MSGHDR.1-14).
-// Displays the MSGHDR.ANS selection screen and previews the selected header.
+// MessageHeaderTemplate represents a discovered message header template file.
+type MessageHeaderTemplate struct {
+	Number      int    // Template number (e.g., 1, 2, 15)
+	Filename    string // Full filename (e.g., "MSGHDR.15.ans")
+	DisplayName string // Human-readable name (e.g., "Header Style 15")
+}
+
+// extractHeaderNumber extracts the numeric ID from a message header filename.
+// Examples: "MSGHDR.1.ans" -> 1, "MSGHDR.15.ans" -> 15
+func extractHeaderNumber(filename string) (int, error) {
+	// Remove .ans extension and MSGHDR. prefix
+	name := strings.TrimSuffix(filename, ".ans")
+	name = strings.TrimPrefix(name, "MSGHDR.")
+
+	return strconv.Atoi(name)
+}
+
+// headerDisplayNames maps template numbers to their actual display names.
+var headerDisplayNames = map[int]string{
+	1:  "Generic Blue Box",
+	2:  "Extremly Simple Message Header",
+	3:  "LiQUiD Blue Box Header",
+	4:  "Generic TCS Header",
+	5:  "Gray/White ViSiON/2 Header",
+	6:  "Cool V/2 Quick Header!",
+	7:  "ViSiON-X Header",
+	8:  "Bouncer Neato Header",
+	9:  "Celerity Header",
+	10: "PC Express Header",
+	11: "Extreme Header",
+	12: "LSD Header",
+	13: "Renegade Header",
+	14: "ViSiON-X Grey/White Header",
+}
+
+// discoverMessageHeaders finds all MSGHDR.*.ans template files in the templates/message_headers directory.
+// Returns templates sorted by number (1, 2, ..., 14, 15, etc.).
+func discoverMessageHeaders(templatesPath string) ([]MessageHeaderTemplate, error) {
+	pattern := filepath.Join(templatesPath, "message_headers", "MSGHDR.*.ans")
+	files, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, fmt.Errorf("failed to glob header templates: %w", err)
+	}
+
+	var templates []MessageHeaderTemplate
+	for _, file := range files {
+		base := filepath.Base(file)
+
+		// Skip MSGHDR.ANS (selection screen, not a template)
+		if base == "MSGHDR.ANS" {
+			continue
+		}
+
+		num, err := extractHeaderNumber(base)
+		if err != nil {
+			log.Printf("WARN: Skipping malformed header filename: %s (error: %v)", base, err)
+			continue
+		}
+
+		// Get display name from map, or fall back to generic name
+		displayName, ok := headerDisplayNames[num]
+		if !ok {
+			displayName = fmt.Sprintf("Header Style %d", num)
+		}
+
+		templates = append(templates, MessageHeaderTemplate{
+			Number:      num,
+			Filename:    base,
+			DisplayName: displayName,
+		})
+	}
+
+	// Sort by number
+	sort.Slice(templates, func(i, j int) bool {
+		return templates[i].Number < templates[j].Number
+	})
+
+	return templates, nil
+}
+
+// runGetHeaderType allows the user to select a message header style (unlimited templates via lightbar).
+// Discovers all MSGHDR.*.ans templates dynamically and presents them in a lightbar menu.
 func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
@@ -1041,6 +1122,27 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	if currentUser == nil {
 		return nil, "", nil
 	}
+
+	// Discover all available message header templates
+	templatesPath := filepath.Join(e.MenuSetPath, "templates")
+	templates, err := discoverMessageHeaders(templatesPath)
+	if err != nil {
+		log.Printf("ERROR: Node %d: Failed to discover header templates: %v", nodeNumber, err)
+		msg := "\r\n|01Error discovering message headers!|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	if len(templates) == 0 {
+		log.Printf("ERROR: Node %d: No message header templates found", nodeNumber)
+		msg := "\r\n|01No message header templates found!|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	log.Printf("INFO: Node %d: Discovered %d message header templates", nodeNumber, len(templates))
 
 	// Display the header selection ANSI screen
 	selectionPath := filepath.Join(e.MenuSetPath, "templates", "message_headers", "MSGHDR.ANS")
@@ -1055,26 +1157,71 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	reader := bufio.NewReader(s)
 
-	// Find the input field position (last ESC[row;colH in the file)
-	inputRow, inputCol := findLastCursorPos(selectionBytes)
-	if inputRow == 0 {
-		inputRow = 22 // fallback
-		inputCol = 45
+	// Lightbar configuration
+	const (
+		startX          = 10 // X position for lightbar items
+		startY          = 8  // Starting Y position
+		highlightColor  = 31 // Bright white on cyan (ANSI 31)
+		regularColor    = 7  // Light gray (ANSI 7)
+		maxVisibleItems = 14 // Max items visible at once (for scrolling later)
+	)
+
+	selectedIndex := 0 // Currently highlighted template
+	scrollOffset := 0  // For future scrolling support if > maxVisibleItems
+
+	// Helper to draw one lightbar option
+	drawOption := func(idx int, highlighted bool) {
+		if idx < 0 || idx >= len(templates) {
+			return
+		}
+
+		template := templates[idx]
+		yPos := startY + idx - scrollOffset
+
+		// Position cursor
+		terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[%d;%dH", yPos, startX)), outputMode)
+
+		// Set color
+		var colorSeq string
+		if highlighted {
+			colorSeq = colorCodeToAnsi(highlightColor)
+		} else {
+			colorSeq = colorCodeToAnsi(regularColor)
+		}
+		terminalio.WriteProcessedBytes(terminal, []byte(colorSeq), outputMode)
+
+		// Draw text
+		displayText := fmt.Sprintf("%2d. %s", template.Number, template.DisplayName)
+		terminalio.WriteProcessedBytes(terminal, []byte(displayText), outputMode)
+
+		// Reset color
+		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
 	}
 
-	for {
-		// Display selection screen (process pipe codes like |B2 for background colors)
+	// Helper to redraw all options
+	redrawAll := func() {
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(selectionBytes), outputMode)
 
-		// Position cursor at the input field and set background color
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(inputRow, inputCol)), outputMode)
-		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[1;37;42m"), outputMode) // bright white on green bg
+		// Draw all visible templates
+		for i := 0; i < len(templates) && i < maxVisibleItems; i++ {
+			drawOption(i, i == selectedIndex)
+		}
 
-		// Read selection number
-		input, readErr := readLineInput(reader, terminal, outputMode, 2)
-		// Reset colors after input
-		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
+		// Show navigation hint
+		hintY := startY + maxVisibleItems + 2
+		terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[%d;%dH", hintY, startX)), outputMode)
+		hint := "|08Use |15↑|08/|15↓|08 arrows, |15ENTER|08 to preview, |15SPACE|08 to select, |15Q|08 to quit|07"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(hint)), outputMode)
+	}
+
+	// Initial draw
+	redrawAll()
+
+	// Main selection loop
+	for {
+		// Read single key/character
+		r, _, readErr := reader.ReadRune()
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -1082,66 +1229,124 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			return nil, "", nil
 		}
 
-		if strings.ToUpper(input) == "Q" || input == "" {
-			break
-		}
-
-		num, parseErr := strconv.Atoi(input)
-		if parseErr != nil || num < 1 || num > 14 {
-			continue
-		}
-
-		// Check if header file exists
-		hdrPath := filepath.Join(e.MenuSetPath, "templates", "message_headers",
-			fmt.Sprintf("MSGHDR.%d", num))
-		if _, statErr := os.Stat(hdrPath); statErr != nil {
-			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-			msg := fmt.Sprintf("\r\n|01Message Header #%d is not found!|07\r\n", num)
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-			time.Sleep(1 * time.Second)
-			continue
-		}
-
-		// Preview with sample data
-		hdrBytes, _ := os.ReadFile(hdrPath)
-		sampleSubs := map[byte]string{
-			'B': "GENERAL",
-			'T': "ViSiON/3 Rocks!",
-			'F': currentUser.Handle,
-			'S': "Everybody",
-			'U': currentUser.PrivateNote,
-			'M': "LOCAL",
-			'L': strconv.Itoa(currentUser.AccessLevel),
-			'R': currentUser.RealName,
-			'#': "1",
-			'N': "42",
-			'D': time.Now().Format("01/02/06"),
-			'W': time.Now().Format("3:04 pm"),
-			'P': "None",
-			'E': "0",
-			'O': "",
-			'A': "",
-		}
-		processedPreview := processDataFile(hdrBytes, sampleSubs)
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-		terminalio.WriteProcessedBytes(terminal, processedPreview, outputMode)
-
-		// Ask "Pick this header?"
-		pickPrompt := "|08P|07i|15ck |08t|07h|15is |08h|07e|15ader? "
-		pickYes, pickErr := e.promptYesNo(s, terminal, pickPrompt, outputMode, nodeNumber)
-		if pickErr != nil {
-			if errors.Is(pickErr, io.EOF) {
-				return nil, "LOGOFF", io.EOF
+		// Handle escape sequences for arrow keys
+		if r == '\x1b' {
+			// Check for arrow keys: ESC [ A (up) or ESC [ B (down)
+			next, _, _ := reader.ReadRune()
+			if next == '[' {
+				arrow, _, _ := reader.ReadRune()
+				if arrow == 'A' {
+					// Up arrow
+					if selectedIndex > 0 {
+						selectedIndex--
+						drawOption(selectedIndex+1, false)
+						drawOption(selectedIndex, true)
+					}
+					continue
+				} else if arrow == 'B' {
+					// Down arrow
+					if selectedIndex < len(templates)-1 {
+						selectedIndex++
+						drawOption(selectedIndex-1, false)
+						drawOption(selectedIndex, true)
+					}
+					continue
+				}
 			}
+			continue
+		}
+
+		// Handle Q to quit
+		if r == 'q' || r == 'Q' {
 			break
 		}
 
-		if pickYes {
-			currentUser.MsgHdr = num
+		// Handle ENTER to preview
+		if r == '\r' || r == '\n' {
+			template := templates[selectedIndex]
+			hdrPath := filepath.Join(e.MenuSetPath, "templates", "message_headers", template.Filename)
+
+			// Preview with sample data
+			hdrBytes, readErr := os.ReadFile(hdrPath)
+			if readErr != nil {
+				log.Printf("ERROR: Node %d: Failed to read header file %s: %v", nodeNumber, template.Filename, readErr)
+				continue
+			}
+
+			sampleSubs := map[byte]string{
+				'B': "GENERAL",
+				'T': "ViSiON/3 Rocks!",
+				'F': currentUser.Handle,
+				'S': "Everybody",
+				'U': currentUser.PrivateNote,
+				'M': "LOCAL",
+				'L': strconv.Itoa(currentUser.AccessLevel),
+				'R': currentUser.RealName,
+				'#': "1",
+				'N': "42",
+				'D': time.Now().Format("01/02/06"),
+				'W': time.Now().Format("3:04 pm"),
+				'P': "None",
+				'E': "0",
+				'O': "",
+				'A': "",
+			}
+
+			processedPreview := processTemplate(hdrBytes, sampleSubs)
+			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+			terminalio.WriteProcessedBytes(terminal, processedPreview, outputMode)
+
+			// Ask "Pick this header?"
+			pickPrompt := "|08P|07i|15ck |08t|07h|15is |08h|07e|15ader? "
+			pickYes, pickErr := e.promptYesNo(s, terminal, pickPrompt, outputMode, nodeNumber)
+			if pickErr != nil {
+				if errors.Is(pickErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+				redrawAll()
+				continue
+			}
+
+			if pickYes {
+				// User selected this header - save preference
+				currentUser.MsgHdr = template.Number
+				if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
+					log.Printf("ERROR: Node %d: Failed to save user after header selection: %v", nodeNumber, saveErr)
+				}
+				log.Printf("INFO: Node %d: User %s selected header style %d", nodeNumber, currentUser.Handle, template.Number)
+				break
+			}
+
+			// User declined - redraw menu
+			redrawAll()
+			continue
+		}
+
+		// Handle SPACE to select immediately (without preview)
+		if r == ' ' {
+			template := templates[selectedIndex]
+			currentUser.MsgHdr = template.Number
 			if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
 				log.Printf("ERROR: Node %d: Failed to save user after header selection: %v", nodeNumber, saveErr)
 			}
+			log.Printf("INFO: Node %d: User %s selected header style %d", nodeNumber, currentUser.Handle, template.Number)
 			break
+		}
+
+		// Handle numeric hotkeys (1-9) for direct selection
+		if r >= '1' && r <= '9' {
+			digit := int(r - '0')
+			// Find template with this number
+			for i, template := range templates {
+				if template.Number == digit {
+					selectedIndex = i
+					drawOption(selectedIndex, false)
+					selectedIndex = i
+					drawOption(selectedIndex, true)
+					break
+				}
+			}
+			continue
 		}
 	}
 
