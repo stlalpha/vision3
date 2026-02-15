@@ -3345,6 +3345,7 @@ type LightbarOption struct {
 	X, Y           int    // Screen coordinates
 	Text           string // Display text
 	HotKey         string // Command hotkey
+	ReturnValue    string // Return value (often same as hotkey, but can differ)
 	HighlightColor int    // Color code when highlighted
 	RegularColor   int    // Color code when not highlighted
 }
@@ -3355,9 +3356,11 @@ var ansiFg = map[int]int{
 	8: 90, 9: 94, 10: 92, 11: 96, 12: 91, 13: 95, 14: 93, 15: 97, // Bright
 }
 
-// ANSI background color codes (standard)
+// ANSI background color codes (standard, non-bright)
 var ansiBg = map[int]int{
 	0: 40, 1: 44, 2: 42, 3: 46, 4: 41, 5: 45, 6: 43, 7: 47,
+	// Note: 40-47 are standard (darker) backgrounds
+	// 100-107 would be bright backgrounds (less terminal support)
 }
 
 // colorCodeToAnsi converts a DOS-style color code (0-255) to ANSI escape sequence.
@@ -3489,7 +3492,8 @@ func colorCodeToAnsi(code int) string {
 		bgAnsi = 40 // Default to black background if invalid bg code
 	}
 
-	return fmt.Sprintf("\x1b[%d;%dm", fgAnsi, bgAnsi)
+	// Reset first, then apply colors (ensures clean state)
+	return fmt.Sprintf("\x1b[0m\x1b[%d;%dm", fgAnsi, bgAnsi)
 }
 
 // loadLightbarOptions loads and parses lightbar options from configuration files
@@ -3557,9 +3561,9 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 			regularColor = 15  // Default: Bright White on Black
 		}
 
-		hotkey := strings.ToUpper(strings.TrimSpace(parts[4])) // HotKey is the 5th field (index 4)
-		// Field 5 is ReturnValue - ignore for now
-		displayText := strings.TrimSpace(parts[6]) // DisplayText is the 7th field (index 6)
+		hotkey := strings.ToUpper(strings.TrimSpace(parts[4]))    // HotKey is the 5th field (index 4)
+		returnValue := strings.TrimSpace(parts[5])               // ReturnValue is the 6th field (index 5)
+		displayText := strings.TrimSpace(parts[6])               // DisplayText is the 7th field (index 6)
 
 		// Verify the hotkey maps to a command
 		if _, exists := commandsByHotkey[hotkey]; !exists {
@@ -3571,6 +3575,7 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 			Y:              y,
 			Text:           displayText,
 			HotKey:         hotkey,
+			ReturnValue:    returnValue,
 			HighlightColor: highlightColor,
 			RegularColor:   regularColor,
 		})
