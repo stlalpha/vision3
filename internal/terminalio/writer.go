@@ -142,14 +142,19 @@ func WriteStringCP437(writer io.Writer, data []byte, mode ansi.OutputMode) error
 		}
 		span := data[spanStart:i]
 
-		if !utf8.Valid(span) {
-			out = append(out, span...)
-			continue
-		}
-
-		for _, r := range string(span) {
+		// Process span rune-by-rune to handle mixed UTF-8 + raw CP437 content
+		pos := 0
+		for pos < len(span) {
+			r, size := utf8.DecodeRune(span[pos:])
+			if r == utf8.RuneError && size == 1 {
+				// Invalid UTF-8 byte - pass through as raw CP437
+				out = append(out, span[pos])
+				pos++
+				continue
+			}
 			if r < 0x80 {
 				out = append(out, byte(r))
+				pos += size
 				continue
 			}
 			if cp437Byte, ok := ansi.UnicodeToCP437[r]; ok {
@@ -157,6 +162,7 @@ func WriteStringCP437(writer io.Writer, data []byte, mode ansi.OutputMode) error
 			} else {
 				out = append(out, '?')
 			}
+			pos += size
 		}
 	}
 

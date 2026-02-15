@@ -7,7 +7,7 @@
 # which must be "cp437" for DOS door ANSI art to render correctly.
 
 $_cpu = "80486"
-$_cpu_emu = "fullsim"
+$_cpu_vm = "auto"
 $_floppy_a = ""
 $_cdrom = ""
 $_xms = (1024)
@@ -22,7 +22,7 @@ $_mouse_internal = (on)
 $_mouse_dev = ""
 $_joy_device = ""
 $_lpt1 = ""
-$_lp2 = ""
+$_lpt2 = ""
 $_speaker = ""
 $_sound = (off)
 $_sb_dsp = ""

@@ -245,13 +245,19 @@ func (tc *TelnetConn) SetReadInterrupt(ch <-chan struct{}) {
 	if ch == nil {
 		// Clear any deadline set by a previous interrupt
 		tc.conn.SetReadDeadline(time.Time{})
-	} else {
-		// Watch for the interrupt and unblock the read when it fires
-		go func() {
-			<-ch
-			tc.conn.SetReadDeadline(time.Now())
-		}()
+		return
 	}
+
+	// Watch for the interrupt and unblock the read when it fires
+	go func(ch <-chan struct{}) {
+		<-ch
+		tc.riMu.Lock()
+		stillCurrent := tc.readInterrupt == ch
+		tc.riMu.Unlock()
+		if stillCurrent {
+			tc.conn.SetReadDeadline(time.Now())
+		}
+	}(ch)
 }
 
 // Read reads data from the telnet connection, stripping IAC commands transparently.

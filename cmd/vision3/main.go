@@ -1123,8 +1123,14 @@ func sessionHandler(s ssh.Session) {
 			return
 		}
 		log.Printf("ERROR: Node %d: Login sequence error: %v", nodeID, loginErr)
+		if loginNextMenu == "" {
+			currentMenuName = "LOGOFF"
+		} else {
+			currentMenuName = loginNextMenu
+		}
+	} else {
+		currentMenuName = loginNextMenu
 	}
-	currentMenuName = loginNextMenu
 	for {
 		if currentMenuName == "" || currentMenuName == "LOGOFF" {
 			log.Printf("Node %d: User %s selected Logoff or reached end state.", nodeID, authenticatedUser.Handle)

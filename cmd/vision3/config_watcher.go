@@ -81,6 +81,7 @@ func (cw *ConfigWatcher) Stop() {
 	default:
 		close(cw.watcherDone)
 	}
+	cw.watcherDone = nil
 
 	cw.watcher.Close()
 	cw.watcher = nil

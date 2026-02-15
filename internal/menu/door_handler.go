@@ -562,7 +562,7 @@ func executeNativeDoor(ctx *DoorCtx) error {
 
 	dropfileTypeUpper := strings.ToUpper(doorConfig.DropfileType)
 
-	if dropfileTypeUpper == "DOOR.SYS" || dropfileTypeUpper == "CHAIN.TXT" || dropfileTypeUpper == "DOOR32.SYS" {
+	if dropfileTypeUpper == "DOOR.SYS" || dropfileTypeUpper == "CHAIN.TXT" || dropfileTypeUpper == "DOOR32.SYS" || dropfileTypeUpper == "DORINFO1.DEF" {
 		dropfilePath = filepath.Join(dropfileDir, dropfileTypeUpper)
 		log.Printf("INFO: Generating %s dropfile at: %s", dropfileTypeUpper, dropfilePath)
 
@@ -575,6 +575,8 @@ func executeNativeDoor(ctx *DoorCtx) error {
 			genErr = generateDoor32Sys(ctx, dropfileDir)
 		case "CHAIN.TXT":
 			genErr = generateChainTxt(ctx, dropfileDir)
+		case "DORINFO1.DEF":
+			genErr = generateDorInfo(ctx, dropfileDir)
 		}
 
 		if genErr != nil {

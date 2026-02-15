@@ -184,8 +184,13 @@ func (s *Screen) parseGeometryMarkers(content string) {
 			lineNum = lineNum*10 + int(rest[i]-'0')
 		}
 		if lineNum > 0 && lineNum < s.termHeight {
-			s.editingStartY = lineNum
-			s.screenLines = s.termHeight - s.editingStartY - 1
+			editingStartY := lineNum
+			screenLines := s.termHeight - editingStartY - 1
+			// Only apply the marker if it leaves at least 5 lines for editing
+			if screenLines >= 5 {
+				s.editingStartY = editingStartY
+				s.screenLines = screenLines
+			}
 		}
 	}
 }

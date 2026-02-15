@@ -320,7 +320,9 @@ func (um *UserMgr) UpdateUser(u *User) error {
 	if _, exists := um.users[lowerUsername]; !exists {
 		return ErrUserNotFound
 	}
-	um.users[lowerUsername] = u
+	// Create a defensive copy to prevent external mutations from bypassing locks
+	userCopy := *u
+	um.users[lowerUsername] = &userCopy
 	return um.saveUsersLocked()
 }
 
