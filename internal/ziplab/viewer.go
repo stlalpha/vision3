@@ -20,6 +20,21 @@ import (
 	"github.com/stlalpha/vision3/internal/transfer"
 )
 
+// sanitizeEntryName strips control characters (including ANSI ESC) and pipe
+// characters from ZIP entry names to prevent terminal escape injection and
+// pipe code injection when displayed on the BBS terminal.
+func sanitizeEntryName(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1 // strip control chars including ESC (0x1b)
+		}
+		if r == '|' {
+			return '.' // prevent pipe code injection
+		}
+		return r
+	}, s)
+}
+
 // viewerFormatFileSize returns a human-readable file size string.
 // Same logic as internal/menu/file_viewer.go formatFileSize.
 func viewerFormatFileSize(size int64) string {
@@ -42,8 +57,8 @@ func formatArchiveListing(w io.Writer, zipPath string, filename string, termHeig
 	}
 	defer r.Close()
 
-	// Header
-	fmt.Fprintf(w, "\r\n|15--- Archive Contents: %s ---|07\r\n\r\n", filename)
+	// Header — sanitize filename to prevent terminal/pipe code injection
+	fmt.Fprintf(w, "\r\n|15--- Archive Contents: %s ---|07\r\n\r\n", sanitizeEntryName(filename))
 
 	// Column headers
 	fmt.Fprintf(w, "|14  #   Size       Date       Name|07\r\n")
@@ -58,7 +73,7 @@ func formatArchiveListing(w io.Writer, zipPath string, filename string, termHeig
 		dateStr := f.Modified.Format("01/02/2006")
 
 		fmt.Fprintf(w, "|07 %3d  %9s  %s  |15%s|07\r\n",
-			fileCount, sizeStr, dateStr, f.Name)
+			fileCount, sizeStr, dateStr, sanitizeEntryName(f.Name))
 
 		totalSize += f.UncompressedSize64
 	}
@@ -185,7 +200,7 @@ func RunZipLabView(s ssh.Session, terminal *term.Terminal, filePath string, file
 			continue
 		}
 
-		baseName := filepath.Base(extractedPath)
+		baseName := sanitizeEntryName(filepath.Base(extractedPath))
 		sendMsg := fmt.Sprintf("\r\n|07Sending |15%s|07 via ZMODEM...\r\n", baseName)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(sendMsg)), outputMode)
 
