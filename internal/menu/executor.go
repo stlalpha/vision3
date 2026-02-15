@@ -6719,6 +6719,13 @@ func (e *MenuExecutor) runUploadFiles(
 			description = "No description"
 		}
 
+		// Re-stat file to get post-pipeline size (ZipLab may have modified it)
+		if fi, statErr := os.Stat(incomingPath); statErr != nil {
+			log.Printf("WARN: Node %d: Failed to stat %s after pipeline: %v (using original size)", nodeNumber, nf.name, statErr)
+		} else {
+			nf.size = fi.Size()
+		}
+
 		// Create and add FileRecord
 		record := file.FileRecord{
 			ID:            uuid.New(),
@@ -6992,7 +6999,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 		// 4.5 Display Prompt (Use a standard file list prompt or configure one)
 		// TODO: Use configurable prompt string
-		prompt := "\r\n|07File Cmd (|15N|07=Next, |15P|07=Prev, |15#|07=Mark, |15V|07=View, |15D|07=Download, |15Q|07=Quit): |15"
+		prompt := "\r\n|07File Cmd (|15N|07=Next, |15P|07=Prev, |15#|07=Mark, |15V|07=View, |15D|07=Download, |15U|07=Upload, |15Q|07=Quit): |15"
 		wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 		if wErr != nil {
 			// Handle error

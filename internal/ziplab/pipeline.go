@@ -181,23 +181,31 @@ func (p *Processor) handleScanFailure(archivePath string) {
 		if p.config.QuarantinePath != "" {
 			if err := os.MkdirAll(p.config.QuarantinePath, 0755); err != nil {
 				log.Printf("ERROR: Failed to create quarantine directory %s: %v", p.config.QuarantinePath, err)
-				os.Remove(archivePath)
+				if rmErr := os.Remove(archivePath); rmErr != nil {
+					log.Printf("ERROR: Failed to remove infected file %s after quarantine dir failure: %v", archivePath, rmErr)
+				}
 				return
 			}
 			dest := filepath.Join(p.config.QuarantinePath, filepath.Base(archivePath))
 			if err := os.Rename(archivePath, dest); err != nil {
 				log.Printf("ERROR: Failed to quarantine %s: %v", archivePath, err)
-				os.Remove(archivePath)
+				if rmErr := os.Remove(archivePath); rmErr != nil {
+					log.Printf("ERROR: Failed to remove infected file %s after quarantine failure: %v", archivePath, rmErr)
+				}
 			} else {
 				log.Printf("INFO: Quarantined infected file: %s -> %s", archivePath, dest)
 			}
 		} else {
 			log.Printf("WARN: Quarantine path not configured, deleting %s", archivePath)
-			os.Remove(archivePath)
+			if rmErr := os.Remove(archivePath); rmErr != nil {
+				log.Printf("ERROR: Failed to remove infected file %s: %v", archivePath, rmErr)
+			}
 		}
 	default: // "delete"
 		log.Printf("INFO: Deleting infected file: %s", archivePath)
-		os.Remove(archivePath)
+		if rmErr := os.Remove(archivePath); rmErr != nil {
+			log.Printf("ERROR: Failed to remove infected file %s: %v", archivePath, rmErr)
+		}
 	}
 }
 
