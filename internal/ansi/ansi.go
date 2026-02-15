@@ -792,14 +792,20 @@ func ClearScreen() string {
 	return "\x1B[2J\x1B[H" // Clear screen and home cursor
 }
 
+// MoveCursor returns an ANSI escape sequence to move the cursor to the specified row and column.
+// Rows and columns are 1-indexed (1,1 is top-left).
 func MoveCursor(row, col int) string {
 	return fmt.Sprintf("\x1B[%d;%dH", row, col)
 }
 
+// SaveCursor returns an ANSI escape sequence to save the current cursor position.
+// Use RestoreCursor to return to the saved position.
 func SaveCursor() string {
 	return "\x1B[s"
 }
 
+// RestoreCursor returns an ANSI escape sequence to restore the cursor to the previously saved position.
+// The position must have been saved with SaveCursor.
 func RestoreCursor() string {
 	return "\x1B[u"
 }
