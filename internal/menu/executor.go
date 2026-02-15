@@ -7483,7 +7483,8 @@ func (e *MenuExecutor) runUploadFiles(
 		if zlErr == nil && zlCfg.Enabled && zlCfg.RunOnUpload && zlCfg.IsArchiveSupported(nf.name) {
 			log.Printf("INFO: Node %d: Running ZipLab pipeline on %s", nodeNumber, nf.name)
 
-			proc := ziplab.NewProcessor(zlCfg, e.RootConfigPath)
+			zlBaseDir := filepath.Join(filepath.Dir(e.RootConfigPath), "ziplab")
+			proc := ziplab.NewProcessor(zlCfg, zlBaseDir)
 
 			// Load ZIPLAB.ANS and ZIPLAB.NFO for visual display
 			ansiPath := filepath.Join(e.MenuSetPath, "ansi", "ZIPLAB.ANS")

@@ -27,6 +27,14 @@ func NewProcessor(cfg Config, baseDir string) *Processor {
 	}
 }
 
+// resolvePath resolves a config file path against baseDir when relative.
+func (p *Processor) resolvePath(path string) string {
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(p.baseDir, path)
+}
+
 // StepTestIntegrity (Step 1) tests the archive for corruption.
 // For native ZIP, it opens and reads every file entry.
 // For external formats, it runs the configured test command.
@@ -306,7 +314,7 @@ func (p *Processor) findAndReadDIZ(workDir string) string {
 
 // loadRemovePatterns reads filenames to remove from the patterns file.
 func (p *Processor) loadRemovePatterns() []string {
-	patternsPath := p.config.Steps.RemoveAds.PatternsFile
+	patternsPath := p.resolvePath(p.config.Steps.RemoveAds.PatternsFile)
 	if patternsPath == "" {
 		return nil
 	}
@@ -359,7 +367,7 @@ func (p *Processor) StepAddComment(archivePath string) error {
 		return fmt.Errorf("unsupported archive type: %s", filepath.Ext(archivePath))
 	}
 
-	commentFile := p.config.Steps.AddComment.CommentFile
+	commentFile := p.resolvePath(p.config.Steps.AddComment.CommentFile)
 	commentData, err := os.ReadFile(commentFile)
 	if err != nil {
 		return fmt.Errorf("failed to read comment file %s: %w", commentFile, err)
@@ -446,7 +454,7 @@ func (p *Processor) StepIncludeFile(archivePath string) error {
 		return fmt.Errorf("unsupported archive type: %s", filepath.Ext(archivePath))
 	}
 
-	includeFilePath := p.config.Steps.IncludeFile.FilePath
+	includeFilePath := p.resolvePath(p.config.Steps.IncludeFile.FilePath)
 	includeData, err := os.ReadFile(includeFilePath)
 	if err != nil {
 		return fmt.Errorf("failed to read include file %s: %w", includeFilePath, err)
