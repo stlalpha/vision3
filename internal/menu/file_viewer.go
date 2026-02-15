@@ -56,7 +56,7 @@ func displayArchiveListing_toWriter(w io.Writer, filePath string, filename strin
 	}
 	defer r.Close()
 
-	fmt.Fprintf(w, "\r\n--- Archive Contents: %s ---\r\n\r\n", filename)
+	fmt.Fprintf(w, "\r\n--- Archive Contents: %s ---\r\n\r\n", sanitizeControlChars(filename))
 	fmt.Fprintf(w, "  Size       Date       Time     Name\r\n")
 	fmt.Fprintf(w, "----------  ----------  -------  --------------------------------\r\n")
 
@@ -69,7 +69,7 @@ func displayArchiveListing_toWriter(w io.Writer, filePath string, filename strin
 		dateStr := mod.Format("01/02/2006")
 		timeStr := mod.Format("15:04")
 
-		fmt.Fprintf(w, "%10s  %s  %s  %s\r\n", sizeStr, dateStr, timeStr, f.Name)
+		fmt.Fprintf(w, "%10s  %s  %s  %s\r\n", sizeStr, dateStr, timeStr, sanitizeControlChars(f.Name))
 
 		totalSize += f.UncompressedSize64
 		fileCount++
@@ -197,7 +197,7 @@ func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath stri
 	}
 	defer f.Close()
 
-	header := fmt.Sprintf("\r\n|15--- Viewing: %s ---|07\r\n\r\n", filename)
+	header := fmt.Sprintf("\r\n|15--- Viewing: %s ---|07\r\n\r\n", sanitizeControlChars(filename))
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode)
 
 	linesPerPage := termHeight - 4
@@ -290,7 +290,7 @@ func displayTextWithPaging_toWriter(w io.Writer, filePath string, filename strin
 	}
 	defer f.Close()
 
-	fmt.Fprintf(w, "\r\n--- Viewing: %s ---\r\n\r\n", filename)
+	fmt.Fprintf(w, "\r\n--- Viewing: %s ---\r\n\r\n", sanitizeControlChars(filename))
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 4096), 4096)
