@@ -18,6 +18,16 @@ import (
 // ErrAreaNotFound is returned when a message area doesn't exist.
 var ErrAreaNotFound = errors.New("message area not found")
 
+// Error Handling Design:
+// - Read operations (Get*Count, GetLastRead, GetNextUnread, etc.) treat missing
+//   areas as empty (return 0, nil) to avoid failing when areas are referenced
+//   but not yet configured. This allows graceful degradation.
+// - Write operations (AddMessage, SetLastRead) and direct base access (GetBase,
+//   GetMessage) return ErrAreaNotFound to ensure callers are aware the area
+//   doesn't exist before attempting modifications.
+// - All operations propagate I/O errors (not ErrAreaNotFound) so real failures
+//   are never masked.
+
 type threadIndex struct {
 	total      int
 	modCounter uint32

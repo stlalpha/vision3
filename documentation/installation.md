@@ -153,7 +153,7 @@ vision3/
 
 ### Port Already in Use
 
-If port 2222 is already in use, change `"sshPort": 2222` in `templates/configs/config.json` (or your deployed `configs/config.json`).
+If port 2222 is already in use, change `"sshPort": 2222` in `templates/configs/config.json` (or your deployed `configs/config.json`) and **restart the server** for the change to take effect.
 
 ### Permission Denied
 
