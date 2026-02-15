@@ -20,9 +20,12 @@ type Screen struct {
 	editingStartY int // First Y position for text entry
 	statusLineY   int // Y position of status line
 	screenLines   int // Number of editing lines available
-	headerHeight  int // Height of header
-	headerContent string
-	physicalLines map[int]string // Track last rendered state for incremental updates
+	headerHeight     int // Height of header
+	headerContent    string
+	physicalLines    map[int]string // Track last rendered state for incremental updates
+	lastInsertMode   bool           // Track last insert mode to avoid redundant updates
+	lastCurrentLine  int            // Track last current line to avoid redundant updates
+	lastStatusUpdate string         // Track last status to avoid redundant updates
 }
 
 // NewScreen creates a new screen manager
@@ -181,8 +184,13 @@ func (s *Screen) parseGeometryMarkers(content string) {
 			lineNum = lineNum*10 + int(rest[i]-'0')
 		}
 		if lineNum > 0 && lineNum < s.termHeight {
-			s.editingStartY = lineNum
-			s.screenLines = s.termHeight - s.editingStartY - 1
+			editingStartY := lineNum
+			screenLines := s.termHeight - editingStartY - 1
+			// Only apply the marker if it leaves at least 5 lines for editing
+			if screenLines >= 5 {
+				s.editingStartY = editingStartY
+				s.screenLines = screenLines
+			}
 		}
 	}
 }
@@ -255,7 +263,7 @@ func (s *Screen) RefreshLine(lineNum int, lineContent string, topLine int) {
 }
 
 // RefreshScreen redraws all visible lines (incremental update)
-func (s *Screen) RefreshScreen(buffer *MessageBuffer, topLine, currentLine, currentCol int, insertMode bool) {
+func (s *Screen) RefreshScreen(buffer *MessageBuffer, topLine, currentLine, currentCol int, insertMode bool, forceStatusUpdate bool) {
 	lineCount := buffer.GetLineCount()
 
 	// Draw visible lines
@@ -274,11 +282,20 @@ func (s *Screen) RefreshScreen(buffer *MessageBuffer, topLine, currentLine, curr
 		}
 	}
 
-	// Update status line
-	s.DisplayStatusLine(insertMode, currentLine, lineCount)
+	// Update status line only if values changed or forced
+	if forceStatusUpdate || insertMode != s.lastInsertMode || currentLine != s.lastCurrentLine {
+		s.DisplayStatusLine(insertMode, currentLine, lineCount)
+		s.lastInsertMode = insertMode
+		s.lastCurrentLine = currentLine
+	}
 
 	// Position cursor at editing position
 	s.Reposition(currentLine, currentCol, topLine)
+}
+
+// ClearCache clears the screen cache to force a full redraw on next refresh
+func (s *Screen) ClearCache() {
+	s.physicalLines = make(map[int]string)
 }
 
 // Reposition moves cursor to the current editing position
@@ -301,8 +318,8 @@ func (s *Screen) FullRedraw(buffer *MessageBuffer, topLine, currentLine, current
 	s.ClearScreen()
 	s.DisplayHeader()
 
-	// Refresh all lines
-	s.RefreshScreen(buffer, topLine, currentLine, currentCol, insertMode)
+	// Refresh all lines (force status update on full redraw)
+	s.RefreshScreen(buffer, topLine, currentLine, currentCol, insertMode, true)
 }
 
 // UpdateDynamicFields updates dynamic fields in the status line (like Insert/Line indicators)

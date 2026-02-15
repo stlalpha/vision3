@@ -1,0 +1,42 @@
+; Message Header Selection - Lightbar Configuration
+; Configurable Bars Menu System for unlimited message header templates
+; FORMAT: X,Y,HiLitedColor,RegularColor,HotKey,ReturnValue,HiLitedString
+;
+; X,Y = Screen coordinates for this option
+; HiLitedColor = Color code when highlighted (ANSI color code)
+; RegularColor = Color code when not highlighted
+; HotKey = Keyboard shortcut (1-9, then letters)
+; ReturnValue = Value returned (same as HotKey for simplicity)
+; HiLitedString = Display text for this option
+;
+; Common ANSI Color Codes:
+;   0 = Black          8 = Dark Gray
+;   1 = Blue           9 = Light Blue
+;   2 = Green         10 = Light Green
+;   3 = Cyan          11 = Light Cyan
+;   4 = Red           12 = Light Red
+;   5 = Magenta       13 = Light Magenta
+;   6 = Brown         14 = Yellow
+;   7 = Light Gray    15 = White
+;
+; Color Formula: (Background × 16) + Foreground
+;  Examples:
+;   31 = White on Blue:       (1 × 16) + 15 = 31 (bright white on blue)
+;   55 = Light Gray on Cyan:  (3 × 16) + 7  = 55 (non-bright, dark cyan bg)
+;   63 = White on Cyan:       (3 × 16) + 15 = 63 (bright white on cyan)
+;
+; Items positioned inside the box at X=21, starting at Y=6
+21,6,31,7,1,1,Generic Blue Box
+21,7,31,7,2,2,Extremly Simple Message Header
+21,8,31,7,3,3,LiQUiD Blue Box Header
+21,9,31,7,4,4,Generic TCS Header
+21,10,31,7,5,5,Gray/White ViSiON/2 Header
+21,11,31,7,6,6,Cool V/2 Quick Header!
+21,12,31,7,7,7,ViSiON-X Header
+21,13,31,7,8,8,Bouncer Neato Header
+21,14,31,7,9,9,Celerity Header
+21,15,31,7,A,10,PC Express Header
+21,16,31,7,B,11,Extreme Header
+21,17,31,7,C,12,LSD Header
+21,18,31,7,D,13,Renegade Header
+21,19,31,7,E,14,ViSiON-X Grey/White Header

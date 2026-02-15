@@ -97,9 +97,10 @@ for i := 0; i < bodyAvailHeight; i++ {
 ### Vision3 Features Kept Intact
 
 1. **MSGHDR Template System**
-   - Still uses DataFile substitution (`%B`, `%T`, `%F`, etc.)
-   - All 14 pre-made header styles work unchanged
-   - Template selection interface unchanged
+   - Uses @CODE@ placeholder format (`@T@`, `@F@`, `@S@`, etc.) with width control
+   - Backward compatible with legacy |X format
+   - All pre-made header styles work unchanged
+   - Template selection via lightbar navigation (unlimited templates supported)
 
 2. **Lightbar Menu**
    - 10-option lightbar at bottom

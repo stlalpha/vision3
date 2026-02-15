@@ -234,6 +234,60 @@ func stripSAUCE(data []byte) []byte {
 	return data[:sauceStart]
 }
 
+// CP437BytesToUTF8 converts raw CP437 bytes to UTF-8, preserving ANSI escape
+// sequences. Use this before doing string operations (e.g. placeholder
+// substitution) on ANS file content so that the writer pipeline receives
+// unambiguous UTF-8 instead of raw CP437 bytes that might accidentally form
+// valid UTF-8 sequences and get misinterpreted.
+func CP437BytesToUTF8(data []byte) []byte {
+	out := make([]byte, 0, len(data)*2)
+	i := 0
+	for i < len(data) {
+		b := data[i]
+
+		// Pass ANSI escape sequences through untouched.
+		if b == 0x1B && i+1 < len(data) {
+			start := i
+			i++ // skip ESC
+			if data[i] == '[' {
+				i++ // skip '['
+				for i < len(data) {
+					c := data[i]
+					i++
+					if c >= '@' && c <= '~' {
+						break
+					}
+					if i-start > 32 {
+						break
+					}
+				}
+			} else if data[i] == '(' || data[i] == ')' {
+				i++ // skip charset designator
+				if i < len(data) {
+					i++ // skip charset ID
+				}
+			} else {
+				i++ // simple two-byte ESC sequence
+			}
+			out = append(out, data[start:i]...)
+			continue
+		}
+
+		// ASCII bytes pass through as-is.
+		if b < 0x80 {
+			out = append(out, b)
+			i++
+			continue
+		}
+
+		// High bytes: convert CP437 → Unicode → UTF-8.
+		r := Cp437ToUnicode[b]
+		out = append(out, []byte(string(r))...)
+		i++
+	}
+	return out
+}
+
 // Strategy 1: Use VT100 Line Drawing Mode
 func DisplayWithVT100LineDrawing(session ssh.Session, filename string) error {
 	data, err := GetAnsiFileContent(filename)
@@ -738,14 +792,20 @@ func ClearScreen() string {
 	return "\x1B[2J\x1B[H" // Clear screen and home cursor
 }
 
+// MoveCursor returns an ANSI escape sequence to move the cursor to the specified row and column.
+// Rows and columns are 1-indexed (1,1 is top-left).
 func MoveCursor(row, col int) string {
 	return fmt.Sprintf("\x1B[%d;%dH", row, col)
 }
 
+// SaveCursor returns an ANSI escape sequence to save the current cursor position.
+// Use RestoreCursor to return to the saved position.
 func SaveCursor() string {
 	return "\x1B[s"
 }
 
+// RestoreCursor returns an ANSI escape sequence to restore the cursor to the previously saved position.
+// The position must have been saved with SaveCursor.
 func RestoreCursor() string {
 	return "\x1B[u"
 }

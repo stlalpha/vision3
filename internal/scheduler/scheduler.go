@@ -18,6 +18,7 @@ type Scheduler struct {
 	runningEvents  map[string]bool
 	mu             sync.RWMutex
 	concurrencySem chan struct{}
+	startupWg      sync.WaitGroup
 	ctx            context.Context
 	cancel         context.CancelFunc
 }
@@ -66,7 +67,9 @@ func (s *Scheduler) Start(ctx context.Context) {
 		if event.RunAtStartup {
 			startupCount++
 			e := event // capture for goroutine
+			s.startupWg.Add(1)
 			go func() {
+				defer s.startupWg.Done()
 				log.Printf("INFO: Startup event '%s' (%s) launching", e.ID, e.Name)
 				s.executeEventWithConcurrency(e)
 			}()
@@ -113,6 +116,10 @@ func (s *Scheduler) Stop() {
 		<-cronCtx.Done()
 		log.Printf("INFO: All scheduled events completed")
 	}
+
+	// Wait for startup events to complete
+	s.startupWg.Wait()
+	log.Printf("INFO: All startup events completed")
 
 	// Save history
 	if err := SaveHistory(s.historyPath, s.history); err != nil {

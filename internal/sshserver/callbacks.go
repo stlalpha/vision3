@@ -24,11 +24,15 @@ func go_auth_password_cb(session C.ssh_session, user *C.char, password *C.char, 
 	pwd := C.GoString(password)
 
 	// Validate password via the configured auth handler
-	if cs.server.authPasswordFunc != nil {
-		if !cs.server.authPasswordFunc(cs.username, pwd) {
-			log.Printf("INFO: Password auth DENIED for user: %s", cs.username)
-			return C.SSH_AUTH_DENIED
-		}
+	// Default-deny if no handler is configured (security)
+	if cs.server.authPasswordFunc == nil {
+		log.Printf("SECURITY: No password auth handler configured - denying access for user: %s", cs.username)
+		return C.SSH_AUTH_DENIED
+	}
+
+	if !cs.server.authPasswordFunc(cs.username, pwd) {
+		log.Printf("INFO: Password auth DENIED for user: %s", cs.username)
+		return C.SSH_AUTH_DENIED
 	}
 
 	log.Printf("INFO: Password auth accepted for user: %s", cs.username)

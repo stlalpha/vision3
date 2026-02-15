@@ -61,7 +61,7 @@ func NewConfigWatcher(rootConfigPath, menuSetPath string, menuExecutor *menu.Men
 	}
 
 	// Start watching in a goroutine
-	go cw.watchLoop()
+	go cw.watchLoop(watcher)
 
 	return cw, nil
 }
@@ -81,6 +81,7 @@ func (cw *ConfigWatcher) Stop() {
 	default:
 		close(cw.watcherDone)
 	}
+	cw.watcherDone = nil
 
 	cw.watcher.Close()
 	cw.watcher = nil
@@ -88,14 +89,14 @@ func (cw *ConfigWatcher) Stop() {
 }
 
 // watchLoop handles file system events for configuration files.
-func (cw *ConfigWatcher) watchLoop() {
+func (cw *ConfigWatcher) watchLoop(w *fsnotify.Watcher) {
 	// Debounce timer to avoid reloading on rapid successive writes
 	var debounceTimer *time.Timer
 	debounceDuration := 500 * time.Millisecond
 
 	for {
 		select {
-		case event, ok := <-cw.watcher.Events:
+		case event, ok := <-w.Events:
 			if !ok {
 				return
 			}
@@ -112,7 +113,7 @@ func (cw *ConfigWatcher) watchLoop() {
 				})
 			}
 
-		case err, ok := <-cw.watcher.Errors:
+		case err, ok := <-w.Errors:
 			if !ok {
 				return
 			}

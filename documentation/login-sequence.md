@@ -83,7 +83,7 @@ Scans the PRIVMAIL message area for unread private mail addressed to the current
 ```
 
 **Example output:**
-```
+```text
 You have 3 new private mail message(s).
 ```
 

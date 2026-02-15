@@ -1,0 +1,9 @@
+; REMOVE.TXT - Filenames to strip from uploaded archives
+; One pattern per line. Lines starting with ; are comments.
+; Case-insensitive matching.
+;
+BBS.AD
+BBS.NFO
+VENDOR.TXT
+VENDOR.NFO
+ADVERT.TXT

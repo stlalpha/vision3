@@ -30,16 +30,20 @@ func TestAcquireFileLockSuccess(t *testing.T) {
 }
 
 func TestAcquireFileLockTimeout(t *testing.T) {
+	lockMu.Lock()
 	origRetry := lockRetryDelay
 	origTimeout := lockTimeout
 	origStale := lockStaleAfter
 	lockRetryDelay = 5 * time.Millisecond
 	lockTimeout = 50 * time.Millisecond
 	lockStaleAfter = time.Hour
+	lockMu.Unlock()
 	defer func() {
+		lockMu.Lock()
 		lockRetryDelay = origRetry
 		lockTimeout = origTimeout
 		lockStaleAfter = origStale
+		lockMu.Unlock()
 	}()
 
 	dir := t.TempDir()
@@ -61,16 +65,20 @@ func TestAcquireFileLockTimeout(t *testing.T) {
 }
 
 func TestAcquireFileLockRemovesStaleLock(t *testing.T) {
+	lockMu.Lock()
 	origRetry := lockRetryDelay
 	origTimeout := lockTimeout
 	origStale := lockStaleAfter
 	lockRetryDelay = 5 * time.Millisecond
 	lockTimeout = 200 * time.Millisecond
 	lockStaleAfter = 10 * time.Millisecond
+	lockMu.Unlock()
 	defer func() {
+		lockMu.Lock()
 		lockRetryDelay = origRetry
 		lockTimeout = origTimeout
 		lockStaleAfter = origStale
+		lockMu.Unlock()
 	}()
 
 	dir := t.TempDir()

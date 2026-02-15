@@ -181,7 +181,7 @@ func generateDoorSys(ctx *DoorCtx, dir string) error {
 	b.WriteString("0" + crlf)                                // 51: Total doors opened
 	b.WriteString("0" + crlf)                                // 52: Total messages left
 
-	return os.WriteFile(path, []byte(b.String()), 0644)
+	return os.WriteFile(path, []byte(b.String()), 0600)
 }
 
 // generateDoor32Sys writes an 11-line DOOR32.SYS file.
@@ -205,7 +205,7 @@ func generateDoor32Sys(ctx *DoorCtx, dir string) error {
 	b.WriteString("1" + crlf)                                // 10: Emulation (1=ANSI)
 	b.WriteString(ctx.NodeNumStr + crlf)                     // 11: Node number
 
-	return os.WriteFile(path, []byte(b.String()), 0644)
+	return os.WriteFile(path, []byte(b.String()), 0600)
 }
 
 // generateDorInfo writes a 13-line DORINFO1.DEF file.
@@ -246,7 +246,7 @@ func generateDorInfo(ctx *DoorCtx, dir string) error {
 	b.WriteString(strconv.Itoa(ctx.TimeLeftMin) + crlf)      // 12: Time remaining (minutes)
 	b.WriteString("-1" + crlf)                               // 13: FOSSIL flag (-1=no)
 
-	return os.WriteFile(path, []byte(b.String()), 0644)
+	return os.WriteFile(path, []byte(b.String()), 0600)
 }
 
 // generateChainTxt writes a CHAIN.TXT file (WWIV format).
@@ -290,12 +290,12 @@ func generateChainTxt(ctx *DoorCtx, dir string) error {
 	b.WriteString("0" + crlf)   // 29: Flag
 	b.WriteString("8N1" + crlf) // 30: Serial config
 
-	return os.WriteFile(path, []byte(b.String()), 0644)
+	return os.WriteFile(path, []byte(b.String()), 0600)
 }
 
 // generateAllDropfiles generates all four standard dropfile formats in the given directory.
 func generateAllDropfiles(ctx *DoorCtx, dir string) error {
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("failed to create dropfile directory %s: %w", dir, err)
 	}
 
@@ -352,7 +352,7 @@ func writeBatchFile(ctx *DoorCtx, batchPath, driveCNodeDir string) error {
 
 	b.WriteString("exitemu" + crlf)
 
-	return os.WriteFile(batchPath, []byte(b.String()), 0644)
+	return os.WriteFile(batchPath, []byte(b.String()), 0600)
 }
 
 // --- DOS Door Executor ---
@@ -381,7 +381,7 @@ func executeDOSDoor(ctx *DoorCtx) error {
 	// Create per-node temp directory inside drive_c
 	nodeDir := fmt.Sprintf("temp%d", ctx.NodeNumber)
 	nodePath := filepath.Join(driveCPath, "nodes", nodeDir)
-	if err := os.MkdirAll(nodePath, 0755); err != nil {
+	if err := os.MkdirAll(nodePath, 0700); err != nil {
 		return fmt.Errorf("failed to create node directory %s: %w", nodePath, err)
 	}
 
@@ -562,7 +562,7 @@ func executeNativeDoor(ctx *DoorCtx) error {
 
 	dropfileTypeUpper := strings.ToUpper(doorConfig.DropfileType)
 
-	if dropfileTypeUpper == "DOOR.SYS" || dropfileTypeUpper == "CHAIN.TXT" || dropfileTypeUpper == "DOOR32.SYS" {
+	if dropfileTypeUpper == "DOOR.SYS" || dropfileTypeUpper == "CHAIN.TXT" || dropfileTypeUpper == "DOOR32.SYS" || dropfileTypeUpper == "DORINFO1.DEF" {
 		dropfilePath = filepath.Join(dropfileDir, dropfileTypeUpper)
 		log.Printf("INFO: Generating %s dropfile at: %s", dropfileTypeUpper, dropfilePath)
 
@@ -575,6 +575,8 @@ func executeNativeDoor(ctx *DoorCtx) error {
 			genErr = generateDoor32Sys(ctx, dropfileDir)
 		case "CHAIN.TXT":
 			genErr = generateChainTxt(ctx, dropfileDir)
+		case "DORINFO1.DEF":
+			genErr = generateDorInfo(ctx, dropfileDir)
 		}
 
 		if genErr != nil {

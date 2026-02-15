@@ -1,114 +1,45 @@
-
 # ViSiON/3 BBS Software
 
 ![ViSiON/3](ViSiON3.png)
 
-## What Is This
+## Overview
 
-A modern resurrection of the classic ViSiON/2 BBS software, by people who were around and involved when it was really cool.
+This project is a work-in-progress refactor and modernization of the classic ViSiON/2 BBS software, written in Go. The goal is to recreate the core functionality of the classic BBS experience using modern technologies.
 
-We're rebuilding the BBS experience the way it should have evolved — if the internet hadn't come along and ruined everything.
+This version uses **libssh** (via CGO) for SSH server functionality, providing full compatibility with legacy BBS terminal software like SyncTerm while maintaining modern security standards.
 
-## What Works
+**Note:** This is currently under active development and is not yet feature-complete.
 
-- SSH server with PTY support via libssh CGO wrapper (full SyncTerm and retro terminal compatibility, modern algorithms, SSH-authenticated users skip the login screen)
-- Telnet server (because who doesn't want to telnet into their BBS insecurely in 2026?)
-- User signup, authentication (bcrypt), and persistence
-- Menu system loading & execution (`.MNU`, `.CFG`, `.ANS` files)
-- Access Control System (ACS) evaluation
-- Menu password protection
-- Message areas: JAM format (echomail/netmail ready), conferences, full-screen reader with scrolling/lightbar menu, 14 customizable header styles, thread searching, message list view, replies with quoting, full-screen editor, newscan, last read tracking
-- Private mail: user-to-user messaging with MSG_PRIVATE flag
-- FTN/echomail: FidoNet packet handling, tosser with import/export, dupe checking, echomail routing
-- File areas (list files, list areas, select area)
-- File downloads via ZMODEM (`sz`)
-- User stats, last callers, user listing
-- One-liner system
-- Door/external program support with dropfile generation
-- SysOp tools: user validation, ban, delete, admin user browser
-- Call history tracking
-- Event scheduler: cron-style task scheduler for automated maintenance, FTN mail polling, and periodic operations
-- Connection security: per-IP rate limiting, max nodes, IP allowlist/blocklist with live reload
+## STUFF WE NEED
 
-### Still Cooking
+### 🎯 Contributors - Yes, You
 
-- File upload via ZMODEM (`rz` integration)
-- Full file base implementation (tagging, batch downloads, upload processing)
-- SysOp TUI tools (system configuration editor)
+**What This Is:** A moderately amusing, functional anachronism.
 
+Are you the kind of person who can wrangle a Go codebase while arguing about why HSLINK was underrated? Do you have strong opinions about ANSI art but also know when to use a mutex? We need someone to lead this glorious mess.
 
-## Installation
+**Technical Chops:**
 
-### Docker (Recommended)
+- Strong Go experience (not just "I vibe coded an app and apparently it works")
+- Deep understanding of terminal emulation, ANSI/VT100, character encodings
+- Bonus: Network programming experience (SSH, raw sockets)
+- Comfortable with legacy protocol implementation (ZMODEM, etc.)
+- Can read Pascal/C when needed to understand the original implementations
 
-```bash
-git clone https://github.com/stlalpha/vision3.git
-cd vision3
-docker-compose up -d
-```
+**Cultural Fit:**
 
-See [Docker Deployment Guide](documentation/docker-deployment.md) for details.
+- Either lived through the BBS era OR has become genuinely obsessed with it
+- Gets why pipe codes matter and what makes a good door game
+- Understands this isn't about making money or padding a resume
+- Has opinions about which transfer protocol was best
+- Won't try to "modernize" it into a web app
 
-### Manual
+**Working Team:**
 
-**Requires libssh:**
-
-```bash
-# Ubuntu/Debian
-sudo apt-get install libssh-dev
-
-# Fedora/RHEL
-sudo dnf install libssh-devel
-
-# macOS
-brew install libssh
-```
-
-**Quick setup:**
-
-```bash
-git clone https://github.com/stlalpha/vision3.git
-cd vision3
-./setup.sh                    # generates keys, copies configs, builds
-nano configs/config.json      # edit your BBS settings
-./build.sh                    # build it
-./bin/vision3                 # fire it up
-```
-
-Listens on port 2222 by default. Default login is `felonius` / `password` — change it after first login.
-
-## Terminal Clients
-
-You can connect with `ssh felonius@localhost -p 2222` and it'll work, but you're going to see broken box characters, wrong colors, and none of the ANSI art will look right. Standard SSH clients don't speak CP437 — they assume UTF-8, which mangles everything the BBS is sending.
-
-Use a proper BBS terminal instead:
-
-- **[SyncTerm](https://syncterm.bbsdev.net/)** — the standard. Native CP437, auto-detects terminal size, handles ANSI/VT100 correctly
-- **[NetRunner](https://mysticbbs.com/downloads.html)** — modern alternative with tabbed sessions and built-in phonebook
-
-These clients handle the character encoding natively so the ANSI art, box drawing, and color schemes render the way they're supposed to.
-
-## Documentation
-
-- [Docker Deployment Guide](documentation/docker-deployment.md)
-- [Configuration Guide](documentation/configuration.md)
-- [Security Guide](documentation/security.md)
-- [FTN/Echomail Setup](documentation/ftn-echomail-setup.md)
-- [Event Scheduler](documentation/event-scheduler.md)
-- [Developer Guide](documentation/developer-guide.md)
-
-## Need Help?
-
-Something broken? Confused? Just want to yell about something? Join the Discord!
-
-- **Discord:** [discord.gg/VkjRN2Ms](https://discord.gg/VkjRN2Ms)
-- **Issue Tracker:** [stlalpha/vision3/issues](https://github.com/stlalpha/vision3/issues)
-
-## Get Involved
-
-### Contributors
-
-We need more hands — Go code, door games, utilities, sysop tools, anything that makes the ecosystem better. If you can wrangle a Go codebase while arguing about why HSLINK was underrated, come help.
+- Wrangling this wacko codebase into something proper
+- Help building a community of contributors
+- Make technical decisions when we need them
+- Keep the codebase from turning into spaghetti
 
 **What we won't do:**
 
@@ -117,9 +48,9 @@ We need more hands — Go code, door games, utilities, sysop tools, anything tha
 - Turn it into a web app
 - Modernize away what makes it a BBS
 
-If this sounds like your particular flavor of madness, hit the Discord or submit a PR.
+If this sounds like your particular flavor of madness, email: **robbiew at gmail.com**
 
-### ANSI Artists
+### 🎨 Period-Correct ANSI Artists & Art
 
 Are you an old school ANSi artist (are you younger and infatuated for some reason with that time-period and style)? Do you need one more goddamn thing to do? Consider spending valuable free-time, compensated by nothing more than unyielding appreciation and thanks from the people that enjoy this kind of thing. There's at least 12 of us!
 
@@ -138,24 +69,332 @@ Are you an old school ANSi artist (are you younger and infatuated for some reaso
 - Scene-style fonts and logos
 - Period-appropriate group shoutouts and "greetz"
 
-If you have skills, old .ANS files gathering dust, or just love the aesthetic, hit us up on Discord or submit a PR.
+If you have skills, old .ANS files gathering dust, or just love the aesthetic of the golden age of BBSing, we want to hear from you! Contact us via GitHub issues or pull requests.
 
-### Beta Sysops
+### 💻 Go Developers Who Give a Damn
 
-We need people who will actually run this thing, break it, and tell us what happened. Set up a board, invite your friends, try the weird edge cases, file issues. The best bug reports come from people running it for real.
+Do you write Go? Do you have fond memories of waiting 3 minutes for a single GIF to download at 14.4k? Are you looking for a project that will impress exactly nobody at your day job but might make a dozen middle-aged nerds unreasonably happy? Boy, do we have the unpaid volunteer opportunity for you!
 
-### Discord
+If you aren't old enough to have experienced it first-hand, have you read a weird text file or listened to some wild-eyed GenX nutjob ramble on about how much we enjoyed it and decided "I need me some of that?"
 
-Come hang out: [discord.gg/VkjRN2Ms](https://discord.gg/VkjRN2Ms)
+**Areas where we need help:**
 
-## Special Thanks
+- File transfer protocols (ZMODEM upload support, XMODEM, YMODEM)
+- File base management (tagging, batch downloads, upload processing)
+- QWK networking support
+- TUI/console app creation for admin tools (user editor, system configuration)
+- Performance optimization and scalability
+- Terminal emulation improvements
+- Modern features while maintaining the classic feel
+- Testing, bug fixes, and code reviews
+- Documentation and examples
 
-To **Crimson Blade**, who created ViSiON/2 and built something that mattered to a lot of people who didn't know yet how much they'd miss it.
+Your reward? The satisfaction of knowing that somewhere, someone is reliving their misspent youth thanks to your code. Also, we'll put your handle in the credits. Not your real name though - this is a BBS, we have standards.
 
-Greetz to all the old school scene users, sysops, ANSI artists, door game authors, mod/utility authors, and BBS software developers who made it all worth dialing into. You built something amazing and some of us never got over it.
+**Please submit PRs!**
 
-For the original ViSiON/2 BBS (Turbo Pascal), see: [vision-2-bbs](https://github.com/stlalpha/vision-2-bbs)
+### 💬 Discord Community Manager
 
----
+Do we need a Discord? Do you want to host it? Contact me!
 
-*Built with love by people smart enough to know better and old enough to care anyway.*
+**robbiew at gmail.com**
+
+## Current Status
+
+### Working Features
+
+*   SSH Server with PTY support (via libssh CGO wrapper)
+    *   Full SyncTerm and retro terminal compatibility
+    *   SSH authentication bypass (auto-login for SSH-authenticated users)
+    *   Modern SSH algorithms
+*   Telnet Server (because who doesn't want to telnet into their BBS insecurely in 2026?)
+*   User Signup and Authentication (bcrypt hashed passwords)
+*   User Persistence (`data/users/users.json`)
+*   Menu System Loading & Execution (`.MNU`, `.CFG`, `.ANS` files)
+*   Access Control System (ACS) Evaluation with basic operators (`!`, `&`, `|`, `()`)
+*   Menu Password Protection
+*   Message Areas: JAM format (echomail/netmail ready), conferences, full-screen reader with scrolling/lightbar menu, unlimited customizable header styles with lightbar selection, thread searching, replies with quoting, vi-style editor, newscan, last read tracking
+*   Private Mail: User-to-user private messaging with MSG_PRIVATE flag, send/read/list functions
+*   File Areas (basic implementation):
+    *   List files
+    *   List file areas
+    *   Select file area
+*   User Statistics Display
+*   Last Callers Display
+*   User Listing
+*   One-liner System
+*   Door/External Program Support (with dropfile generation)
+*   Call History Tracking
+*   Event Scheduler: Cron-style task scheduler for automated maintenance, FTN mail polling, and periodic operations
+
+### In Development / TODO
+
+*   File Transfer Protocols (ZMODEM upload/download)
+*   Message list view (titles/scan)
+*   Complete SysOp Tools (user editor, system configuration, TUI admin tools)
+*   Full File Base Implementation (tagging, batch downloads, upload processing)
+*   Comprehensive Testing
+*   Complete Documentation
+
+See `tasks/tasks.md` for development history and completed features.
+
+## Technology Stack
+
+*   **Language:** Go 1.24+
+*   **SSH Server:** libssh (via CGO) - native C library for SSH protocol
+*   **Interface Adapter:** `github.com/gliderlabs/ssh` (types only)
+*   **Terminal Handling:** `golang.org/x/term`
+*   **Password Hashing:** `golang.org/x/crypto/bcrypt`
+*   **Message Base:** JAM format (echomail/netmail compatible)
+*   **Data Format:** JSON (for users and configuration)
+
+## Project Structure
+
+```
+vision3/
+├── bin/                    # Compiled binaries (not tracked in git)
+│   ├── vision3             # Main BBS server executable
+│   ├── helper              # FTN setup utility executable
+│   └── jamutil             # JAM message base utility executable
+├── scripts/                # Utility scripts
+├── cmd/
+│   ├── ansitest/           # ANSI color test utility
+│   ├── helper/             # FTN setup utility (import echomail areas)
+│   ├── jamutil/            # JAM message base utility (stats, pack, purge, fix)
+│   └── vision3/            # Main BBS server application
+├── configs/                # Active configuration files (not tracked in git)
+│   ├── config.json         # Main BBS configuration
+│   ├── conferences.json    # Message/file conference definitions
+│   ├── doors.json          # Door/external program configurations
+│   ├── file_areas.json     # File area definitions
+│   ├── message_areas.json  # Message area definitions
+│   ├── strings.json        # BBS string customizations
+│   ├── theme.json          # Color theme configuration
+│   ├── ftn.json            # FidoNet/FTN network configuration
+│   └── ssh_host_rsa_key    # SSH host key
+├── templates/              # Configuration templates (tracked in git)
+│   └── configs/            # Template configuration files
+├── data/                   # Runtime data
+│   ├── users/              # User database and call history
+│   ├── msgbases/           # JAM format message bases
+│   │   ├── general/        # General discussion area
+│   │   └── sysop/          # Sysop area
+│   ├── files/              # File areas
+│   ├── ftn/                # FidoNet/FTN data (packets, tosses, etc.)
+│   └── logs/               # Application logs
+├── internal/               # Internal packages
+│   ├── ansi/               # ANSI/pipe code processing
+│   ├── config/             # Configuration loading
+│   ├── conference/         # Conference management
+│   ├── editor/             # Full-screen text editor
+│   ├── file/               # File area management
+│   ├── ftn/                # FidoNet/echomail support
+│   ├── jam/                # JAM message base format
+│   ├── menu/               # Menu system & lightbar UI
+│   ├── message/            # Message base management
+│   ├── session/            # Session management
+│   ├── sshserver/          # libssh CGO wrapper and adapter
+│   ├── telnet/             # Telnet server
+│   ├── terminalio/         # Terminal I/O handling
+│   ├── transfer/           # File transfer protocols
+│   ├── types/              # Shared types
+│   └── user/               # User management
+├── menus/v3/               # Menu set files
+│   ├── ansi/               # ANSI art files
+│   ├── cfg/                # Menu configuration files
+│   ├── mnu/                # Menu definition files
+│   └── templates/          # Display templates
+│       └── message_headers/ # Customizable message header styles (unlimited, 14 included)
+├── docs/                   # GitHub Pages website (vision3bbs.com)
+├── documentation/          # Project documentation
+└── tasks/                  # Development task tracking
+```
+
+## Setup & Installation
+
+### Docker Deployment (Recommended)
+
+The easiest way to run ViSiON/3 is using Docker:
+
+```bash
+git clone https://github.com/robbiew/vision3.git
+cd vision3
+docker-compose up -d
+```
+
+See [Docker Deployment Guide](documentation/docker-deployment.md) for detailed instructions.
+
+### Manual Installation
+
+#### System Requirements
+
+**libssh development library** is required for SSH server functionality:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install libssh-dev
+
+# Fedora/RHEL
+sudo dnf install libssh-devel
+
+# macOS
+brew install libssh
+```
+
+### Quick Setup
+
+1. **Clone the repository:**
+    ```bash
+    git clone https://github.com/robbiew/vision3.git
+    cd vision3
+    ```
+
+2. **Install system dependencies** (see System Requirements above)
+
+3. **Run the setup script:**
+    ```bash
+    ./setup.sh
+    ```
+
+   This will:
+   - Generate SSH host keys
+   - Copy template configuration files from `templates/configs/` to `configs/`
+   - Create necessary directory structure
+   - Create initial data files
+   - Build the application
+
+4. **Configure your BBS:**
+    ```bash
+    # Edit configs/config.json with your BBS settings
+    nano configs/config.json
+    ```
+
+5. **Run the BBS:**
+    ```bash
+    ./build-and-run.sh
+    ```
+
+### Manual Setup
+
+If you prefer to set up manually:
+
+1. **Install libssh-dev** (see System Requirements above)
+
+2. **Copy configuration templates:**
+    ```bash
+    cp templates/configs/*.json configs/
+    # Edit configs/config.json with your BBS settings
+    ```
+
+3. **Build the application:**
+    ```bash
+    cd cmd/vision3
+    go build -o ../../vision3
+    cd ../..
+    ```
+
+4. **Generate SSH Host Key:**
+    ```bash
+    ssh-keygen -t rsa -b 2048 -f configs/ssh_host_rsa_key -N ""
+    ```
+
+5. **Create directories:**
+    ```bash
+    mkdir -p data/users data/files/general data/logs data/msgbases
+    ```
+
+6. **Run the server:**
+    ```bash
+    ./vision3
+    ```
+
+The server listens on port 2222 by default.
+
+## Default Login
+
+The system creates a default user on first run:
+- **Username:** felonius
+- **Password:** password
+
+**IMPORTANT:** Change this password after first login!
+
+## Connecting
+
+Connect using any SSH client:
+
+```bash
+ssh felonius@localhost -p 2222
+```
+
+### SyncTerm and Retro Terminal Support
+
+ViSiON/3 fully supports **SyncTerm** and other classic BBS terminal emulators:
+- Automatic CP437 encoding for authentic ANSI graphics
+- Compatible with modern SSH algorithms (no legacy crypto needed)
+- SSH-authenticated users bypass the login screen
+
+Download SyncTerm: https://syncterm.bbsdev.net/
+
+## Command Line Options
+
+```bash
+./vision3 --output-mode=auto
+```
+
+- `--output-mode`: Terminal output mode (auto, utf8, cp437)
+  - `auto`: Automatically detect based on terminal type (default)
+  - `utf8`: Force UTF-8 output
+  - `cp437`: Force CP437 output for authentic DOS/BBS experience
+
+## Configuration
+
+Configuration files are located in the `configs/` directory:
+
+### Core Configuration
+
+All configuration files are located in `configs/` and are generated from templates in `templates/configs/` during setup:
+
+- **`config.json`**: Main BBS configuration (BBS name, ports, paths, connection limits)
+  - **Note:** Not tracked in git. Copied from template during setup
+  - Includes connection security settings: `maxNodes` and `maxConnectionsPerIP`
+- **`theme.json`**: Color theme configuration (lightbar colors, prompt colors, ANSI codes)
+- **`strings.json`**: Customizable BBS prompts and messages
+
+### Message System
+
+- **`message_areas.json`**: Message area definitions (local, echomail, netmail areas)
+- **`conferences.json`**: Conference groupings for message and file areas
+- **`ftn.json`**: FidoNet/FTN network configuration (addresses, uplinks, packet passwords)
+
+### File System
+
+- **`file_areas.json`**: File area definitions (paths, descriptions, access levels)
+
+### External Programs
+
+- **`doors.json`**: Door/external program configurations (paths, dropfile types, pause settings)
+
+### Security
+
+- **`ssh_host_rsa_key`**: SSH host key (auto-generated on first run if missing)
+
+All configuration files use JSON format and support comments for documentation.
+
+## Documentation
+
+- [Docker Deployment Guide](documentation/docker-deployment.md) - Deploy using Docker and Docker Compose
+- [Security Guide](documentation/security.md) - Connection security, IP filtering, and best practices
+- [Configuration Guide](documentation/configuration.md) - Detailed configuration options
+- [SSH Server Migration Guide](documentation/ssh-server-migration.md) - Details about the libssh implementation
+- [Developer Guide](documentation/developer-guide.md) - Guide for contributors
+- [Development Tasks](tasks/tasks.md) - Development history and completed features
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues and pull requests.
+
+## Acknowledgments
+
+This project is built in tribute to ViSiON/2 and my friend Crimson Blade.
+
+For the original ViSiON/2 BBS (Pascal version), see: [vision-2-bbs](https://github.com/stlalpha/vision-2-bbs) 

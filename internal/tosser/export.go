@@ -38,6 +38,11 @@ func (t *Tosser) ScanAndExport() TossResult {
 			log.Printf("WARN: Export: cannot get base for area %d (%s): %v", area.ID, area.Tag, err)
 			continue
 		}
+		// TODO: Consider refactoring to close bases earlier for systems with many areas.
+		// Current defer keeps all bases open until ScanAndExport returns. For large area
+		// counts or long export runs, could close after processing each area or batch
+		// DateProcessed updates to reduce open file descriptors.
+		defer base.Close()
 
 		count, err := base.GetMessageCount()
 		if err != nil {

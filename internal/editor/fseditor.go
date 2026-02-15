@@ -21,13 +21,15 @@ type FSEditor struct {
 	currentCol  int
 
 	// View state
-	topLine int // First line visible on screen
+	topLine     int // First line visible on screen
+	lastTopLine int // Track last topLine to detect scrolling
 
 	// Editor state
-	insertMode bool
-	modified   bool
-	saved      bool
-	quit       bool
+	insertMode     bool
+	lastInsertMode bool
+	modified       bool
+	saved          bool
+	quit           bool
 
 	// Metadata
 	subject     string
@@ -51,21 +53,23 @@ func NewFSEditor(session ssh.Session, terminal io.Writer, outputMode ansi.Output
 	commandHandler := NewCommandHandler(screen, buffer, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
 
 	return &FSEditor{
-		buffer:      buffer,
-		screen:      screen,
-		input:       input,
-		wordWrapper: wordWrapper,
-		commands:    commandHandler,
-		currentLine: 1,
-		currentCol:  1,
-		topLine:     1,
-		insertMode:  true,
-		modified:    false,
-		saved:       false,
-		quit:        false,
-		session:     session,
-		outputMode:  outputMode,
-		menuSetPath: menuSetPath,
+		buffer:         buffer,
+		screen:         screen,
+		input:          input,
+		wordWrapper:    wordWrapper,
+		commands:       commandHandler,
+		currentLine:    1,
+		currentCol:     1,
+		topLine:        1,
+		lastTopLine:    1,
+		insertMode:     true,
+		lastInsertMode: true,
+		modified:       false,
+		saved:          false,
+		quit:           false,
+		session:        session,
+		outputMode:     outputMode,
+		menuSetPath:    menuSetPath,
 	}
 }
 
@@ -121,8 +125,15 @@ func (e *FSEditor) Run() (string, bool, error) {
 		// Ensure view is updated to keep cursor visible
 		e.ensureCursorVisible()
 
+		// Determine if we need to update status line fields
+		statusChanged := (e.insertMode != e.lastInsertMode) || (e.topLine != e.lastTopLine)
+
 		// Refresh screen
-		e.screen.RefreshScreen(e.buffer, e.topLine, e.currentLine, e.currentCol, e.insertMode)
+		e.screen.RefreshScreen(e.buffer, e.topLine, e.currentLine, e.currentCol, e.insertMode, statusChanged)
+
+		// Update tracking variables
+		e.lastInsertMode = e.insertMode
+		e.lastTopLine = e.topLine
 	}
 
 	// Return final content and saved status
@@ -215,7 +226,7 @@ func (e *FSEditor) handleCommand(cmdType CommandType) {
 		} else {
 			// Redraw status after error message
 			e.input.ReadKey() // Wait for key press
-			e.screen.RefreshScreen(e.buffer, e.topLine, e.currentLine, e.currentCol, e.insertMode)
+			e.screen.RefreshScreen(e.buffer, e.topLine, e.currentLine, e.currentCol, e.insertMode, true)
 		}
 
 	case CommandAbort:
@@ -223,7 +234,7 @@ func (e *FSEditor) handleCommand(cmdType CommandType) {
 			e.saved = false
 			e.quit = true
 		} else {
-			e.screen.RefreshScreen(e.buffer, e.topLine, e.currentLine, e.currentCol, e.insertMode)
+			e.screen.RefreshScreen(e.buffer, e.topLine, e.currentLine, e.currentCol, e.insertMode, true)
 		}
 
 	case CommandQuote:
@@ -450,6 +461,7 @@ func (e *FSEditor) redrawScreen() {
 // ensureCursorVisible adjusts the view to keep the cursor visible
 func (e *FSEditor) ensureCursorVisible() {
 	screenLines := e.screen.GetScreenLines()
+	oldTopLine := e.topLine
 
 	// Check if cursor is above visible area
 	if e.currentLine < e.topLine {
@@ -462,6 +474,12 @@ func (e *FSEditor) ensureCursorVisible() {
 		if e.topLine < 1 {
 			e.topLine = 1
 		}
+	}
+
+	// If topLine changed (scrolling occurred), clear screen cache to force redraw
+	if e.topLine != oldTopLine {
+		e.screen.ClearCache()
+		e.lastTopLine = e.topLine
 	}
 }
 

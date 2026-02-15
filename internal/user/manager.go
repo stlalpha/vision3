@@ -24,9 +24,11 @@ var (
 
 const (
 	userFile         = "users.json"
-	callHistoryFile  = "callhistory.json" // Filename for call history
-	callNumberFile   = "callnumber.json"  // Filename for the next call number
-	callHistoryLimit = 20                 // Max number of call records to keep
+	callHistoryFile  = "callhistory.json"  // Filename for call history
+	callNumberFile   = "callnumber.json"   // Filename for the next call number
+	adminLogFile     = "admin_activity.json" // Filename for admin activity log
+	callHistoryLimit = 20                  // Max number of call records to keep
+	adminLogLimit    = 1000                // Max number of admin log entries to keep
 )
 
 // UserMgr manages user data (Renamed from UserManager)
@@ -36,9 +38,10 @@ type UserMgr struct {
 	path     string // Path to users.json
 	dataPath string // Path to the data directory (for callhistory.json etc)
 	// LastLogins  []LoginEvent // Removed LastLogins field
-	nextUserID     int          // Added to track the next available user ID
-	callHistory    []CallRecord // Added slice for call history
-	nextCallNumber uint64       // Added counter for overall calls
+	nextUserID     int             // Added to track the next available user ID
+	callHistory    []CallRecord    // Added slice for call history
+	nextCallNumber uint64          // Added counter for overall calls
+	activeUserIDs  map[int32]bool  // Track which user IDs are currently online
 }
 
 // NewUserManager creates and initializes a new user manager
@@ -51,6 +54,7 @@ func NewUserManager(dataPath string) (*UserMgr, error) { // Return renamed type
 		callHistory:    make([]CallRecord, 0, callHistoryLimit), // Initialize call history
 		nextUserID:     1,                                       // Start user IDs from 1
 		nextCallNumber: 1,                                       // Start call numbers from 1
+		activeUserIDs:  make(map[int32]bool),                    // Initialize online user tracking
 	}
 
 	// Removed call to loadLastLogins
@@ -316,8 +320,47 @@ func (um *UserMgr) UpdateUser(u *User) error {
 	if _, exists := um.users[lowerUsername]; !exists {
 		return ErrUserNotFound
 	}
-	um.users[lowerUsername] = u
+	// Create a defensive copy to prevent external mutations from bypassing locks
+	userCopy := *u
+	um.users[lowerUsername] = &userCopy
 	return um.saveUsersLocked()
+}
+
+// LogAdminActivity logs an administrative action to the activity log file
+func (um *UserMgr) LogAdminActivity(logEntry AdminActivityLog) error {
+	um.mu.Lock()
+	defer um.mu.Unlock()
+
+	// Load existing logs
+	logPath := filepath.Join(filepath.Dir(um.path), adminLogFile)
+	var logs []AdminActivityLog
+
+	// Try to load existing logs
+	if data, err := os.ReadFile(logPath); err == nil {
+		_ = json.Unmarshal(data, &logs) // Ignore errors, start fresh if corrupt
+	}
+
+	// Add new entry
+	logEntry.ID = len(logs) + 1
+	logEntry.Timestamp = time.Now()
+	logs = append(logs, logEntry)
+
+	// Keep only recent entries (prevent file from growing indefinitely)
+	if len(logs) > adminLogLimit {
+		logs = logs[len(logs)-adminLogLimit:]
+	}
+
+	// Save logs
+	data, err := json.MarshalIndent(logs, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal admin logs: %w", err)
+	}
+
+	if err := os.WriteFile(logPath, data, 0600); err != nil {
+		return fmt.Errorf("failed to write admin log: %w", err)
+	}
+
+	return nil
 }
 
 // Authenticate checks username and compares password hash.
@@ -391,6 +434,21 @@ func (um *UserMgr) GetUserByHandle(handle string) (*User, bool) { // Receiver us
 	lowerHandle := strings.ToLower(handle)
 	for _, user := range um.users {
 		if strings.ToLower(user.Handle) == lowerHandle {
+			// Return a copy to prevent modification of the internal user data
+			userCopy := *user
+			return &userCopy, true
+		}
+	}
+	return nil, false
+}
+
+// GetUserByID returns a user by their ID (for optimistic locking checks)
+func (um *UserMgr) GetUserByID(id int) (*User, bool) {
+	um.mu.RLock()
+	defer um.mu.RUnlock()
+
+	for _, user := range um.users {
+		if user.ID == id {
 			// Return a copy to prevent modification of the internal user data
 			userCopy := *user
 			return &userCopy, true
@@ -520,5 +578,28 @@ func (um *UserMgr) GetAllUsers() []*User {
 		usersSlice = append(usersSlice, &userCopy)
 	}
 	return usersSlice
+}
+
+// MarkUserOnline marks a user as currently online/connected
+func (um *UserMgr) MarkUserOnline(userID int) {
+	um.mu.Lock()
+	defer um.mu.Unlock()
+	um.activeUserIDs[int32(userID)] = true
+	log.Printf("DEBUG: User ID %d marked as ONLINE", userID)
+}
+
+// MarkUserOffline marks a user as offline/disconnected
+func (um *UserMgr) MarkUserOffline(userID int) {
+	um.mu.Lock()
+	defer um.mu.Unlock()
+	delete(um.activeUserIDs, int32(userID))
+	log.Printf("DEBUG: User ID %d marked as OFFLINE", userID)
+}
+
+// IsUserOnline returns true if the user is currently connected
+func (um *UserMgr) IsUserOnline(userID int) bool {
+	um.mu.RLock()
+	defer um.mu.RUnlock()
+	return um.activeUserIDs[int32(userID)]
 }
 

@@ -802,6 +802,10 @@ func sessionHandler(s ssh.Session) {
 		// --- Record Call History ---
 		if authenticatedUser != nil {
 			log.Printf("DEBUG: Node %d: Adding call record for user %s (ID: %d)", nodeID, authenticatedUser.Handle, authenticatedUser.ID)
+
+			// Mark user as offline
+			userMgr.MarkUserOffline(authenticatedUser.ID)
+
 			disconnectTime := time.Now()
 			duration := disconnectTime.Sub(startTime) // Use the captured startTime
 			callRec := user.CallRecord{
@@ -953,6 +957,10 @@ func sessionHandler(s ssh.Session) {
 			// User exists in database, authenticate them automatically
 			authenticatedUser = sshUser
 			log.Printf("Node %d: SSH auto-login successful for user '%s' (Handle: %s)", nodeID, sshUsername, sshUser.Handle)
+
+			// Mark user as online
+			userMgr.MarkUserOnline(authenticatedUser.ID)
+
 			// Set user's terminal dimensions from detected PTY size only when not already stored.
 			tw, th := int(termWidth.Load()), int(termHeight.Load())
 			updatedScreenPrefs := false
@@ -1056,6 +1064,10 @@ func sessionHandler(s ssh.Session) {
 		if authUser != nil {
 			authenticatedUser = authUser
 			log.Printf("Node %d: User '%s' authenticated successfully.", nodeID, authenticatedUser.Handle)
+
+			// Mark user as online
+			userMgr.MarkUserOnline(authenticatedUser.ID)
+
 			// Login successful! Break out of login loop.
 
 			// --- START MOVED Login Event Recording --- Removed call to AddLoginEvent
@@ -1111,8 +1123,14 @@ func sessionHandler(s ssh.Session) {
 			return
 		}
 		log.Printf("ERROR: Node %d: Login sequence error: %v", nodeID, loginErr)
+		if loginNextMenu == "" {
+			currentMenuName = "LOGOFF"
+		} else {
+			currentMenuName = loginNextMenu
+		}
+	} else {
+		currentMenuName = loginNextMenu
 	}
-	currentMenuName = loginNextMenu
 	for {
 		if currentMenuName == "" || currentMenuName == "LOGOFF" {
 			log.Printf("Node %d: User %s selected Logoff or reached end state.", nodeID, authenticatedUser.Handle)
