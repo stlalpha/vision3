@@ -111,6 +111,10 @@ func extractSingleEntry(zipPath string, entryNum int) (string, func(), error) {
 
 	entry := r.File[entryNum-1]
 
+	if entry.FileInfo().IsDir() {
+		return "", noop, fmt.Errorf("entry %d is a directory", entryNum)
+	}
+
 	tmpDir, err := os.MkdirTemp("", "ziplab-extract-*")
 	if err != nil {
 		return "", noop, fmt.Errorf("failed to create temp dir: %w", err)
