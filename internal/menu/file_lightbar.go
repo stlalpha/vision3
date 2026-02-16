@@ -64,8 +64,9 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	}
 	// Footer: bot template line + status line.
 	footerLines := 2
-	// Detail pane: separator + 5 info lines.
-	detailPaneLines := 6
+	// Detail pane: separator + filename + 3 desc lines + uploaded + downloads + blank.
+	descMaxLines := 3
+	detailPaneLines := 4 + descMaxLines + 1 // separator(1) + filename(1) + desc(3) + uploaded(1) + downloads(1) + blank(1)
 	// +1 for the CRLF after the top template write.
 	visibleRows := termHeight - headerLines - 1 - footerLines - detailPaneLines
 	if visibleRows < 3 {
@@ -96,10 +97,37 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 	// truncate limits a string to maxLen characters.
 	truncate := func(s string, maxLen int) string {
+		if maxLen <= 0 {
+			return ""
+		}
 		if len(s) <= maxLen {
 			return s
 		}
 		return s[:maxLen]
+	}
+
+	// wrapText splits text into lines of at most maxWidth characters.
+	wrapText := func(text string, maxWidth int, maxLines int) []string {
+		// Normalize whitespace: replace newlines with spaces.
+		text = strings.ReplaceAll(text, "\r", "")
+		text = strings.ReplaceAll(text, "\n", " ")
+		text = strings.TrimSpace(text)
+
+		var lines []string
+		for len(text) > 0 && len(lines) < maxLines {
+			if len(text) <= maxWidth {
+				lines = append(lines, text)
+				break
+			}
+			// Find last space within maxWidth for word wrap.
+			cut := maxWidth
+			if idx := strings.LastIndex(text[:maxWidth], " "); idx > 0 {
+				cut = idx
+			}
+			lines = append(lines, text[:cut])
+			text = strings.TrimSpace(text[cut:])
+		}
+		return lines
 	}
 
 	clampSelection := func() {
@@ -242,22 +270,44 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07No files in this area.\r\n")), outputMode); err != nil {
 				return err
 			}
-			for i := 0; i < 4; i++ {
+			for i := 0; i < detailPaneLines-2; i++ { // -2 for separator and the "no files" line
 				if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
 					return err
 				}
 			}
 		} else {
 			sel := allFiles[selectedIndex]
-			detailDesc := strings.ReplaceAll(sel.Description, "\n", " ")
-			detailDesc = strings.ReplaceAll(detailDesc, "\r", "")
-			detailDesc = truncate(detailDesc, termWidth-14) // 14 = "|15Desc      : |07" visible prefix
+			descWidth := termWidth - 14 // visible prefix "Desc      : " is ~14 chars
+			descLines := wrapText(sel.Description, descWidth, descMaxLines)
+
 			d1 := fmt.Sprintf("|15Filename  : |07%-40s |15Size : |07%s\r\n", sel.Filename, formatSize(sel.Size))
-			d2 := fmt.Sprintf("|15Desc      : |07%s\r\n", detailDesc)
+			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d1)), outputMode); err != nil {
+				return err
+			}
+
+			// Description lines — first line has the label, continuation lines are indented.
+			for i := 0; i < descMaxLines; i++ {
+				var dLine string
+				if i == 0 {
+					if len(descLines) > 0 {
+						dLine = fmt.Sprintf("|15Desc      : |07%s\r\n", descLines[0])
+					} else {
+						dLine = "|15Desc      : |07\r\n"
+					}
+				} else if i < len(descLines) {
+					dLine = fmt.Sprintf("|07            %s\r\n", descLines[i])
+				} else {
+					dLine = "\r\n"
+				}
+				if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(dLine)), outputMode); err != nil {
+					return err
+				}
+			}
+
 			d3 := fmt.Sprintf("|15Uploaded  : |07%-20s |15By   : |07%s\r\n", sel.UploadedAt.Format("01/02/2006 15:04"), sel.UploadedBy)
 			d4 := fmt.Sprintf("|15Downloads : |07%d\r\n", sel.DownloadCount)
 			d5 := "\r\n"
-			for _, line := range []string{d1, d2, d3, d4, d5} {
+			for _, line := range []string{d3, d4, d5} {
 				if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode); err != nil {
 					return err
 				}
