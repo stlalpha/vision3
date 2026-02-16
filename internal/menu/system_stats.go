@@ -41,10 +41,15 @@ func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	topBytes = normalizePipeCodeDelimiters(topBytes)
 	botBytes = normalizePipeCodeDelimiters(botBytes)
 
+	sysopName := ""
+	if sysopUser, ok := userManager.GetUserByID(1); ok {
+		sysopName = sysopUser.Handle
+	}
+
 	now := time.Now()
 	tokens := map[string]string{
 		"BBSNAME":     e.ServerCfg.BoardName,
-		"SYSOP":       e.ServerCfg.SysOpName,
+		"SYSOP":       sysopName,
 		"VERSION":     jam.Version,
 		"TOTALUSERS":  strconv.Itoa(userManager.GetUserCount()),
 		"TOTALCALLS":  strconv.FormatUint(userManager.GetTotalCalls(), 10),
