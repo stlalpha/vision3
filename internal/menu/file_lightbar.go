@@ -329,15 +329,28 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			return err
 		}
 
-		// Command bar (horizontal lightbar).
-		cmdBar := "\r\n"
+		// Command bar (horizontal lightbar), centered.
+		barWidth := 0
+		for ci, opt := range cmdOptions {
+			barWidth += len(opt.label) + 2 // " label "
+			if ci < len(cmdOptions)-1 {
+				barWidth += 2 // gap between items
+			}
+		}
+		pad := (termWidth - barWidth) / 2
+		if pad < 0 {
+			pad = 0
+		}
+		cmdBar := "\r\n" + strings.Repeat(" ", pad)
 		for ci, opt := range cmdOptions {
 			if ci == cmdIndex {
 				cmdBar += hiColorSeq + " " + opt.label + " " + "\x1b[0m"
 			} else {
 				cmdBar += loColorSeq + " " + opt.label + " " + "\x1b[0m"
 			}
-			cmdBar += "  "
+			if ci < len(cmdOptions)-1 {
+				cmdBar += "  "
+			}
 		}
 		if err := terminalio.WriteProcessedBytes(terminal, []byte(cmdBar), outputMode); err != nil {
 			return err
