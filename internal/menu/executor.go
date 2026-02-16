@@ -26,6 +26,7 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/chat"
 	"github.com/stlalpha/vision3/internal/conference"
 	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/config"
@@ -78,6 +79,7 @@ type MenuExecutor struct {
 	IPLockoutCheck IPLockoutChecker              // IP-based authentication lockout checker
 	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
 	SessionRegistry *session.SessionRegistry      // Session registry for who's online
+	ChatRoom        *chat.ChatRoom               // Global teleconference chat room
 	configMu        sync.RWMutex                  // Mutex for thread-safe config updates
 }
 
@@ -85,7 +87,7 @@ type MenuExecutor struct {
 // Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, serverCfg, and ipLockoutCheck parameters
 // Updated paths to use new structure
 // << UPDATED Signature with msgMgr, fileMgr, serverCfg, and ipLockoutCheck
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry) *MenuExecutor {
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry, chatRoom *chat.ChatRoom) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -108,6 +110,7 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		IPLockoutCheck: ipLockoutCheck, // IP-based lockout checker
 		LoginSequence:   loginSequence,      // Configurable login sequence
 		SessionRegistry: sessionRegistry,    // Session registry for who's online
+		ChatRoom:        chatRoom,           // Global teleconference chat room
 	}
 }
 
@@ -359,6 +362,8 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["CFG_COLOR"] = runCfgColor
 	registry["CFG_PASSWORD"] = runCfgPassword
 	registry["CFG_VIEWCONFIG"] = runCfgViewConfig
+	registry["CHAT"] = runChat
+	registry["PAGE"] = runPage
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
@@ -1865,6 +1870,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 			if !isLightbarMenu || userInput == "" {
 				// Fallback to standard input if lightbar loading failed or no valid selection made
+				e.deliverPendingPages(terminal, nodeNumber, outputMode)
 				// Display Prompt (Skip if USEPROMPT is false)
 				if menuRec.GetUsePrompt() { // Condition changed: Only check UsePrompt
 					err = e.displayPrompt(terminal, menuRec, currentUser, userManager, nodeNumber, currentMenuName, sessionStartTime, outputMode, currentAreaName) // Pass currentAreaName
@@ -1891,6 +1897,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			}
 		} else {
 			// --- Standard Menu Input Handling ---
+			e.deliverPendingPages(terminal, nodeNumber, outputMode)
 			// Display Prompt (Skip if USEPROMPT is false)
 			log.Printf("DEBUG: Checking prompt display for menu: %s. UsePrompt=%t", currentMenuName, menuRec.GetUsePrompt())
 			if menuRec.GetUsePrompt() { // Condition changed: Only check UsePrompt
@@ -2786,6 +2793,24 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 	}
 
 	return nil
+}
+
+// deliverPendingPages checks for and displays any queued page messages.
+func (e *MenuExecutor) deliverPendingPages(terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) {
+	if e.SessionRegistry == nil {
+		return
+	}
+	sess := e.SessionRegistry.Get(nodeNumber)
+	if sess == nil {
+		return
+	}
+	pages := sess.DrainPages()
+	for _, page := range pages {
+		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+page+"\r\n")), outputMode); err != nil {
+			log.Printf("ERROR: Node %d: failed to deliver page: %v", nodeNumber, err)
+			return
+		}
+	}
 }
 
 // displayPrompt handles rendering the menu prompt, including file includes and placeholder substitution.

@@ -24,6 +24,7 @@ import (
 
 	// Local packages (Update paths)
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/chat"
 	"github.com/stlalpha/vision3/internal/conference"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/file"
@@ -1392,8 +1393,11 @@ func main() {
 	// Initialize session registry for who's online tracking
 	sessionRegistry = session.NewSessionRegistry()
 
+	// Initialize global chat room for teleconference
+	chatRoom := chat.NewChatRoom(100)
+
 	// Initialize MenuExecutor with new paths, loaded theme, server config, message manager, and connection tracker
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence, sessionRegistry)
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence, sessionRegistry, chatRoom)
 
 	// Initialize configuration file watcher for hot reload
 	var serverConfigMu sync.RWMutex

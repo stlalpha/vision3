@@ -51,3 +51,32 @@ func TestRegistryGet(t *testing.T) {
 		t.Error("expected nil for nonexistent node")
 	}
 }
+
+func TestSessionPendingPages(t *testing.T) {
+	s := &BbsSession{NodeID: 1, StartTime: time.Now()}
+
+	// Initially empty
+	pages := s.DrainPages()
+	if len(pages) != 0 {
+		t.Errorf("expected 0 pending pages, got %d", len(pages))
+	}
+
+	// Add pages
+	s.AddPage("Page from SysOp: Hello!")
+	s.AddPage("Page from User1: Hey!")
+
+	// Drain returns all and clears
+	pages = s.DrainPages()
+	if len(pages) != 2 {
+		t.Errorf("expected 2 pending pages, got %d", len(pages))
+	}
+	if pages[0] != "Page from SysOp: Hello!" {
+		t.Errorf("unexpected first page: %q", pages[0])
+	}
+
+	// After drain, should be empty
+	pages = s.DrainPages()
+	if len(pages) != 0 {
+		t.Errorf("expected 0 after drain, got %d", len(pages))
+	}
+}
