@@ -199,5 +199,12 @@
   "pageCancelled": "|09Page cancelled.|07\r\n",
   "pageInvalidNode": "|09Invalid node number.|07\r\n",
   "pageSelfError": "|09You can't page yourself.|07\r\n",
-  "pageNodeOffline": "|09That node is not online.|07\r\n"
+  "pageNodeOffline": "|09That node is not online.|07\r\n",
+  "newUserLocationPrompt": "|08G|07r|15oup|08/|07L|15ocation |09: ",
+  "newUserPasswordTooShort": "\r\n|09Password must be at least 3 characters.|07\r\n",
+  "newUserPasswordMismatch": "\r\n|09They don't match!|07\r\n",
+  "newUserInvalidRealName": "\r\n|05Please enter your |10first |05and |10last |05name.|07\r\n",
+  "newUserTooManyAttempts": "\r\n|05Too many invalid attempts.|07\r\n",
+  "newUserAccountCreated": "\r\n|15Your account has been created but requires |13SysOp validation|15.\r\n|08Please call back later to check your access.|07\r\n",
+  "newUserCreationError": "\r\n|13Error creating account. Please try again later.|07\r\n"
 }

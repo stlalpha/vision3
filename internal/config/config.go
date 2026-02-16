@@ -225,6 +225,15 @@ type StringsConfig struct {
 	PageSelfError         string `json:"pageSelfError"`
 	PageNodeOffline       string `json:"pageNodeOffline"`
 
+	// Newuser strings (V3-specific)
+	NewUserLocationPrompt   string `json:"newUserLocationPrompt"`
+	NewUserPasswordTooShort string `json:"newUserPasswordTooShort"`
+	NewUserPasswordMismatch string `json:"newUserPasswordMismatch"`
+	NewUserInvalidRealName  string `json:"newUserInvalidRealName"`
+	NewUserTooManyAttempts  string `json:"newUserTooManyAttempts"`
+	NewUserAccountCreated   string `json:"newUserAccountCreated"`
+	NewUserCreationError    string `json:"newUserCreationError"`
+
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
 	DefColor2 uint8 `json:"defColor2"`
