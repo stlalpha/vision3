@@ -42,10 +42,26 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 	selectedIndex := 0
 	topIndex := 0
+	cmdIndex := 0
 	reader := bufio.NewReader(s)
+
+	// Command bar options.
+	type cmdOption struct {
+		label  string
+		hotkey string
+	}
+	cmdOptions := []cmdOption{
+		{"Mark", " "},
+		{"Info", "i"},
+		{"View", "v"},
+		{"Download", "d"},
+		{"Upload", "u"},
+		{"Quit", "q"},
+	}
 
 	// Use theme highlight color matching the message lightbar.
 	hiColorSeq := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
+	loColorSeq := colorCodeToAnsi(e.Theme.YesNoRegularColor)
 
 	// Determine terminal dimensions.
 	termHeight := 24
@@ -313,9 +329,17 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			return err
 		}
 
-		// Status line.
-		statusLine := "\r\n|08[|15Up/Dn|08] Navigate  [|15Space|08] Mark  [|15I|08]nfo  [|15V|08]iew  [|15D|08]ownload  [|15U|08]pload  [|15Q|08]uit"
-		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(statusLine)), outputMode); err != nil {
+		// Command bar (horizontal lightbar).
+		cmdBar := "\r\n"
+		for ci, opt := range cmdOptions {
+			if ci == cmdIndex {
+				cmdBar += hiColorSeq + " " + opt.label + " " + "\x1b[0m"
+			} else {
+				cmdBar += loColorSeq + " " + opt.label + " " + "\x1b[0m"
+			}
+			cmdBar += "  "
+		}
+		if err := terminalio.WriteProcessedBytes(terminal, []byte(cmdBar), outputMode); err != nil {
 			return err
 		}
 
@@ -336,26 +360,49 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			return nil, "", err
 		}
 
+		// Navigation keys.
 		switch key {
-		// Arrow keys and navigation.
 		case "\x1b[A": // Up
 			selectedIndex--
+			continue
 		case "\x1b[B": // Down
 			selectedIndex++
+			continue
+		case "\x1b[C": // Right — command bar
+			cmdIndex++
+			if cmdIndex >= len(cmdOptions) {
+				cmdIndex = 0
+			}
+			continue
+		case "\x1b[D": // Left — command bar
+			cmdIndex--
+			if cmdIndex < 0 {
+				cmdIndex = len(cmdOptions) - 1
+			}
+			continue
 		case "\x1b[5~": // Page Up
 			selectedIndex -= visibleRows
+			continue
 		case "\x1b[6~": // Page Down
 			selectedIndex += visibleRows
+			continue
 		case "\x1b[H", "\x1b[1~": // Home
 			selectedIndex = 0
+			continue
 		case "\x1b[F", "\x1b[4~": // End
 			if len(allFiles) > 0 {
 				selectedIndex = len(allFiles) - 1
 			}
+			continue
 		case "\x1b": // Bare Esc
 			return nil, "", nil
+		case "\r", "\n": // Enter: execute selected command bar item
+			key = cmdOptions[cmdIndex].hotkey
+		}
 
-		case " ", "\r", "\n": // Space or Enter: toggle mark
+		// Command dispatch (direct hotkeys or Enter-selected command).
+		switch strings.ToLower(key) {
+		case " ": // Space: toggle mark
 			if len(allFiles) > 0 {
 				fileID := allFiles[selectedIndex].ID
 				found := false
@@ -376,10 +423,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				}
 			}
 
-		case "q", "Q":
+		case "q":
 			return nil, "", nil
 
-		case "i", "I": // Info: show file detail overlay
+		case "i": // Info: show file detail overlay
 			if len(allFiles) > 0 {
 				sel := allFiles[selectedIndex]
 				descWidth := termWidth - 14
@@ -417,7 +464,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				_, _ = readKeySequence(reader)
 			}
 
-		case "v", "V":
+		case "v":
 			if len(allFiles) > 0 {
 				sel := &allFiles[selectedIndex]
 				filePath, pathErr := e.FileMgr.GetFilePath(sel.ID)
@@ -436,7 +483,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
 			}
 
-		case "d", "D":
+		case "d":
 			if len(currentUser.TaggedFileIDs) == 0 {
 				msg := "\r\n|07No files marked for download. Use |15Space|07 to mark files.|07\r\n"
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
@@ -554,7 +601,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
 
-		case "u", "U":
+		case "u":
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 			uploadErr := e.runUploadFiles(s, terminal, currentUser, userManager, currentAreaID, currentAreaTag, outputMode, nodeNumber, sessionStartTime)
 			if uploadErr != nil {
