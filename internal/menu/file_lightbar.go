@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -43,14 +44,17 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	topIndex := 0
 	reader := bufio.NewReader(s)
 
-	// Use theme colors matching the message lightbar.
+	// Use theme highlight color matching the message lightbar.
 	hiColorSeq := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
-	loColorSeq := colorCodeToAnsi(e.Theme.YesNoRegularColor)
 
-	// Determine terminal height.
+	// Determine terminal dimensions.
 	termHeight := 24
+	termWidth := 80
 	if ptyReq, _, ok := s.Pty(); ok && ptyReq.Window.Height > 0 {
 		termHeight = ptyReq.Window.Height
+		if ptyReq.Window.Width > 0 {
+			termWidth = ptyReq.Window.Width
+		}
 	}
 
 	// Count header lines from top template (each CRLF-terminated line).
@@ -82,6 +86,20 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			return fmt.Sprintf("%dB", size)
 		}
 		return fmt.Sprintf("%dk", size/1024)
+	}
+
+	// stripAnsi removes all ANSI escape sequences from a string.
+	ansiRe := regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+	stripAnsi := func(s string) string {
+		return ansiRe.ReplaceAllString(s, "")
+	}
+
+	// truncate limits a string to maxLen characters.
+	truncate := func(s string, maxLen int) string {
+		if len(s) <= maxLen {
+			return s
+		}
+		return s[:maxLen]
 	}
 
 	clampSelection := func() {
@@ -147,7 +165,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				fileNameStr := fileRec.Filename
 				dateStr := fileRec.UploadedAt.Format("01/02/06")
 				sizeStr := formatSize(fileRec.Size)
-				descStr := fileRec.Description
+				// Truncate description to prevent line wrapping.
+				// Replace any embedded newlines with spaces first.
+				descStr := strings.ReplaceAll(fileRec.Description, "\n", " ")
+				descStr = strings.ReplaceAll(descStr, "\r", "")
 
 				markStr := " "
 				if isFileTagged(fileRec.ID) {
@@ -161,18 +182,37 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				line = strings.ReplaceAll(line, "^SIZE", sizeStr)
 				line = strings.ReplaceAll(line, "^DESC", descStr)
 
+				// Process pipe codes, then measure visible length and truncate to terminal width.
+				processed := string(ansi.ReplacePipeCodes([]byte(line)))
+				visibleLen := len(stripAnsi(processed))
+				if visibleLen > termWidth {
+					// Truncate the visible text to terminal width.
+					plain := stripAnsi(processed)
+					descStr = truncate(descStr, len(descStr)-(visibleLen-termWidth))
+					line = processedMidTemplate
+					line = strings.ReplaceAll(line, "^MARK", markStr)
+					line = strings.ReplaceAll(line, "^NUM", fileNumStr)
+					line = strings.ReplaceAll(line, "^NAME", fileNameStr)
+					line = strings.ReplaceAll(line, "^DATE", dateStr)
+					line = strings.ReplaceAll(line, "^SIZE", sizeStr)
+					line = strings.ReplaceAll(line, "^DESC", descStr)
+					processed = string(ansi.ReplacePipeCodes([]byte(line)))
+					_ = plain // used for length calculation
+				}
+
 				if idx == selectedIndex {
-					// Highlight with theme colors (matches message lightbar).
-					processed := string(ansi.ReplacePipeCodes([]byte(line)))
-					wrapped := hiColorSeq + processed + "\x1b[0m"
-					if err := writeProcessedStringWithManualEncoding(terminal, []byte(wrapped), outputMode); err != nil {
+					// Strip ANSI colors so highlight color applies uniformly.
+					plain := stripAnsi(processed)
+					// Pad to terminal width so highlight bar spans the full row.
+					if len(plain) < termWidth {
+						plain += strings.Repeat(" ", termWidth-len(plain))
+					}
+					wrapped := hiColorSeq + plain + "\x1b[0m"
+					if err := terminalio.WriteProcessedBytes(terminal, []byte(wrapped), outputMode); err != nil {
 						return err
 					}
 				} else {
-					// Regular color for unselected rows.
-					processed := string(ansi.ReplacePipeCodes([]byte(line)))
-					wrapped := loColorSeq + processed + "\x1b[0m"
-					if err := writeProcessedStringWithManualEncoding(terminal, []byte(wrapped), outputMode); err != nil {
+					if err := writeProcessedStringWithManualEncoding(terminal, []byte(processed), outputMode); err != nil {
 						return err
 					}
 				}
@@ -236,7 +276,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 
 		// Status line.
-		statusLine := "\r\n|08[|15\xe2\x86\x91\xe2\x86\x93|08] Navigate  [|15Space|08] Mark  [|15V|08]iew  [|15D|08]ownload  [|15U|08]pload  [|15Q|08]uit"
+		statusLine := "\r\n|08[|15Up/Dn|08] Navigate  [|15Space|08] Mark  [|15V|08]iew  [|15D|08]ownload  [|15U|08]pload  [|15Q|08]uit"
 		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(statusLine)), outputMode); err != nil {
 			return err
 		}
