@@ -30,6 +30,7 @@ import (
 	"github.com/stlalpha/vision3/internal/menu"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/scheduler"
+	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/sshserver"
 	"github.com/stlalpha/vision3/internal/telnetserver"
 	"github.com/stlalpha/vision3/internal/types"
@@ -41,7 +42,8 @@ var (
 	messageMgr   *message.MessageManager
 	fileMgr      *file.FileManager
 	confMgr      *conference.ConferenceManager
-	menuExecutor *menu.MenuExecutor
+	menuExecutor    *menu.MenuExecutor
+	sessionRegistry *session.SessionRegistry
 	// globalConfig *config.GlobalConfig // Still commented out
 	nodeCounter         int32
 	activeSessions      = make(map[ssh.Session]int32)
@@ -798,6 +800,9 @@ func sessionHandler(s ssh.Session) {
 		activeSessionsMutex.Lock()
 		delete(activeSessions, s) // Remove using session as key
 		activeSessionsMutex.Unlock()
+		if sessionRegistry != nil {
+			sessionRegistry.Unregister(int(nodeID))
+		}
 
 		// --- Record Call History ---
 		if authenticatedUser != nil {
@@ -944,6 +949,16 @@ func sessionHandler(s ssh.Session) {
 	// --- Authentication and Main Loop ---
 	log.Printf("Node %d: Starting BBS logic...", nodeID)
 	sessionStartTime := time.Now()
+
+	bbsSession := &session.BbsSession{
+		NodeID:       int(nodeID),
+		StartTime:    sessionStartTime,
+		LastActivity: sessionStartTime,
+		CurrentMenu:  "LOGIN",
+		RemoteAddr:   s.RemoteAddr(),
+	}
+	sessionRegistry.Register(bbsSession)
+
 	currentMenuName := "LOGIN"               // Start with LOGIN
 	autoRunLog := make(types.AutoRunTracker) // Initialize tracker for this session
 
@@ -956,6 +971,9 @@ func sessionHandler(s ssh.Session) {
 		if found && sshUser != nil {
 			// User exists in database, authenticate them automatically
 			authenticatedUser = sshUser
+			bbsSession.Mutex.Lock()
+			bbsSession.User = authenticatedUser
+			bbsSession.Mutex.Unlock()
 			log.Printf("Node %d: SSH auto-login successful for user '%s' (Handle: %s)", nodeID, sshUsername, sshUser.Handle)
 
 			// Mark user as online
@@ -1063,6 +1081,9 @@ func sessionHandler(s ssh.Session) {
 		// Check if authentication was successful during this menu execution
 		if authUser != nil {
 			authenticatedUser = authUser
+			bbsSession.Mutex.Lock()
+			bbsSession.User = authenticatedUser
+			bbsSession.Mutex.Unlock()
 			log.Printf("Node %d: User '%s' authenticated successfully.", nodeID, authenticatedUser.Handle)
 
 			// Mark user as online
@@ -1141,6 +1162,12 @@ func sessionHandler(s ssh.Session) {
 
 		// *** ADD LOGGING HERE ***
 		log.Printf("DEBUG: Node %d: Entering main loop iteration. CurrentMenu: %s, OutputMode: %d", nodeID, currentMenuName, effectiveMode)
+
+		// Update session state for who's online tracking
+		bbsSession.Mutex.Lock()
+		bbsSession.CurrentMenu = currentMenuName
+		bbsSession.LastActivity = time.Now()
+		bbsSession.Mutex.Unlock()
 
 		// Execute the current menu (e.g., MAIN, READ_MSG, etc.)
 		// Pass nodeID directly as int, use sessionStartTime from context
@@ -1362,8 +1389,11 @@ func main() {
 		log.Fatalf("Failed to load login sequence configuration: %v", err)
 	}
 
+	// Initialize session registry for who's online tracking
+	sessionRegistry = session.NewSessionRegistry()
+
 	// Initialize MenuExecutor with new paths, loaded theme, server config, message manager, and connection tracker
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence)
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence, sessionRegistry)
 
 	// Initialize configuration file watcher for hot reload
 	var serverConfigMu sync.RWMutex

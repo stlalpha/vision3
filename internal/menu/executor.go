@@ -27,6 +27,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stlalpha/vision3/internal/ansi"
 	"github.com/stlalpha/vision3/internal/conference"
+	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
@@ -75,15 +76,16 @@ type MenuExecutor struct {
 	FileMgr        *file.FileManager             // <-- ADDED FIELD: File manager instance
 	ConferenceMgr  *conference.ConferenceManager // Conference grouping manager
 	IPLockoutCheck IPLockoutChecker              // IP-based authentication lockout checker
-	LoginSequence  []config.LoginItem            // Configurable login sequence from login.json
-	configMu       sync.RWMutex                  // Mutex for thread-safe config updates
+	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
+	SessionRegistry *session.SessionRegistry      // Session registry for who's online
+	configMu        sync.RWMutex                  // Mutex for thread-safe config updates
 }
 
 // NewExecutor creates a new MenuExecutor.
 // Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, serverCfg, and ipLockoutCheck parameters
 // Updated paths to use new structure
 // << UPDATED Signature with msgMgr, fileMgr, serverCfg, and ipLockoutCheck
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem) *MenuExecutor {
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -104,7 +106,8 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		FileMgr:        fileMgr,        // <-- ASSIGN FIELD
 		ConferenceMgr:  confMgr,        // Conference grouping manager
 		IPLockoutCheck: ipLockoutCheck, // IP-based lockout checker
-		LoginSequence:  loginSequence,  // Configurable login sequence
+		LoginSequence:   loginSequence,      // Configurable login sequence
+		SessionRegistry: sessionRegistry,    // Session registry for who's online
 	}
 }
 
@@ -341,6 +344,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["OPENDOOR"] = runOpenDoor                               // Prompt and open a door
 	registry["DOORINFO"] = runDoorInfo                               // Show door information
 	registry["UPLOADFILE"] = runUploadFile                            // ZMODEM file upload
+	registry["WHOISONLINE"] = runWhoIsOnline                          // Who's online display
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
@@ -8971,4 +8975,144 @@ func runListPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	return updatedUser, nextMenu, err
+}
+
+func replaceWhoOnlineToken(line, token, value string) string {
+	return lastCallerATTokenRegex.ReplaceAllStringFunc(line, func(match string) string {
+		parts := lastCallerATTokenRegex.FindStringSubmatch(match)
+		if len(parts) < 2 {
+			return match
+		}
+		code := strings.ToUpper(parts[1])
+		if code != token {
+			return match
+		}
+		if len(parts) > 2 && parts[2] != "" {
+			if width, err := strconv.Atoi(parts[2]); err == nil {
+				return formatLastCallerATWidth(value, width, true)
+			}
+		}
+		return value
+	})
+}
+
+func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running WHOISONLINE", nodeNumber)
+
+	topPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.TOP")
+	midPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.MID")
+	botPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.BOT")
+
+	topBytes, errTop := os.ReadFile(topPath)
+	midBytes, errMid := os.ReadFile(midPath)
+	botBytes, errBot := os.ReadFile(botPath)
+
+	if errTop != nil || errMid != nil || errBot != nil {
+		log.Printf("ERROR: Node %d: Failed to load WHOONLN templates: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
+		msg := "\r\n|01Error loading Who's Online templates.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", fmt.Errorf("failed loading WHOONLN templates")
+	}
+
+	topBytes = stripSauceMetadata(topBytes)
+	midBytes = stripSauceMetadata(midBytes)
+	botBytes = stripSauceMetadata(botBytes)
+	topBytes = normalizePipeCodeDelimiters(topBytes)
+	midBytes = normalizePipeCodeDelimiters(midBytes)
+	botBytes = normalizePipeCodeDelimiters(botBytes)
+
+	processedTop := string(ansi.ReplacePipeCodes(topBytes))
+	processedMid := string(ansi.ReplacePipeCodes(midBytes))
+	processedBot := string(ansi.ReplacePipeCodes(botBytes))
+
+	if e.SessionRegistry == nil {
+		log.Printf("ERROR: Node %d: SessionRegistry is nil", nodeNumber)
+		msg := "\r\n|01Who's Online is unavailable.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
+	sessions := e.SessionRegistry.ListActive()
+
+	var buf bytes.Buffer
+	buf.WriteString(processedTop)
+	if !strings.HasSuffix(processedTop, "\r\n") && !strings.HasSuffix(processedTop, "\n") {
+		buf.WriteString("\r\n")
+	}
+
+	now := time.Now()
+	for _, sess := range sessions {
+		line := processedMid
+
+		nodeStr := strconv.Itoa(sess.NodeID)
+		line = replaceWhoOnlineToken(line, "ND", nodeStr)
+
+		// Read session fields under RLock to avoid racing with main loop writes
+		sess.Mutex.RLock()
+		userName := "Logging In..."
+		if sess.User != nil {
+			userName = sess.User.Handle
+		}
+		activity := sess.CurrentMenu
+		lastActivity := sess.LastActivity
+		sess.Mutex.RUnlock()
+
+		line = replaceWhoOnlineToken(line, "UN", userName)
+
+		if activity == "" {
+			activity = "---"
+		}
+		line = replaceWhoOnlineToken(line, "LO", activity)
+
+		safeStart := sess.StartTime
+		if safeStart.IsZero() {
+			safeStart = now
+		}
+		dur := now.Sub(safeStart)
+		hours := int(dur.Hours())
+		mins := int(dur.Minutes()) % 60
+		timeOn := fmt.Sprintf("%d:%02d", hours, mins)
+		line = replaceWhoOnlineToken(line, "TO", timeOn)
+
+		safeLast := lastActivity
+		if safeLast.IsZero() {
+			safeLast = now
+		}
+		idle := now.Sub(safeLast)
+		idleMins := int(idle.Minutes())
+		idleSecs := int(idle.Seconds()) % 60
+		idleStr := fmt.Sprintf("%d:%02d", idleMins, idleSecs)
+		line = replaceWhoOnlineToken(line, "ID", idleStr)
+
+		buf.WriteString(line)
+		if !strings.HasSuffix(line, "\r\n") && !strings.HasSuffix(line, "\n") {
+			buf.WriteString("\r\n")
+		}
+	}
+
+	processedBot = replaceWhoOnlineToken(processedBot, "NODECT", strconv.Itoa(len(sessions)))
+	buf.WriteString(processedBot)
+	if !strings.HasSuffix(processedBot, "\r\n") && !strings.HasSuffix(processedBot, "\n") {
+		buf.WriteString("\r\n")
+	}
+
+	terminalio.WriteProcessedBytes(terminal, []byte(buf.String()), outputMode)
+
+	pausePrompt := e.LoadedStrings.PauseString
+	if pausePrompt == "" {
+		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
+	}
+	err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during WHOISONLINE pause.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
+		}
+		log.Printf("ERROR: Node %d: Failed during WHOISONLINE pause: %v", nodeNumber, err)
+		return nil, "", err
+	}
+
+	return currentUser, "", nil
 }
