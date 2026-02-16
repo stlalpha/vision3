@@ -1870,6 +1870,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 			if !isLightbarMenu || userInput == "" {
 				// Fallback to standard input if lightbar loading failed or no valid selection made
+				e.deliverPendingPages(terminal, nodeNumber, outputMode)
 				// Display Prompt (Skip if USEPROMPT is false)
 				if menuRec.GetUsePrompt() { // Condition changed: Only check UsePrompt
 					err = e.displayPrompt(terminal, menuRec, currentUser, userManager, nodeNumber, currentMenuName, sessionStartTime, outputMode, currentAreaName) // Pass currentAreaName
@@ -1896,6 +1897,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			}
 		} else {
 			// --- Standard Menu Input Handling ---
+			e.deliverPendingPages(terminal, nodeNumber, outputMode)
 			// Display Prompt (Skip if USEPROMPT is false)
 			log.Printf("DEBUG: Checking prompt display for menu: %s. UsePrompt=%t", currentMenuName, menuRec.GetUsePrompt())
 			if menuRec.GetUsePrompt() { // Condition changed: Only check UsePrompt
@@ -2791,6 +2793,18 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 	}
 
 	return nil
+}
+
+// deliverPendingPages checks for and displays any queued page messages.
+func (e *MenuExecutor) deliverPendingPages(terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) {
+	sess := e.SessionRegistry.Get(nodeNumber)
+	if sess == nil {
+		return
+	}
+	pages := sess.DrainPages()
+	for _, page := range pages {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+page+"\r\n")), outputMode)
+	}
 }
 
 // displayPrompt handles rendering the menu prompt, including file includes and placeholder substitution.
