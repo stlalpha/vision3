@@ -191,7 +191,7 @@ func runCfgTermType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		return currentUser, "", nil
 	}
 
-	msg := fmt.Sprintf("\r\n|07Terminal Type: |15%s|07\r\n", strings.ToUpper(currentUser.OutputMode))
+	msg := fmt.Sprintf("\r\n|07Terminal Type: |15%s|07 |08(takes effect next session)|07\r\n", strings.ToUpper(currentUser.OutputMode))
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
@@ -395,8 +395,14 @@ func runCfgViewConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, u
 	topPath := filepath.Join(e.MenuSetPath, "templates", "USRCFGV.TOP")
 	botPath := filepath.Join(e.MenuSetPath, "templates", "USRCFGV.BOT")
 
-	topBytes, _ := os.ReadFile(topPath)
-	botBytes, _ := os.ReadFile(botPath)
+	topBytes, err := os.ReadFile(topPath)
+	if err != nil && !os.IsNotExist(err) {
+		log.Printf("WARN: Node %d: Failed to read %s: %v", nodeNumber, topPath, err)
+	}
+	botBytes, err := os.ReadFile(botPath)
+	if err != nil && !os.IsNotExist(err) {
+		log.Printf("WARN: Node %d: Failed to read %s: %v", nodeNumber, botPath, err)
+	}
 
 	topBytes = stripSauceMetadata(topBytes)
 	botBytes = stripSauceMetadata(botBytes)
