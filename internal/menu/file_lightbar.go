@@ -226,7 +226,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				// Build continuation lines from the remainder.
 				var contLines []string
 				remaining := remainDesc
-				for remaining != "" && len(contLines) < 2 { // max 2 continuation lines
+				for remaining != "" && len(contLines) < 10 { // FILE_ID.DIZ spec: up to 10 lines
 					cl := remaining
 					if len(cl) > descContWidth {
 						cut := descContWidth
