@@ -3635,7 +3635,15 @@ func colorCodeToAnsi(code int) string {
 	return fmt.Sprintf("\x1b[0m\x1b[%d;%dm", fgAnsi, bgAnsi)
 }
 
-// loadLightbarOptions loads and parses lightbar options from configuration files
+// loadLightbarOptions loads and parses lightbar options for the given menuName from
+// the MenuExecutor's menu set. It reads <menuName>.CFG to build a hotkey→command map
+// and then parses <menuName>.BAR into a slice of LightbarOption.
+//
+// The BAR file is expected to contain seven comma-separated fields per record:
+// X,Y,HiLitedColor,RegularColor,HotKey,ReturnValue,HiLitedString. Empty lines and
+// lines beginning with ';' are skipped. Malformed lines are ignored (warnings are
+// logged) and invalid color codes fall back to sensible defaults. If the BAR file
+// cannot be opened the function returns an error.
 func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, error) {
 	// Determine paths using MenuSetPath
 	cfgFilename := menuName + ".CFG"
@@ -3724,7 +3732,13 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 }
 
 // loadBarFile loads and parses a standalone BAR file (no matching CFG required).
-// Returns nil, nil if the file does not exist.
+// loadBarFile parses the BAR file at MenuSetPath/bar/<barName>.BAR and returns its entries as a slice of LightbarOption.
+// 
+// The function ignores empty lines and lines beginning with ';'. Each non-comment line must contain exactly seven
+// comma-separated fields: X, Y, highlightColor, regularColor, hotkey, returnValue, and displayText. Lines with an
+// incorrect number of fields or invalid coordinates are skipped and a warning is logged. If color codes are invalid the
+// function falls back to highlight=7 and regular=15 and continues parsing. If the BAR file does not exist the function
+// returns (nil, nil). Any other file-open error is returned.
 func loadBarFile(barName string, e *MenuExecutor) ([]LightbarOption, error) {
 	barPath := filepath.Join(e.MenuSetPath, "bar", barName+".BAR")
 
@@ -3784,7 +3798,10 @@ func loadBarFile(barName string, e *MenuExecutor) ([]LightbarOption, error) {
 	return options, nil
 }
 
-// drawLightbarMenu draws the lightbar menu with the specified option selected
+// drawLightbarOption writes a single lightbar menu option at its configured coordinates,
+// applying the highlight color when selected and resetting terminal attributes afterwards.
+// It returns an error if positioning the cursor, emitting the color sequence, writing the
+// option text, or resetting attributes fails.
 func drawLightbarOption(terminal *term.Terminal, opt LightbarOption, selected bool, outputMode ansi.OutputMode) error {
 	posCmd := fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X)
 	err := terminalio.WriteProcessedBytes(terminal, []byte(posCmd), outputMode)
@@ -7800,7 +7817,12 @@ func (e *MenuExecutor) runUploadFiles(
 	return nil
 }
 
-// runListFiles displays a paginated list of files in the current file area.
+// runListFiles displays a paginated list of files in the user's current file area and handles interactive file-list operations.
+// It verifies the logged-in user and area access, loads FILELIST templates, computes pagination from the PTY size, and supports two rendering modes:
+// a classic text listing and a lightbar-driven listing (via runListFilesLightbar). User commands handled include next/prev page, quit, mark/untag files by number,
+// download marked files via ZMODEM (sz), upload files, view a file (including ZipLab archives), and change area (delegated to the menu).
+// The function updates the user's tagged file list and persists user state when appropriate; it also increments file download counts after successful transfers.
+// It returns the possibly-updated *user.User, a next-action string (for example "LOGOFF" to signal logout or empty to remain in menu), and a non-nil error only for unrecoverable failures (io.EOF is returned on client disconnect).
 func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running LISTFILES", nodeNumber)
 
