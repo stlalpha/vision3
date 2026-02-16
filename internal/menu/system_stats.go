@@ -19,7 +19,7 @@ import (
 	"github.com/stlalpha/vision3/internal/user"
 )
 
-func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	if currentUser == nil {
 		return nil, "", nil
 	}
@@ -111,7 +111,7 @@ func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	if pausePrompt == "" {
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
-	if err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode); err != nil {
+	if err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode, termWidth, termHeight); err != nil {
 		return nil, "", err
 	}
 

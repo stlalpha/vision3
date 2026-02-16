@@ -9236,7 +9236,7 @@ func replaceWhoOnlineToken(line, token, value string) string {
 	})
 }
 
-func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running WHOISONLINE", nodeNumber)
 
 	topPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.TOP")
@@ -9344,7 +9344,7 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	if pausePrompt == "" {
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
-	err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode)
+	err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode, termWidth, termHeight)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			log.Printf("INFO: Node %d: User disconnected during WHOISONLINE pause.", nodeNumber)
