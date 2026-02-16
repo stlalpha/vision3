@@ -247,8 +247,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 		} else {
 			sel := allFiles[selectedIndex]
+			detailDesc := strings.ReplaceAll(sel.Description, "\n", " ")
+			detailDesc = strings.ReplaceAll(detailDesc, "\r", "")
+			detailDesc = truncate(detailDesc, termWidth-14) // 14 = "|15Desc      : |07" visible prefix
 			d1 := fmt.Sprintf("|15Filename  : |07%-40s |15Size : |07%s\r\n", sel.Filename, formatSize(sel.Size))
-			d2 := fmt.Sprintf("|15Desc      : |07%s\r\n", sel.Description)
+			d2 := fmt.Sprintf("|15Desc      : |07%s\r\n", detailDesc)
 			d3 := fmt.Sprintf("|15Uploaded  : |07%-20s |15By   : |07%s\r\n", sel.UploadedAt.Format("01/02/2006 15:04"), sel.UploadedBy)
 			d4 := fmt.Sprintf("|15Downloads : |07%d\r\n", sel.DownloadCount)
 			d5 := "\r\n"
