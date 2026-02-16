@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gliderlabs/ssh"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/term"
 
 	"github.com/stlalpha/vision3/internal/ansi"
@@ -264,6 +265,62 @@ func runCfgNote(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMan
 		func(u *user.User) string { return u.PrivateNote },
 		func(u *user.User, v string) { u.PrivateNote = v },
 	)
+}
+
+func runCfgPassword(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	if currentUser == nil {
+		return nil, "", nil
+	}
+
+	// Prompt for current password
+	msg := "\r\n|07Current Password: "
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+
+	oldPw, err := readPasswordSecurely(s, terminal, outputMode)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return currentUser, "", nil
+	}
+
+	// Verify current password
+	if bcryptErr := bcrypt.CompareHashAndPassword([]byte(currentUser.PasswordHash), []byte(oldPw)); bcryptErr != nil {
+		msg := "\r\n|09Incorrect password.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
+	// Prompt for new password using existing helper
+	newPw, err := e.promptForPassword(s, terminal, nodeNumber, outputMode)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return currentUser, "", nil
+	}
+	if newPw == "" {
+		return currentUser, "", nil
+	}
+
+	// Hash and save
+	hashed, err := bcrypt.GenerateFromPassword([]byte(newPw), bcrypt.DefaultCost)
+	if err != nil {
+		log.Printf("ERROR: Node %d: Failed to hash new password: %v", nodeNumber, err)
+		return currentUser, "", nil
+	}
+
+	currentUser.PasswordHash = string(hashed)
+	if err := userManager.UpdateUser(currentUser); err != nil {
+		log.Printf("ERROR: Node %d: Failed to save password: %v", nodeNumber, err)
+		return currentUser, "", nil
+	}
+
+	msg = "\r\n|10Password changed.|07\r\n"
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+	time.Sleep(1 * time.Second)
+	return currentUser, "", nil
 }
 
 var colorSlotNames = [7]string{"Prompt", "Input", "Text", "Stat", "Text2", "Stat2", "Bar"}
