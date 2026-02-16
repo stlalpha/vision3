@@ -33,8 +33,9 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 		sess.Mutex.RUnlock()
 	}
 
-	// Layout: line 1 = header, line 2 = separator, lines 3..(height-1) = scroll region, line height = input
-	scrollBottom := height - 1
+	// Layout: line 1 = header, line 2 = top separator, lines 3..(height-2) = scroll region,
+	// line (height-1) = bottom separator, line height = input
+	scrollBottom := height - 2
 
 	// Clear screen and show header
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
