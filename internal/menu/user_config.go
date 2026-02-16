@@ -41,7 +41,7 @@ func runCfgToggle(
 	if err := userManager.UpdateUser(currentUser); err != nil {
 		setter(currentUser, original)
 		log.Printf("ERROR: Node %d: Failed to save %s: %v", nodeNumber, fieldName, err)
-		msg := fmt.Sprintf("\r\n|09Error saving %s.|07\r\n", fieldName)
+		msg := fmt.Sprintf(e.LoadedStrings.CfgSaveError, fieldName)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
@@ -49,11 +49,11 @@ func runCfgToggle(
 
 	newVal := !original
 
-	stateStr := "|09OFF|07"
+	stateStr := e.LoadedStrings.CfgToggleOff
 	if newVal {
-		stateStr = "|10ON|07"
+		stateStr = e.LoadedStrings.CfgToggleOn
 	}
-	msg := fmt.Sprintf("\r\n|07%s: %s\r\n", fieldName, stateStr)
+	msg := fmt.Sprintf(e.LoadedStrings.CfgToggleFormat, fieldName, stateStr)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
@@ -92,7 +92,7 @@ func runCfgScreenWidth(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	if current == 0 {
 		current = 80
 	}
-	prompt := fmt.Sprintf("\r\n|07Screen Width |08(|07current: %d, 40-255|08)|07: ", current)
+	prompt := fmt.Sprintf(e.LoadedStrings.CfgScreenWidthPrompt, current)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
 	input, err := terminal.ReadLine()
@@ -110,7 +110,7 @@ func runCfgScreenWidth(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 
 	val, parseErr := strconv.Atoi(input)
 	if parseErr != nil || val < 40 || val > 255 {
-		msg := "\r\n|09Invalid width. Must be 40-255.|07\r\n"
+		msg := e.LoadedStrings.CfgScreenWidthInvalid
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return currentUser, "", nil
@@ -122,7 +122,7 @@ func runCfgScreenWidth(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		return currentUser, "", nil
 	}
 
-	msg := fmt.Sprintf("\r\n|07Screen Width set to |15%d|07.\r\n", val)
+	msg := fmt.Sprintf(e.LoadedStrings.CfgScreenWidthSet, val)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
@@ -137,7 +137,7 @@ func runCfgScreenHeight(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	if current == 0 {
 		current = 25
 	}
-	prompt := fmt.Sprintf("\r\n|07Screen Height |08(|07current: %d, 21-60|08)|07: ", current)
+	prompt := fmt.Sprintf(e.LoadedStrings.CfgScreenHeightPrompt, current)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
 	input, err := terminal.ReadLine()
@@ -155,7 +155,7 @@ func runCfgScreenHeight(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	val, parseErr := strconv.Atoi(input)
 	if parseErr != nil || val < 21 || val > 60 {
-		msg := "\r\n|09Invalid height. Must be 21-60.|07\r\n"
+		msg := e.LoadedStrings.CfgScreenHeightInvalid
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return currentUser, "", nil
@@ -167,7 +167,7 @@ func runCfgScreenHeight(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return currentUser, "", nil
 	}
 
-	msg := fmt.Sprintf("\r\n|07Screen Height set to |15%d|07.\r\n", val)
+	msg := fmt.Sprintf(e.LoadedStrings.CfgScreenHeightSet, val)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
@@ -194,7 +194,7 @@ func runCfgTermType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		return currentUser, "", nil
 	}
 
-	msg := fmt.Sprintf("\r\n|07Terminal Type: |15%s|07 |08(takes effect next session)|07\r\n", strings.ToUpper(currentUser.OutputMode))
+	msg := fmt.Sprintf(e.LoadedStrings.CfgTermTypeSet, strings.ToUpper(currentUser.OutputMode))
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
@@ -214,9 +214,9 @@ func runCfgStringInput(
 	}
 
 	current := getter(currentUser)
-	prompt := fmt.Sprintf("\r\n|07%s |08(|07max %d chars|08)|07: ", fieldName, maxLen)
+	prompt := fmt.Sprintf(e.LoadedStrings.CfgStringPrompt, fieldName, maxLen)
 	if current != "" {
-		prompt = fmt.Sprintf("\r\n|07%s |08[|07%s|08] (|07max %d|08)|07: ", fieldName, current, maxLen)
+		prompt = fmt.Sprintf(e.LoadedStrings.CfgStringPromptCurrent, fieldName, current, maxLen)
 	}
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
@@ -243,7 +243,7 @@ func runCfgStringInput(
 		return currentUser, "", nil
 	}
 
-	msg := fmt.Sprintf("\r\n|07%s updated.|07\r\n", fieldName)
+	msg := fmt.Sprintf(e.LoadedStrings.CfgStringUpdated, fieldName)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
@@ -279,7 +279,7 @@ func runCfgPassword(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	}
 
 	// Prompt for current password
-	msg := "\r\n|07Current Password: "
+	msg := e.LoadedStrings.CfgCurrentPwPrompt
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
 	oldPw, err := readPasswordSecurely(s, terminal, outputMode)
@@ -292,7 +292,7 @@ func runCfgPassword(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 
 	// Verify current password
 	if bcryptErr := bcrypt.CompareHashAndPassword([]byte(currentUser.PasswordHash), []byte(oldPw)); bcryptErr != nil {
-		msg := "\r\n|09Incorrect password.|07\r\n"
+		msg := e.LoadedStrings.CfgIncorrectPw
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
@@ -323,7 +323,7 @@ func runCfgPassword(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		return currentUser, "", nil
 	}
 
-	msg = "\r\n|10Password changed.|07\r\n"
+	msg = e.LoadedStrings.CfgPasswordChanged
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(1 * time.Second)
 	return currentUser, "", nil
@@ -347,14 +347,14 @@ func runCfgColor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 
 	// Display color palette
 	var palette strings.Builder
-	palette.WriteString(fmt.Sprintf("\r\n|07Select %s Color:\r\n\r\n", slotName))
+	palette.WriteString(fmt.Sprintf(e.LoadedStrings.CfgColorSelectPrompt, slotName))
 	for i := 0; i < 16; i++ {
 		palette.WriteString(fmt.Sprintf("|%02d  %2d  ", i, i))
 		if i == 7 {
 			palette.WriteString("\r\n")
 		}
 	}
-	palette.WriteString("|07\r\n\r\nColor number (0-15): ")
+	palette.WriteString(e.LoadedStrings.CfgColorInputPrompt)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(palette.String())), outputMode)
 
 	input, err := terminal.ReadLine()
@@ -372,7 +372,7 @@ func runCfgColor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 
 	val, parseErr := strconv.Atoi(input)
 	if parseErr != nil || val < 0 || val > 15 {
-		msg := "\r\n|09Invalid color. Must be 0-15.|07\r\n"
+		msg := e.LoadedStrings.CfgColorInvalid
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return currentUser, "", nil
@@ -384,7 +384,7 @@ func runCfgColor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 		return currentUser, "", nil
 	}
 
-	msg := fmt.Sprintf("\r\n|07%s Color set to |%02d%d|07.\r\n", slotName, val, val)
+	msg := fmt.Sprintf(e.LoadedStrings.CfgColorSet, slotName, val, val)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
@@ -421,9 +421,9 @@ func runCfgViewConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, u
 
 	boolStr := func(v bool) string {
 		if v {
-			return "|10ON|07"
+			return e.LoadedStrings.CfgToggleOn
 		}
-		return "|09OFF|07"
+		return e.LoadedStrings.CfgToggleOff
 	}
 
 	width := currentUser.ScreenWidth
@@ -440,23 +440,23 @@ func runCfgViewConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, u
 	}
 
 	lines := []string{
-		fmt.Sprintf(" |07Screen Width:       |15%d", width),
-		fmt.Sprintf(" |07Screen Height:      |15%d", height),
-		fmt.Sprintf(" |07Terminal Type:       |15%s", strings.ToUpper(outMode)),
-		fmt.Sprintf(" |07Full-Screen Editor:  %s", boolStr(currentUser.FullScreenEditor)),
-		fmt.Sprintf(" |07Hot Keys:            %s", boolStr(currentUser.HotKeys)),
-		fmt.Sprintf(" |07More Prompts:        %s", boolStr(currentUser.MorePrompts)),
-		fmt.Sprintf(" |07Message Header:      |15%d", currentUser.MsgHdr),
-		fmt.Sprintf(" |07Custom Prompt:       |15%s", currentUser.CustomPrompt),
+		fmt.Sprintf(e.LoadedStrings.CfgViewScreenWidth, width),
+		fmt.Sprintf(e.LoadedStrings.CfgViewScreenHeight, height),
+		fmt.Sprintf(e.LoadedStrings.CfgViewTermType, strings.ToUpper(outMode)),
+		fmt.Sprintf(e.LoadedStrings.CfgViewFSEditor, boolStr(currentUser.FullScreenEditor)),
+		fmt.Sprintf(e.LoadedStrings.CfgViewHotKeys, boolStr(currentUser.HotKeys)),
+		fmt.Sprintf(e.LoadedStrings.CfgViewMorePrompts, boolStr(currentUser.MorePrompts)),
+		fmt.Sprintf(e.LoadedStrings.CfgViewMsgHeader, currentUser.MsgHdr),
+		fmt.Sprintf(e.LoadedStrings.CfgViewCustomPrompt, currentUser.CustomPrompt),
 		"",
-		fmt.Sprintf(" |07Prompt Color:  |%02d%d|07    Input Color: |%02d%d|07", currentUser.Colors[0], currentUser.Colors[0], currentUser.Colors[1], currentUser.Colors[1]),
-		fmt.Sprintf(" |07Text Color:    |%02d%d|07    Stat Color:  |%02d%d|07", currentUser.Colors[2], currentUser.Colors[2], currentUser.Colors[3], currentUser.Colors[3]),
-		fmt.Sprintf(" |07Text2 Color:   |%02d%d|07    Stat2 Color: |%02d%d|07", currentUser.Colors[4], currentUser.Colors[4], currentUser.Colors[5], currentUser.Colors[5]),
-		fmt.Sprintf(" |07Bar Color:     |%02d%d|07", currentUser.Colors[6], currentUser.Colors[6]),
+		fmt.Sprintf(e.LoadedStrings.CfgViewPromptColor, currentUser.Colors[0], currentUser.Colors[0], currentUser.Colors[1], currentUser.Colors[1]),
+		fmt.Sprintf(e.LoadedStrings.CfgViewTextColor, currentUser.Colors[2], currentUser.Colors[2], currentUser.Colors[3], currentUser.Colors[3]),
+		fmt.Sprintf(e.LoadedStrings.CfgViewText2Color, currentUser.Colors[4], currentUser.Colors[4], currentUser.Colors[5], currentUser.Colors[5]),
+		fmt.Sprintf(e.LoadedStrings.CfgViewBarColor, currentUser.Colors[6], currentUser.Colors[6]),
 		"",
-		fmt.Sprintf(" |07Real Name:     |15%s", currentUser.RealName),
-		fmt.Sprintf(" |07Phone:         |15%s", currentUser.PhoneNumber),
-		fmt.Sprintf(" |07Note:          |15%s", currentUser.PrivateNote),
+		fmt.Sprintf(e.LoadedStrings.CfgViewRealName, currentUser.RealName),
+		fmt.Sprintf(e.LoadedStrings.CfgViewPhone, currentUser.PhoneNumber),
+		fmt.Sprintf(e.LoadedStrings.CfgViewNote, currentUser.PrivateNote),
 	}
 
 	for _, line := range lines {
@@ -490,7 +490,7 @@ func runCfgCustomPrompt(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
-	help := "\r\n|08Format codes: |07|MN|08=Menu |07|TL|08=Time Left |07|TN|08=Time |07|DN|08=Date |07|CR|08=Return\r\n"
+	help := e.LoadedStrings.CfgCustomPromptHelp
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(help)), outputMode)
 
 	return runCfgStringInput(e, s, terminal, userManager, currentUser, nodeNumber, outputMode,
