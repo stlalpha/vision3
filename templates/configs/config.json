@@ -19,5 +19,6 @@
   "ipAllowlistPath": "configs/allowlist.txt",
   "maxFailedLogins": 5,
   "lockoutMinutes": 30,
-  "fileListingMode": "lightbar"
+  "fileListingMode": "lightbar",
+  "legacySSHAlgorithms": true
 }

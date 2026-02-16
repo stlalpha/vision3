@@ -305,13 +305,19 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		startMsg := determineStartMessage(e, scanCfg, currentAreaID, currentUser.Handle, totalCount)
 
-		// Get terminal dimensions from user preferences
-		tw := currentUser.ScreenWidth
-		if tw == 0 {
+		// Get terminal dimensions: prefer passed params, then user preferences, then defaults
+		tw := termWidth
+		if tw <= 0 {
+			tw = currentUser.ScreenWidth
+		}
+		if tw <= 0 {
 			tw = 80
 		}
-		th := currentUser.ScreenHeight
-		if th == 0 {
+		th := termHeight
+		if th <= 0 {
+			th = currentUser.ScreenHeight
+		}
+		if th <= 0 {
 			th = 24
 		}
 
@@ -399,7 +405,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				// Fall through to call runMessageReader below
 			case 'P': // Post
 				_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
-				sessionStartTime, "", outputMode, termWidth, termHeight)
+					sessionStartTime, "", outputMode, termWidth, termHeight)
 				continue
 			case 'J': // Jump to message #
 				handleJump(reader, terminal, outputMode, &startMsg, totalCount, e.LoadedStrings.MsgJumpPrompt, e.LoadedStrings.MsgInvalidMsgNum)
@@ -417,13 +423,19 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			break
 		}
 
-		// Get terminal dimensions from user preferences
-		tw := currentUser.ScreenWidth
-		if tw == 0 {
+		// Get terminal dimensions: prefer passed params, then user preferences, then defaults
+		tw := termWidth
+		if tw <= 0 {
+			tw = currentUser.ScreenWidth
+		}
+		if tw <= 0 {
 			tw = 80
 		}
-		th := currentUser.ScreenHeight
-		if th == 0 {
+		th := termHeight
+		if th <= 0 {
+			th = currentUser.ScreenHeight
+		}
+		if th <= 0 {
 			th = 24
 		}
 
@@ -573,13 +585,17 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		currentIdx++
 	}
 
-	// Get terminal dimensions (default 24x80)
-	termHeight = currentUser.ScreenHeight
-	if termHeight == 0 {
+	// Get terminal dimensions: prefer passed params, then user prefs, then defaults
+	if termHeight <= 0 {
+		termHeight = currentUser.ScreenHeight
+	}
+	if termHeight <= 0 {
 		termHeight = 24
 	}
-	termWidth = currentUser.ScreenWidth
-	if termWidth == 0 {
+	if termWidth <= 0 {
+		termWidth = currentUser.ScreenWidth
+	}
+	if termWidth <= 0 {
 		termWidth = 80
 	}
 

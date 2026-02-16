@@ -28,16 +28,16 @@ import (
 	"github.com/stlalpha/vision3/internal/ansi"
 	"github.com/stlalpha/vision3/internal/chat"
 	"github.com/stlalpha/vision3/internal/conference"
-	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/message"
+	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/terminalio" // <-- Added import
 	"github.com/stlalpha/vision3/internal/transfer"
-	"github.com/stlalpha/vision3/internal/ziplab"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
+	"github.com/stlalpha/vision3/internal/ziplab"
 	"golang.org/x/term"
 )
 
@@ -62,24 +62,24 @@ type RunnableFunc func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 
 // MenuExecutor handles the loading and execution of ViSiON/2 menus.
 type MenuExecutor struct {
-	ConfigPath     string                        // DEPRECATED: Use MenuSetPath + "/cfg" or RootConfigPath
-	AssetsPath     string                        // DEPRECATED: Use MenuSetPath + "/ansi" or RootAssetsPath
-	MenuSetPath    string                        // NEW: Path to the active menu set (e.g., "menus/v3")
-	RootConfigPath string                        // NEW: Path to global configs (e.g., "configs")
-	RootAssetsPath string                        // NEW: Path to global assets (e.g., "assets")
-	RunRegistry    map[string]RunnableFunc       // Map RUN: targets to functions (Use local RunnableFunc)
-	DoorRegistry   map[string]config.DoorConfig  // Map DOOR: targets to configurations
-	OneLiners      []string                      // Loaded oneliners (Consider if these should be menu-set specific)
-	LoadedStrings  config.StringsConfig          // Loaded global strings configuration
-	Theme          config.ThemeConfig            // Loaded theme configuration
-	ServerCfg      config.ServerConfig           // Server configuration (NEW)
-	MessageMgr     *message.MessageManager       // <-- ADDED FIELD
-	FileMgr        *file.FileManager             // <-- ADDED FIELD: File manager instance
-	ConferenceMgr  *conference.ConferenceManager // Conference grouping manager
-	IPLockoutCheck IPLockoutChecker              // IP-based authentication lockout checker
+	ConfigPath      string                        // DEPRECATED: Use MenuSetPath + "/cfg" or RootConfigPath
+	AssetsPath      string                        // DEPRECATED: Use MenuSetPath + "/ansi" or RootAssetsPath
+	MenuSetPath     string                        // NEW: Path to the active menu set (e.g., "menus/v3")
+	RootConfigPath  string                        // NEW: Path to global configs (e.g., "configs")
+	RootAssetsPath  string                        // NEW: Path to global assets (e.g., "assets")
+	RunRegistry     map[string]RunnableFunc       // Map RUN: targets to functions (Use local RunnableFunc)
+	DoorRegistry    map[string]config.DoorConfig  // Map DOOR: targets to configurations
+	OneLiners       []string                      // Loaded oneliners (Consider if these should be menu-set specific)
+	LoadedStrings   config.StringsConfig          // Loaded global strings configuration
+	Theme           config.ThemeConfig            // Loaded theme configuration
+	ServerCfg       config.ServerConfig           // Server configuration (NEW)
+	MessageMgr      *message.MessageManager       // <-- ADDED FIELD
+	FileMgr         *file.FileManager             // <-- ADDED FIELD: File manager instance
+	ConferenceMgr   *conference.ConferenceManager // Conference grouping manager
+	IPLockoutCheck  IPLockoutChecker              // IP-based authentication lockout checker
 	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
 	SessionRegistry *session.SessionRegistry      // Session registry for who's online
-	ChatRoom        *chat.ChatRoom               // Global teleconference chat room
+	ChatRoom        *chat.ChatRoom                // Global teleconference chat room
 	configMu        sync.RWMutex                  // Mutex for thread-safe config updates
 }
 
@@ -95,22 +95,22 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 	registerAppRunnables(runRegistry)            // Add application-specific runnables
 
 	return &MenuExecutor{
-		MenuSetPath:    menuSetPath,    // Store path to active menu set
-		RootConfigPath: rootConfigPath, // Store path to global configs
-		RootAssetsPath: rootAssetsPath, // Store path to global assets
-		RunRegistry:    runRegistry,
-		DoorRegistry:   doorRegistry,
-		OneLiners:      oneLiners,      // Store loaded oneliners
-		LoadedStrings:  loadedStrings,  // Store loaded strings
-		Theme:          theme,          // Store loaded theme
-		ServerCfg:      serverCfg,      // Store server configuration
-		MessageMgr:     msgMgr,         // <-- ASSIGN FIELD
-		FileMgr:        fileMgr,        // <-- ASSIGN FIELD
-		ConferenceMgr:  confMgr,        // Conference grouping manager
-		IPLockoutCheck: ipLockoutCheck, // IP-based lockout checker
-		LoginSequence:   loginSequence,      // Configurable login sequence
-		SessionRegistry: sessionRegistry,    // Session registry for who's online
-		ChatRoom:        chatRoom,           // Global teleconference chat room
+		MenuSetPath:     menuSetPath,    // Store path to active menu set
+		RootConfigPath:  rootConfigPath, // Store path to global configs
+		RootAssetsPath:  rootAssetsPath, // Store path to global assets
+		RunRegistry:     runRegistry,
+		DoorRegistry:    doorRegistry,
+		OneLiners:       oneLiners,       // Store loaded oneliners
+		LoadedStrings:   loadedStrings,   // Store loaded strings
+		Theme:           theme,           // Store loaded theme
+		ServerCfg:       serverCfg,       // Store server configuration
+		MessageMgr:      msgMgr,          // <-- ASSIGN FIELD
+		FileMgr:         fileMgr,         // <-- ASSIGN FIELD
+		ConferenceMgr:   confMgr,         // Conference grouping manager
+		IPLockoutCheck:  ipLockoutCheck,  // IP-based lockout checker
+		LoginSequence:   loginSequence,   // Configurable login sequence
+		SessionRegistry: sessionRegistry, // Session registry for who's online
+		ChatRoom:        chatRoom,        // Global teleconference chat room
 	}
 }
 
@@ -328,7 +328,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["NEWSCAN"] = runNewscan                                 // <-- ADDED: Register newscan runnable
 	registry["LISTFILES"] = runListFiles                             // <-- ADDED: Register file list runnable
 	registry["VIEW_FILE"] = runViewFile                              // View file (archives show listing, text gets paged)
-	registry["TYPE_TEXT_FILE"] = runTypeTextFile                      // Type text file with paging
+	registry["TYPE_TEXT_FILE"] = runTypeTextFile                     // Type text file with paging
 	registry["LISTFILEAR"] = runListFileAreas                        // <-- ADDED: Register file area list runnable
 	registry["SELECTFILEAREA"] = runSelectFileArea                   // <-- ADDED: Register file area selection runnable
 	registry["SELECTMSGAREA"] = runSelectMessageArea                 // Register message area selection runnable
@@ -349,8 +349,8 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["LISTDOORS"] = runListDoors                             // List available doors
 	registry["OPENDOOR"] = runOpenDoor                               // Prompt and open a door
 	registry["DOORINFO"] = runDoorInfo                               // Show door information
-	registry["UPLOADFILE"] = runUploadFile                            // ZMODEM file upload
-	registry["WHOISONLINE"] = runWhoIsOnline                          // Who's online display
+	registry["UPLOADFILE"] = runUploadFile                           // ZMODEM file upload
+	registry["WHOISONLINE"] = runWhoIsOnline                         // Who's online display
 	registry["CFG_HOTKEYS"] = runCfgHotKeys
 	registry["CFG_MOREPROMPTS"] = runCfgMorePrompts
 	registry["CFG_FSEDITOR"] = runCfgFSEditor
@@ -3712,9 +3712,9 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 			regularColor = 15  // Default: Bright White on Black
 		}
 
-		hotkey := strings.ToUpper(strings.TrimSpace(parts[4]))    // HotKey is the 5th field (index 4)
-		returnValue := strings.TrimSpace(parts[5])               // ReturnValue is the 6th field (index 5)
-		displayText := strings.TrimSpace(parts[6])               // DisplayText is the 7th field (index 6)
+		hotkey := strings.ToUpper(strings.TrimSpace(parts[4])) // HotKey is the 5th field (index 4)
+		returnValue := strings.TrimSpace(parts[5])             // ReturnValue is the 6th field (index 5)
+		displayText := strings.TrimSpace(parts[6])             // DisplayText is the 7th field (index 6)
 
 		// Verify the hotkey maps to a command
 		if _, exists := commandsByHotkey[hotkey]; !exists {
@@ -4496,9 +4496,11 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	reader := bufio.NewReader(s)
 	selectedIndex := 0
 	topIndex := 0
-	termHeight = 24
-	if ptyReq, _, ok := s.Pty(); ok && ptyReq.Window.Height > 0 {
-		termHeight = ptyReq.Window.Height
+	if termHeight <= 0 {
+		termHeight = 24
+		if ptyReq, _, ok := s.Pty(); ok && ptyReq.Window.Height > 0 {
+			termHeight = ptyReq.Window.Height
+		}
 	}
 	pageSize := termHeight - 14 // Reduced by 1 to account for header row
 	if pageSize < 3 {
@@ -5364,9 +5366,11 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 	reader := bufio.NewReader(s)
 	selectedIndex := 0
 	topIndex := 0
-	termHeight = 24
-	if ptyReq, _, ok := s.Pty(); ok && ptyReq.Window.Height > 0 {
-		termHeight = ptyReq.Window.Height
+	if termHeight <= 0 {
+		termHeight = 24
+		if ptyReq, _, ok := s.Pty(); ok && ptyReq.Window.Height > 0 {
+			termHeight = ptyReq.Window.Height
+		}
 	}
 	pageSize := termHeight - 14 // Reduced by 1 to account for header row
 	if pageSize < 3 {
@@ -7225,13 +7229,19 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 		currentMsgNum = selectedNum
 	}
 
-	// Get terminal dimensions from user preferences
-	tw := currentUser.ScreenWidth
-	if tw == 0 {
+	// Get terminal dimensions: prefer passed params, then user preferences, then defaults
+	tw := termWidth
+	if tw <= 0 {
+		tw = currentUser.ScreenWidth
+	}
+	if tw <= 0 {
 		tw = 80
 	}
-	th := currentUser.ScreenHeight
-	if th == 0 {
+	th := termHeight
+	if th <= 0 {
+		th = currentUser.ScreenHeight
+	}
+	if th <= 0 {
 		th = 24
 	}
 
@@ -7250,7 +7260,7 @@ func containsAnsiArt(text string) bool {
 	// Also check for save/restore cursor, cursor up/down/forward/back
 	// These indicate the text is using absolute positioning (ANSI art)
 	ansiArtPatterns := []string{
-		"\x1b[",   // Start of ANSI sequence
+		"\x1b[", // Start of ANSI sequence
 	}
 
 	hasAnsiSequence := false
@@ -7883,14 +7893,22 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 	// 3. Fetch Files and Pagination Logic
 	// --- Determine lines available per page ---
-	termWidth = 80  // Default width
-	termHeight = 24 // Default height
-	ptyReq, _, isPty := s.Pty()
-	if isPty && ptyReq.Window.Width > 0 && ptyReq.Window.Height > 0 {
-		termWidth = ptyReq.Window.Width // Use actual width later for wrapping/truncating if needed
-		termHeight = ptyReq.Window.Height
-	} else {
-		log.Printf("WARN: Node %d: Could not get PTY dimensions for file list, using default %dx%d", nodeNumber, termWidth, termHeight)
+	if termWidth <= 0 || termHeight <= 0 {
+		ptyReq, _, isPty := s.Pty()
+		if isPty {
+			if termWidth <= 0 && ptyReq.Window.Width > 0 {
+				termWidth = ptyReq.Window.Width
+			}
+			if termHeight <= 0 && ptyReq.Window.Height > 0 {
+				termHeight = ptyReq.Window.Height
+			}
+		}
+	}
+	if termWidth <= 0 {
+		termWidth = 80
+	}
+	if termHeight <= 0 {
+		termHeight = 24
 	}
 
 	// Estimate lines used by header, footer, prompt
@@ -9148,13 +9166,19 @@ func runReadPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Start reading from the first private message
 	startMsgNum := privateMessages[0]
 
-	// Get terminal dimensions from user preferences
-	tw := currentUser.ScreenWidth
-	if tw == 0 {
+	// Get terminal dimensions: prefer passed params, then user preferences, then defaults
+	tw := termWidth
+	if tw <= 0 {
+		tw = currentUser.ScreenWidth
+	}
+	if tw <= 0 {
 		tw = 80
 	}
-	th := currentUser.ScreenHeight
-	if th == 0 {
+	th := termHeight
+	if th <= 0 {
+		th = currentUser.ScreenHeight
+	}
+	if th <= 0 {
 		th = 24
 	}
 

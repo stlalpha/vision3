@@ -557,7 +557,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 					ziplab.RunZipLabView(s, terminal, filePath, sel.Filename, outputMode)
 				} else {
 					termWidth, termHeight := getTerminalSize(s)
-				viewFileByRecord(e, s, terminal, sel, outputMode, termWidth, termHeight)
+					viewFileByRecord(e, s, terminal, sel, outputMode, termWidth, termHeight)
 				}
 				// Hide cursor again.
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
@@ -576,7 +576,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 
 			termWidth, termHeight := getTerminalSize(s)
-		proceed, promptErr := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight)
+			proceed, promptErr := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight)
 			if promptErr != nil {
 				if errors.Is(promptErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF

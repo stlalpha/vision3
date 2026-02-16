@@ -33,7 +33,6 @@ func findFileInArea(fm *file.FileManager, areaID int, filename string) (*file.Fi
 	return nil, fmt.Errorf("file not found: %s", filename)
 }
 
-
 // promptAndResolveFile handles the shared logic for file viewing commands:
 // validates the user/area, prompts for filename, looks up the record, and resolves the path.
 func promptAndResolveFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, nodeNumber int, promptVerb string, outputMode ansi.OutputMode) (*file.FileRecord, string, *user.User, string, error) {
@@ -96,7 +95,9 @@ func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
 		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
-		_, termHeight := getTerminalSize(s)
+		if termHeight <= 0 {
+			_, termHeight = getTerminalSize(s)
+		}
 		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight,
 			e.LoadedStrings.FileViewingHeader, e.LoadedStrings.FileEndOfFile,
 			e.LoadedStrings.FileMorePrompt, e.LoadedStrings.FilePausePrompt,
@@ -115,7 +116,9 @@ func runTypeTextFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return retUser, retAction, retErr
 	}
 
-	_, termHeight = getTerminalSize(s)
+	if termHeight <= 0 {
+		_, termHeight = getTerminalSize(s)
+	}
 	displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight,
 		e.LoadedStrings.FileViewingHeader, e.LoadedStrings.FileEndOfFile,
 		e.LoadedStrings.FileMorePrompt, e.LoadedStrings.FilePausePrompt,
@@ -137,7 +140,9 @@ func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, r
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
 		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
-		_, termHeight = getTerminalSize(s)
+		if termHeight <= 0 {
+			_, termHeight = getTerminalSize(s)
+		}
 		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight,
 			e.LoadedStrings.FileViewingHeader, e.LoadedStrings.FileEndOfFile,
 			e.LoadedStrings.FileMorePrompt, e.LoadedStrings.FilePausePrompt,

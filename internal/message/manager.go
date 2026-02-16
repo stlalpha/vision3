@@ -510,6 +510,7 @@ func (mm *MessageManager) buildMSGIDIndex(b *jam.Base, total int, modCounter uin
 	for i := 1; i <= total; i++ {
 		hdr, err := b.ReadMessageHeader(i)
 		if err != nil {
+			log.Printf("WARN: Failed to read message header %d for MSGID index: %v", i, err)
 			continue
 		}
 		if hdr.Attribute&jam.MsgDeleted != 0 {

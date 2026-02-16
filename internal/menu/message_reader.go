@@ -654,49 +654,6 @@ func formatMessageBody(body, originAddr string, includeOrigin bool) string {
 	return strings.Join(out, "\n")
 }
 
-// isFTNAddress checks if a string looks like a pure FTN address (zone:net/node or zone:net/node.point)
-// Returns true for formats like "21:1/176", "1:103/705.0", etc.
-// Returns false for MSGID formats like "1747.fsxnetfsxvideo@21:2/101"
-func isFTNAddress(s string) bool {
-	if s == "" {
-		return false
-	}
-
-	// Check for @ symbol (indicates MSGID format)
-	if strings.Contains(s, "@") {
-		return false
-	}
-
-	// Check for colon and slash (required for FTN address)
-	if !strings.Contains(s, ":") || !strings.Contains(s, "/") {
-		return false
-	}
-
-	// Simple regex-like check for zone:net/node[.point] format
-	// Should start with digits, have :, more digits, /, more digits, optionally .digits
-	parts := strings.Split(s, ":")
-	if len(parts) != 2 {
-		return false
-	}
-
-	zone := parts[0]
-	netNode := parts[1]
-
-	// Zone should be all digits
-	for _, r := range zone {
-		if r < '0' || r > '9' {
-			return false
-		}
-	}
-
-	// Net/node part should have slash
-	if !strings.Contains(netNode, "/") {
-		return false
-	}
-
-	return true
-}
-
 // findMessageByMSGID searches for a message in the current area that has the given MSGID.
 // Returns the message number (1-based) if found, or 0 if not found.
 // Delegates to MessageManager.FindMessageByMSGID which uses a cached index.
@@ -793,7 +750,7 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		replyStr = strconv.Itoa(msg.ReplyToNum)
 	} else if msg.ReplyID != "" {
 		// Header ReplyTo not set — try MSGID index lookup as fallback
-		if replyMsgNum := msgMgr.FindMessageByMSGID(areaID, msg.ReplyID); replyMsgNum > 0 {
+		if replyMsgNum := findMessageByMSGID(msgMgr, areaID, msg.ReplyID); replyMsgNum > 0 {
 			replyStr = strconv.Itoa(replyMsgNum)
 		}
 		// If neither works, leave as "None" — no confusing text for users
@@ -1094,7 +1051,7 @@ func extractHeaderNumber(filename string) (int, error) {
 // headerDisplayNames maps template numbers to their actual display names.
 var headerDisplayNames = map[int]string{
 	1:  "Generic Blue Box",
-	2:  "Extremly Simple Message Header",
+	2:  "Extremely Simple Message Header",
 	3:  "LiQUiD Blue Box Header",
 	4:  "Generic TCS Header",
 	5:  "Gray/White ViSiON/2 Header",
@@ -1380,6 +1337,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				'R': currentUser.RealName,
 				'#': "1",
 				'N': "42",
+				'C': "[1/42]",
 				'D': time.Now().Format("01/02/06"),
 				'W': time.Now().Format("3:04 pm"),
 				'P': "None",
@@ -1387,6 +1345,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				'O': "",
 				'A': "",
 				'Z': "GENERAL > General Discussion",
+				'X': "GENERAL > General Discussion [1/42]",
 			}
 
 			processedPreview := processTemplate(hdrBytes, sampleSubs)

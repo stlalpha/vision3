@@ -91,7 +91,7 @@ You can now edit message header ANSI files **directly** in any ANSI editor witho
 
 #### Simple Text Header (MSGHDR.2)
 
-```
+```text
 @#@: @T@
 Name: @F@ [@U@]
 Date: @D@ @W@
@@ -100,7 +100,7 @@ Date: @D@ @W@
 
 #### Header with Width Control
 
-```
+```text
 Msg: @#:5@/@N:5@       Posted: @D:8@ @W:9@
 From: @F:30@                To: @S:25@
 Subj: @T:70@
@@ -108,14 +108,14 @@ Subj: @T:70@
 
 #### Using the Message Count Display
 
-```
+```text
 Reading message @C@ in @B@
 Subject: @T@
 From: @F@
 ```
 
 This would display as:
-```
+```text
 Reading message [3/24] in FSX_GEN
 Subject: Welcome to Vision3!
 From: sysop
@@ -123,14 +123,14 @@ From: sysop
 
 #### Using the Combined Area and Count Display
 
-```
+```text
 @X@
 Subject: @T@
 From: @F@
 ```
 
 This would display as:
-```
+```text
 Local Areas > General Discussion [3/24]
 Subject: Welcome to Vision3!
 From: sysop
@@ -138,7 +138,7 @@ From: sysop
 
 #### ANSI Art with Visual Placeholders
 
-```
+```text
 ╔════════════════════════════════════════════════════════════╗
 ║ Message @C######@           Date: @D######@ @W#########@   ║
 ╟────────────────────────────────────────────────────────────╢

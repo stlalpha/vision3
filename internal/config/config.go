@@ -247,63 +247,63 @@ type StringsConfig struct {
 	StatsTime        string `json:"statsTime"`
 
 	// User config strings (V3-specific)
-	CfgToggleOn           string `json:"cfgToggleOn"`
-	CfgToggleOff          string `json:"cfgToggleOff"`
-	CfgToggleFormat       string `json:"cfgToggleFormat"`
-	CfgSaveError          string `json:"cfgSaveError"`
-	CfgScreenWidthPrompt  string `json:"cfgScreenWidthPrompt"`
-	CfgScreenWidthInvalid string `json:"cfgScreenWidthInvalid"`
-	CfgScreenWidthSet     string `json:"cfgScreenWidthSet"`
-	CfgScreenHeightPrompt string `json:"cfgScreenHeightPrompt"`
+	CfgToggleOn            string `json:"cfgToggleOn"`
+	CfgToggleOff           string `json:"cfgToggleOff"`
+	CfgToggleFormat        string `json:"cfgToggleFormat"`
+	CfgSaveError           string `json:"cfgSaveError"`
+	CfgScreenWidthPrompt   string `json:"cfgScreenWidthPrompt"`
+	CfgScreenWidthInvalid  string `json:"cfgScreenWidthInvalid"`
+	CfgScreenWidthSet      string `json:"cfgScreenWidthSet"`
+	CfgScreenHeightPrompt  string `json:"cfgScreenHeightPrompt"`
 	CfgScreenHeightInvalid string `json:"cfgScreenHeightInvalid"`
-	CfgScreenHeightSet    string `json:"cfgScreenHeightSet"`
-	CfgTermTypeSet        string `json:"cfgTermTypeSet"`
-	CfgStringPrompt       string `json:"cfgStringPrompt"`
+	CfgScreenHeightSet     string `json:"cfgScreenHeightSet"`
+	CfgTermTypeSet         string `json:"cfgTermTypeSet"`
+	CfgStringPrompt        string `json:"cfgStringPrompt"`
 	CfgStringPromptCurrent string `json:"cfgStringPromptCurrent"`
-	CfgStringUpdated      string `json:"cfgStringUpdated"`
-	CfgCurrentPwPrompt    string `json:"cfgCurrentPwPrompt"`
-	CfgIncorrectPw        string `json:"cfgIncorrectPw"`
-	CfgPasswordChanged    string `json:"cfgPasswordChanged"`
-	CfgColorSelectPrompt  string `json:"cfgColorSelectPrompt"`
-	CfgColorInputPrompt   string `json:"cfgColorInputPrompt"`
-	CfgColorInvalid       string `json:"cfgColorInvalid"`
-	CfgColorSet           string `json:"cfgColorSet"`
-	CfgCustomPromptHelp   string `json:"cfgCustomPromptHelp"`
-	CfgViewScreenWidth    string `json:"cfgViewScreenWidth"`
-	CfgViewScreenHeight   string `json:"cfgViewScreenHeight"`
-	CfgViewTermType       string `json:"cfgViewTermType"`
-	CfgViewFSEditor       string `json:"cfgViewFSEditor"`
-	CfgViewHotKeys        string `json:"cfgViewHotKeys"`
-	CfgViewMorePrompts    string `json:"cfgViewMorePrompts"`
-	CfgViewMsgHeader      string `json:"cfgViewMsgHeader"`
-	CfgViewCustomPrompt   string `json:"cfgViewCustomPrompt"`
-	CfgViewPromptColor    string `json:"cfgViewPromptColor"`
-	CfgViewTextColor      string `json:"cfgViewTextColor"`
-	CfgViewText2Color     string `json:"cfgViewText2Color"`
-	CfgViewBarColor       string `json:"cfgViewBarColor"`
-	CfgViewRealName       string `json:"cfgViewRealName"`
-	CfgViewPhone          string `json:"cfgViewPhone"`
-	CfgViewNote           string `json:"cfgViewNote"`
+	CfgStringUpdated       string `json:"cfgStringUpdated"`
+	CfgCurrentPwPrompt     string `json:"cfgCurrentPwPrompt"`
+	CfgIncorrectPw         string `json:"cfgIncorrectPw"`
+	CfgPasswordChanged     string `json:"cfgPasswordChanged"`
+	CfgColorSelectPrompt   string `json:"cfgColorSelectPrompt"`
+	CfgColorInputPrompt    string `json:"cfgColorInputPrompt"`
+	CfgColorInvalid        string `json:"cfgColorInvalid"`
+	CfgColorSet            string `json:"cfgColorSet"`
+	CfgCustomPromptHelp    string `json:"cfgCustomPromptHelp"`
+	CfgViewScreenWidth     string `json:"cfgViewScreenWidth"`
+	CfgViewScreenHeight    string `json:"cfgViewScreenHeight"`
+	CfgViewTermType        string `json:"cfgViewTermType"`
+	CfgViewFSEditor        string `json:"cfgViewFSEditor"`
+	CfgViewHotKeys         string `json:"cfgViewHotKeys"`
+	CfgViewMorePrompts     string `json:"cfgViewMorePrompts"`
+	CfgViewMsgHeader       string `json:"cfgViewMsgHeader"`
+	CfgViewCustomPrompt    string `json:"cfgViewCustomPrompt"`
+	CfgViewPromptColor     string `json:"cfgViewPromptColor"`
+	CfgViewTextColor       string `json:"cfgViewTextColor"`
+	CfgViewText2Color      string `json:"cfgViewText2Color"`
+	CfgViewBarColor        string `json:"cfgViewBarColor"`
+	CfgViewRealName        string `json:"cfgViewRealName"`
+	CfgViewPhone           string `json:"cfgViewPhone"`
+	CfgViewNote            string `json:"cfgViewNote"`
 
 	// Message reader strings (V3-specific)
-	MsgEndOfMessages       string `json:"msgEndOfMessages"`
-	MsgMailReplyDeferred   string `json:"msgMailReplyDeferred"`
-	MsgListDeferred        string `json:"msgListDeferred"`
-	MsgHdrLoadError        string `json:"msgHdrLoadError"`
-	MsgBoardInfoFormat     string `json:"msgBoardInfoFormat"`
-	MsgScrollPercent       string `json:"msgScrollPercent"`
-	MsgNewScanSuffix       string `json:"msgNewScanSuffix"`
-	MsgReadingSuffix       string `json:"msgReadingSuffix"`
-	MsgThreadPrompt        string `json:"msgThreadPrompt"`
-	MsgNoThreadFound       string `json:"msgNoThreadFound"`
-	MsgJumpPrompt          string `json:"msgJumpPrompt"`
-	MsgInvalidMsgNum       string `json:"msgInvalidMsgNum"`
-	MsgReplySubjectEmpty   string `json:"msgReplySubjectEmpty"`
-	MsgLaunchingEditor     string `json:"msgLaunchingEditor"`
-	MsgReplyCancelled      string `json:"msgReplyCancelled"`
-	MsgReplyError          string `json:"msgReplyError"`
-	MsgReplySuccess        string `json:"msgReplySuccess"`
-	MsgEditorError         string `json:"msgEditorError"`
+	MsgEndOfMessages     string `json:"msgEndOfMessages"`
+	MsgMailReplyDeferred string `json:"msgMailReplyDeferred"`
+	MsgListDeferred      string `json:"msgListDeferred"`
+	MsgHdrLoadError      string `json:"msgHdrLoadError"`
+	MsgBoardInfoFormat   string `json:"msgBoardInfoFormat"`
+	MsgScrollPercent     string `json:"msgScrollPercent"`
+	MsgNewScanSuffix     string `json:"msgNewScanSuffix"`
+	MsgReadingSuffix     string `json:"msgReadingSuffix"`
+	MsgThreadPrompt      string `json:"msgThreadPrompt"`
+	MsgNoThreadFound     string `json:"msgNoThreadFound"`
+	MsgJumpPrompt        string `json:"msgJumpPrompt"`
+	MsgInvalidMsgNum     string `json:"msgInvalidMsgNum"`
+	MsgReplySubjectEmpty string `json:"msgReplySubjectEmpty"`
+	MsgLaunchingEditor   string `json:"msgLaunchingEditor"`
+	MsgReplyCancelled    string `json:"msgReplyCancelled"`
+	MsgReplyError        string `json:"msgReplyError"`
+	MsgReplySuccess      string `json:"msgReplySuccess"`
+	MsgEditorError       string `json:"msgEditorError"`
 
 	// Message scan strings (V3-specific)
 	ScanDateLine            string `json:"scanDateLine"`
@@ -362,10 +362,10 @@ type StringsConfig struct {
 	DoorInfoLoginRequired string `json:"doorInfoLoginRequired"`
 
 	// Matrix strings (V3-specific)
-	MatrixDisconnecting     string `json:"matrixDisconnecting"`
-	MatrixCheckAccessPrompt string `json:"matrixCheckAccessPrompt"`
-	MatrixUserNotFound      string `json:"matrixUserNotFound"`
-	MatrixAccountValidated  string `json:"matrixAccountValidated"`
+	MatrixDisconnecting       string `json:"matrixDisconnecting"`
+	MatrixCheckAccessPrompt   string `json:"matrixCheckAccessPrompt"`
+	MatrixUserNotFound        string `json:"matrixUserNotFound"`
+	MatrixAccountValidated    string `json:"matrixAccountValidated"`
 	MatrixAccountNotValidated string `json:"matrixAccountNotValidated"`
 
 	// Conference menu strings (V3-specific)
@@ -668,6 +668,7 @@ type ServerConfig struct {
 	MaxFailedLogins     int    `json:"maxFailedLogins"`
 	LockoutMinutes      int    `json:"lockoutMinutes"`
 	FileListingMode     string `json:"fileListingMode"`
+	LegacySSHAlgorithms bool   `json:"legacySSHAlgorithms"`
 }
 
 // EventConfig defines a scheduled event configuration

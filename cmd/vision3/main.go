@@ -40,10 +40,10 @@ import (
 )
 
 var (
-	userMgr      *user.UserMgr
-	messageMgr   *message.MessageManager
-	fileMgr      *file.FileManager
-	confMgr      *conference.ConferenceManager
+	userMgr         *user.UserMgr
+	messageMgr      *message.MessageManager
+	fileMgr         *file.FileManager
+	confMgr         *conference.ConferenceManager
 	menuExecutor    *menu.MenuExecutor
 	sessionRegistry *session.SessionRegistry
 	// globalConfig *config.GlobalConfig // Still commented out
@@ -850,9 +850,8 @@ func sessionHandler(s ssh.Session) {
 	// --- PTY Request Handling ---
 	ptyReq, winCh, isPty := s.Pty() // Get PTY info from SessionAdapter
 	var termWidth, termHeight atomic.Int32
-	var userAdjustedTermSize bool // Track if user manually adjusted terminal size
-	termWidth.Store(80)           // Default terminal width
-	termHeight.Store(25)          // Default terminal height
+	termWidth.Store(80)  // Default terminal width
+	termHeight.Store(25) // Default terminal height
 	if isPty {
 		log.Printf("Node %d: PTY Request Accepted: %s", nodeID, ptyReq.Term)
 		if ptyReq.Window.Width > 0 {
@@ -1142,16 +1141,7 @@ func sessionHandler(s ssh.Session) {
 	effectiveWidth := int(termWidth.Load())
 	effectiveHeight := int(termHeight.Load())
 
-	if userAdjustedTermSize {
-		// User manually adjusted terminal size during pre-auth prompts - save this preference
-		log.Printf("Node %d: User manually adjusted terminal size to %dx%d, saving as preference",
-			nodeID, effectiveWidth, effectiveHeight)
-		authenticatedUser.ScreenWidth = effectiveWidth
-		authenticatedUser.ScreenHeight = effectiveHeight
-		if err := userMgr.UpdateUser(authenticatedUser); err != nil {
-			log.Printf("WARN: Node %d: Failed to save user's terminal size: %v", nodeID, err)
-		}
-	} else if authenticatedUser.ScreenWidth > 0 && authenticatedUser.ScreenHeight > 0 {
+	if authenticatedUser.ScreenWidth > 0 && authenticatedUser.ScreenHeight > 0 {
 		// User has saved preferences and didn't manually adjust - use saved preferences
 		log.Printf("Node %d: Using user's stored terminal size: %dx%d (PTY detected: %dx%d)",
 			nodeID, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight, effectiveWidth, effectiveHeight)
@@ -1601,9 +1591,10 @@ func main() {
 
 		var err error
 		server, err = sshserver.NewServer(sshserver.Config{
-			HostKeyPath:    hostKeyPath,
-			Port:           sshPort,
-			SessionHandler: libsshSessionHandler,
+			HostKeyPath:         hostKeyPath,
+			Port:                sshPort,
+			LegacySSHAlgorithms: serverConfig.LegacySSHAlgorithms,
+			SessionHandler:      libsshSessionHandler,
 			AuthPasswordFunc: func(username, password string) bool {
 				// If user exists in BBS database, validate password
 				u, found := userMgr.GetUser(username)

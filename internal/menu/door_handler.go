@@ -158,38 +158,38 @@ func generateDoorSys(ctx *DoorCtx, dir string) error {
 	if screenHeight <= 0 {
 		screenHeight = 25
 	}
-	b.WriteString(strconv.Itoa(screenHeight) + crlf)         // 21: Screen length
-	b.WriteString("N" + crlf)                                // 22: Expert mode
-	b.WriteString(crlf)                                      // 23: Conferences registered
-	b.WriteString(crlf)                                      // 24: Conference exited to
-	b.WriteString(crlf)                                      // 25: Expiration date
-	b.WriteString(ctx.UserIDStr + crlf)                      // 26: User record number
-	b.WriteString(crlf)                                      // 27: Default protocol
-	b.WriteString("0" + crlf)                                // 28: Total uploads
-	b.WriteString("0" + crlf)                                // 29: Total downloads
-	b.WriteString("0" + crlf)                                // 30: Daily download K-bytes total
-	b.WriteString("99999" + crlf)                            // 31: Daily download K-bytes allowed
-	b.WriteString("01-01-1971" + crlf)                       // 32: Birth date
-	b.WriteString(crlf)                                      // 33: Path to callinfo/main dir
-	b.WriteString(crlf)                                      // 34: Path to GEN dir
-	b.WriteString(bbsName + crlf)                            // 35: Sysop name (BBS name used)
-	b.WriteString(ctx.User.Handle + crlf)                    // 36: User handle/alias
-	b.WriteString("none" + crlf)                             // 37: Next event time
-	b.WriteString("Y" + crlf)                                // 38: Error free connection
-	b.WriteString("N" + crlf)                                // 39: Always "N"
-	b.WriteString("Y" + crlf)                                // 40: Always "Y"
-	b.WriteString("7" + crlf)                                // 41: Default color
-	b.WriteString("0" + crlf)                                // 42: Time credits (minutes)
-	b.WriteString("01-01-1971" + crlf)                       // 43: Last new file scan date
-	b.WriteString("00:00" + crlf)                            // 44: Time of this call
-	b.WriteString("00:00" + crlf)                            // 45: Time of last call
-	b.WriteString("32768" + crlf)                            // 46: Max daily files allowed
-	b.WriteString("0" + crlf)                                // 47: Files downloaded today
-	b.WriteString("0" + crlf)                                // 48: Total K-bytes uploaded
-	b.WriteString("0" + crlf)                                // 49: Total K-bytes downloaded
-	b.WriteString("None." + crlf)                            // 50: Comment
-	b.WriteString("0" + crlf)                                // 51: Total doors opened
-	b.WriteString("0" + crlf)                                // 52: Total messages left
+	b.WriteString(strconv.Itoa(screenHeight) + crlf) // 21: Screen length
+	b.WriteString("N" + crlf)                        // 22: Expert mode
+	b.WriteString(crlf)                              // 23: Conferences registered
+	b.WriteString(crlf)                              // 24: Conference exited to
+	b.WriteString(crlf)                              // 25: Expiration date
+	b.WriteString(ctx.UserIDStr + crlf)              // 26: User record number
+	b.WriteString(crlf)                              // 27: Default protocol
+	b.WriteString("0" + crlf)                        // 28: Total uploads
+	b.WriteString("0" + crlf)                        // 29: Total downloads
+	b.WriteString("0" + crlf)                        // 30: Daily download K-bytes total
+	b.WriteString("99999" + crlf)                    // 31: Daily download K-bytes allowed
+	b.WriteString("01-01-1971" + crlf)               // 32: Birth date
+	b.WriteString(crlf)                              // 33: Path to callinfo/main dir
+	b.WriteString(crlf)                              // 34: Path to GEN dir
+	b.WriteString(bbsName + crlf)                    // 35: Sysop name (BBS name used)
+	b.WriteString(ctx.User.Handle + crlf)            // 36: User handle/alias
+	b.WriteString("none" + crlf)                     // 37: Next event time
+	b.WriteString("Y" + crlf)                        // 38: Error free connection
+	b.WriteString("N" + crlf)                        // 39: Always "N"
+	b.WriteString("Y" + crlf)                        // 40: Always "Y"
+	b.WriteString("7" + crlf)                        // 41: Default color
+	b.WriteString("0" + crlf)                        // 42: Time credits (minutes)
+	b.WriteString("01-01-1971" + crlf)               // 43: Last new file scan date
+	b.WriteString("00:00" + crlf)                    // 44: Time of this call
+	b.WriteString("00:00" + crlf)                    // 45: Time of last call
+	b.WriteString("32768" + crlf)                    // 46: Max daily files allowed
+	b.WriteString("0" + crlf)                        // 47: Files downloaded today
+	b.WriteString("0" + crlf)                        // 48: Total K-bytes uploaded
+	b.WriteString("0" + crlf)                        // 49: Total K-bytes downloaded
+	b.WriteString("None." + crlf)                    // 50: Comment
+	b.WriteString("0" + crlf)                        // 51: Total doors opened
+	b.WriteString("0" + crlf)                        // 52: Total messages left
 
 	return os.WriteFile(path, []byte(b.String()), 0600)
 }
@@ -269,14 +269,14 @@ func generateChainTxt(ctx *DoorCtx, dir string) error {
 	crlf := "\r\n"
 
 	var b strings.Builder
-	b.WriteString(ctx.UserIDStr + crlf)                      // 1: User number
-	b.WriteString(ctx.User.Handle + crlf)                    // 2: User alias
-	b.WriteString(ctx.User.RealName + crlf)                  // 3: Real name
-	b.WriteString("NONE" + crlf)                             // 4: Default protocol
-	b.WriteString("21" + crlf)                               // 5: Time on (minutes)
-	b.WriteString("M" + crlf)                                // 6: Gender
-	b.WriteString("0" + crlf)                                // 7: Pause (0=no)
-	b.WriteString("01/01/71" + crlf)                         // 8: Last call date
+	b.WriteString(ctx.UserIDStr + crlf)     // 1: User number
+	b.WriteString(ctx.User.Handle + crlf)   // 2: User alias
+	b.WriteString(ctx.User.RealName + crlf) // 3: Real name
+	b.WriteString("NONE" + crlf)            // 4: Default protocol
+	b.WriteString("21" + crlf)              // 5: Time on (minutes)
+	b.WriteString("M" + crlf)               // 6: Gender
+	b.WriteString("0" + crlf)               // 7: Pause (0=no)
+	b.WriteString("01/01/71" + crlf)        // 8: Last call date
 
 	// Use user's saved screen dimensions, default to 80x25 if not set
 	screenWidth := ctx.User.ScreenWidth
@@ -671,13 +671,13 @@ func executeNativeDoor(ctx *DoorCtx) error {
 		log.Printf("INFO: Node %d: Starting door '%s' with PTY/Raw mode", ctx.NodeNumber, ctx.DoorName)
 
 		// Set PTY size from user's saved preferences - BEFORE starting the command
-		doorScreenHeight := uint16(ctx.User.ScreenHeight)
-		if doorScreenHeight <= 0 {
-			doorScreenHeight = 25
+		doorScreenHeight := uint16(25) // default
+		if ctx.User.ScreenHeight > 0 && ctx.User.ScreenHeight <= 65535 {
+			doorScreenHeight = uint16(ctx.User.ScreenHeight)
 		}
-		doorScreenWidth := uint16(ctx.User.ScreenWidth)
-		if doorScreenWidth <= 0 {
-			doorScreenWidth = 80
+		doorScreenWidth := uint16(80) // default
+		if ctx.User.ScreenWidth > 0 && ctx.User.ScreenWidth <= 65535 {
+			doorScreenWidth = uint16(ctx.User.ScreenWidth)
 		}
 		doorSize := &pty.Winsize{Rows: doorScreenHeight, Cols: doorScreenWidth}
 		log.Printf("DEBUG: Node %d: Starting door with PTY size %dx%d (from user preferences)", ctx.NodeNumber, doorScreenWidth, doorScreenHeight)
