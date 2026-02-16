@@ -26,6 +26,7 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/chat"
 	"github.com/stlalpha/vision3/internal/conference"
 	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/config"
@@ -78,6 +79,7 @@ type MenuExecutor struct {
 	IPLockoutCheck IPLockoutChecker              // IP-based authentication lockout checker
 	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
 	SessionRegistry *session.SessionRegistry      // Session registry for who's online
+	ChatRoom        *chat.ChatRoom               // Global teleconference chat room
 	configMu        sync.RWMutex                  // Mutex for thread-safe config updates
 }
 
@@ -85,7 +87,7 @@ type MenuExecutor struct {
 // Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, serverCfg, and ipLockoutCheck parameters
 // Updated paths to use new structure
 // << UPDATED Signature with msgMgr, fileMgr, serverCfg, and ipLockoutCheck
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry) *MenuExecutor {
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry, chatRoom *chat.ChatRoom) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -108,6 +110,7 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		IPLockoutCheck: ipLockoutCheck, // IP-based lockout checker
 		LoginSequence:   loginSequence,      // Configurable login sequence
 		SessionRegistry: sessionRegistry,    // Session registry for who's online
+		ChatRoom:        chatRoom,           // Global teleconference chat room
 	}
 }
 
