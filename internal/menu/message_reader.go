@@ -139,7 +139,7 @@ readerLoop:
 				replyCount = count
 			}
 		}
-		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel, !templateUsesUserNote, replyCount, confName, areaName)
+		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel, !templateUsesUserNote, replyCount, confName, areaName, e.MessageMgr, currentAreaID)
 
 		// Process template with substitutions (auto-detects @CODE@ or |X format)
 		processedHeader := processTemplate(hdrTemplateBytes, substitutions)
@@ -182,7 +182,7 @@ readerLoop:
 		// Find the actual bottom row of the header using ANSI cursor tracking
 		headerEndRow := findHeaderEndRow(processedHeader)
 		bodyStartRow := headerEndRow + 1 // Start body on next row after header
-		barLines := 3                    // Horizontal line + board info line + lightbar
+		barLines := 2                    // Horizontal line + lightbar
 		bodyAvailHeight := termHeight - bodyStartRow - barLines
 		if bodyAvailHeight < 1 {
 			bodyAvailHeight = 5
@@ -228,7 +228,7 @@ readerLoop:
 
 				drawBody()
 
-				// Display footer: board info and lightbar anchored to bottom
+				// Display footer: lightbar only
 				var suffixText string
 				if isNewScan {
 					suffixText = e.LoadedStrings.MsgNewScanSuffix
@@ -236,30 +236,10 @@ readerLoop:
 					suffixText = e.LoadedStrings.MsgReadingSuffix
 				}
 
-				// Add scroll percentage to the board info line if message is longer than display area.
-				scrollLabel := ""
-				if totalBodyLines > bodyAvailHeight {
-					maxScroll := totalBodyLines - bodyAvailHeight
-					scrollPercent := 0
-					if maxScroll > 0 {
-						scrollPercent = (scrollOffset * 100) / maxScroll
-						if scrollPercent > 100 {
-							scrollPercent = 100
-						}
-					}
-					scrollLabel = fmt.Sprintf(e.LoadedStrings.MsgScrollPercent, scrollPercent)
-				}
-
 				// Draw horizontal line above footer (CP437 character 196)
-				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-2, 1)), outputMode)
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)), outputMode)
 				horizontalLine := "|08" + strings.Repeat("\xC4", termWidth-1) + "|07" // CP437 horizontal line character
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(horizontalLine)), outputMode)
-
-				// Position cursor at second-to-last row for board info line
-				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)), outputMode)
-				boardLine := fmt.Sprintf(e.LoadedStrings.MsgBoardInfoFormat,
-					confName, areaName, currentMsgNum, totalMsgCount, scrollLabel)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardLine)), outputMode)
 
 				// Position cursor at last row for lightbar
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
@@ -674,8 +654,58 @@ func formatMessageBody(body, originAddr string, includeOrigin bool) string {
 	return strings.Join(out, "\n")
 }
 
+// isFTNAddress checks if a string looks like a pure FTN address (zone:net/node or zone:net/node.point)
+// Returns true for formats like "21:1/176", "1:103/705.0", etc.
+// Returns false for MSGID formats like "1747.fsxnetfsxvideo@21:2/101"
+func isFTNAddress(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	// Check for @ symbol (indicates MSGID format)
+	if strings.Contains(s, "@") {
+		return false
+	}
+
+	// Check for colon and slash (required for FTN address)
+	if !strings.Contains(s, ":") || !strings.Contains(s, "/") {
+		return false
+	}
+
+	// Simple regex-like check for zone:net/node[.point] format
+	// Should start with digits, have :, more digits, /, more digits, optionally .digits
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 {
+		return false
+	}
+
+	zone := parts[0]
+	netNode := parts[1]
+
+	// Zone should be all digits
+	for _, r := range zone {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+
+	// Net/node part should have slash
+	if !strings.Contains(netNode, "/") {
+		return false
+	}
+
+	return true
+}
+
+// findMessageByMSGID searches for a message in the current area that has the given MSGID.
+// Returns the message number (1-based) if found, or 0 if not found.
+// Delegates to MessageManager.FindMessageByMSGID which uses a cached index.
+func findMessageByMSGID(msgMgr *message.MessageManager, areaID int, msgID string) int {
+	return msgMgr.FindMessageByMSGID(areaID, msgID)
+}
+
 // buildMsgSubstitutions creates the Pascal-style substitution map for MSGHDR templates.
-func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userNote string, userLevel int, includeNoteInFrom bool, replyCount int, confName string, areaName string) map[byte]string {
+func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userNote string, userLevel int, includeNoteInFrom bool, replyCount int, confName string, areaName string, msgMgr *message.MessageManager, areaID int) map[byte]string {
 	// Import jam constants
 	const (
 		msgTypeLocal = 0x00800000
@@ -755,9 +785,18 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 
 	msgStatusStr := strings.Join(statusParts, " ")
 
+	// Determine reply-to display: use JAM header ReplyTo (message number) first,
+	// then fall back to MSGID index lookup, then "None".
 	replyStr := "None"
-	if msg.ReplyID != "" {
-		replyStr = msg.ReplyID
+	if msg.ReplyToNum > 0 {
+		// JAM header already has the parent message number (set by linker/tosser)
+		replyStr = strconv.Itoa(msg.ReplyToNum)
+	} else if msg.ReplyID != "" {
+		// Header ReplyTo not set — try MSGID index lookup as fallback
+		if replyMsgNum := msgMgr.FindMessageByMSGID(areaID, msg.ReplyID); replyMsgNum > 0 {
+			replyStr = strconv.Itoa(replyMsgNum)
+		}
+		// If neither works, leave as "None" — no confusing text for users
 	}
 
 	return map[byte]string{
@@ -771,13 +810,15 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		'R': "",                      // Real name - not available in JAM
 		'#': strconv.Itoa(msgNum),
 		'N': strconv.Itoa(totalMsgs),
+		'C': fmt.Sprintf("[%d/%d]", msgNum, totalMsgs), // Message count display
 		'D': msg.DateTime.Format("01/02/06"),
 		'W': msg.DateTime.Format("3:04 pm"),
 		'P': replyStr,
 		'E': strconv.Itoa(replyCount),
-		'O': msg.OrigAddr,                               // Origin address
-		'A': msg.DestAddr,                               // Destination address
-		'Z': fmt.Sprintf("%s > %s", confName, areaName), // Conference > Area Name
+		'O': msg.OrigAddr,                                                          // Origin address
+		'A': msg.DestAddr,                                                          // Destination address
+		'Z': fmt.Sprintf("%s > %s", confName, areaName),                            // Conference > Area Name
+		'X': fmt.Sprintf("%s > %s [%d/%d]", confName, areaName, msgNum, totalMsgs), // Conference > Area [current/total]
 	}
 }
 

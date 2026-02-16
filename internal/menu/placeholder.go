@@ -19,7 +19,7 @@ type PlaceholderMatch struct {
 // Regex compiled once for performance.
 // Matches: @CODE@, @CODE:20@, or @CODE###@
 // Groups: 1=code letter, 2=:WIDTH (optional), 3=### (optional)
-var placeholderRegex = regexp.MustCompile(`@([BTFSULR#NDWPEOMAZ])(?::(\d+)|([#]+))?@`)
+var placeholderRegex = regexp.MustCompile(`@([BTFSULR#NDWPEOMAZCX])(?::(\\d+)|([#]+))?@`)
 
 // parsePlaceholders extracts all @CODE@ patterns from template bytes.
 func parsePlaceholders(template []byte) []PlaceholderMatch {

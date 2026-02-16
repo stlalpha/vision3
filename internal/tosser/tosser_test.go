@@ -222,6 +222,21 @@ func TestReplyKludgeParsing(t *testing.T) {
 			expected: "1:104/56",
 		},
 		{
+			name:     "msgid format with embedded ftn address",
+			kludge:   "REPLY: 1747.fsxnetfsxvideo@21:2/101",
+			expected: "21:2/101",
+		},
+		{
+			name:     "msgid format with node and point",
+			kludge:   "REPLY: 1500.fsxnet_fsxvideo@21:1/137.0",
+			expected: "21:1/137.0",
+		},
+		{
+			name:     "malformed msgid without ftn address",
+			kludge:   "REPLY: 12345.invalid@noftn",
+			expected: "12345.invalid@noftn",
+		},
+		{
 			name:     "empty reply value",
 			kludge:   "REPLY: ",
 			expected: "",
@@ -240,7 +255,20 @@ func TestReplyKludgeParsing(t *testing.T) {
 				replyValue := strings.TrimPrefix(tt.kludge, "REPLY: ")
 				var result string
 				if parts := strings.Fields(replyValue); len(parts) > 0 {
-					result = parts[0]
+					replyID := parts[0]
+
+					// Check if the reply looks like a MSGID with embedded FTN address
+					// Format: "xxxx.something@zone:net/node" or "xxxx.something@zone:net/node.point"
+					if atPos := strings.Index(replyID, "@"); atPos != -1 && atPos < len(replyID)-1 {
+						// Extract the FTN address after the @ symbol
+						ftnPart := replyID[atPos+1:]
+						// Validate it looks like a proper FTN address (contains : and /)
+						if strings.Contains(ftnPart, ":") && strings.Contains(ftnPart, "/") {
+							replyID = ftnPart
+						}
+					}
+
+					result = replyID
 				}
 
 				if result != tt.expected {

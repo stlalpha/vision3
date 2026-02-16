@@ -26,13 +26,15 @@ The visual placeholder format is particularly useful for ANSI art templates wher
 | `@R@` | Real name (not available in JAM; currently empty)                                                                                   |
 | `@#@` | Current message number (1-based)                                                                                                    |
 | `@N@` | Total messages in area                                                                                                              |
+| `@C@` | Message count display (format: `[current/total]` e.g., `[1/24]`, `[6/10]`)                                                          |
 | `@D@` | Message date (`MM/DD/YY`)                                                                                                           |
 | `@W@` | Message time (`h:mm am/pm`)                                                                                                         |
-| `@P@` | Reply message ID (or `None`)                                                                                                        |
+| `@P@` | Reply message number in current thread, `External` for external replies, or FTN address for cross-system replies                    |
 | `@E@` | Replies count (not tracked in JAM; currently `0`)                                                                                   |
 | `@O@` | Origin FTN address (if present)                                                                                                     |
 | `@A@` | Destination FTN address (if present)                                                                                                |
 | `@Z@` | Combined conference and area name (format: `CONF NAME > AREA NAME`)                                                                 |
+| `@X@` | Combined conference/area and message count (format: `CONF NAME > AREA NAME [current/total]`)                                        |
 
 ## Width Control Features
 
@@ -104,14 +106,44 @@ From: @F:30@                To: @S:25@
 Subj: @T:70@
 ```
 
+#### Using the Message Count Display
+
+```
+Reading message @C@ in @B@
+Subject: @T@
+From: @F@
+```
+
+This would display as:
+```
+Reading message [3/24] in FSX_GEN
+Subject: Welcome to Vision3!
+From: sysop
+```
+
+#### Using the Combined Area and Count Display
+
+```
+@X@
+Subject: @T@
+From: @F@
+```
+
+This would display as:
+```
+Local Areas > General Discussion [3/24]
+Subject: Welcome to Vision3!
+From: sysop
+```
+
 #### ANSI Art with Visual Placeholders
 
 ```
 ╔════════════════════════════════════════════════════════════╗
-║ Message @#:4@/@N:4@         Date: @D@@@@@@@ @W@@@@@@@@  ║
+║ Message @C######@           Date: @D######@ @W#########@   ║
 ╟────────────────────────────────────────────────────────────╢
-║ From: @F@@@@@@@@@@@@@@@@@@@@ To: @S@@@@@@@@@@@@@@@@@@@@ ║
-║ Subj: @T@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ ║
+║ From: @F####################@ To: @S###################@   ║
+║ Subj: @T###############################################@   ║
 ╚════════════════════════════════════════════════════════════╝
 ```
 

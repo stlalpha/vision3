@@ -68,6 +68,8 @@ func TestProcessPlaceholderTemplate(t *testing.T) {
 		'S': "Jane Smith",
 		'#': "42",
 		'N': "100",
+		'C': "[42/100]",
+		'X': "Local Areas > General Discussion [42/100]",
 	}
 
 	tests := []struct {
@@ -81,7 +83,9 @@ func TestProcessPlaceholderTemplate(t *testing.T) {
 		{"visual width longer", "@F#############@", "John Doe        "}, // 16 total chars = width 16
 		{"no placeholders", "Plain text", "Plain text"},
 		{"hash code", "Msg @#@/@N@", "Msg 42/100"},
-		{"missing code", "@X@", "@X@"}, // Unknown code preserved
+		{"count display", "@C@", "[42/100]"},
+		{"combined area and count", "@X@", "Local Areas > General Discussion [42/100]"},
+		{"missing code", "@Q@", "@Q@"}, // Unknown code preserved
 	}
 
 	for _, tt := range tests {
@@ -146,8 +150,8 @@ Subj: Welcome to Vision3!`
 }
 
 func TestPlaceholderRegexCoverage(t *testing.T) {
-	// Test all 16 valid placeholder codes
-	validCodes := []string{"B", "T", "F", "S", "U", "M", "L", "R", "#", "N", "D", "W", "P", "E", "O", "A"}
+	// Test all 18 valid placeholder codes
+	validCodes := []string{"B", "T", "F", "S", "U", "M", "L", "R", "#", "N", "D", "W", "P", "E", "O", "A", "C", "X"}
 
 	for _, code := range validCodes {
 		template := "@" + code + "@"

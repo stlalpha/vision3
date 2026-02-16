@@ -233,7 +233,20 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 			// Extract only the first MSGID - split on spaces and take first token
 			// This handles cases where REPLY contains multiple MSGIDs or malformed data
 			if parts := strings.Fields(replyValue); len(parts) > 0 {
-				jamMsg.ReplyID = parts[0]
+				replyID := parts[0]
+
+				// Check if the reply looks like a MSGID with embedded FTN address
+				// Format: "xxxx.something@zone:net/node" or "xxxx.something@zone:net/node.point"
+				if atPos := strings.Index(replyID, "@"); atPos != -1 && atPos < len(replyID)-1 {
+					// Extract the FTN address after the @ symbol
+					ftnPart := replyID[atPos+1:]
+					// Validate it looks like a proper FTN address (contains : and /)
+					if strings.Contains(ftnPart, ":") && strings.Contains(ftnPart, "/") {
+						replyID = ftnPart
+					}
+				}
+
+				jamMsg.ReplyID = replyID
 			}
 			break
 		}

@@ -48,6 +48,8 @@ func main() {
 		cmdPurge(os.Args[2:])
 	case "fix":
 		cmdFix(os.Args[2:])
+	case "link":
+		cmdLink(os.Args[2:])
 	case "lastread":
 		cmdLastread(os.Args[2:])
 	default:
@@ -67,6 +69,7 @@ Commands:
   pack      Defragment base, removing deleted messages
   purge     Delete old messages by age or count
   fix       Verify base integrity
+  link      Build reply threading chains (ReplyTo/Reply1st/ReplyNext)
   lastread  Show or reset lastread records
 
 Global Options:
@@ -83,6 +86,7 @@ Examples:
   jamutil purge --days 90 --all
   jamutil purge --keep 500 data/msgbases/general
   jamutil fix --all
+  jamutil link --all
   jamutil lastread data/msgbases/general
   jamutil lastread --reset testuser data/msgbases/general
 `, version)
@@ -429,36 +433,11 @@ func cmdFix(args []string) {
 		}
 
 		// Check 6: ReplyID integrity (clean malformed values)
-		modifiedMessages := false
 		if *repair {
-			messages, err := b.ScanMessages(1, 0)
-			if err == nil {
-				for _, msg := range messages {
-					if msg.ReplyID != "" {
-						// Extract only the first MSGID token from malformed REPLY values
-						if parts := strings.Fields(msg.ReplyID); len(parts) > 1 {
-							originalReplyID := msg.ReplyID
-							msg.ReplyID = parts[0]
-							if !*quiet {
-								fmt.Printf("  REPAIR: Cleaned ReplyID %q -> %q\n", originalReplyID, msg.ReplyID)
-							}
-							cleanedReplyIDs++
-							modifiedMessages = true
-						}
-					}
-				}
-				// If we cleaned any ReplyIDs, rebuild the message base to save changes
-				if modifiedMessages {
-					_, err := b.Pack()
-					if err == nil {
-						if !*quiet {
-							fmt.Printf("  REPAIR: Rebuilt message base with cleaned ReplyIDs\n")
-						}
-					} else {
-						fmt.Printf("  ERROR: Failed to rebuild message base: %v\n", err)
-						issues++
-					}
-				}
+			// Use specialized pack operation that cleans ReplyIDs during rebuild
+			cleanedReplyIDs = cleanReplyIDsInBase(b, *quiet)
+			if cleanedReplyIDs > 0 && !*quiet {
+				fmt.Printf("  REPAIR: Rebuilt message base with cleaned ReplyIDs\n")
 			}
 		} else {
 			// In non-repair mode, just check for malformed ReplyIDs
@@ -561,4 +540,232 @@ func formatBytes(b int64) string {
 		return fmt.Sprintf("%.1f KB", float64(b)/1024)
 	}
 	return fmt.Sprintf("%.1f MB", float64(b)/(1024*1024))
+}
+
+// cmdLink builds reply threading chains by matching MSGID/ReplyID subfields
+// and updating the ReplyTo, Reply1st, and ReplyNext header fields in-place.
+func cmdLink(args []string) {
+	fs := flag.NewFlagSet("link", flag.ExitOnError)
+	allFlag, configDir, dataDir, quiet := addGlobalFlags(fs)
+	fs.Parse(args)
+
+	paths, err := resolveBasePaths(*allFlag, *configDir, *dataDir, fs.Args())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	totalUpdated := 0
+	for _, meta := range paths {
+		b, err := jam.Open(meta.Path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error opening %s: %v\n", meta.Path, err)
+			continue
+		}
+
+		updated, linkErr := linkBase(b, *quiet, meta.Tag)
+		b.Close()
+		if linkErr != nil {
+			fmt.Fprintf(os.Stderr, "Error linking %s: %v\n", meta.Path, linkErr)
+			continue
+		}
+		totalUpdated += updated
+	}
+
+	if !*quiet && len(paths) > 1 {
+		fmt.Printf("\nTotal: %d links updated across %d areas\n", totalUpdated, len(paths))
+	}
+}
+
+// linkBase builds reply chains for a single JAM base by matching MSGID ↔ ReplyID
+// and writing ReplyTo/Reply1st/ReplyNext in-place via UpdateMessageHeader.
+func linkBase(b *jam.Base, quiet bool, tag string) (int, error) {
+	total, err := b.GetMessageCount()
+	if err != nil {
+		return 0, err
+	}
+	if total == 0 {
+		if !quiet {
+			fmt.Printf("%s: no messages\n", tag)
+		}
+		return 0, nil
+	}
+
+	// Phase 1: Scan all headers and build MSGID → msgNum / ReplyID → []msgNum maps.
+	type hdrInfo struct {
+		hdr     *jam.MessageHeader
+		msgNum  int
+		msgID   string
+		replyID string
+	}
+
+	var headers []hdrInfo
+	msgIDToNum := make(map[string]int)      // MSGID string → 1-based message number
+	replyIDToNums := make(map[string][]int) // ReplyID string → list of replying message numbers
+
+	for n := 1; n <= total; n++ {
+		hdr, readErr := b.ReadMessageHeader(n)
+		if readErr != nil {
+			continue
+		}
+		if hdr.Attribute&jam.MsgDeleted != 0 {
+			continue
+		}
+
+		var msgID, replyID string
+		for _, sf := range hdr.Subfields {
+			switch sf.LoID {
+			case jam.SfldMsgID:
+				msgID = string(sf.Buffer)
+			case jam.SfldReplyID:
+				replyID = string(sf.Buffer)
+			}
+		}
+
+		headers = append(headers, hdrInfo{hdr: hdr, msgNum: n, msgID: msgID, replyID: replyID})
+		if msgID != "" {
+			msgIDToNum[msgID] = n
+			// FTN MSGIDs are "address serial" — HPT often stores REPLY
+			// kludges without the serial suffix.  Index the address part
+			// too so prefix-based lookups succeed.
+			if idx := strings.LastIndex(msgID, " "); idx > 0 {
+				prefix := msgID[:idx]
+				if _, exists := msgIDToNum[prefix]; !exists {
+					msgIDToNum[prefix] = n
+				}
+			}
+		}
+		if replyID != "" {
+			replyIDToNums[replyID] = append(replyIDToNums[replyID], n)
+		}
+	}
+
+	if len(headers) == 0 {
+		if !quiet {
+			fmt.Printf("%s: no active messages\n", tag)
+		}
+		return 0, nil
+	}
+
+	// Phase 2: Compute desired threading fields.
+	updated := 0
+
+	for i := range headers {
+		h := &headers[i]
+		changed := false
+
+		// ReplyTo: if this message has a ReplyID, find the parent's message number.
+		if h.replyID != "" {
+			if parentNum, ok := msgIDToNum[h.replyID]; ok {
+				if h.hdr.ReplyTo != uint32(parentNum) {
+					h.hdr.ReplyTo = uint32(parentNum)
+					changed = true
+				}
+			}
+		}
+
+		// Reply1st: if this message has a MSGID with replies, point to the first reply.
+		// Check both the full MSGID and the address-only prefix (without serial)
+		// since HPT may store REPLY kludges without the serial suffix.
+		if h.msgID != "" {
+			replies := replyIDToNums[h.msgID]
+			if len(replies) == 0 {
+				if idx := strings.LastIndex(h.msgID, " "); idx > 0 {
+					replies = replyIDToNums[h.msgID[:idx]]
+				}
+			}
+			if len(replies) > 0 {
+				firstReply := replies[0] // replies are in scan order (ascending)
+				if h.hdr.Reply1st != uint32(firstReply) {
+					h.hdr.Reply1st = uint32(firstReply)
+					changed = true
+				}
+			} else if h.hdr.Reply1st != 0 {
+				// No replies exist (anymore) — clear stale pointer
+				h.hdr.Reply1st = 0
+				changed = true
+			}
+		}
+
+		// ReplyNext: chain sibling replies to the same parent.
+		if h.replyID != "" {
+			if siblings, ok := replyIDToNums[h.replyID]; ok && len(siblings) > 1 {
+				// Find our position and point to the next sibling.
+				nextSibling := uint32(0)
+				for j, sn := range siblings {
+					if sn == h.msgNum && j+1 < len(siblings) {
+						nextSibling = uint32(siblings[j+1])
+						break
+					}
+				}
+				if h.hdr.ReplyNext != nextSibling {
+					h.hdr.ReplyNext = nextSibling
+					changed = true
+				}
+			} else if h.hdr.ReplyNext != 0 {
+				h.hdr.ReplyNext = 0
+				changed = true
+			}
+		}
+
+		if changed {
+			if err := b.UpdateMessageHeader(h.msgNum, h.hdr); err != nil {
+				return updated, fmt.Errorf("updating message %d: %w", h.msgNum, err)
+			}
+			updated++
+		}
+	}
+
+	if !quiet {
+		if updated > 0 {
+			fmt.Printf("%s: %d messages, %d links updated\n", tag, len(headers), updated)
+		} else {
+			fmt.Printf("%s: %d messages, all links current\n", tag, len(headers))
+		}
+	}
+
+	return updated, nil
+}
+
+// cleanReplyIDsInBase performs a pack operation that cleans malformed ReplyIDs during rebuild.
+func cleanReplyIDsInBase(b *jam.Base, quiet bool) int {
+	cleanedCount := 0
+
+	// Count messages that need cleaning first
+	messages, err := b.ScanMessages(1, 0)
+	if err != nil {
+		return 0
+	}
+
+	needsCleaning := false
+	for _, msg := range messages {
+		if msg.ReplyID != "" {
+			if parts := strings.Fields(msg.ReplyID); len(parts) > 1 {
+				needsCleaning = true
+				cleanedCount++
+				if !quiet {
+					fmt.Printf("  REPAIR: Cleaned ReplyID %q -> %q\n", msg.ReplyID, parts[0])
+				}
+			}
+		}
+	}
+
+	if needsCleaning {
+		// Create a custom pack implementation that cleans ReplyIDs
+		if err := cleanReplyIDsPack(b); err != nil {
+			if !quiet {
+				fmt.Printf("  ERROR: Failed to rebuild message base: %v\n", err)
+			}
+			return 0
+		}
+	}
+
+	return cleanedCount
+}
+
+// cleanReplyIDsPack performs a pack operation while cleaning ReplyIDs.
+func cleanReplyIDsPack(b *jam.Base) error {
+	// Use the new PackWithReplyIDCleanup function
+	_, err := b.PackWithReplyIDCleanup()
+	return err
 }

@@ -456,6 +456,14 @@ func (b *Base) WriteMessage(msg *Message) (int, error) {
 
 		hdr.Subfields = buildSubfields(msg)
 
+		// Set CRC fields for MSGID/REPLY linking (matches WriteMessageExt behaviour)
+		if msg.MsgID != "" {
+			hdr.MSGIDcrc = CRC32String(msg.MsgID)
+		}
+		if msg.ReplyID != "" {
+			hdr.REPLYcrc = CRC32String(msg.ReplyID)
+		}
+
 		// Calculate total subfield length
 		hdr.SubfieldLen = 0
 		for _, sf := range hdr.Subfields {
@@ -610,6 +618,8 @@ func (b *Base) ScanMessages(startMsg, maxMessages int) ([]*Message, error) {
 				msg.Subject = val
 			case SfldMsgID:
 				msg.MsgID = val
+			case SfldReplyID:
+				msg.ReplyID = val
 			case SfldOAddress:
 				msg.OrigAddr = val
 			}
