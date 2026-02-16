@@ -434,6 +434,7 @@ type FTNConfig struct {
 type ServerConfig struct {
 	BoardName           string `json:"boardName"`
 	BoardPhoneNumber    string `json:"boardPhoneNumber"`
+	SysOpName           string `json:"sysOpName"`
 	Timezone            string `json:"timezone,omitempty"`
 	SysOpLevel          int    `json:"sysOpLevel"`
 	CoSysOpLevel        int    `json:"coSysOpLevel"`
