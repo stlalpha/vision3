@@ -43,6 +43,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	topIndex := 0
 	reader := bufio.NewReader(s)
 
+	// Use theme colors matching the message lightbar.
+	hiColorSeq := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
+	loColorSeq := colorCodeToAnsi(e.Theme.YesNoRegularColor)
+
 	// Determine terminal height.
 	termHeight := 24
 	if ptyReq, _, ok := s.Pty(); ok && ptyReq.Window.Height > 0 {
@@ -158,14 +162,17 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				line = strings.ReplaceAll(line, "^DESC", descStr)
 
 				if idx == selectedIndex {
-					// Reverse video wrap. Process pipe codes first, then wrap.
+					// Highlight with theme colors (matches message lightbar).
 					processed := string(ansi.ReplacePipeCodes([]byte(line)))
-					wrapped := "\x1b[7m" + processed + "\x1b[0m"
+					wrapped := hiColorSeq + processed + "\x1b[0m"
 					if err := writeProcessedStringWithManualEncoding(terminal, []byte(wrapped), outputMode); err != nil {
 						return err
 					}
 				} else {
-					if err := writeProcessedStringWithManualEncoding(terminal, []byte(line), outputMode); err != nil {
+					// Regular color for unselected rows.
+					processed := string(ansi.ReplacePipeCodes([]byte(line)))
+					wrapped := loColorSeq + processed + "\x1b[0m"
+					if err := writeProcessedStringWithManualEncoding(terminal, []byte(wrapped), outputMode); err != nil {
 						return err
 					}
 				}
