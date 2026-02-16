@@ -275,23 +275,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				}
 				linesUsed++
 
-				// Render continuation lines.
+				// Render continuation lines (never highlighted).
 				for _, cl := range contLines {
-					contText := descIndent + cl
-					if idx == selectedIndex {
-						padWidth := termWidth - 1
-						if len(contText) < padWidth {
-							contText += strings.Repeat(" ", padWidth-len(contText))
-						}
-						wrapped := hiColorSeq + contText + "\x1b[0m"
-						if err := terminalio.WriteProcessedBytes(terminal, []byte(wrapped), outputMode); err != nil {
-							return err
-						}
-					} else {
-						contFormatted := "|07" + descIndent + cl
-						if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(contFormatted)), outputMode); err != nil {
-							return err
-						}
+					contFormatted := "|07" + descIndent + cl
+					if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(contFormatted)), outputMode); err != nil {
+						return err
 					}
 					if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
 						return err
