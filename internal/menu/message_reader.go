@@ -182,7 +182,7 @@ readerLoop:
 		// Find the actual bottom row of the header using ANSI cursor tracking
 		headerEndRow := findHeaderEndRow(processedHeader)
 		bodyStartRow := headerEndRow + 1 // Start body on next row after header
-		barLines := 2                    // Board info line + lightbar
+		barLines := 3                    // Horizontal line + board info line + lightbar
 		bodyAvailHeight := termHeight - bodyStartRow - barLines
 		if bodyAvailHeight < 1 {
 			bodyAvailHeight = 5
@@ -249,6 +249,11 @@ readerLoop:
 					}
 					scrollLabel = fmt.Sprintf(" |05[|13%d%%|05]", scrollPercent)
 				}
+
+				// Draw horizontal line above footer (CP437 character 196)
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-2, 1)), outputMode)
+				horizontalLine := "|08" + strings.Repeat("\xC4", termWidth-1) + "|07" // CP437 horizontal line character
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(horizontalLine)), outputMode)
 
 				// Position cursor at second-to-last row for board info line
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)), outputMode)

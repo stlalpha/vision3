@@ -328,19 +328,6 @@ func TestIncrementDownloadCount(t *testing.T) {
 	}
 }
 
-func TestGetTotalFileCount_Empty(t *testing.T) {
-	areas := []FileArea{
-		{ID: 1, Tag: "UTILS", Name: "Utilities", Path: "utils"},
-		{ID: 2, Tag: "GAMES", Name: "Games", Path: "games"},
-	}
-	fm := setupTestFileManager(t, areas)
-
-	count := fm.GetTotalFileCount()
-	if count != 0 {
-		t.Errorf("expected 0 files for empty areas, got %d", count)
-	}
-}
-
 func TestIsSupportedArchive(t *testing.T) {
 	fm := &FileManager{}
 

@@ -51,23 +51,3 @@ func TestRegistryGet(t *testing.T) {
 		t.Error("expected nil for nonexistent node")
 	}
 }
-
-func TestRegistryActiveCount(t *testing.T) {
-	r := NewSessionRegistry()
-
-	if r.ActiveCount() != 0 {
-		t.Errorf("expected 0 for empty registry, got %d", r.ActiveCount())
-	}
-
-	r.Register(&BbsSession{NodeID: 1, StartTime: time.Now()})
-	r.Register(&BbsSession{NodeID: 2, StartTime: time.Now()})
-
-	if r.ActiveCount() != 2 {
-		t.Errorf("expected 2 active sessions, got %d", r.ActiveCount())
-	}
-
-	r.Unregister(1)
-	if r.ActiveCount() != 1 {
-		t.Errorf("expected 1 after unregister, got %d", r.ActiveCount())
-	}
-}

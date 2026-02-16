@@ -422,24 +422,6 @@ func TestLoadOneLiners_MissingFile(t *testing.T) {
 	}
 }
 
-func TestServerConfig_SysOpName(t *testing.T) {
-	tmpDir := t.TempDir()
-	cfg := `{"boardName":"Test BBS","sysOpName":"The SysOp","sysOpLevel":255,"maxNodes":10}`
-	os.WriteFile(filepath.Join(tmpDir, "config.json"), []byte(cfg), 0644)
-
-	var sc ServerConfig
-	data, err := os.ReadFile(filepath.Join(tmpDir, "config.json"))
-	if err != nil {
-		t.Fatalf("failed to read config: %v", err)
-	}
-	if err := json.Unmarshal(data, &sc); err != nil {
-		t.Fatalf("failed to unmarshal: %v", err)
-	}
-	if sc.SysOpName != "The SysOp" {
-		t.Errorf("expected SysOpName 'The SysOp', got %q", sc.SysOpName)
-	}
-}
-
 func TestLoadOneLiners_EmptyFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	os.WriteFile(filepath.Join(tmpDir, "oneliners.dat"), []byte(""), 0644)

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gliderlabs/ssh"
@@ -54,6 +55,17 @@ func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		"DATE":        now.Format("01/02/2006"),
 		"TIME":        now.Format("03:04 PM"),
 	}
+
+	// Apply @TOKEN@ substitution to template content
+	replaceTokens := func(data []byte) []byte {
+		s := string(data)
+		for key, val := range tokens {
+			s = strings.ReplaceAll(s, "@"+key+"@", val)
+		}
+		return []byte(s)
+	}
+	topBytes = replaceTokens(topBytes)
+	botBytes = replaceTokens(botBytes)
 
 	lines := []string{
 		fmt.Sprintf(" |07BBS Name:       |15%s", tokens["BBSNAME"]),
