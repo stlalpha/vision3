@@ -380,6 +380,45 @@ type StringsConfig struct {
 	ConfNoAccessibleMsgAreas    string `json:"confNoAccessibleMsgAreas"`
 	ConfAreaTemplateError       string `json:"confAreaTemplateError"`
 
+	// Executor strings (V3-specific)
+	ExecUnknownCommand      string `json:"execUnknownCommand"`
+	ExecReadmailLogin       string `json:"execReadmailLogin"`
+	ExecReadmailPlaceholder string `json:"execReadmailPlaceholder"`
+	ExecDoorLogin           string `json:"execDoorLogin"`
+	ExecDoorNotConfigured   string `json:"execDoorNotConfigured"`
+	ExecGoodbye             string `json:"execGoodbye"`
+	ExecStatsLogin          string `json:"execStatsLogin"`
+	ExecStatsError          string `json:"execStatsError"`
+	ExecOnelinerTemplateErr string `json:"execOnelinerTemplateErr"`
+	ExecOnelinerColorError  string `json:"execOnelinerColorError"`
+	ExecOnelinerWriteError  string `json:"execOnelinerWriteError"`
+	ExecOnelinerAdded       string `json:"execOnelinerAdded"`
+	ExecOnelinerEmpty       string `json:"execOnelinerEmpty"`
+	ExecAlreadyLoggedIn     string `json:"execAlreadyLoggedIn"`
+	ExecUsernamePrompt      string `json:"execUsernamePrompt"`
+	ExecPasswordPrompt      string `json:"execPasswordPrompt"`
+	ExecLoginCancelled      string `json:"execLoginCancelled"`
+	ExecIPLockout           string `json:"execIPLockout"`
+	ExecLoginIncorrect      string `json:"execLoginIncorrect"`
+	ExecNotValidated        string `json:"execNotValidated"`
+	ExecMenuLoadError       string `json:"execMenuLoadError"`
+	ExecMenuPasswordPrompt  string `json:"execMenuPasswordPrompt"`
+	ExecPasswordAccepted    string `json:"execPasswordAccepted"`
+	ExecIncorrectPassword   string `json:"execIncorrectPassword"`
+	ExecTooManyAttempts     string `json:"execTooManyAttempts"`
+	ExecAccessDenied        string `json:"execAccessDenied"`
+	ExecLastcallTemplateErr string `json:"execLastcallTemplateErr"`
+	ExecFileLoadError       string `json:"execFileLoadError"`
+	ExecNoNewMail           string `json:"execNoNewMail"`
+	ExecNewMailCount        string `json:"execNewMailCount"`
+	ExecUserlistTemplateErr string `json:"execUserlistTemplateErr"`
+	ExecPendingValidation   string `json:"execPendingValidation"`
+	ExecRunCommandError     string `json:"execRunCommandError"`
+	ExecRunCommandNotFound  string `json:"execRunCommandNotFound"`
+	ExecRunDoorError        string `json:"execRunDoorError"`
+	ExecLoginCriticalError  string `json:"execLoginCriticalError"`
+	ExecVersionString       string `json:"execVersionString"`
+
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
 	DefColor2 uint8 `json:"defColor2"`
