@@ -30,6 +30,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	currentAreaID int, currentAreaTag string, area *file.FileArea,
 	processedTopTemplate []byte, processedMidTemplate string, processedBotTemplate []byte,
 	filesPerPage int, totalFiles int, totalPages int,
+	cmdBarOptions []LightbarOption, hiBarOptions []LightbarOption,
 	outputMode ansi.OutputMode) (*user.User, string, error) {
 
 	// Hide cursor on entry, show on exit.
@@ -44,23 +45,54 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	cmdIndex := 0
 	reader := bufio.NewReader(s)
 
-	// Command bar options.
-	type cmdOption struct {
-		label  string
-		hotkey string
-	}
-	cmdOptions := []cmdOption{
-		{"Mark", " "},
-		{"Info", "i"},
-		{"View", "v"},
-		{"Download", "d"},
-		{"Upload", "u"},
-		{"Quit", "q"},
+	// Build command bar entries from BAR file or defaults.
+	type cmdEntry struct {
+		label          string
+		hotkey         string
+		highlightColor string
+		regularColor   string
 	}
 
-	// Use theme highlight color matching the message lightbar.
+	var cmdEntries []cmdEntry
+	if len(cmdBarOptions) > 0 {
+		for _, opt := range cmdBarOptions {
+			cmdEntries = append(cmdEntries, cmdEntry{
+				label:          opt.Text,
+				hotkey:         strings.ToLower(opt.HotKey),
+				highlightColor: colorCodeToAnsi(opt.HighlightColor),
+				regularColor:   colorCodeToAnsi(opt.RegularColor),
+			})
+		}
+	} else {
+		// Default entries using theme colors.
+		defHi := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
+		defLo := colorCodeToAnsi(e.Theme.YesNoRegularColor)
+		defaults := []struct {
+			label  string
+			hotkey string
+		}{
+			{"Mark", " "},
+			{"Info", "i"},
+			{"View", "v"},
+			{"Download", "d"},
+			{"Upload", "u"},
+			{"Quit", "q"},
+		}
+		for _, d := range defaults {
+			cmdEntries = append(cmdEntries, cmdEntry{
+				label:          d.label,
+				hotkey:         d.hotkey,
+				highlightColor: defHi,
+				regularColor:   defLo,
+			})
+		}
+	}
+
+	// Highlight colors for file rows.
 	hiColorSeq := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
-	loColorSeq := colorCodeToAnsi(e.Theme.YesNoRegularColor)
+	if len(hiBarOptions) > 0 {
+		hiColorSeq = colorCodeToAnsi(hiBarOptions[0].HighlightColor)
+	}
 
 	// Determine terminal dimensions.
 	termHeight := 24
@@ -77,10 +109,18 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	if headerLines < 1 {
 		headerLines = 1
 	}
-	// Footer: bot template line + status line.
-	footerLines := 2
+
+	// Footer lines: command bar (1) + BOT template lines.
+	botContent := strings.TrimRight(string(processedBotTemplate), "\r\n")
+	botLines := 1 // command bar always takes one line
+	if len(botContent) > 0 {
+		botLines += strings.Count(botContent, "\n") + 1
+	} else {
+		botLines++ // hardcoded page indicator fallback
+	}
+
 	// +1 for the CRLF after the top template write.
-	visibleRows := termHeight - headerLines - 1 - footerLines
+	visibleRows := termHeight - headerLines - 1 - botLines
 	if visibleRows < 3 {
 		visibleRows = 3
 	}
@@ -312,11 +352,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			linesUsed++
 		}
 
-		// Command bar (horizontal lightbar), centered.
+		// Command bar (horizontal lightbar), centered with per-entry colors.
 		barWidth := 0
-		for ci, opt := range cmdOptions {
-			barWidth += len(opt.label) + 2 // " label "
-			if ci < len(cmdOptions)-1 {
+		for ci, ent := range cmdEntries {
+			barWidth += len(ent.label) + 2 // " label "
+			if ci < len(cmdEntries)-1 {
 				barWidth += 2 // gap between items
 			}
 		}
@@ -325,13 +365,13 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			pad = 0
 		}
 		cmdBar := "\r\n" + strings.Repeat(" ", pad)
-		for ci, opt := range cmdOptions {
+		for ci, ent := range cmdEntries {
 			if ci == cmdIndex {
-				cmdBar += hiColorSeq + " " + opt.label + " " + "\x1b[0m"
+				cmdBar += ent.highlightColor + " " + ent.label + " " + "\x1b[0m"
 			} else {
-				cmdBar += loColorSeq + " " + opt.label + " " + "\x1b[0m"
+				cmdBar += ent.regularColor + " " + ent.label + " " + "\x1b[0m"
 			}
-			if ci < len(cmdOptions)-1 {
+			if ci < len(cmdEntries)-1 {
 				cmdBar += "  "
 			}
 		}
@@ -339,7 +379,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			return err
 		}
 
-		// Page indicator, centered.
+		// Page indicator from BOT template or hardcoded fallback.
 		currentPage := 1
 		if len(allFiles) > 0 && visibleRows > 0 {
 			currentPage = (selectedIndex / visibleRows) + 1
@@ -348,14 +388,38 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		if len(allFiles) > 0 && visibleRows > 0 {
 			calcTotalPages = (len(allFiles) + visibleRows - 1) / visibleRows
 		}
-		pageText := fmt.Sprintf("Page %d of %d", currentPage, calcTotalPages)
-		pagePad := (termWidth - len(pageText)) / 2
-		if pagePad < 0 {
-			pagePad = 0
-		}
-		pageLine := "\r\n" + strings.Repeat(" ", pagePad) + "|08" + pageText + "|07"
-		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(pageLine)), outputMode); err != nil {
-			return err
+
+		if len(botContent) > 0 {
+			// Use BOT template with substitutions.
+			pageStr := botContent
+			pageStr = strings.ReplaceAll(pageStr, "^PAGE", fmt.Sprintf("%d", currentPage))
+			pageStr = strings.ReplaceAll(pageStr, "^TOTALPAGES", fmt.Sprintf("%d", calcTotalPages))
+			// Process pipe codes in the template.
+			processedPage := string(ansi.ReplacePipeCodes([]byte(pageStr)))
+			// Center each line of the BOT template.
+			for _, botLine := range strings.Split(processedPage, "\n") {
+				botLine = strings.TrimRight(botLine, "\r")
+				plainLen := len(stripAnsi(botLine))
+				linePad := (termWidth - plainLen) / 2
+				if linePad < 0 {
+					linePad = 0
+				}
+				centered := "\r\n" + strings.Repeat(" ", linePad) + botLine
+				if err := terminalio.WriteProcessedBytes(terminal, []byte(centered), outputMode); err != nil {
+					return err
+				}
+			}
+		} else {
+			// Hardcoded fallback.
+			pageText := fmt.Sprintf("Page %d of %d", currentPage, calcTotalPages)
+			pagePad := (termWidth - len(pageText)) / 2
+			if pagePad < 0 {
+				pagePad = 0
+			}
+			pageLine := "\r\n" + strings.Repeat(" ", pagePad) + "|08" + pageText + "|07"
+			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(pageLine)), outputMode); err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -385,14 +449,14 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			continue
 		case "\x1b[C": // Right — command bar
 			cmdIndex++
-			if cmdIndex >= len(cmdOptions) {
+			if cmdIndex >= len(cmdEntries) {
 				cmdIndex = 0
 			}
 			continue
 		case "\x1b[D": // Left — command bar
 			cmdIndex--
 			if cmdIndex < 0 {
-				cmdIndex = len(cmdOptions) - 1
+				cmdIndex = len(cmdEntries) - 1
 			}
 			continue
 		case "\x1b[5~": // Page Up
@@ -412,7 +476,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		case "\x1b": // Bare Esc
 			return nil, "", nil
 		case "\r", "\n": // Enter: execute selected command bar item
-			key = cmdOptions[cmdIndex].hotkey
+			key = cmdEntries[cmdIndex].hotkey
 		}
 
 		// Command dispatch (direct hotkeys or Enter-selected command).
