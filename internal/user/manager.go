@@ -603,3 +603,20 @@ func (um *UserMgr) IsUserOnline(userID int) bool {
 	return um.activeUserIDs[int32(userID)]
 }
 
+// GetUserCount returns the total number of registered users.
+func (um *UserMgr) GetUserCount() int {
+	um.mu.RLock()
+	defer um.mu.RUnlock()
+	return len(um.users)
+}
+
+// GetTotalCalls returns the total number of calls (logins) recorded.
+func (um *UserMgr) GetTotalCalls() uint64 {
+	um.mu.RLock()
+	defer um.mu.RUnlock()
+	if um.nextCallNumber <= 1 {
+		return 0
+	}
+	return um.nextCallNumber - 1
+}
+
