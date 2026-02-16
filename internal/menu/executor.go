@@ -9066,13 +9066,21 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		}
 		line = replaceWhoOnlineToken(line, "LO", activity)
 
-		dur := now.Sub(sess.StartTime)
+		safeStart := sess.StartTime
+		if safeStart.IsZero() {
+			safeStart = now
+		}
+		dur := now.Sub(safeStart)
 		hours := int(dur.Hours())
 		mins := int(dur.Minutes()) % 60
 		timeOn := fmt.Sprintf("%d:%02d", hours, mins)
 		line = replaceWhoOnlineToken(line, "TO", timeOn)
 
-		idle := now.Sub(lastActivity)
+		safeLast := lastActivity
+		if safeLast.IsZero() {
+			safeLast = now
+		}
+		idle := now.Sub(safeLast)
 		idleMins := int(idle.Minutes())
 		idleSecs := int(idle.Seconds()) % 60
 		idleStr := fmt.Sprintf("%d:%02d", idleMins, idleSecs)

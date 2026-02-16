@@ -10,14 +10,17 @@ Display all active BBS connections — authenticated users and unauthenticated s
 
 New `SessionRegistry` in `internal/session/registry.go` — a mutex-protected map of active `BbsSession` pointers keyed by node ID.
 
-## API
+### API
+
 - `NewSessionRegistry() *SessionRegistry`
 - `Register(session *BbsSession)`
 - `Unregister(nodeID int)`
 - `ListActive() []*BbsSession` — returns snapshot sorted by node ID
 - `Get(nodeID int) *BbsSession` — single session lookup (useful for future chat/paging)
 
-**Lifecycle:** `main.go` creates the registry at startup, calls `Register` on SSH connect, `Unregister` on disconnect. Passes registry reference to `MenuExecutor`.
+### Lifecycle
+
+`main.go` creates the registry at startup, calls `Register` on SSH connect, `Unregister` on disconnect. Passes registry reference to `MenuExecutor`.
 
 ### Idle Tracking
 

@@ -800,7 +800,9 @@ func sessionHandler(s ssh.Session) {
 		activeSessionsMutex.Lock()
 		delete(activeSessions, s) // Remove using session as key
 		activeSessionsMutex.Unlock()
-		sessionRegistry.Unregister(int(nodeID))
+		if sessionRegistry != nil {
+			sessionRegistry.Unregister(int(nodeID))
+		}
 
 		// --- Record Call History ---
 		if authenticatedUser != nil {
