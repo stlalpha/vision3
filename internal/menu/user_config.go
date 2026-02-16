@@ -35,16 +35,19 @@ func runCfgToggle(
 		return nil, "", nil
 	}
 
-	newVal := !getter(currentUser)
-	setter(currentUser, newVal)
+	original := getter(currentUser)
+	setter(currentUser, !original)
 
 	if err := userManager.UpdateUser(currentUser); err != nil {
+		setter(currentUser, original)
 		log.Printf("ERROR: Node %d: Failed to save %s: %v", nodeNumber, fieldName, err)
 		msg := fmt.Sprintf("\r\n|09Error saving %s.|07\r\n", fieldName)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
 	}
+
+	newVal := !original
 
 	stateStr := "|09OFF|07"
 	if newVal {
@@ -448,6 +451,8 @@ func runCfgViewConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, u
 		"",
 		fmt.Sprintf(" |07Prompt Color:  |%02d%d|07    Input Color: |%02d%d|07", currentUser.Colors[0], currentUser.Colors[0], currentUser.Colors[1], currentUser.Colors[1]),
 		fmt.Sprintf(" |07Text Color:    |%02d%d|07    Stat Color:  |%02d%d|07", currentUser.Colors[2], currentUser.Colors[2], currentUser.Colors[3], currentUser.Colors[3]),
+		fmt.Sprintf(" |07Text2 Color:   |%02d%d|07    Stat2 Color: |%02d%d|07", currentUser.Colors[4], currentUser.Colors[4], currentUser.Colors[5], currentUser.Colors[5]),
+		fmt.Sprintf(" |07Bar Color:     |%02d%d|07", currentUser.Colors[6], currentUser.Colors[6]),
 		"",
 		fmt.Sprintf(" |07Real Name:     |15%s", currentUser.RealName),
 		fmt.Sprintf(" |07Phone:         |15%s", currentUser.PhoneNumber),

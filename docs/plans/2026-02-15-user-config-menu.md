@@ -10,7 +10,7 @@
 
 ---
 
-### Task 1: Add User Preference Fields
+## Task 1: Add User Preference Fields
 
 **Files:**
 - Modify: `internal/user/user.go:58-61`
@@ -43,7 +43,7 @@ git commit -m "feat(user): add configuration preference fields to User struct"
 
 ---
 
-### Task 2: Create Menu Files (USERCFG.CFG, USERCFG.MNU, USERCFG.ANS)
+## Task 2: Create Menu Files (USERCFG.CFG, USERCFG.MNU, USERCFG.ANS)
 
 **Files:**
 - Create: `menus/v3/cfg/USERCFG.CFG`
@@ -183,7 +183,7 @@ git commit -m "feat(user): add configuration preference fields to User struct"
 
 A simple pipe-coded text file (no binary ANSI art needed for now):
 
-```
+```text
 |12User Configuration|07
 |08────────────────────────────────────────────────────────────────────────────────
 |15 Terminal                          |15 Personal Info
@@ -223,7 +223,7 @@ git commit -m "feat: add USERCFG menu files and wire K key"
 
 ---
 
-### Task 3: Implement Toggle Commands
+## Task 3: Implement Toggle Commands
 
 **Files:**
 - Create: `internal/menu/user_config.go`
@@ -335,7 +335,7 @@ git commit -m "feat: add toggle config commands (hot keys, more prompts, fs edit
 
 ---
 
-### Task 4: Implement Numeric Input Commands (Screen Width/Height)
+## Task 4: Implement Numeric Input Commands (Screen Width/Height)
 
 **Files:**
 - Modify: `internal/menu/user_config.go`
@@ -460,7 +460,7 @@ git commit -m "feat: add screen width/height config commands"
 
 ---
 
-### Task 5: Implement Terminal Type Toggle
+## Task 5: Implement Terminal Type Toggle
 
 **Files:**
 - Modify: `internal/menu/user_config.go`
@@ -513,7 +513,7 @@ git commit -m "feat: add terminal type toggle config command"
 
 ---
 
-### Task 6: Implement String Input Commands (Real Name, Phone, Note, Custom Prompt)
+## Task 6: Implement String Input Commands (Real Name, Phone, Note, Custom Prompt)
 
 **Files:**
 - Modify: `internal/menu/user_config.go`
@@ -629,7 +629,7 @@ git commit -m "feat: add string input config commands (name, phone, note, prompt
 
 ---
 
-### Task 7: Implement Color Picker
+## Task 7: Implement Color Picker
 
 **Files:**
 - Modify: `internal/menu/user_config.go`
@@ -717,7 +717,7 @@ git commit -m "feat: add color picker config command"
 
 ---
 
-### Task 8: Implement Password Change
+## Task 8: Implement Password Change
 
 **Files:**
 - Modify: `internal/menu/user_config.go`
@@ -804,7 +804,7 @@ git commit -m "feat: add password change config command"
 
 ---
 
-### Task 9: Implement View Config
+## Task 9: Implement View Config
 
 **Files:**
 - Create: `menus/v3/templates/USRCFGV.TOP`
@@ -814,14 +814,14 @@ git commit -m "feat: add password change config command"
 
 **Step 1: Create USRCFGV.TOP template**
 
-```
+```text
 |12Current Configuration|07
 |08────────────────────────────────────────────────────────────────────────────────
 ```
 
 **Step 2: Create USRCFGV.BOT template**
 
-```
+```text
 |08────────────────────────────────────────────────────────────────────────────────
 ```
 
@@ -928,7 +928,7 @@ git commit -m "feat: add view config command with template display"
 
 ---
 
-### Task 10: Final Verification
+## Task 10: Final Verification
 
 **Step 1: Run all tests**
 
