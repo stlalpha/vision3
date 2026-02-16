@@ -7774,7 +7774,15 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		filesOnPage = []file.FileRecord{} // Ensure empty slice if no files
 	}
 
-	// 4. Display Loop
+	// 4. Dispatch based on file listing mode
+	if !strings.EqualFold(e.ServerCfg.FileListingMode, "classic") {
+		return runListFilesLightbar(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime,
+			currentAreaID, currentAreaTag, area,
+			processedTopTemplate, processedMidTemplate, processedBotTemplate,
+			filesPerPage, totalFiles, totalPages, outputMode)
+	}
+
+	// Classic display loop
 	for {
 		// 4.1 Clear Screen
 		writeErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
