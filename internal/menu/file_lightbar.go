@@ -166,10 +166,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			for idx := topIndex; idx < len(allFiles) && linesUsed < visibleRows; idx++ {
 				fileRec := allFiles[idx]
 
-				fileNumStr := strconv.Itoa(idx + 1)
-				fileNameStr := fileRec.Filename
+				fileNumStr := fmt.Sprintf("%3d", idx+1)
+				fileNameStr := fmt.Sprintf("%-12s", fileRec.Filename)
 				dateStr := fileRec.UploadedAt.Format("01/02/06")
-				sizeStr := formatSize(fileRec.Size)
+				sizeStr := fmt.Sprintf("%7s", formatSize(fileRec.Size))
 
 				// Normalize description whitespace.
 				fullDesc := strings.ReplaceAll(fileRec.Description, "\r", "")
