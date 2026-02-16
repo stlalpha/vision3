@@ -3,6 +3,7 @@ package ziplab
 import (
 	"archive/zip"
 	"bufio"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -52,7 +53,7 @@ func (p *Processor) StepTestIntegrity(archivePath string) error {
 	if at.Native {
 		return p.testZipIntegrity(archivePath)
 	}
-	return p.runExternalCommand(at.TestCommand, at.TestArgs, archivePath, "")
+	return p.runExternalCommand(at.TestCommand, at.TestArgs, archivePath, "", 0)
 }
 
 // testZipIntegrity opens a ZIP and reads every entry to verify integrity.
@@ -103,7 +104,7 @@ func (p *Processor) StepExtract(archivePath string) (string, error) {
 		return workDir, nil
 	}
 
-	if err := p.runExternalCommand(at.ExtractCommand, at.ExtractArgs, archivePath, workDir); err != nil {
+	if err := p.runExternalCommand(at.ExtractCommand, at.ExtractArgs, archivePath, workDir, 0); err != nil {
 		os.RemoveAll(workDir)
 		return "", err
 	}
@@ -169,7 +170,7 @@ func (p *Processor) StepVirusScan(workDir string) error {
 	}
 
 	step := p.config.Steps.VirusScan
-	return p.runExternalCommand(step.Command, step.Args, "", workDir)
+	return p.runExternalCommand(step.Command, step.Args, "", workDir, step.Timeout)
 }
 
 // StepRemoveAdsAndDIZ (Step 5) extracts FILE_ID.DIZ content and removes
@@ -293,23 +294,31 @@ func shouldRemoveFile(name string, patterns []string) bool {
 	return false
 }
 
-// findAndReadDIZ searches for FILE_ID.DIZ (case-insensitive) and returns its content.
+// findAndReadDIZ searches for FILE_ID.DIZ (case-insensitive) in the work directory
+// and one level of subdirectories, returning its content.
 func (p *Processor) findAndReadDIZ(workDir string) string {
-	entries, err := os.ReadDir(workDir)
-	if err != nil {
-		return ""
-	}
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.EqualFold(entry.Name(), "FILE_ID.DIZ") {
-			data, err := os.ReadFile(filepath.Join(workDir, entry.Name()))
-			if err != nil {
-				log.Printf("WARN: found FILE_ID.DIZ but failed to read: %v", err)
-				return ""
-			}
-			return strings.TrimSpace(string(data))
+	var found string
+	filepath.WalkDir(workDir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
 		}
-	}
-	return ""
+		// Skip directories deeper than one level below workDir
+		rel, _ := filepath.Rel(workDir, path)
+		if d.IsDir() && strings.Count(rel, string(filepath.Separator)) > 1 {
+			return filepath.SkipDir
+		}
+		if !d.IsDir() && strings.EqualFold(d.Name(), "FILE_ID.DIZ") {
+			data, readErr := os.ReadFile(path)
+			if readErr != nil {
+				log.Printf("WARN: found FILE_ID.DIZ but failed to read: %v", readErr)
+				return nil
+			}
+			found = strings.TrimSpace(string(data))
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return found
 }
 
 // loadRemovePatterns reads filenames to remove from the patterns file.
@@ -377,7 +386,7 @@ func (p *Processor) StepAddComment(archivePath string) error {
 	if at.Native {
 		return p.setZipComment(archivePath, comment)
 	}
-	return p.runExternalCommand(at.CommentCommand, at.CommentArgs, archivePath, "")
+	return p.runExternalCommand(at.CommentCommand, at.CommentArgs, archivePath, "", 0)
 }
 
 // setZipComment rewrites a ZIP file with the given comment.
@@ -463,7 +472,7 @@ func (p *Processor) StepIncludeFile(archivePath string) error {
 	if at.Native {
 		return p.addFileToZip(archivePath, filepath.Base(includeFilePath), includeData)
 	}
-	return p.runExternalCommand(at.AddCommand, at.AddArgs, archivePath, "")
+	return p.runExternalCommand(at.AddCommand, at.AddArgs, archivePath, "", 0)
 }
 
 // addFileToZip rewrites a ZIP adding a new file entry.
@@ -558,7 +567,8 @@ func (p *Processor) addFileToZip(zipPath, name string, data []byte) error {
 }
 
 // runExternalCommand runs an external command with placeholder substitution.
-func (p *Processor) runExternalCommand(command string, args []string, archivePath, workDir string) error {
+// timeoutSeconds of 0 uses the default (60s).
+func (p *Processor) runExternalCommand(command string, args []string, archivePath, workDir string, timeoutSeconds int) error {
 	if command == "" {
 		return fmt.Errorf("no command configured")
 	}
@@ -571,35 +581,22 @@ func (p *Processor) runExternalCommand(command string, args []string, archivePat
 	}
 
 	timeout := 60 * time.Second
+	if timeoutSeconds > 0 {
+		timeout = time.Duration(timeoutSeconds) * time.Second
+	}
 
-	cmd := exec.Command(command, expandedArgs...)
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, command, expandedArgs...)
 	cmd.Dir = workDir
 
-	output, err := runWithTimeout(cmd, timeout)
+	output, err := cmd.CombinedOutput()
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("command %s timed out after %v", command, timeout)
+	}
 	if err != nil {
-		return fmt.Errorf("command %s failed: %w (output: %s)", command, err, output)
+		return fmt.Errorf("command %s failed: %w (output: %s)", command, err, string(output))
 	}
 	return nil
-}
-
-// runWithTimeout executes a command with a timeout.
-func runWithTimeout(cmd *exec.Cmd, timeout time.Duration) (string, error) {
-	done := make(chan error, 1)
-	var output []byte
-
-	go func() {
-		var err error
-		output, err = cmd.CombinedOutput()
-		done <- err
-	}()
-
-	select {
-	case err := <-done:
-		return string(output), err
-	case <-time.After(timeout):
-		if cmd.Process != nil {
-			cmd.Process.Kill()
-		}
-		return "", fmt.Errorf("command timed out after %v", timeout)
-	}
 }

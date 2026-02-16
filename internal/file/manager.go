@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/stlalpha/vision3/internal/ziplab"
 )
 
 // FileManager manages file areas and their associated file records.
@@ -551,8 +552,13 @@ func (fm *FileManager) GetAreaUploadPath(areaID int) (string, error) {
 }
 
 // IsSupportedArchive checks if the filename suggests a supported archive type.
-// Currently only supports .zip (case-insensitive).
+// Uses the ZipLab default archive extensions to stay in sync.
 func (fm *FileManager) IsSupportedArchive(filename string) bool {
 	lowerFilename := strings.ToLower(filename)
-	return strings.HasSuffix(lowerFilename, ".zip")
+	for _, ext := range ziplab.DefaultArchiveExtensions() {
+		if strings.HasSuffix(lowerFilename, ext) {
+			return true
+		}
+	}
+	return false
 }

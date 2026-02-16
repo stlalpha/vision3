@@ -115,6 +115,16 @@ func LoadConfig(configPath string) (Config, error) {
 	return cfg, nil
 }
 
+// DefaultArchiveExtensions returns the list of archive extensions from the default config.
+func DefaultArchiveExtensions() []string {
+	cfg := DefaultConfig()
+	exts := make([]string, len(cfg.ArchiveTypes))
+	for i, at := range cfg.ArchiveTypes {
+		exts[i] = strings.ToLower(at.Extension)
+	}
+	return exts
+}
+
 // IsArchiveSupported checks if a filename matches a configured archive type.
 func (c *Config) IsArchiveSupported(filename string) bool {
 	_, ok := c.GetArchiveType(filename)
