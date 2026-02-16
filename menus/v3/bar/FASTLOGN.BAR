@@ -2,7 +2,7 @@
 ; with the extension .BAR .. file name must match the ???????.ANS file..
 ; FORMAT: X,Y,HiLitedColor,RegularColor,HotKey,ReturnValue,HiLitedString
 ;
-7,8,112,7,1,1,1. Normal Login
-7,9,112,7,2,2,2. Main Menu
-7,10,112,7,3,3,3. Transfer Menu
-7,11,112,7,4,4,4. Message Menu
+7,8,31,7,1,1,1. Normal Login
+7,9,31,7,2,2,2. Main Menu
+7,10,31,7,3,3,3. Transfer Menu
+7,11,31,7,4,4,4. Message Menu
