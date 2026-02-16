@@ -7560,7 +7560,7 @@ func (e *MenuExecutor) runUploadFiles(
 
 		// Prompt for description if ZipLab didn't extract one
 		if description == "" {
-			pauseEnter(s, terminal, outputMode)
+			pauseEnter(s, terminal, outputMode, e.LoadedStrings.FilePausePrompt)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 			descPrompt := fmt.Sprintf("\r\n|15%s|07 (%d bytes)\r\n|11Desc:|07 ", nf.name, nf.size)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(descPrompt)), outputMode)

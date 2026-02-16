@@ -27,15 +27,13 @@ func runChangeMsgConference(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 	log.Printf("DEBUG: Node %d: Running CHANGEMSGCONF", nodeNumber)
 
 	if currentUser == nil {
-		msg := "\r\n|01Error: You must be logged in to change conferences.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfLoginRequired)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
 
 	if e.ConferenceMgr == nil {
-		msg := "\r\n|01Error: No conferences configured.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfNoConferences)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
 	}
@@ -91,7 +89,7 @@ func runChangeMsgConference(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 	}
 
 	if !matched {
-		msg := fmt.Sprintf("\r\n|01Error: Conference '%s' not found or access denied.|07\r\n", inputClean)
+		msg := fmt.Sprintf(e.LoadedStrings.ConfNotFound, inputClean)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
@@ -150,8 +148,7 @@ func navigateMsgArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 	log.Printf("DEBUG: Node %d: Running %s", nodeNumber, direction)
 
 	if currentUser == nil {
-		msg := "\r\n|01Error: You must be logged in.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfNavLoginRequired)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
@@ -160,8 +157,7 @@ func navigateMsgArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 	accessibleAreas := getAccessibleAreasInConference(e, s, terminal, currentUser, currentUser.CurrentMsgConferenceID, sessionStartTime)
 
 	if len(accessibleAreas) == 0 {
-		msg := "\r\n|01No accessible message areas in this conference.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfNoAccessibleAreas)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
 	}
@@ -193,7 +189,7 @@ func navigateMsgArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		log.Printf("ERROR: Node %d: Failed to save user after area change: %v", nodeNumber, err)
 	}
 
-	msg := fmt.Sprintf("\r\n|07Current area: |15%s|07 (%s)\r\n", newArea.Name, newArea.Tag)
+	msg := fmt.Sprintf(e.LoadedStrings.ConfCurrentAreaFormat, newArea.Name, newArea.Tag)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
 	log.Printf("INFO: Node %d: User %s navigated to area %d (%s)", nodeNumber, currentUser.Handle, newArea.ID, newArea.Tag)
@@ -211,8 +207,7 @@ func displayConferenceList(e *MenuExecutor, s ssh.Session, terminal *term.Termin
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGCONF templates: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
-		msg := "\r\n|01Error loading conference templates.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfTemplateError)), outputMode)
 		return fmt.Errorf("failed loading MSGCONF templates")
 	}
 
@@ -239,7 +234,7 @@ func displayConferenceList(e *MenuExecutor, s ssh.Session, terminal *term.Termin
 	}
 
 	if displayed == 0 {
-		buf.WriteString("\r\n|07   No accessible conferences found.   \r\n")
+		buf.WriteString(e.LoadedStrings.ConfNoAccessibleConferences)
 	}
 
 	buf.Write(processedBot)
@@ -260,8 +255,7 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
-		msg := "\r\n|01Error loading Message Area screen templates.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfAreaTemplateError)), outputMode)
 		time.Sleep(1 * time.Second)
 		return fmt.Errorf("failed loading MSGAREA templates")
 	}
@@ -340,7 +334,7 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 	}
 
 	if areasDisplayed == 0 {
-		outputBuffer.WriteString("\r\n|07   No accessible message areas found.   \r\n")
+		outputBuffer.WriteString(e.LoadedStrings.ConfNoAccessibleMsgAreas)
 	}
 
 	outputBuffer.Write(processedBotTemplate)

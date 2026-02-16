@@ -340,6 +340,46 @@ type StringsConfig struct {
 	MsgListLoadError      string `json:"msgListLoadError"`
 	MsgListNoMessages     string `json:"msgListNoMessages"`
 
+	// File viewer strings (V3-specific)
+	FileNoAreaSelected string `json:"fileNoAreaSelected"`
+	FilePromptFormat   string `json:"filePromptFormat"`
+	FileNotFoundFormat string `json:"fileNotFoundFormat"`
+	FileLocateError    string `json:"fileLocateError"`
+	FileViewingHeader  string `json:"fileViewingHeader"`
+	FileEndOfFile      string `json:"fileEndOfFile"`
+	FileMorePrompt     string `json:"fileMorePrompt"`
+	FilePausePrompt    string `json:"filePausePrompt"`
+	FileOpenError      string `json:"fileOpenError"`
+
+	// Door handler strings (V3-specific)
+	DoorDropfileError     string `json:"doorDropfileError"`
+	DoorErrorFormat       string `json:"doorErrorFormat"`
+	DoorLoginRequired     string `json:"doorLoginRequired"`
+	DoorPrompt            string `json:"doorPrompt"`
+	DoorNotFoundFormat    string `json:"doorNotFoundFormat"`
+	DoorNoneConfigured    string `json:"doorNoneConfigured"`
+	DoorTemplateError     string `json:"doorTemplateError"`
+	DoorInfoLoginRequired string `json:"doorInfoLoginRequired"`
+
+	// Matrix strings (V3-specific)
+	MatrixDisconnecting     string `json:"matrixDisconnecting"`
+	MatrixCheckAccessPrompt string `json:"matrixCheckAccessPrompt"`
+	MatrixUserNotFound      string `json:"matrixUserNotFound"`
+	MatrixAccountValidated  string `json:"matrixAccountValidated"`
+	MatrixAccountNotValidated string `json:"matrixAccountNotValidated"`
+
+	// Conference menu strings (V3-specific)
+	ConfLoginRequired           string `json:"confLoginRequired"`
+	ConfNoConferences           string `json:"confNoConferences"`
+	ConfNotFound                string `json:"confNotFound"`
+	ConfNoAccessibleAreas       string `json:"confNoAccessibleAreas"`
+	ConfCurrentAreaFormat       string `json:"confCurrentAreaFormat"`
+	ConfTemplateError           string `json:"confTemplateError"`
+	ConfNavLoginRequired        string `json:"confNavLoginRequired"`
+	ConfNoAccessibleConferences string `json:"confNoAccessibleConferences"`
+	ConfNoAccessibleMsgAreas    string `json:"confNoAccessibleMsgAreas"`
+	ConfAreaTemplateError       string `json:"confAreaTemplateError"`
+
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
 	DefColor2 uint8 `json:"defColor2"`
