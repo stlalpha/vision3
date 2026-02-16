@@ -427,6 +427,20 @@ func (mm *MessageManager) invalidateThreadIndex(areaID int) {
 	delete(mm.threadIndex, areaID)
 }
 
+// GetTotalMessageCount returns the total number of messages across all areas.
+func (mm *MessageManager) GetTotalMessageCount() int {
+	areas := mm.ListAreas()
+	total := 0
+	for _, area := range areas {
+		count, err := mm.GetMessageCountForArea(area.ID)
+		if err != nil {
+			continue
+		}
+		total += count
+	}
+	return total
+}
+
 // GetNewMessageCount returns the number of unread messages for a user in an area.
 func (mm *MessageManager) GetNewMessageCount(areaID int, username string) (int, error) {
 	b, _, err := mm.openBase(areaID)
