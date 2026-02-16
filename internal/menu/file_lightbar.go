@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -313,22 +312,6 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			linesUsed++
 		}
 
-		// Bottom template with pagination.
-		currentPage := 1
-		if len(allFiles) > 0 && visibleRows > 0 {
-			currentPage = (selectedIndex / visibleRows) + 1
-		}
-		calcTotalPages := 1
-		if len(allFiles) > 0 && visibleRows > 0 {
-			calcTotalPages = (len(allFiles) + visibleRows - 1) / visibleRows
-		}
-		bottomLine := string(processedBotTemplate)
-		bottomLine = strings.ReplaceAll(bottomLine, "^PAGE", strconv.Itoa(currentPage))
-		bottomLine = strings.ReplaceAll(bottomLine, "^TOTALPAGES", strconv.Itoa(calcTotalPages))
-		if err := terminalio.WriteProcessedBytes(terminal, []byte(bottomLine), outputMode); err != nil {
-			return err
-		}
-
 		// Command bar (horizontal lightbar), centered.
 		barWidth := 0
 		for ci, opt := range cmdOptions {
@@ -353,6 +336,25 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 		}
 		if err := terminalio.WriteProcessedBytes(terminal, []byte(cmdBar), outputMode); err != nil {
+			return err
+		}
+
+		// Page indicator, centered.
+		currentPage := 1
+		if len(allFiles) > 0 && visibleRows > 0 {
+			currentPage = (selectedIndex / visibleRows) + 1
+		}
+		calcTotalPages := 1
+		if len(allFiles) > 0 && visibleRows > 0 {
+			calcTotalPages = (len(allFiles) + visibleRows - 1) / visibleRows
+		}
+		pageText := fmt.Sprintf("Page %d of %d", currentPage, calcTotalPages)
+		pagePad := (termWidth - len(pageText)) / 2
+		if pagePad < 0 {
+			pagePad = 0
+		}
+		pageLine := "\r\n" + strings.Repeat(" ", pagePad) + "|08" + pageText + "|07"
+		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(pageLine)), outputMode); err != nil {
 			return err
 		}
 
