@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gliderlabs/ssh"
@@ -47,16 +48,28 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	sep := "|08────────────────────────────────────────────────────────────────────────────────|07"
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(sep)), outputMode)
 
-	// Set scroll region to lines 3..(height-1) for messages
+	// Set scroll region to lines 3..(height-2) for messages
 	terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1B[3;%dr", scrollBottom)), outputMode)
 
-	// writeChatLine writes a message into the scroll region, then restores cursor to input line.
+	// rawWriter writes directly to the SSH session, bypassing term.Terminal's line editor.
+	// This is needed because term.Terminal.Write() does escape processing that conflicts
+	// with ReadLine() when called from another goroutine.
+	var rawMu sync.Mutex
+	rawWrite := func(data []byte) {
+		rawMu.Lock()
+		defer rawMu.Unlock()
+		terminalio.WriteProcessedBytes(s, data, outputMode)
+	}
+
+	// writeChatLine writes a message into the scroll region via the raw SSH session.
 	writeChatLine := func(text string) {
-		// Save cursor, move to bottom of scroll region, write message (scrolls within region), restore cursor
 		seq := ansi.SaveCursor() + ansi.MoveCursor(scrollBottom, 1) + "\r\n"
-		terminalio.WriteProcessedBytes(terminal, []byte(seq), outputMode)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(text)), outputMode)
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()), outputMode)
+		processed := ansi.ReplacePipeCodes([]byte(text))
+		rawMu.Lock()
+		defer rawMu.Unlock()
+		terminalio.WriteProcessedBytes(s, []byte(seq), outputMode)
+		terminalio.WriteProcessedBytes(s, processed, outputMode)
+		terminalio.WriteProcessedBytes(s, []byte(ansi.RestoreCursor()), outputMode)
 	}
 
 	// Show recent history in scroll region
@@ -74,9 +87,9 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 
 	// Draw input line separator and position cursor
 	inputSep := "|08────────────────────────────────────────────────────────────────────────────────|07"
-	terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(height-1, 1)), outputMode)
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(inputSep)), outputMode)
-	terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(height, 1)), outputMode)
+	rawWrite([]byte(ansi.MoveCursor(height-1, 1)))
+	rawWrite(ansi.ReplacePipeCodes([]byte(inputSep)))
+	rawWrite([]byte(ansi.MoveCursor(height, 1)))
 
 	// Set terminal prompt to show handle
 	prompt := fmt.Sprintf("\x1B[%d;1H\x1B[2K<%s> ", height, handle)
@@ -87,8 +100,7 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	go func() {
 		defer close(done)
 		for msg := range msgCh {
-			line := formatChatMessage(msg)
-			writeChatLine(line)
+			writeChatLine(formatChatMessage(msg))
 		}
 	}()
 
@@ -100,7 +112,7 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 				e.ChatRoom.BroadcastSystem(fmt.Sprintf("|09%s has left chat|07", handle))
 				e.ChatRoom.Unsubscribe(nodeNumber)
 				<-done
-				resetScrollRegion(terminal, outputMode)
+				rawWrite([]byte("\x1B[r")) // reset scroll region
 				terminal.SetPrompt("")
 				return nil, "LOGOFF", io.EOF
 			}
@@ -137,15 +149,10 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	<-done                              // wait for receiver goroutine to finish
 
 	// Reset scroll region and prompt before leaving
-	resetScrollRegion(terminal, outputMode)
+	rawWrite([]byte("\x1B[r"))
 	terminal.SetPrompt("")
 
 	return nil, "", nil
-}
-
-// resetScrollRegion restores the terminal to full-screen scrolling.
-func resetScrollRegion(terminal *term.Terminal, outputMode ansi.OutputMode) {
-	terminalio.WriteProcessedBytes(terminal, []byte("\x1B[r"), outputMode)
 }
 
 func formatChatMessage(msg chat.ChatMessage) string {
