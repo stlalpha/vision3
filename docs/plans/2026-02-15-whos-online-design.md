@@ -10,7 +10,7 @@ Display all active BBS connections — authenticated users and unauthenticated s
 
 New `SessionRegistry` in `internal/session/registry.go` — a mutex-protected map of active `BbsSession` pointers keyed by node ID.
 
-**API:**
+## API
 - `NewSessionRegistry() *SessionRegistry`
 - `Register(session *BbsSession)`
 - `Unregister(nodeID int)`

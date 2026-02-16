@@ -969,7 +969,9 @@ func sessionHandler(s ssh.Session) {
 		if found && sshUser != nil {
 			// User exists in database, authenticate them automatically
 			authenticatedUser = sshUser
+			bbsSession.Mutex.Lock()
 			bbsSession.User = authenticatedUser
+			bbsSession.Mutex.Unlock()
 			log.Printf("Node %d: SSH auto-login successful for user '%s' (Handle: %s)", nodeID, sshUsername, sshUser.Handle)
 
 			// Mark user as online
@@ -1077,7 +1079,9 @@ func sessionHandler(s ssh.Session) {
 		// Check if authentication was successful during this menu execution
 		if authUser != nil {
 			authenticatedUser = authUser
+			bbsSession.Mutex.Lock()
 			bbsSession.User = authenticatedUser
+			bbsSession.Mutex.Unlock()
 			log.Printf("Node %d: User '%s' authenticated successfully.", nodeID, authenticatedUser.Handle)
 
 			// Mark user as online
@@ -1158,8 +1162,10 @@ func sessionHandler(s ssh.Session) {
 		log.Printf("DEBUG: Node %d: Entering main loop iteration. CurrentMenu: %s, OutputMode: %d", nodeID, currentMenuName, effectiveMode)
 
 		// Update session state for who's online tracking
+		bbsSession.Mutex.Lock()
 		bbsSession.CurrentMenu = currentMenuName
 		bbsSession.LastActivity = time.Now()
+		bbsSession.Mutex.Unlock()
 
 		// Execute the current menu (e.g., MAIN, READ_MSG, etc.)
 		// Pass nodeID directly as int, use sessionStartTime from context

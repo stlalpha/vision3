@@ -9026,6 +9026,14 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	processedMid := string(ansi.ReplacePipeCodes(midBytes))
 	processedBot := string(ansi.ReplacePipeCodes(botBytes))
 
+	if e.SessionRegistry == nil {
+		log.Printf("ERROR: Node %d: SessionRegistry is nil", nodeNumber)
+		msg := "\r\n|01Who's Online is unavailable.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
 	sessions := e.SessionRegistry.ListActive()
 
 	var buf bytes.Buffer
@@ -9041,13 +9049,18 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		nodeStr := strconv.Itoa(sess.NodeID)
 		line = replaceWhoOnlineToken(line, "ND", nodeStr)
 
+		// Read session fields under RLock to avoid racing with main loop writes
+		sess.Mutex.RLock()
 		userName := "Logging In..."
 		if sess.User != nil {
 			userName = sess.User.Handle
 		}
+		activity := sess.CurrentMenu
+		lastActivity := sess.LastActivity
+		sess.Mutex.RUnlock()
+
 		line = replaceWhoOnlineToken(line, "UN", userName)
 
-		activity := sess.CurrentMenu
 		if activity == "" {
 			activity = "---"
 		}
@@ -9059,7 +9072,7 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		timeOn := fmt.Sprintf("%d:%02d", hours, mins)
 		line = replaceWhoOnlineToken(line, "TO", timeOn)
 
-		idle := now.Sub(sess.LastActivity)
+		idle := now.Sub(lastActivity)
 		idleMins := int(idle.Minutes())
 		idleSecs := int(idle.Seconds()) % 60
 		idleStr := fmt.Sprintf("%d:%02d", idleMins, idleSecs)
