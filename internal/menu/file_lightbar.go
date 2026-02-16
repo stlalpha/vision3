@@ -25,6 +25,18 @@ import (
 	"github.com/stlalpha/vision3/internal/ziplab"
 )
 
+// runListFilesLightbar displays and manages an interactive lightbar-style file list for a file area,
+// handling rendering, keyboard navigation, and actions from a configurable command bar.
+//
+// The UI is rendered from provided TOP/MID/BOT templates and adapts to the remote terminal size.
+// Users can navigate the list, mark/unmark files, view file details, open or view files, upload files,
+// and download marked files via ZMODEM. Command bar entries and per-entry colors may be supplied
+// through cmdBarOptions and hiBarOptions; if omitted a sensible default command set and theme colors
+// are used. The function hides the terminal cursor while the list is active and restores it on exit.
+//
+// Returns the potentially updated user (with changes such as cleared or modified tagged files),
+// a status string (empty on normal exit or "LOGOFF" when the SSH session closed), and an error if
+// rendering, input handling, or other internal operations fail.
 func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time,
 	currentAreaID int, currentAreaTag string, area *file.FileArea,
