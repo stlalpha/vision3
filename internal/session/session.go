@@ -32,7 +32,28 @@ type BbsSession struct {
 	Pty         *ssh.Pty             // Store PTY info
 	AutoRunLog  types.AutoRunTracker // Tracks run-once commands executed (Use types.AutoRunTracker)
 	LastMenu    string               // Tracks the previously visited menu
-	StartTime   time.Time            // Tracks the session start time
+	StartTime    time.Time            // Tracks the session start time
+	LastActivity time.Time            // Tracks last user input for idle calculation
+	PendingPages []string             // Queued page messages for delivery at next prompt
+}
+
+// AddPage queues a page message for delivery at the user's next menu prompt.
+func (s *BbsSession) AddPage(msg string) {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+	s.PendingPages = append(s.PendingPages, msg)
+}
+
+// DrainPages returns all pending pages and clears the queue.
+func (s *BbsSession) DrainPages() []string {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+	if len(s.PendingPages) == 0 {
+		return nil
+	}
+	pages := s.PendingPages
+	s.PendingPages = nil
+	return pages
 }
 
 // NewSession creates a new Session object.

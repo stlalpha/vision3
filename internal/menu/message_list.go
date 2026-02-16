@@ -482,8 +482,7 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Validate user is logged in
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: LISTMSGS called without logged in user.", nodeNumber)
-		msg := "\r\n|01Error: You must be logged in to list messages.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgListLoginRequired)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
@@ -491,8 +490,7 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Check if user has selected a message area
 	currentAreaID := currentUser.CurrentMessageAreaID
 	if currentAreaID == 0 {
-		msg := "\r\n|01Please select a message area first.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgListNoAreaSelected)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
 	}
@@ -500,8 +498,7 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Get area information
 	area, found := e.MessageMgr.GetAreaByID(currentAreaID)
 	if !found {
-		msg := "\r\n|01Error: Message area not found.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgListAreaNotFound)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
 	}
@@ -518,16 +515,14 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	entries, lastRead, err := buildMessageList(e.MessageMgr, currentAreaID, currentUser.Handle)
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to build message list: %v", nodeNumber, err)
-		msg := "\r\n|01Error loading messages.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgListLoadError)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
 	}
 
 	// Check if area is empty
 	if len(entries) == 0 {
-		msg := "\r\n|07No messages in this area.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgListNoMessages)), outputMode)
 		time.Sleep(2 * time.Second)
 		return currentUser, "", nil
 	}

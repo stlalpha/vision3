@@ -26,7 +26,9 @@ import (
 	"github.com/gliderlabs/ssh"
 	"github.com/google/uuid"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/chat"
 	"github.com/stlalpha/vision3/internal/conference"
+	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
@@ -75,15 +77,17 @@ type MenuExecutor struct {
 	FileMgr        *file.FileManager             // <-- ADDED FIELD: File manager instance
 	ConferenceMgr  *conference.ConferenceManager // Conference grouping manager
 	IPLockoutCheck IPLockoutChecker              // IP-based authentication lockout checker
-	LoginSequence  []config.LoginItem            // Configurable login sequence from login.json
-	configMu       sync.RWMutex                  // Mutex for thread-safe config updates
+	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
+	SessionRegistry *session.SessionRegistry      // Session registry for who's online
+	ChatRoom        *chat.ChatRoom               // Global teleconference chat room
+	configMu        sync.RWMutex                  // Mutex for thread-safe config updates
 }
 
 // NewExecutor creates a new MenuExecutor.
 // Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, serverCfg, and ipLockoutCheck parameters
 // Updated paths to use new structure
 // << UPDATED Signature with msgMgr, fileMgr, serverCfg, and ipLockoutCheck
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem) *MenuExecutor {
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry, chatRoom *chat.ChatRoom) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -104,7 +108,9 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		FileMgr:        fileMgr,        // <-- ASSIGN FIELD
 		ConferenceMgr:  confMgr,        // Conference grouping manager
 		IPLockoutCheck: ipLockoutCheck, // IP-based lockout checker
-		LoginSequence:  loginSequence,  // Configurable login sequence
+		LoginSequence:   loginSequence,      // Configurable login sequence
+		SessionRegistry: sessionRegistry,    // Session registry for who's online
+		ChatRoom:        chatRoom,           // Global teleconference chat room
 	}
 }
 
@@ -194,7 +200,7 @@ func remoteIPFromSession(s ssh.Session) string {
 }
 
 func (e *MenuExecutor) showUndefinedMenuInput(terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber int) {
-	errMsg := "\r\n|01Unknown command!|07\r\n"
+	errMsg := e.LoadedStrings.ExecUnknownCommand
 	processedErrMsg := ansi.ReplacePipeCodes([]byte(errMsg))
 	if wErr := terminalio.WriteProcessedBytes(terminal, processedErrMsg, outputMode); wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing unknown command message: %v", nodeNumber, wErr)
@@ -230,7 +236,7 @@ func registerPlaceholderRunnables(registry map[string]RunnableFunc) { // Use loc
 	registry["READMAIL"] = func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 		if currentUser == nil {
 			log.Printf("WARN: Node %d: READMAIL called without logged in user.", nodeNumber)
-			msg := "\r\n|01Error: You must be logged in to read mail.|07\r\n"
+			msg := e.LoadedStrings.ExecReadmailLogin
 			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing READMAIL error message: %v", wErr)
@@ -238,7 +244,7 @@ func registerPlaceholderRunnables(registry map[string]RunnableFunc) { // Use loc
 			time.Sleep(1 * time.Second)
 			return nil, "", nil // No user change, no next action, no error
 		}
-		msg := fmt.Sprintf("\r\n|15Executing |11READMAIL|15 for |14%s|15... (Not Implemented)|07\r\n", currentUser.Handle)
+		msg := fmt.Sprintf(e.LoadedStrings.ExecReadmailPlaceholder, currentUser.Handle)
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil {
 			log.Printf("ERROR: Failed writing READMAIL placeholder message: %v", wErr)
@@ -251,7 +257,7 @@ func registerPlaceholderRunnables(registry map[string]RunnableFunc) { // Use loc
 	registry["DOOR:"] = func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, doorName string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 		if currentUser == nil {
 			log.Printf("WARN: Node %d: DOOR:%s called without logged in user.", nodeNumber, doorName)
-			msg := "\r\n|01Error: You must be logged in to run doors.|07\r\n"
+			msg := e.LoadedStrings.ExecDoorLogin
 			wErr := terminalio.WriteProcessedBytes(s.Stderr(), ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing DOOR error message (not logged in): %v", wErr)
@@ -264,7 +270,7 @@ func registerPlaceholderRunnables(registry map[string]RunnableFunc) { // Use loc
 		doorConfig, exists := e.GetDoorConfig(strings.ToUpper(doorName))
 		if !exists {
 			log.Printf("WARN: Door configuration not found for '%s'", doorName)
-			errMsg := fmt.Sprintf("\r\n|12Error: Door '%s' is not configured.\r\nPress Enter to continue...\r\n", doorName)
+			errMsg := fmt.Sprintf(e.LoadedStrings.ExecDoorNotConfigured, doorName)
 			wErr := terminalio.WriteProcessedBytes(s.Stderr(), ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing DOOR error message (not configured) to stderr: %v", wErr)
@@ -301,6 +307,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["MAINLOGOFF"] = runMainLogoffCommand   // MAIN menu logoff with confirmation + GOODBYE.ANS
 	registry["IMMEDIATELOGOFF"] = runImmediateLogoffCommand
 	registry["SHOWSTATS"] = runShowStats
+	registry["SYSTEMSTATS"] = runSystemStats
 	registry["LASTCALLERS"] = runLastCallers
 	registry["AUTHENTICATE"] = runAuthenticate
 	registry["ONELINER"] = runOneliners                              // Register new placeholder
@@ -343,6 +350,22 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["OPENDOOR"] = runOpenDoor                               // Prompt and open a door
 	registry["DOORINFO"] = runDoorInfo                               // Show door information
 	registry["UPLOADFILE"] = runUploadFile                            // ZMODEM file upload
+	registry["WHOISONLINE"] = runWhoIsOnline                          // Who's online display
+	registry["CFG_HOTKEYS"] = runCfgHotKeys
+	registry["CFG_MOREPROMPTS"] = runCfgMorePrompts
+	registry["CFG_FSEDITOR"] = runCfgFSEditor
+	registry["CFG_SCREENWIDTH"] = runCfgScreenWidth
+	registry["CFG_SCREENHEIGHT"] = runCfgScreenHeight
+	registry["CFG_TERMTYPE"] = runCfgTermType
+	registry["CFG_REALNAME"] = runCfgRealName
+	registry["CFG_PHONE"] = runCfgPhone
+	registry["CFG_NOTE"] = runCfgNote
+	registry["CFG_CUSTOMPROMPT"] = runCfgCustomPrompt
+	registry["CFG_COLOR"] = runCfgColor
+	registry["CFG_PASSWORD"] = runCfgPassword
+	registry["CFG_VIEWCONFIG"] = runCfgViewConfig
+	registry["CHAT"] = runChat
+	registry["PAGE"] = runPage
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
@@ -374,7 +397,7 @@ func runMainLogoffCommand(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 func runImmediateLogoffCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	if displayErr := e.displayFile(terminal, "GOODBYE.ANS", outputMode); displayErr != nil {
 		log.Printf("WARN: Node %d: Failed to display GOODBYE.ANS before logoff: %v", nodeNumber, displayErr)
-		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Goodbye!|07\r\n")), outputMode)
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ExecGoodbye)), outputMode)
 	}
 
 	time.Sleep(1 * time.Second)
@@ -385,7 +408,7 @@ func runImmediateLogoffCommand(e *MenuExecutor, s ssh.Session, terminal *term.Te
 func runShowStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	if currentUser == nil {
 		log.Printf("WARN: Node %d: SHOWSTATS called without logged in user.", nodeNumber)
-		msg := "\r\n|01Error: You must be logged in to view stats.|07\r\n"
+		msg := e.LoadedStrings.ExecStatsLogin
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil {
 			log.Printf("ERROR: Failed writing SHOWSTATS error message: %v", wErr)
@@ -400,7 +423,7 @@ func runShowStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	rawAnsiContent, readErr := ansi.GetAnsiFileContent(fullAnsPath)
 	if readErr != nil {
 		log.Printf("ERROR: Node %d: Failed to read %s for SHOWSTATS: %v", nodeNumber, fullAnsPath, readErr)
-		msg := fmt.Sprintf("\r\n|01Error displaying stats screen (%s).|07\r\n", ansFilename)
+		msg := fmt.Sprintf(e.LoadedStrings.ExecStatsError, ansFilename)
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil {
 			log.Printf("ERROR: Failed writing SHOWSTATS file read error message: %v", wErr)
@@ -878,7 +901,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more ONELINER template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
-		msg := "\r\n|01Error loading Oneliners screen templates.|07\r\n"
+		msg := e.LoadedStrings.ExecOnelinerTemplateErr
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil {
 		}
@@ -1079,7 +1102,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		}
 		newOneliner = truncateOnelinerPreservePipeCodes(newOneliner, oneLinerMaxLength)
 		if containsDisallowedOnelinerColorCode(newOneliner) {
-			msg := "\r\n|01Only standard foreground colors |15||01|01-|15||15 |01are allowed in one-liners.|07\r\n"
+			msg := e.LoadedStrings.ExecOnelinerColorError
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(500 * time.Millisecond)
 			return nil, "", nil
@@ -1119,16 +1142,16 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 			if saveErr != nil {
 				log.Printf("ERROR: Node %d: Failed to write updated oneliners JSON to %s: %v", nodeNumber, onelinerPath, saveErr)
-				msg := "\r\n|01Error writing oneliner to disk.|07\r\n"
+				msg := e.LoadedStrings.ExecOnelinerWriteError
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			} else {
 				log.Printf("INFO: Node %d: Successfully saved updated oneliners to %s", nodeNumber, onelinerPath)
-				msg := "\r\n|10Oneliner added!|07\r\n"
+				msg := e.LoadedStrings.ExecOnelinerAdded
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(500 * time.Millisecond)
 			}
 		} else {
-			msg := "\r\n|01Empty oneliner not added.|07\r\n"
+			msg := e.LoadedStrings.ExecOnelinerEmpty
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(500 * time.Millisecond)
 		}
@@ -1143,7 +1166,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 	// If already logged in, maybe show an error or just return?
 	if currentUser != nil {
 		log.Printf("WARN: Node %d: User %s tried to run AUTHENTICATE while already logged in.", nodeNumber, currentUser.Handle)
-		msg := "\r\n|01You are already logged in.|07\r\n"
+		msg := e.LoadedStrings.ExecAlreadyLoggedIn
 		// Use WriteProcessedBytes
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil {
@@ -1160,7 +1183,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 
 	// Move to Username position, display prompt, and read input
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(userRow, userCol)), outputMode)
-	usernamePrompt := "|07Username/Handle: |15" // Original prompt text was in ANSI
+	usernamePrompt := e.LoadedStrings.ExecUsernamePrompt
 	// Use WriteProcessedBytes for prompt
 	wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(usernamePrompt)), outputMode)
 	if wErr != nil {
@@ -1197,7 +1220,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 
 	// Move to Password position, display prompt, and read input securely
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(passRow, passCol)), outputMode)
-	passwordPrompt := "|07Password: |15" // Original prompt text was in ANSI
+	passwordPrompt := e.LoadedStrings.ExecPasswordPrompt
 	wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(passwordPrompt)), outputMode)
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing password prompt: %v", nodeNumber, wErr)
@@ -1212,7 +1235,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 			log.Printf("INFO: Node %d: User interrupted password entry.", nodeNumber)
 			// Treat interrupt like a failed attempt?
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-			msg := "\r\n|01Login cancelled.|07\r\n"
+			msg := e.LoadedStrings.ExecLoginCancelled
 			wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			if wErr != nil {
 				log.Printf("ERROR: Node %d: Failed writing login cancelled message: %v", nodeNumber, wErr)
@@ -1235,7 +1258,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 				nodeNumber, remoteIP, lockedUntil.Format("2006-01-02 15:04:05"), attempts)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode)
 			minutesLeft := int(time.Until(lockedUntil).Minutes()) + 1
-			errMsg := fmt.Sprintf("\r\n|09Too many failed login attempts from your IP.\r\n|09Please try again in %d minutes.|07\r\n", minutesLeft)
+			errMsg := fmt.Sprintf(e.LoadedStrings.ExecIPLockout, minutesLeft)
 			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing IP lockout message: %v", wErr)
@@ -1261,7 +1284,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 
 		// Display error message to user
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-		errMsg := "\r\n|01Login incorrect.|07\r\n"
+		errMsg := e.LoadedStrings.ExecLoginIncorrect
 		// Use WriteProcessedBytes
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		if wErr != nil {
@@ -1276,7 +1299,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		log.Printf("INFO: Node %d: Login denied for user '%s' - account not validated", nodeNumber, username)
 		// Display specific message for validation issue
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-		errMsg := "\r\n|01Account requires validation by SysOp.|07\r\n"
+		errMsg := e.LoadedStrings.ExecNotValidated
 		// Use WriteProcessedBytes
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		if wErr != nil {
@@ -1558,7 +1581,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		menuMnuPath := filepath.Join(e.MenuSetPath, "mnu") // Use correct path structure for MNU
 		menuRec, err := LoadMenu(currentMenuName, menuMnuPath)
 		if err != nil {
-			errMsg := fmt.Sprintf("|01Error loading menu %s: %v|07", currentMenuName, err)
+			errMsg := fmt.Sprintf(e.LoadedStrings.ExecMenuLoadError, currentMenuName, err)
 			processedErrMsg := ansi.ReplacePipeCodes([]byte(errMsg))
 			// Use new helper for error message
 			wErr := terminalio.WriteProcessedBytes(terminal, processedErrMsg, outputMode)
@@ -1583,7 +1606,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			log.Printf("DEBUG: Menu '%s' requires password.", currentMenuName)
 			passwordOk := false
 			for i := 0; i < 3; i++ { // Allow 3 attempts
-				prompt := fmt.Sprintf("\r\n|07Password for %s (|15Attempt %d/3|07): ", currentMenuName, i+1)
+				prompt := fmt.Sprintf(e.LoadedStrings.ExecMenuPasswordPrompt, currentMenuName, i+1)
 				processedPrompt := ansi.ReplacePipeCodes([]byte(prompt))
 				wErr := terminalio.WriteProcessedBytes(terminal, processedPrompt, outputMode)
 				if wErr != nil {
@@ -1607,14 +1630,14 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				if inputPassword == menuPassword {
 					passwordOk = true
 					// Use new helper for feedback message
-					wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Password accepted.|07\r\n")), outputMode)
+					wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ExecPasswordAccepted)), outputMode)
 					if wErr != nil {
 						log.Printf("ERROR: Failed writing password accepted message: %v", wErr)
 					}
 					break
 				} else {
 					// Use new helper for feedback message
-					wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Incorrect Password.|07\r\n")), outputMode)
+					wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ExecIncorrectPassword)), outputMode)
 					if wErr != nil {
 						log.Printf("ERROR: Failed writing incorrect password message: %v", wErr)
 					}
@@ -1623,7 +1646,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			if !passwordOk {
 				log.Printf("WARN: User failed password entry for menu '%s' (User: %v)", currentMenuName, currentUser)
 				// Use new helper for feedback message
-				wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Too many incorrect attempts.|07\r\n")), outputMode)
+				wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ExecTooManyAttempts)), outputMode)
 				if wErr != nil {
 					log.Printf("ERROR: Failed writing too many attempts message: %v", wErr)
 				}
@@ -1636,7 +1659,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		menuACS := menuRec.ACS
 		if !checkACS(menuACS, currentUser, s, terminal, sessionStartTime) { // Use ssh.Session 's'
 			log.Printf("INFO: User denied access to menu '%s' due to ACS: %s (User: %v)", currentMenuName, menuACS, currentUser)
-			errMsg := "\r\n|01Access Denied.|07\r\n"
+			errMsg := e.LoadedStrings.ExecAccessDenied
 			processedErrMsg := ansi.ReplacePipeCodes([]byte(errMsg))
 			// Use new helper for error message
 			wErr := terminalio.WriteProcessedBytes(terminal, processedErrMsg, outputMode)
@@ -1855,6 +1878,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 			if !isLightbarMenu || userInput == "" {
 				// Fallback to standard input if lightbar loading failed or no valid selection made
+				e.deliverPendingPages(terminal, nodeNumber, outputMode)
 				// Display Prompt (Skip if USEPROMPT is false)
 				if menuRec.GetUsePrompt() { // Condition changed: Only check UsePrompt
 					err = e.displayPrompt(terminal, menuRec, currentUser, userManager, nodeNumber, currentMenuName, sessionStartTime, outputMode, currentAreaName) // Pass currentAreaName
@@ -1881,6 +1905,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			}
 		} else {
 			// --- Standard Menu Input Handling ---
+			e.deliverPendingPages(terminal, nodeNumber, outputMode)
 			// Display Prompt (Skip if USEPROMPT is false)
 			log.Printf("DEBUG: Checking prompt display for menu: %s. UsePrompt=%t", currentMenuName, menuRec.GetUsePrompt())
 			if menuRec.GetUsePrompt() { // Condition changed: Only check UsePrompt
@@ -2020,7 +2045,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 
 	if !userOk || !passOk {
 		log.Printf("CRITICAL: LOGIN.ANS is missing required coordinate codes P or O.")
-		if wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01CRITICAL ERROR: Login screen configuration invalid (Missing P/O).|07\r\n")), outputMode); wErr != nil {
+		if wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ExecLoginCriticalError)), outputMode); wErr != nil {
 			log.Printf("ERROR: Failed writing critical login configuration message: %v", wErr)
 		}
 		time.Sleep(2 * time.Second)
@@ -2075,7 +2100,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		if err.Error() == "password entry interrupted" { // Check for Ctrl+C
 			log.Printf("INFO: Node %d: User interrupted password entry.", nodeNumber)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode)
-			if wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Login cancelled.|07\r\n")), outputMode); wErr != nil {
+			if wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ExecLoginCancelled)), outputMode); wErr != nil {
 				log.Printf("ERROR: Failed writing login cancelled message: %v", wErr)
 			}
 			time.Sleep(500 * time.Millisecond)
@@ -2096,7 +2121,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 				nodeNumber, remoteIP, lockedUntil.Format("2006-01-02 15:04:05"), attempts)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode)
 			minutesLeft := int(time.Until(lockedUntil).Minutes()) + 1
-			errMsg := fmt.Sprintf("\r\n|09Too many failed login attempts from your IP.\r\n|09Please try again in %d minutes.|07\r\n", minutesLeft)
+			errMsg := fmt.Sprintf(e.LoadedStrings.ExecIPLockout, minutesLeft)
 			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing IP lockout message: %v", wErr)
@@ -2121,7 +2146,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		}
 
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-		errMsg := "\r\n|01Login incorrect.|07\r\n"
+		errMsg := e.LoadedStrings.ExecLoginIncorrect
 		// Use WriteProcessedBytes with the passed outputMode
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		if wErr != nil {
@@ -2134,7 +2159,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 	if !authUser.Validated {
 		log.Printf("INFO: Node %d: Login denied for user '%s' - account not validated", nodeNumber, username)
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-		errMsg := "\r\n|01Account requires validation by SysOp.|07\r\n"
+		errMsg := e.LoadedStrings.ExecNotValidated
 		// Use WriteProcessedBytes with the passed outputMode
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		if wErr != nil {
@@ -2228,7 +2253,7 @@ func (e *MenuExecutor) executeCommandAction(action string, s ssh.Session, termin
 					return "LOGOFF", "", nil, nil
 				}
 				log.Printf("ERROR: RUN:%s function failed: %v", runTarget, runErr)
-				errMsg := fmt.Sprintf("\r\n|01Error running command '%s': %v|07\r\n", runTarget, runErr)
+				errMsg := fmt.Sprintf(e.LoadedStrings.ExecRunCommandError, runTarget, runErr)
 				wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 				if wErr != nil {
 					log.Printf("ERROR: Failed writing RUN command error message: %v", wErr)
@@ -2254,7 +2279,7 @@ func (e *MenuExecutor) executeCommandAction(action string, s ssh.Session, termin
 			return "CONTINUE", "", authUser, nil
 		} else {
 			log.Printf("WARN: No internal function registered for RUN:%s", runTarget)
-			msg := fmt.Sprintf("\r\n|01Internal command '%s' not found.|07\r\n", runTarget)
+			msg := fmt.Sprintf(e.LoadedStrings.ExecRunCommandNotFound, runTarget)
 			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			if wErr != nil {
 				log.Printf("ERROR: Failed writing missing RUN command message: %v", wErr)
@@ -2274,7 +2299,7 @@ func (e *MenuExecutor) executeCommandAction(action string, s ssh.Session, termin
 					return "LOGOFF", "", nil, nil
 				}
 				log.Printf("ERROR: DOOR:%s execution failed: %v", doorTarget, doorErr)
-				errMsg := fmt.Sprintf("\r\n|01Error running door '%s': %v|07\r\n", doorTarget, doorErr)
+				errMsg := fmt.Sprintf(e.LoadedStrings.ExecRunDoorError, doorTarget, doorErr)
 				wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 				if wErr != nil {
 					log.Printf("ERROR: Failed writing DOOR command error message: %v", wErr)
@@ -2324,7 +2349,7 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more LASTCALL template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
-		msg := "\r\n|01Error loading Last Callers screen templates.|07\r\n"
+		msg := e.LoadedStrings.ExecLastcallTemplateErr
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil { /* Log? */
 		}
@@ -2761,7 +2786,7 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 	data, err := ansi.GetAnsiFileContent(filePath)
 	if err != nil {
 		log.Printf("ERROR: Failed to read ANSI file %s: %v", filePath, err)
-		errMsg := fmt.Sprintf("\r\n|01Error loading file: %s|07\r\n", filename)
+		errMsg := fmt.Sprintf(e.LoadedStrings.ExecFileLoadError, filename)
 		// Use new helper, need outputMode... Pass it into displayFile?
 		// Use the passed outputMode for the error message
 		writeErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode) // Use passed outputMode
@@ -2782,6 +2807,24 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 	}
 
 	return nil
+}
+
+// deliverPendingPages checks for and displays any queued page messages.
+func (e *MenuExecutor) deliverPendingPages(terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) {
+	if e.SessionRegistry == nil {
+		return
+	}
+	sess := e.SessionRegistry.Get(nodeNumber)
+	if sess == nil {
+		return
+	}
+	pages := sess.DrainPages()
+	for _, page := range pages {
+		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+page+"\r\n")), outputMode); err != nil {
+			log.Printf("ERROR: Node %d: failed to deliver page: %v", nodeNumber, err)
+			return
+		}
+	}
 }
 
 // displayPrompt handles rendering the menu prompt, including file includes and placeholder substitution.
@@ -3007,7 +3050,7 @@ func runNewMailScan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	}
 
 	if totalMessages == 0 {
-		msg := "\r\n|07No new private mail.|07\r\n"
+		msg := e.LoadedStrings.ExecNoNewMail
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		return currentUser, "", nil
 	}
@@ -3035,10 +3078,10 @@ func runNewMailScan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	}
 
 	if newMailCount > 0 {
-		mailMsg := fmt.Sprintf("\r\n|14You have |15%d|14 new private mail message(s).|07\r\n", newMailCount)
+		mailMsg := fmt.Sprintf(e.LoadedStrings.ExecNewMailCount, newMailCount)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(mailMsg)), outputMode)
 	} else {
-		msg := "\r\n|07No new private mail.|07\r\n"
+		msg := e.LoadedStrings.ExecNoNewMail
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	}
 
@@ -3146,7 +3189,135 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 	renderFastLoginScreen()
 
+	// Check for lightbar BAR file.
+	barPath := filepath.Join(e.MenuSetPath, "bar", "FASTLOGN.BAR")
+	lightbarOptions, barLoadErr := loadLightbarOptions("FASTLOGN", e)
+	isLightbar := barLoadErr == nil && len(lightbarOptions) > 0
+	if barLoadErr != nil {
+		if _, statErr := os.Stat(barPath); statErr == nil {
+			log.Printf("WARN: Node %d: BAR file exists but failed to load: %v", nodeNumber, barLoadErr)
+		}
+	}
+
+	// Dispatch command by key string against CFG commands.
+	dispatchCommand := func(keyStr string) (*user.User, string, error, bool) {
+		for _, cmd := range commands {
+			keys := strings.Fields(strings.ToUpper(cmd.Keys))
+			matched := false
+			for _, key := range keys {
+				if key == keyStr {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+			if cmd.ACS != "" && cmd.ACS != "*" {
+				if !checkACS(cmd.ACS, currentUser, s, terminal, sessionStartTime) {
+					continue
+				}
+			}
+			if cmd.Command == "RUN:FULL_LOGIN_SEQUENCE" {
+				log.Printf("DEBUG: Node %d: FASTLOGIN - user chose to continue full sequence", nodeNumber)
+				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+				return currentUser, "", nil, true
+			}
+			if strings.HasPrefix(cmd.Command, "GOTO:") {
+				nextMenu := strings.ToUpper(strings.TrimPrefix(cmd.Command, "GOTO:"))
+				log.Printf("DEBUG: Node %d: FASTLOGIN - user chose GOTO:%s", nodeNumber, nextMenu)
+				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+				return currentUser, "GOTO:" + nextMenu, nil, true
+			}
+			if cmd.Command == "RUN:MAINLOGOFF" || cmd.Command == "LOGOFF" {
+				return currentUser, "LOGOFF", nil, true
+			}
+			if cmd.Command == "RUN:IMMEDIATELOGOFF" {
+				return nil, "LOGOFF", io.EOF, true
+			}
+		}
+		return nil, "", nil, false
+	}
+
 	bufioReader := bufio.NewReader(s)
+
+	if isLightbar {
+		log.Printf("DEBUG: Node %d: FASTLOGIN using lightbar mode (%d options)", nodeNumber, len(lightbarOptions))
+		selectedIndex := 0
+		_ = drawLightbarMenu(terminal, nil, lightbarOptions, selectedIndex, outputMode, false)
+
+		for {
+			r, _, readErr := bufioReader.ReadRune()
+			if readErr != nil {
+				if errors.Is(readErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+				return currentUser, "", readErr
+			}
+
+			switch r {
+			case 27: // ESC — check for arrow keys
+				time.Sleep(20 * time.Millisecond)
+				seq := make([]byte, 0, 8)
+				for bufioReader.Buffered() > 0 && len(seq) < 8 {
+					b, bErr := bufioReader.ReadByte()
+					if bErr != nil {
+						break
+					}
+					seq = append(seq, b)
+				}
+				if len(seq) >= 2 && seq[0] == '[' {
+					switch seq[1] {
+					case 'A': // Up
+						if selectedIndex > 0 {
+							prev := selectedIndex
+							selectedIndex--
+							_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
+							_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+						}
+					case 'B': // Down
+						if selectedIndex < len(lightbarOptions)-1 {
+							prev := selectedIndex
+							selectedIndex++
+							_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
+							_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+						}
+					}
+				}
+			case '\r', '\n': // Enter — select current
+				if selectedIndex >= 0 && selectedIndex < len(lightbarOptions) {
+					keyStr := lightbarOptions[selectedIndex].HotKey
+					if u, action, err, matched := dispatchCommand(keyStr); matched {
+						return u, action, err
+					}
+				}
+				return currentUser, "", nil
+			default:
+				// Direct number or hotkey
+				keyStr := strings.ToUpper(string(r))
+				// Check lightbar hotkeys
+				for i, opt := range lightbarOptions {
+					if keyStr == opt.HotKey {
+						prev := selectedIndex
+						selectedIndex = i
+						if prev != selectedIndex {
+							_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
+							_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+						}
+						if u, action, err, matched := dispatchCommand(keyStr); matched {
+							return u, action, err
+						}
+					}
+				}
+				// Also check non-lightbar commands (like G, /G)
+				if u, action, err, matched := dispatchCommand(keyStr); matched {
+					return u, action, err
+				}
+			}
+		}
+	}
+
+	// Fallback: standard keystroke input (no lightbar).
 	for {
 		r, _, readErr := bufioReader.ReadRune()
 		if readErr != nil {
@@ -3178,44 +3349,8 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			}
 		}
 
-		// Match against configured commands
-		for _, cmd := range commands {
-			keys := strings.Fields(strings.ToUpper(cmd.Keys))
-			matchedKey := false
-			for _, key := range keys {
-				if key == keyStr {
-					matchedKey = true
-					break
-				}
-			}
-
-			if matchedKey {
-				// Check ACS
-				if cmd.ACS != "" && cmd.ACS != "*" {
-					if !checkACS(cmd.ACS, currentUser, s, terminal, sessionStartTime) {
-						continue
-					}
-				}
-
-				// If this is the full login sequence command, return empty to continue
-				if cmd.Command == "RUN:FULL_LOGIN_SEQUENCE" {
-					log.Printf("DEBUG: Node %d: FASTLOGIN - user chose to continue full sequence", nodeNumber)
-					terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-					return currentUser, "", nil
-				}
-
-				// For GOTO commands, return the action to break out of login sequence
-				if strings.HasPrefix(cmd.Command, "GOTO:") {
-					nextMenu := strings.ToUpper(strings.TrimPrefix(cmd.Command, "GOTO:"))
-					log.Printf("DEBUG: Node %d: FASTLOGIN - user chose GOTO:%s", nodeNumber, nextMenu)
-					terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-					return currentUser, "GOTO:" + nextMenu, nil
-				}
-
-				if cmd.Command == "LOGOFF" {
-					return currentUser, "LOGOFF", nil
-				}
-			}
+		if u, action, err, matched := dispatchCommand(keyStr); matched {
+			return u, action, err
 		}
 
 		// If Enter was pressed with no match, continue sequence
@@ -3585,6 +3720,67 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 		if _, exists := commandsByHotkey[hotkey]; !exists {
 			log.Printf("WARN: Hotkey '%s' in BAR file has no matching command in CFG", hotkey)
 		}
+
+		options = append(options, LightbarOption{
+			X:              x,
+			Y:              y,
+			Text:           displayText,
+			HotKey:         hotkey,
+			ReturnValue:    returnValue,
+			HighlightColor: highlightColor,
+			RegularColor:   regularColor,
+		})
+	}
+
+	return options, nil
+}
+
+// loadBarFile loads and parses a standalone BAR file (no matching CFG required).
+// Returns nil, nil if the file does not exist.
+func loadBarFile(barName string, e *MenuExecutor) ([]LightbarOption, error) {
+	barPath := filepath.Join(e.MenuSetPath, "bar", barName+".BAR")
+
+	barFile, err := os.Open(barPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to open BAR file %s: %w", barPath, err)
+	}
+	defer barFile.Close()
+
+	var options []LightbarOption
+	scanner := bufio.NewScanner(barFile)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, ";") {
+			continue
+		}
+
+		parts := strings.SplitN(line, ",", 7)
+		if len(parts) != 7 {
+			log.Printf("WARN: Malformed BAR line in %s (expected 7 fields): %s", barName, line)
+			continue
+		}
+
+		x, xerr := strconv.Atoi(strings.TrimSpace(parts[0]))
+		y, yerr := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if xerr != nil || yerr != nil {
+			log.Printf("WARN: Invalid coordinates in BAR line (%s): %s", barName, line)
+			continue
+		}
+
+		highlightColor, hcErr := strconv.Atoi(strings.TrimSpace(parts[2]))
+		regularColor, rcErr := strconv.Atoi(strings.TrimSpace(parts[3]))
+		if hcErr != nil || rcErr != nil {
+			log.Printf("WARN: Invalid color codes in BAR line (%s): %s", barName, line)
+			highlightColor = 7
+			regularColor = 15
+		}
+
+		hotkey := strings.ToUpper(strings.TrimSpace(parts[4]))
+		returnValue := strings.TrimSpace(parts[5])
+		displayText := strings.TrimSpace(parts[6])
 
 		options = append(options, LightbarOption{
 			X:              x,
@@ -3978,7 +4174,7 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more USERLIST template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
-		msg := "\r\n|01Error loading User List screen templates.|07\r\n"
+		msg := e.LoadedStrings.ExecUserlistTemplateErr
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil { /* Log? */
 		}
@@ -4005,7 +4201,7 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	var outputBuffer bytes.Buffer
 	outputBuffer.Write(processedTopTemplate) // Write processed top template
 	outputBuffer.WriteString("\r\n")
-	outputBuffer.WriteString(string(ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|11Pending validation: |15%d|07\r\n\r\n", pendingCount)))))
+	outputBuffer.WriteString(string(ansi.ReplacePipeCodes([]byte(fmt.Sprintf(e.LoadedStrings.ExecPendingValidation, pendingCount)))))
 
 	if len(users) == 0 {
 		// Optional: Handle empty state. The template might handle this.
@@ -6382,7 +6578,7 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	log.Printf("DEBUG: Node %d: Running SHOWVERSION", nodeNumber)
 
 	// Define the version string (can be made dynamic later)
-	versionString := "|15ViSiON/3 Go Edition - v0.1.0 (Pre-Alpha)|07"
+	versionString := e.LoadedStrings.ExecVersionString
 
 	// Display the version
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode) // Optional: Clear screen
@@ -7466,6 +7662,12 @@ func (e *MenuExecutor) runUploadFiles(
 	successCount := 0
 	duplicateCount := 0
 
+	// Load ZipLab config once for all files
+	zlCfg, zlErr := ziplab.LoadConfig(e.RootConfigPath)
+	if zlErr != nil {
+		log.Printf("WARN: Node %d: Failed to load ZipLab config: %v", nodeNumber, zlErr)
+	}
+
 	for _, nf := range newFiles {
 		incomingPath := filepath.Join(incomingDir, nf.name)
 
@@ -7494,15 +7696,11 @@ func (e *MenuExecutor) runUploadFiles(
 		var description string
 		filePath := incomingPath
 
-		zlCfg, zlErr := ziplab.LoadConfig(e.RootConfigPath)
-		if zlErr != nil {
-			log.Printf("WARN: Node %d: Failed to load ZipLab config: %v", nodeNumber, zlErr)
-		}
-
 		if zlErr == nil && zlCfg.Enabled && zlCfg.RunOnUpload && zlCfg.IsArchiveSupported(nf.name) {
 			log.Printf("INFO: Node %d: Running ZipLab pipeline on %s", nodeNumber, nf.name)
 
-			proc := ziplab.NewProcessor(zlCfg, e.RootConfigPath)
+			zlBaseDir := filepath.Join(filepath.Dir(e.RootConfigPath), "ziplab")
+			proc := ziplab.NewProcessor(zlCfg, zlBaseDir)
 
 			// Load ZIPLAB.ANS and ZIPLAB.NFO for visual display
 			ansiPath := filepath.Join(e.MenuSetPath, "ansi", "ZIPLAB.ANS")
@@ -7534,7 +7732,7 @@ func (e *MenuExecutor) runUploadFiles(
 
 		// Prompt for description if ZipLab didn't extract one
 		if description == "" {
-			pauseEnter(s, terminal, outputMode)
+			pauseEnter(s, terminal, outputMode, e.LoadedStrings.FilePausePrompt)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 			descPrompt := fmt.Sprintf("\r\n|15%s|07 (%d bytes)\r\n|11Desc:|07 ", nf.name, nf.size)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(descPrompt)), outputMode)
@@ -7748,7 +7946,26 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		filesOnPage = []file.FileRecord{} // Ensure empty slice if no files
 	}
 
-	// 4. Display Loop
+	// Load optional BAR files for file listing lightbar.
+	cmdBarOptions, cmdBarErr := loadBarFile("FILELISTCMD", e)
+	if cmdBarErr != nil {
+		log.Printf("WARN: Node %d: Failed to load FILELISTCMD.BAR: %v", nodeNumber, cmdBarErr)
+	}
+	hiBarOptions, hiBarErr := loadBarFile("FILELISTHI", e)
+	if hiBarErr != nil {
+		log.Printf("WARN: Node %d: Failed to load FILELISTHI.BAR: %v", nodeNumber, hiBarErr)
+	}
+
+	// 4. Dispatch based on file listing mode
+	if !strings.EqualFold(e.ServerCfg.FileListingMode, "classic") {
+		return runListFilesLightbar(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime,
+			currentAreaID, currentAreaTag, area,
+			processedTopTemplate, processedMidTemplate, processedBotTemplate,
+			filesPerPage, totalFiles, totalPages,
+			cmdBarOptions, hiBarOptions, outputMode)
+	}
+
+	// Classic display loop
 	for {
 		// 4.1 Clear Screen
 		writeErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
@@ -8998,4 +9215,144 @@ func runListPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	return updatedUser, nextMenu, err
+}
+
+func replaceWhoOnlineToken(line, token, value string) string {
+	return lastCallerATTokenRegex.ReplaceAllStringFunc(line, func(match string) string {
+		parts := lastCallerATTokenRegex.FindStringSubmatch(match)
+		if len(parts) < 2 {
+			return match
+		}
+		code := strings.ToUpper(parts[1])
+		if code != token {
+			return match
+		}
+		if len(parts) > 2 && parts[2] != "" {
+			if width, err := strconv.Atoi(parts[2]); err == nil {
+				return formatLastCallerATWidth(value, width, true)
+			}
+		}
+		return value
+	})
+}
+
+func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running WHOISONLINE", nodeNumber)
+
+	topPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.TOP")
+	midPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.MID")
+	botPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.BOT")
+
+	topBytes, errTop := os.ReadFile(topPath)
+	midBytes, errMid := os.ReadFile(midPath)
+	botBytes, errBot := os.ReadFile(botPath)
+
+	if errTop != nil || errMid != nil || errBot != nil {
+		log.Printf("ERROR: Node %d: Failed to load WHOONLN templates: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
+		msg := "\r\n|01Error loading Who's Online templates.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", fmt.Errorf("failed loading WHOONLN templates")
+	}
+
+	topBytes = stripSauceMetadata(topBytes)
+	midBytes = stripSauceMetadata(midBytes)
+	botBytes = stripSauceMetadata(botBytes)
+	topBytes = normalizePipeCodeDelimiters(topBytes)
+	midBytes = normalizePipeCodeDelimiters(midBytes)
+	botBytes = normalizePipeCodeDelimiters(botBytes)
+
+	processedTop := string(ansi.ReplacePipeCodes(topBytes))
+	processedMid := string(ansi.ReplacePipeCodes(midBytes))
+	processedBot := string(ansi.ReplacePipeCodes(botBytes))
+
+	if e.SessionRegistry == nil {
+		log.Printf("ERROR: Node %d: SessionRegistry is nil", nodeNumber)
+		msg := "\r\n|01Who's Online is unavailable.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
+	sessions := e.SessionRegistry.ListActive()
+
+	var buf bytes.Buffer
+	buf.WriteString(processedTop)
+	if !strings.HasSuffix(processedTop, "\r\n") && !strings.HasSuffix(processedTop, "\n") {
+		buf.WriteString("\r\n")
+	}
+
+	now := time.Now()
+	for _, sess := range sessions {
+		line := processedMid
+
+		nodeStr := strconv.Itoa(sess.NodeID)
+		line = replaceWhoOnlineToken(line, "ND", nodeStr)
+
+		// Read session fields under RLock to avoid racing with main loop writes
+		sess.Mutex.RLock()
+		userName := "Logging In..."
+		if sess.User != nil {
+			userName = sess.User.Handle
+		}
+		activity := sess.CurrentMenu
+		lastActivity := sess.LastActivity
+		sess.Mutex.RUnlock()
+
+		line = replaceWhoOnlineToken(line, "UN", userName)
+
+		if activity == "" {
+			activity = "---"
+		}
+		line = replaceWhoOnlineToken(line, "LO", activity)
+
+		safeStart := sess.StartTime
+		if safeStart.IsZero() {
+			safeStart = now
+		}
+		dur := now.Sub(safeStart)
+		hours := int(dur.Hours())
+		mins := int(dur.Minutes()) % 60
+		timeOn := fmt.Sprintf("%d:%02d", hours, mins)
+		line = replaceWhoOnlineToken(line, "TO", timeOn)
+
+		safeLast := lastActivity
+		if safeLast.IsZero() {
+			safeLast = now
+		}
+		idle := now.Sub(safeLast)
+		idleMins := int(idle.Minutes())
+		idleSecs := int(idle.Seconds()) % 60
+		idleStr := fmt.Sprintf("%d:%02d", idleMins, idleSecs)
+		line = replaceWhoOnlineToken(line, "ID", idleStr)
+
+		buf.WriteString(line)
+		if !strings.HasSuffix(line, "\r\n") && !strings.HasSuffix(line, "\n") {
+			buf.WriteString("\r\n")
+		}
+	}
+
+	processedBot = replaceWhoOnlineToken(processedBot, "NODECT", strconv.Itoa(len(sessions)))
+	buf.WriteString(processedBot)
+	if !strings.HasSuffix(processedBot, "\r\n") && !strings.HasSuffix(processedBot, "\n") {
+		buf.WriteString("\r\n")
+	}
+
+	terminalio.WriteProcessedBytes(terminal, []byte(buf.String()), outputMode)
+
+	pausePrompt := e.LoadedStrings.PauseString
+	if pausePrompt == "" {
+		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
+	}
+	err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			log.Printf("INFO: Node %d: User disconnected during WHOISONLINE pause.", nodeNumber)
+			return nil, "LOGOFF", io.EOF
+		}
+		log.Printf("ERROR: Node %d: Failed during WHOISONLINE pause: %v", nodeNumber, err)
+		return nil, "", err
+	}
+
+	return currentUser, "", nil
 }

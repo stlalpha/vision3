@@ -18,20 +18,24 @@ import (
 	"github.com/stlalpha/vision3/internal/ansi"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/transfer"
+	"github.com/stlalpha/vision3/internal/util"
 )
 
-// viewerFormatFileSize returns a human-readable file size string.
-// Same logic as internal/menu/file_viewer.go formatFileSize.
-func viewerFormatFileSize(size int64) string {
-	if size < 1024 {
-		return fmt.Sprintf("%d", size)
-	} else if size < 1024*1024 {
-		return fmt.Sprintf("%.1fK", float64(size)/1024.0)
-	} else if size < 1024*1024*1024 {
-		return fmt.Sprintf("%.1fM", float64(size)/(1024.0*1024.0))
-	}
-	return fmt.Sprintf("%.1fG", float64(size)/(1024.0*1024.0*1024.0))
+// sanitizeEntryName strips control characters (including ANSI ESC) and pipe
+// characters from ZIP entry names to prevent terminal escape injection and
+// pipe code injection when displayed on the BBS terminal.
+func sanitizeEntryName(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1 // strip control chars including ESC (0x1b)
+		}
+		if r == '|' {
+			return '.' // prevent pipe code injection
+		}
+		return r
+	}, s)
 }
+
 
 // formatArchiveListing opens a ZIP file and writes a numbered, pipe-code-formatted
 // listing to w. Returns the file count and any error opening the archive.
@@ -42,8 +46,8 @@ func formatArchiveListing(w io.Writer, zipPath string, filename string, termHeig
 	}
 	defer r.Close()
 
-	// Header
-	fmt.Fprintf(w, "\r\n|15--- Archive Contents: %s ---|07\r\n\r\n", filename)
+	// Header — sanitize filename to prevent terminal/pipe code injection
+	fmt.Fprintf(w, "\r\n|15--- Archive Contents: %s ---|07\r\n\r\n", sanitizeEntryName(filename))
 
 	// Column headers
 	fmt.Fprintf(w, "|14  #   Size       Date       Name|07\r\n")
@@ -54,18 +58,18 @@ func formatArchiveListing(w io.Writer, zipPath string, filename string, termHeig
 
 	for _, f := range r.File {
 		fileCount++
-		sizeStr := viewerFormatFileSize(int64(f.UncompressedSize64))
+		sizeStr := util.FormatFileSize(int64(f.UncompressedSize64))
 		dateStr := f.Modified.Format("01/02/2006")
 
 		fmt.Fprintf(w, "|07 %3d  %9s  %s  |15%s|07\r\n",
-			fileCount, sizeStr, dateStr, f.Name)
+			fileCount, sizeStr, dateStr, sanitizeEntryName(f.Name))
 
 		totalSize += f.UncompressedSize64
 	}
 
 	// Summary
 	fmt.Fprintf(w, "\r\n|07 %d file(s), %s total\r\n",
-		fileCount, viewerFormatFileSize(int64(totalSize)))
+		fileCount, util.FormatFileSize(int64(totalSize)))
 
 	// Prompt
 	fmt.Fprintf(w, "\r\n|07[|15#|07]=Extract  [|15Q|07]=Quit\r\n")
@@ -95,6 +99,10 @@ func extractSingleEntry(zipPath string, entryNum int) (string, func(), error) {
 	}
 
 	entry := r.File[entryNum-1]
+
+	if entry.FileInfo().IsDir() {
+		return "", noop, fmt.Errorf("entry %d is a directory", entryNum)
+	}
 
 	tmpDir, err := os.MkdirTemp("", "ziplab-extract-*")
 	if err != nil {
@@ -185,7 +193,7 @@ func RunZipLabView(s ssh.Session, terminal *term.Terminal, filePath string, file
 			continue
 		}
 
-		baseName := filepath.Base(extractedPath)
+		baseName := sanitizeEntryName(filepath.Base(extractedPath))
 		sendMsg := fmt.Sprintf("\r\n|07Sending |15%s|07 via ZMODEM...\r\n", baseName)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(sendMsg)), outputMode)
 

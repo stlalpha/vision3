@@ -82,8 +82,7 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		hdrTemplatePath = filepath.Join(e.MenuSetPath, "templates", "message_headers", "MSGHDR.2.ans")
 		hdrTemplateBytes, hdrErr = os.ReadFile(hdrTemplatePath)
 		if hdrErr != nil {
-			msg := "\r\n|01Error loading message header template.|07\r\n"
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgHdrLoadError)), outputMode)
 			time.Sleep(1 * time.Second)
 			return nil, "", fmt.Errorf("failed loading MSGHDR templates")
 		}
@@ -232,9 +231,9 @@ readerLoop:
 				// Display footer: board info and lightbar anchored to bottom
 				var suffixText string
 				if isNewScan {
-					suffixText = " |11(NewScan)"
+					suffixText = e.LoadedStrings.MsgNewScanSuffix
 				} else {
-					suffixText = " |11(Reading)"
+					suffixText = e.LoadedStrings.MsgReadingSuffix
 				}
 
 				// Add scroll percentage to the board info line if message is longer than display area.
@@ -248,7 +247,7 @@ readerLoop:
 							scrollPercent = 100
 						}
 					}
-					scrollLabel = fmt.Sprintf(" |05[|13%d%%|05]", scrollPercent)
+					scrollLabel = fmt.Sprintf(e.LoadedStrings.MsgScrollPercent, scrollPercent)
 				}
 
 				// Draw horizontal line above footer (CP437 character 196)
@@ -258,7 +257,7 @@ readerLoop:
 
 				// Position cursor at second-to-last row for board info line
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)), outputMode)
-				boardLine := fmt.Sprintf("|13%s |09> |15%s |01[|13%d|05/|13%d|01]%s",
+				boardLine := fmt.Sprintf(e.LoadedStrings.MsgBoardInfoFormat,
 					confName, areaName, currentMsgNum, totalMsgCount, scrollLabel)
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardLine)), outputMode)
 
@@ -336,9 +335,9 @@ readerLoop:
 			case "\x1b[D", "\x1b[C": // Left or Right arrow - activate interactive lightbar
 				var suffixText string
 				if isNewScan {
-					suffixText = " |11(NewScan)"
+					suffixText = e.LoadedStrings.MsgNewScanSuffix
 				} else {
-					suffixText = " |11(Reading)"
+					suffixText = e.LoadedStrings.MsgReadingSuffix
 				}
 
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
@@ -380,9 +379,9 @@ readerLoop:
 						// Not a recognized command, show lightbar
 						var suffixText string
 						if isNewScan {
-							suffixText = " |11(NewScan)"
+							suffixText = e.LoadedStrings.MsgNewScanSuffix
 						} else {
-							suffixText = " |11(Reading)"
+							suffixText = e.LoadedStrings.MsgReadingSuffix
 						}
 
 						// Position cursor at last row for lightbar
@@ -402,9 +401,9 @@ readerLoop:
 					// Multi-byte sequence that wasn't handled as scrolling - show lightbar
 					var suffixText string
 					if isNewScan {
-						suffixText = " |11(NewScan)"
+						suffixText = e.LoadedStrings.MsgNewScanSuffix
 					} else {
-						suffixText = " |11(Reading)"
+						suffixText = e.LoadedStrings.MsgReadingSuffix
 					}
 
 					terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
@@ -434,7 +433,7 @@ readerLoop:
 					currentMsgNum++
 					break scrollLoop // Exit scroll loop to load next message
 				} else {
-					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07End of messages.|07")), outputMode)
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgEndOfMessages)), outputMode)
 					time.Sleep(500 * time.Millisecond)
 					break readerLoop
 				}
@@ -478,18 +477,18 @@ readerLoop:
 				break scrollLoop
 
 			case 'J': // Jump to message number
-				handleJump(reader, terminal, outputMode, &currentMsgNum, totalMsgCount)
+				handleJump(reader, terminal, outputMode, &currentMsgNum, totalMsgCount, e.LoadedStrings.MsgJumpPrompt, e.LoadedStrings.MsgInvalidMsgNum)
 				// Exit scroll loop to load new message
 				break scrollLoop
 
 			case 'M': // Mail reply (deferred)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Mail reply not yet implemented.|07")), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgMailReplyDeferred)), outputMode)
 				time.Sleep(1 * time.Second)
 				needsRedraw = true
 				continue
 
 			case 'L': // List titles (deferred)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Message list not yet implemented.|07")), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgListDeferred)), outputMode)
 				time.Sleep(1 * time.Second)
 				needsRedraw = true
 				continue
@@ -882,12 +881,12 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Auto-generate subject with "RE: " prefix (no prompt needed)
 	newSubject := generateReplySubject(currentMsg.Subject)
 	if strings.TrimSpace(newSubject) == "" {
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nSubject cannot be empty. Reply cancelled.\r\n"), outputMode)
+		terminalio.WriteProcessedBytes(terminal, []byte(e.LoadedStrings.MsgReplySubjectEmpty), outputMode)
 		time.Sleep(1 * time.Second)
 		return ""
 	}
 
-	terminalio.WriteProcessedBytes(terminal, []byte("\r\nLaunching editor...\r\n"), outputMode)
+	terminalio.WriteProcessedBytes(terminal, []byte(e.LoadedStrings.MsgLaunchingEditor), outputMode)
 
 	// Start with empty editor - user will use /Q command to quote if desired
 	// Pass message metadata for quoting (from, title, date, time, isAnon, lines)
@@ -895,13 +894,13 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines)
 	if editErr != nil {
 		log.Printf("ERROR: Node %d: Editor failed: %v", nodeNumber, editErr)
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nEditor encountered an error.\r\n"), outputMode)
+		terminalio.WriteProcessedBytes(terminal, []byte(e.LoadedStrings.MsgEditorError), outputMode)
 		time.Sleep(2 * time.Second)
 		return ""
 	}
 
 	if !saved {
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nReply cancelled.\r\n"), outputMode)
+		terminalio.WriteProcessedBytes(terminal, []byte(e.LoadedStrings.MsgReplyCancelled), outputMode)
 		time.Sleep(1 * time.Second)
 		return ""
 	}
@@ -912,14 +911,14 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		newSubject, replyBody, replyMsgID)
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to save reply: %v", nodeNumber, err)
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError saving reply message.\r\n"), outputMode)
+		terminalio.WriteProcessedBytes(terminal, []byte(e.LoadedStrings.MsgReplyError), outputMode)
 		time.Sleep(2 * time.Second)
 	} else {
 		currentUser.MessagesPosted++
 		if err := userManager.UpdateUser(currentUser); err != nil {
 			log.Printf("ERROR: Node %d: Failed to update MessagesPosted for user %s: %v", nodeNumber, currentUser.Handle, err)
 		}
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nReply posted successfully!\r\n"), outputMode)
+		terminalio.WriteProcessedBytes(terminal, []byte(e.LoadedStrings.MsgReplySuccess), outputMode)
 		time.Sleep(1 * time.Second)
 		*totalMsgCount++
 		if *currentMsgNum < *totalMsgCount {
@@ -934,9 +933,8 @@ func handleThread(reader *bufio.Reader, e *MenuExecutor, terminal *term.Terminal
 	outputMode ansi.OutputMode, areaID int,
 	currentMsgNum *int, totalMsgs int, subject string) {
 
-	prompt := "|09Message Threading, |08[|15F|08]|09orward or |08[|15B|08]|09ackwards : "
 	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgThreadPrompt)), outputMode)
 
 	key, err := readSingleKey(reader)
 	if err != nil {
@@ -953,7 +951,7 @@ func handleThread(reader *bufio.Reader, e *MenuExecutor, terminal *term.Terminal
 		if !forward {
 			dir = "backward"
 		}
-		msg := fmt.Sprintf("\r\n|07No %s thread found!|07", dir)
+		msg := fmt.Sprintf(e.LoadedStrings.MsgNoThreadFound, dir)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
 	}
@@ -992,9 +990,9 @@ func forwardBackThread(e *MenuExecutor, areaID int, currentMsg int,
 
 // handleJump prompts the user for a message number to jump to.
 func handleJump(reader *bufio.Reader, terminal *term.Terminal, outputMode ansi.OutputMode,
-	currentMsgNum *int, totalMsgs int) {
+	currentMsgNum *int, totalMsgs int, jumpPromptFmt string, invalidMsgStr string) {
 
-	prompt := fmt.Sprintf("|09Jump to message # |01(|131|05/|13%d|01) : |15", totalMsgs)
+	prompt := fmt.Sprintf(jumpPromptFmt, totalMsgs)
 	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
@@ -1009,7 +1007,7 @@ func handleJump(reader *bufio.Reader, terminal *term.Terminal, outputMode ansi.O
 
 	num, parseErr := strconv.Atoi(input)
 	if parseErr != nil || num < 1 || num > totalMsgs {
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Invalid message number!|07")), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(invalidMsgStr)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return
 	}

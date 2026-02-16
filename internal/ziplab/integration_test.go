@@ -47,11 +47,9 @@ func setupIntegrationProcessor(t *testing.T, root string) *Processor {
 	t.Helper()
 
 	cfg := DefaultConfig()
-	cfg.Steps.RemoveAds.PatternsFile = filepath.Join(root, "ziplab", "REMOVE.TXT")
-	cfg.Steps.AddComment.CommentFile = filepath.Join(root, "ziplab", "ZCOMMENT.TXT")
-	cfg.Steps.IncludeFile.FilePath = filepath.Join(root, "ziplab", "BBS.AD")
-
-	return NewProcessor(cfg, root)
+	// Default config uses relative paths (REMOVE.TXT, ZCOMMENT.TXT, BBS.AD)
+	// which resolvePath resolves against baseDir (the ziplab/ directory).
+	return NewProcessor(cfg, filepath.Join(root, "ziplab"))
 }
 
 func TestZipLabPipeline_Integration(t *testing.T) {

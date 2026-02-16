@@ -61,6 +61,14 @@ type User struct {
 	PreferredEncoding string `json:"preferredEncoding,omitempty"` // User's encoding preference: "utf8", "cp437", or "" (not set)
 	MsgHdr            int    `json:"msgHdr,omitempty"`            // Selected message header style (1-14, 0=unset)
 
+	// User Configuration Preferences
+	HotKeys          bool   `json:"hotKeys,omitempty"`
+	MorePrompts      bool   `json:"morePrompts,omitempty"`
+	FullScreenEditor bool   `json:"fullScreenEditor,omitempty"`
+	CustomPrompt     string `json:"customPrompt,omitempty"`
+	OutputMode       string `json:"outputMode,omitempty"`
+	Colors           [7]int `json:"colors,omitempty"`
+
 	// Soft Delete (user marked as deleted but data preserved)
 	DeletedUser bool       `json:"deletedUser,omitempty"` // True if user is soft-deleted
 	DeletedAt   *time.Time `json:"deletedAt,omitempty"`   // Timestamp when user was deleted (nil if not deleted)

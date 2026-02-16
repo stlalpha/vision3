@@ -142,7 +142,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 	)
 	if addErr != nil {
 		log.Printf("ERROR: Node %d: Failed to create new user '%s': %v", nodeNumber, handle, addErr)
-		errMsg := "\r\n|13Error creating account. Please try again later.|07\r\n"
+		errMsg := e.LoadedStrings.NewUserCreationError
 		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		time.Sleep(2 * time.Second)
 		return nil
@@ -158,7 +158,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 	log.Printf("INFO: Node %d: New user '%s' created (ID: %d, Handle: %s)", nodeNumber, newUser.Username, newUser.ID, newUser.Handle)
 
 	// 11. Show validation message
-	validationMsg := "\r\n|15Your account has been created but requires |13SysOp validation|15.\r\n|08Please call back later to check your access.|07\r\n"
+	validationMsg := e.LoadedStrings.NewUserAccountCreated
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(validationMsg)), outputMode)
 
 	// Pause before returning
@@ -264,7 +264,7 @@ func (e *MenuExecutor) promptForHandle(
 	}
 
 	// Max attempts reached
-	errMsg := "\r\n|05Too many invalid attempts.|07\r\n"
+	errMsg := e.LoadedStrings.NewUserTooManyAttempts
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 	time.Sleep(1 * time.Second)
 	return "", nil
@@ -303,7 +303,7 @@ func (e *MenuExecutor) promptForPassword(
 		}
 
 		if len(password) < 3 {
-			msg := "\r\n|09Password must be at least 3 characters.|07\r\n"
+			msg := e.LoadedStrings.NewUserPasswordTooShort
 			terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(500 * time.Millisecond)
 			continue
@@ -323,7 +323,7 @@ func (e *MenuExecutor) promptForPassword(
 		}
 
 		if password != confirm {
-			msg := "\r\n|09They don't match!|07\r\n"
+			msg := e.LoadedStrings.NewUserPasswordMismatch
 			terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(500 * time.Millisecond)
 			continue
@@ -333,7 +333,7 @@ func (e *MenuExecutor) promptForPassword(
 		return password, nil
 	}
 
-	errMsg := "\r\n|09Too many failed attempts.|07\r\n"
+	errMsg := e.LoadedStrings.NewUserTooManyAttempts
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 	time.Sleep(1 * time.Second)
 	return "", nil
@@ -369,7 +369,7 @@ func (e *MenuExecutor) promptForRealName(
 		}
 
 		if !validateRealName(name) {
-			msg := "\r\n|05Please enter your |10first |05and |10last |05name.|07\r\n"
+			msg := e.LoadedStrings.NewUserInvalidRealName
 			terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(500 * time.Millisecond)
 			continue
@@ -379,7 +379,7 @@ func (e *MenuExecutor) promptForRealName(
 		return name, nil
 	}
 
-	errMsg := "\r\n|05Too many invalid attempts.|07\r\n"
+	errMsg := e.LoadedStrings.NewUserTooManyAttempts
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 	time.Sleep(1 * time.Second)
 	return "", nil
@@ -392,7 +392,10 @@ func (e *MenuExecutor) promptForLocation(
 	nodeNumber int,
 	outputMode ansi.OutputMode,
 ) (string, error) {
-	prompt := "|08G|07r|15oup|08/|07L|15ocation |09: "
+	prompt := e.LoadedStrings.NewUserLocationPrompt
+	if prompt == "" {
+		prompt = "|08E|07n|15ter |08L|07o|15cation |09: "
+	}
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+prompt)), outputMode)
 
 	input, err := styledInput(terminal, s, outputMode, newUserLocationMaxLen, "")

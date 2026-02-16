@@ -601,7 +601,7 @@ func executeNativeDoor(ctx *DoorCtx) error {
 
 		if genErr != nil {
 			log.Printf("ERROR: Failed to write dropfile %s: %v", dropfilePath, genErr)
-			errMsg := fmt.Sprintf("\r\n|12Error creating system file for door '%s'.\r\nPress Enter to continue...\r\n", ctx.DoorName)
+			errMsg := fmt.Sprintf(ctx.Executor.LoadedStrings.DoorDropfileError, ctx.DoorName)
 			if wErr := terminalio.WriteProcessedBytes(ctx.Session.Stderr(), ansi.ReplacePipeCodes([]byte(errMsg)), ctx.OutputMode); wErr != nil {
 				log.Printf("ERROR: Failed writing dropfile creation error message: %v", wErr)
 			}
@@ -800,7 +800,7 @@ func executeDoor(ctx *DoorCtx) error {
 
 // doorErrorMessage sends a formatted error message to the user.
 func doorErrorMessage(ctx *DoorCtx, msg string) {
-	errMsg := fmt.Sprintf("\r\n|12%s\r\nPress Enter to continue...\r\n", msg)
+	errMsg := fmt.Sprintf(ctx.Executor.LoadedStrings.DoorErrorFormat, msg)
 	wErr := terminalio.WriteProcessedBytes(ctx.Session.Stderr(), ansi.ReplacePipeCodes([]byte(errMsg)), ctx.OutputMode)
 	if wErr != nil {
 		log.Printf("ERROR: Failed writing door error message: %v", wErr)
@@ -814,8 +814,7 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	log.Printf("DEBUG: Node %d: Running LISTDOORS", nodeNumber)
 
 	if currentUser == nil {
-		msg := "\r\n|01Error: You must be logged in to list doors.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorLoginRequired)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
@@ -831,8 +830,7 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load DOORLIST templates: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
-		msg := "\r\n|01Error loading Door List templates.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorTemplateError)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
 	}
@@ -873,8 +871,7 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	if len(doorNames) == 0 {
-		msg := "  |07No doors configured.\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorNoneConfigured)), outputMode)
 	}
 
 	// Display footer
@@ -888,15 +885,13 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	log.Printf("DEBUG: Node %d: Running OPENDOOR", nodeNumber)
 
 	if currentUser == nil {
-		msg := "\r\n|01Error: You must be logged in to open doors.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorLoginRequired)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
 
 	// Prompt for door name
-	prompt := "|07Door Name (?=List, Q=Quit): |15"
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt)), outputMode)
 
 	inputName, err := terminal.ReadLine()
 	if err != nil {
@@ -924,7 +919,7 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	// Look up door
 	doorConfig, exists := e.GetDoorConfig(upperInput)
 	if !exists {
-		msg := fmt.Sprintf("\r\n|12Door '%s' not found. Use ? to list available doors.|07\r\n", inputClean)
+		msg := fmt.Sprintf(e.LoadedStrings.DoorNotFoundFormat, inputClean)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil
@@ -957,15 +952,13 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	log.Printf("DEBUG: Node %d: Running DOORINFO", nodeNumber)
 
 	if currentUser == nil {
-		msg := "\r\n|01Error: You must be logged in to view door info.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorInfoLoginRequired)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
 
 	// Prompt for door name
-	prompt := "|07Door Name (?=List, Q=Quit): |15"
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt)), outputMode)
 
 	inputName, err := terminal.ReadLine()
 	if err != nil {
@@ -992,7 +985,7 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	// Look up door
 	doorConfig, exists := e.GetDoorConfig(upperInput)
 	if !exists {
-		msg := fmt.Sprintf("\r\n|12Door '%s' not found. Use ? to list available doors.|07\r\n", inputClean)
+		msg := fmt.Sprintf(e.LoadedStrings.DoorNotFoundFormat, inputClean)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
 		return currentUser, "", nil

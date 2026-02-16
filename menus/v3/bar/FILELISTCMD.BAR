@@ -1,0 +1,9 @@
+; File listing command bar options
+; FORMAT: X,Y,HiLitedColor,RegularColor,HotKey,ReturnValue,HiLitedString
+; X,Y ignored (rendered horizontally, centered). Colors + HotKey + DisplayText matter.
+0,0,31,7, ,mark,Mark
+0,0,31,7,i,info,Info
+0,0,31,7,v,view,View
+0,0,31,7,d,download,Download
+0,0,31,7,u,upload,Upload
+0,0,31,7,q,quit,Quit

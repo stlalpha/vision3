@@ -1,7 +1,6 @@
 package menu
 
 import (
-	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"os"
@@ -12,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/stlalpha/vision3/internal/file"
+	"github.com/stlalpha/vision3/internal/util"
 )
 
 // setupTestFileManagerForViewer creates a FileManager with temp dirs, areas, and optional files on disk.
@@ -139,80 +139,10 @@ func TestFormatFileSize(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		result := formatFileSize(tt.size)
+		result := util.FormatFileSize(tt.size)
 		if result != tt.expected {
-			t.Errorf("formatFileSize(%d) = %q, want %q", tt.size, result, tt.expected)
+			t.Errorf("util.FormatFileSize(%d) = %q, want %q", tt.size, result, tt.expected)
 		}
-	}
-}
-
-func TestDisplayArchiveListing_ValidZip(t *testing.T) {
-	// Create a test ZIP file with known contents
-	tmpDir := t.TempDir()
-	zipPath := filepath.Join(tmpDir, "test.zip")
-
-	zipFile, err := os.Create(zipPath)
-	if err != nil {
-		t.Fatalf("failed to create zip file: %v", err)
-	}
-
-	w := zip.NewWriter(zipFile)
-
-	// Add a file to the ZIP
-	f, err := w.Create("hello.txt")
-	if err != nil {
-		t.Fatalf("failed to create zip entry: %v", err)
-	}
-	f.Write([]byte("Hello, World!"))
-
-	f2, err := w.Create("subdir/data.bin")
-	if err != nil {
-		t.Fatalf("failed to create zip entry: %v", err)
-	}
-	f2.Write([]byte("binary data here"))
-
-	w.Close()
-	zipFile.Close()
-
-	// Capture output by calling displayArchiveListing with a buffer-based writer
-	var buf bytes.Buffer
-	displayArchiveListing_toWriter(&buf, zipPath, "test.zip", 24)
-
-	output := buf.String()
-
-	// Verify the output contains expected file names
-	if !bytes.Contains([]byte(output), []byte("hello.txt")) {
-		t.Errorf("expected output to contain 'hello.txt', got: %s", output)
-	}
-	if !bytes.Contains([]byte(output), []byte("subdir/data.bin")) {
-		t.Errorf("expected output to contain 'subdir/data.bin', got: %s", output)
-	}
-	if !bytes.Contains([]byte(output), []byte("2 file(s)")) {
-		t.Errorf("expected output to contain '2 file(s)', got: %s", output)
-	}
-}
-
-func TestDisplayArchiveListing_InvalidZip(t *testing.T) {
-	tmpDir := t.TempDir()
-	badPath := filepath.Join(tmpDir, "notazip.zip")
-	os.WriteFile(badPath, []byte("this is not a zip file"), 0644)
-
-	var buf bytes.Buffer
-	displayArchiveListing_toWriter(&buf, badPath, "notazip.zip", 24)
-
-	output := buf.String()
-	if !strings.Contains(output, "Error reading archive") {
-		t.Errorf("expected error message for invalid zip, got: %s", output)
-	}
-}
-
-func TestDisplayArchiveListing_MissingFile(t *testing.T) {
-	var buf bytes.Buffer
-	displayArchiveListing_toWriter(&buf, "/nonexistent/path.zip", "nope.zip", 24)
-
-	output := buf.String()
-	if !strings.Contains(output, "Error reading archive") {
-		t.Errorf("expected error message for missing file, got: %s", output)
 	}
 }
 
@@ -223,24 +153,6 @@ func TestDisplayTextWithPaging_MissingFile(t *testing.T) {
 	output := buf.String()
 	if !strings.Contains(output, "Error opening file") {
 		t.Errorf("expected error message for missing file, got: %s", output)
-	}
-}
-
-func TestDisplayArchiveListing_EmptyZip(t *testing.T) {
-	tmpDir := t.TempDir()
-	zipPath := filepath.Join(tmpDir, "empty.zip")
-
-	zipFile, _ := os.Create(zipPath)
-	w := zip.NewWriter(zipFile)
-	w.Close()
-	zipFile.Close()
-
-	var buf bytes.Buffer
-	displayArchiveListing_toWriter(&buf, zipPath, "empty.zip", 24)
-
-	output := buf.String()
-	if !strings.Contains(output, "0 file(s)") {
-		t.Errorf("expected '0 file(s)' for empty zip, got: %s", output)
 	}
 }
 

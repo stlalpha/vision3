@@ -339,6 +339,20 @@ func (mm *MessageManager) GetMessageCountForArea(areaID int) (int, error) {
 	return b.GetMessageCount()
 }
 
+// GetTotalMessageCount returns the total number of messages across all areas.
+func (mm *MessageManager) GetTotalMessageCount() int {
+	areas := mm.ListAreas()
+	total := 0
+	for _, area := range areas {
+		count, err := mm.GetMessageCountForArea(area.ID)
+		if err != nil {
+			continue
+		}
+		total += count
+	}
+	return total
+}
+
 // GetThreadReplyCount returns the number of other messages in the same thread.
 // Threading matches Vision-2/Pascal behavior: subject-based, ignoring "Re:" prefixes
 // and " -Re: #N-" suffixes.

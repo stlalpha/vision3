@@ -205,6 +205,220 @@ type StringsConfig struct {
 	FileAreaPassword       string `json:"fileAreaPassword"`
 	QuotePrefix            string `json:"QuotePrefix"`
 
+	// Chat strings (V3-specific)
+	ChatHeader        string `json:"chatHeader"`
+	ChatSeparator     string `json:"chatSeparator"`
+	ChatUserEntered   string `json:"chatUserEntered"`
+	ChatUserLeft      string `json:"chatUserLeft"`
+	ChatSystemPrefix  string `json:"chatSystemPrefix"`
+	ChatMessageFormat string `json:"chatMessageFormat"`
+
+	// Page strings (V3-specific)
+	PageOnlineNodesHeader string `json:"pageOnlineNodesHeader"`
+	PageNodeListEntry     string `json:"pageNodeListEntry"`
+	PageWhichNodePrompt   string `json:"pageWhichNodePrompt"`
+	PageMessagePrompt     string `json:"pageMessagePrompt"`
+	PageMessageFormat     string `json:"pageMessageFormat"`
+	PageSent              string `json:"pageSent"`
+	PageCancelled         string `json:"pageCancelled"`
+	PageInvalidNode       string `json:"pageInvalidNode"`
+	PageSelfError         string `json:"pageSelfError"`
+	PageNodeOffline       string `json:"pageNodeOffline"`
+
+	// Newuser strings (V3-specific)
+	NewUserLocationPrompt   string `json:"newUserLocationPrompt"`
+	NewUserPasswordTooShort string `json:"newUserPasswordTooShort"`
+	NewUserPasswordMismatch string `json:"newUserPasswordMismatch"`
+	NewUserInvalidRealName  string `json:"newUserInvalidRealName"`
+	NewUserTooManyAttempts  string `json:"newUserTooManyAttempts"`
+	NewUserAccountCreated   string `json:"newUserAccountCreated"`
+	NewUserCreationError    string `json:"newUserCreationError"`
+
+	// System stats strings (V3-specific)
+	StatsBBSName     string `json:"statsBBSName"`
+	StatsSysOp       string `json:"statsSysOp"`
+	StatsVersion     string `json:"statsVersion"`
+	StatsTotalUsers  string `json:"statsTotalUsers"`
+	StatsTotalCalls  string `json:"statsTotalCalls"`
+	StatsTotalMsgs   string `json:"statsTotalMessages"`
+	StatsTotalFiles  string `json:"statsTotalFiles"`
+	StatsActiveNodes string `json:"statsActiveNodes"`
+	StatsDate        string `json:"statsDate"`
+	StatsTime        string `json:"statsTime"`
+
+	// User config strings (V3-specific)
+	CfgToggleOn           string `json:"cfgToggleOn"`
+	CfgToggleOff          string `json:"cfgToggleOff"`
+	CfgToggleFormat       string `json:"cfgToggleFormat"`
+	CfgSaveError          string `json:"cfgSaveError"`
+	CfgScreenWidthPrompt  string `json:"cfgScreenWidthPrompt"`
+	CfgScreenWidthInvalid string `json:"cfgScreenWidthInvalid"`
+	CfgScreenWidthSet     string `json:"cfgScreenWidthSet"`
+	CfgScreenHeightPrompt string `json:"cfgScreenHeightPrompt"`
+	CfgScreenHeightInvalid string `json:"cfgScreenHeightInvalid"`
+	CfgScreenHeightSet    string `json:"cfgScreenHeightSet"`
+	CfgTermTypeSet        string `json:"cfgTermTypeSet"`
+	CfgStringPrompt       string `json:"cfgStringPrompt"`
+	CfgStringPromptCurrent string `json:"cfgStringPromptCurrent"`
+	CfgStringUpdated      string `json:"cfgStringUpdated"`
+	CfgCurrentPwPrompt    string `json:"cfgCurrentPwPrompt"`
+	CfgIncorrectPw        string `json:"cfgIncorrectPw"`
+	CfgPasswordChanged    string `json:"cfgPasswordChanged"`
+	CfgColorSelectPrompt  string `json:"cfgColorSelectPrompt"`
+	CfgColorInputPrompt   string `json:"cfgColorInputPrompt"`
+	CfgColorInvalid       string `json:"cfgColorInvalid"`
+	CfgColorSet           string `json:"cfgColorSet"`
+	CfgCustomPromptHelp   string `json:"cfgCustomPromptHelp"`
+	CfgViewScreenWidth    string `json:"cfgViewScreenWidth"`
+	CfgViewScreenHeight   string `json:"cfgViewScreenHeight"`
+	CfgViewTermType       string `json:"cfgViewTermType"`
+	CfgViewFSEditor       string `json:"cfgViewFSEditor"`
+	CfgViewHotKeys        string `json:"cfgViewHotKeys"`
+	CfgViewMorePrompts    string `json:"cfgViewMorePrompts"`
+	CfgViewMsgHeader      string `json:"cfgViewMsgHeader"`
+	CfgViewCustomPrompt   string `json:"cfgViewCustomPrompt"`
+	CfgViewPromptColor    string `json:"cfgViewPromptColor"`
+	CfgViewTextColor      string `json:"cfgViewTextColor"`
+	CfgViewText2Color     string `json:"cfgViewText2Color"`
+	CfgViewBarColor       string `json:"cfgViewBarColor"`
+	CfgViewRealName       string `json:"cfgViewRealName"`
+	CfgViewPhone          string `json:"cfgViewPhone"`
+	CfgViewNote           string `json:"cfgViewNote"`
+
+	// Message reader strings (V3-specific)
+	MsgEndOfMessages       string `json:"msgEndOfMessages"`
+	MsgMailReplyDeferred   string `json:"msgMailReplyDeferred"`
+	MsgListDeferred        string `json:"msgListDeferred"`
+	MsgHdrLoadError        string `json:"msgHdrLoadError"`
+	MsgBoardInfoFormat     string `json:"msgBoardInfoFormat"`
+	MsgScrollPercent       string `json:"msgScrollPercent"`
+	MsgNewScanSuffix       string `json:"msgNewScanSuffix"`
+	MsgReadingSuffix       string `json:"msgReadingSuffix"`
+	MsgThreadPrompt        string `json:"msgThreadPrompt"`
+	MsgNoThreadFound       string `json:"msgNoThreadFound"`
+	MsgJumpPrompt          string `json:"msgJumpPrompt"`
+	MsgInvalidMsgNum       string `json:"msgInvalidMsgNum"`
+	MsgReplySubjectEmpty   string `json:"msgReplySubjectEmpty"`
+	MsgLaunchingEditor     string `json:"msgLaunchingEditor"`
+	MsgReplyCancelled      string `json:"msgReplyCancelled"`
+	MsgReplyError          string `json:"msgReplyError"`
+	MsgReplySuccess        string `json:"msgReplySuccess"`
+	MsgEditorError         string `json:"msgEditorError"`
+
+	// Message scan strings (V3-specific)
+	ScanDateLine            string `json:"scanDateLine"`
+	ScanToLine              string `json:"scanToLine"`
+	ScanFromLine            string `json:"scanFromLine"`
+	ScanRangeLine           string `json:"scanRangeLine"`
+	ScanUpdateLine          string `json:"scanUpdateLine"`
+	ScanWhichLine           string `json:"scanWhichLine"`
+	ScanAbortLine           string `json:"scanAbortLine"`
+	ScanSelectionPrompt     string `json:"scanSelectionPrompt"`
+	ScanDatePrompt          string `json:"scanDatePrompt"`
+	ScanToPrompt            string `json:"scanToPrompt"`
+	ScanFromPrompt          string `json:"scanFromPrompt"`
+	ScanRangeStartPrompt    string `json:"scanRangeStartPrompt"`
+	ScanRangeEndPrompt      string `json:"scanRangeEndPrompt"`
+	ScanWhichPrompt         string `json:"scanWhichPrompt"`
+	ScanHeader              string `json:"scanHeader"`
+	ScanNoAreaSelected      string `json:"scanNoAreaSelected"`
+	ScanNoMessages          string `json:"scanNoMessages"`
+	ScanNoTaggedAreas       string `json:"scanNoTaggedAreas"`
+	ScanAreaProgress        string `json:"scanAreaProgress"`
+	ScanComplete            string `json:"scanComplete"`
+	ScanLoginRequired       string `json:"scanLoginRequired"`
+	ScanNoAreasAvailable    string `json:"scanNoAreasAvailable"`
+	ScanNoAccessibleAreas   string `json:"scanNoAccessibleAreas"`
+	ScanConfigSaved         string `json:"scanConfigSaved"`
+	ScanConfigError         string `json:"scanConfigError"`
+	ScanConfigLoginRequired string `json:"scanConfigLoginRequired"`
+
+	// Message list strings (V3-specific)
+	MsgListLoginRequired  string `json:"msgListLoginRequired"`
+	MsgListNoAreaSelected string `json:"msgListNoAreaSelected"`
+	MsgListAreaNotFound   string `json:"msgListAreaNotFound"`
+	MsgListLoadError      string `json:"msgListLoadError"`
+	MsgListNoMessages     string `json:"msgListNoMessages"`
+
+	// File viewer strings (V3-specific)
+	FileNoAreaSelected string `json:"fileNoAreaSelected"`
+	FilePromptFormat   string `json:"filePromptFormat"`
+	FileNotFoundFormat string `json:"fileNotFoundFormat"`
+	FileLocateError    string `json:"fileLocateError"`
+	FileViewingHeader  string `json:"fileViewingHeader"`
+	FileEndOfFile      string `json:"fileEndOfFile"`
+	FileMorePrompt     string `json:"fileMorePrompt"`
+	FilePausePrompt    string `json:"filePausePrompt"`
+	FileOpenError      string `json:"fileOpenError"`
+
+	// Door handler strings (V3-specific)
+	DoorDropfileError     string `json:"doorDropfileError"`
+	DoorErrorFormat       string `json:"doorErrorFormat"`
+	DoorLoginRequired     string `json:"doorLoginRequired"`
+	DoorPrompt            string `json:"doorPrompt"`
+	DoorNotFoundFormat    string `json:"doorNotFoundFormat"`
+	DoorNoneConfigured    string `json:"doorNoneConfigured"`
+	DoorTemplateError     string `json:"doorTemplateError"`
+	DoorInfoLoginRequired string `json:"doorInfoLoginRequired"`
+
+	// Matrix strings (V3-specific)
+	MatrixDisconnecting     string `json:"matrixDisconnecting"`
+	MatrixCheckAccessPrompt string `json:"matrixCheckAccessPrompt"`
+	MatrixUserNotFound      string `json:"matrixUserNotFound"`
+	MatrixAccountValidated  string `json:"matrixAccountValidated"`
+	MatrixAccountNotValidated string `json:"matrixAccountNotValidated"`
+
+	// Conference menu strings (V3-specific)
+	ConfLoginRequired           string `json:"confLoginRequired"`
+	ConfNoConferences           string `json:"confNoConferences"`
+	ConfNotFound                string `json:"confNotFound"`
+	ConfNoAccessibleAreas       string `json:"confNoAccessibleAreas"`
+	ConfCurrentAreaFormat       string `json:"confCurrentAreaFormat"`
+	ConfTemplateError           string `json:"confTemplateError"`
+	ConfNavLoginRequired        string `json:"confNavLoginRequired"`
+	ConfNoAccessibleConferences string `json:"confNoAccessibleConferences"`
+	ConfNoAccessibleMsgAreas    string `json:"confNoAccessibleMsgAreas"`
+	ConfAreaTemplateError       string `json:"confAreaTemplateError"`
+
+	// Executor strings (V3-specific)
+	ExecUnknownCommand      string `json:"execUnknownCommand"`
+	ExecReadmailLogin       string `json:"execReadmailLogin"`
+	ExecReadmailPlaceholder string `json:"execReadmailPlaceholder"`
+	ExecDoorLogin           string `json:"execDoorLogin"`
+	ExecDoorNotConfigured   string `json:"execDoorNotConfigured"`
+	ExecGoodbye             string `json:"execGoodbye"`
+	ExecStatsLogin          string `json:"execStatsLogin"`
+	ExecStatsError          string `json:"execStatsError"`
+	ExecOnelinerTemplateErr string `json:"execOnelinerTemplateErr"`
+	ExecOnelinerColorError  string `json:"execOnelinerColorError"`
+	ExecOnelinerWriteError  string `json:"execOnelinerWriteError"`
+	ExecOnelinerAdded       string `json:"execOnelinerAdded"`
+	ExecOnelinerEmpty       string `json:"execOnelinerEmpty"`
+	ExecAlreadyLoggedIn     string `json:"execAlreadyLoggedIn"`
+	ExecUsernamePrompt      string `json:"execUsernamePrompt"`
+	ExecPasswordPrompt      string `json:"execPasswordPrompt"`
+	ExecLoginCancelled      string `json:"execLoginCancelled"`
+	ExecIPLockout           string `json:"execIPLockout"`
+	ExecLoginIncorrect      string `json:"execLoginIncorrect"`
+	ExecNotValidated        string `json:"execNotValidated"`
+	ExecMenuLoadError       string `json:"execMenuLoadError"`
+	ExecMenuPasswordPrompt  string `json:"execMenuPasswordPrompt"`
+	ExecPasswordAccepted    string `json:"execPasswordAccepted"`
+	ExecIncorrectPassword   string `json:"execIncorrectPassword"`
+	ExecTooManyAttempts     string `json:"execTooManyAttempts"`
+	ExecAccessDenied        string `json:"execAccessDenied"`
+	ExecLastcallTemplateErr string `json:"execLastcallTemplateErr"`
+	ExecFileLoadError       string `json:"execFileLoadError"`
+	ExecNoNewMail           string `json:"execNoNewMail"`
+	ExecNewMailCount        string `json:"execNewMailCount"`
+	ExecUserlistTemplateErr string `json:"execUserlistTemplateErr"`
+	ExecPendingValidation   string `json:"execPendingValidation"`
+	ExecRunCommandError     string `json:"execRunCommandError"`
+	ExecRunCommandNotFound  string `json:"execRunCommandNotFound"`
+	ExecRunDoorError        string `json:"execRunDoorError"`
+	ExecLoginCriticalError  string `json:"execLoginCriticalError"`
+	ExecVersionString       string `json:"execVersionString"`
+
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
 	DefColor2 uint8 `json:"defColor2"`
@@ -434,6 +648,7 @@ type FTNConfig struct {
 type ServerConfig struct {
 	BoardName           string `json:"boardName"`
 	BoardPhoneNumber    string `json:"boardPhoneNumber"`
+	SysOpName           string `json:"sysOpName"`
 	Timezone            string `json:"timezone,omitempty"`
 	SysOpLevel          int    `json:"sysOpLevel"`
 	CoSysOpLevel        int    `json:"coSysOpLevel"`
@@ -452,6 +667,7 @@ type ServerConfig struct {
 	IPAllowlistPath     string `json:"ipAllowlistPath"`
 	MaxFailedLogins     int    `json:"maxFailedLogins"`
 	LockoutMinutes      int    `json:"lockoutMinutes"`
+	FileListingMode     string `json:"fileListingMode"`
 }
 
 // EventConfig defines a scheduled event configuration

@@ -1,7 +1,6 @@
 package menu
 
 import (
-	"archive/zip"
 	"bufio"
 	"errors"
 	"fmt"
@@ -34,51 +33,6 @@ func findFileInArea(fm *file.FileManager, areaID int, filename string) (*file.Fi
 	return nil, fmt.Errorf("file not found: %s", filename)
 }
 
-// formatFileSize returns a human-readable file size string.
-func formatFileSize(size int64) string {
-	if size < 1024 {
-		return fmt.Sprintf("%d", size)
-	} else if size < 1024*1024 {
-		return fmt.Sprintf("%.1fK", float64(size)/1024.0)
-	} else if size < 1024*1024*1024 {
-		return fmt.Sprintf("%.1fM", float64(size)/(1024.0*1024.0))
-	}
-	return fmt.Sprintf("%.1fG", float64(size)/(1024.0*1024.0*1024.0))
-}
-
-// displayArchiveListing_toWriter writes ZIP archive contents to a writer (testable).
-func displayArchiveListing_toWriter(w io.Writer, filePath string, filename string, termHeight int) {
-	r, err := zip.OpenReader(filePath)
-	if err != nil {
-		log.Printf("ERROR: Failed to open archive %s: %v", filePath, err)
-		fmt.Fprintf(w, "\r\nError reading archive.\r\n")
-		return
-	}
-	defer r.Close()
-
-	fmt.Fprintf(w, "\r\n--- Archive Contents: %s ---\r\n\r\n", filename)
-	fmt.Fprintf(w, "  Size       Date       Time     Name\r\n")
-	fmt.Fprintf(w, "----------  ----------  -------  --------------------------------\r\n")
-
-	totalSize := uint64(0)
-	fileCount := 0
-
-	for _, f := range r.File {
-		mod := f.Modified
-		sizeStr := formatFileSize(int64(f.UncompressedSize64))
-		dateStr := mod.Format("01/02/2006")
-		timeStr := mod.Format("15:04")
-
-		fmt.Fprintf(w, "%10s  %s  %s  %s\r\n", sizeStr, dateStr, timeStr, f.Name)
-
-		totalSize += f.UncompressedSize64
-		fileCount++
-	}
-
-	fmt.Fprintf(w, "----------                       --------------------------------\r\n")
-	fmt.Fprintf(w, "%10s                       %d file(s)\r\n", formatFileSize(int64(totalSize)), fileCount)
-	fmt.Fprintf(w, "\r\n--- End of Archive ---\r\n")
-}
 
 // promptAndResolveFile handles the shared logic for file viewing commands:
 // validates the user/area, prompts for filename, looks up the record, and resolves the path.
@@ -89,13 +43,12 @@ func promptAndResolveFile(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 	currentAreaID := currentUser.CurrentFileAreaID
 	if currentAreaID <= 0 {
-		msg := "\r\n|01No file area selected.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.FileNoAreaSelected)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", currentUser, "", nil
 	}
 
-	prompt := fmt.Sprintf("\r\n|07Enter filename to %s (or |15ENTER|07 to cancel): |15", promptVerb)
+	prompt := fmt.Sprintf(e.LoadedStrings.FilePromptFormat, promptVerb)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
 	input, err := terminal.ReadLine()
@@ -113,7 +66,7 @@ func promptAndResolveFile(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 	record, err := findFileInArea(e.FileMgr, currentAreaID, filename)
 	if err != nil {
-		msg := fmt.Sprintf("\r\n|01File '%s' not found in current area.|07\r\n", filename)
+		msg := fmt.Sprintf(e.LoadedStrings.FileNotFoundFormat, filename)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", currentUser, "", nil
@@ -122,8 +75,7 @@ func promptAndResolveFile(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	filePath, err := e.FileMgr.GetFilePath(record.ID)
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to get path for file %s: %v", nodeNumber, record.ID, err)
-		msg := "\r\n|01Error locating file on server.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.FileLocateError)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", currentUser, "", nil
 	}
@@ -144,8 +96,11 @@ func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
 		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
-		_, termHeight = getTerminalSize(s)
-		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight)
+		_, termHeight := getTerminalSize(s)
+		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight,
+			e.LoadedStrings.FileViewingHeader, e.LoadedStrings.FileEndOfFile,
+			e.LoadedStrings.FileMorePrompt, e.LoadedStrings.FilePausePrompt,
+			e.LoadedStrings.FileOpenError)
 	}
 
 	return currentUser, "", nil
@@ -161,7 +116,10 @@ func runTypeTextFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 	}
 
 	_, termHeight = getTerminalSize(s)
-	displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight)
+	displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight,
+		e.LoadedStrings.FileViewingHeader, e.LoadedStrings.FileEndOfFile,
+		e.LoadedStrings.FileMorePrompt, e.LoadedStrings.FilePausePrompt,
+		e.LoadedStrings.FileOpenError)
 
 	return currentUser, "", nil
 }
@@ -171,8 +129,7 @@ func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, r
 	filePath, err := e.FileMgr.GetFilePath(record.ID)
 	if err != nil {
 		log.Printf("ERROR: Failed to get path for file %s: %v", record.ID, err)
-		msg := "\r\n|01Error locating file on server.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.FileLocateError)), outputMode)
 		time.Sleep(1 * time.Second)
 		return
 	}
@@ -180,23 +137,26 @@ func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, r
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
 		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
-		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight)
+		_, termHeight = getTerminalSize(s)
+		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight,
+			e.LoadedStrings.FileViewingHeader, e.LoadedStrings.FileEndOfFile,
+			e.LoadedStrings.FileMorePrompt, e.LoadedStrings.FilePausePrompt,
+			e.LoadedStrings.FileOpenError)
 	}
 }
 
 // displayTextWithPaging shows text file contents with paging on the terminal.
-func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath string, filename string, outputMode ansi.OutputMode, termHeight int) {
+func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath string, filename string, outputMode ansi.OutputMode, termHeight int, viewingHeaderFmt string, endOfFile string, morePrompt string, pausePromptStr string, openError string) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		log.Printf("ERROR: Failed to open file %s: %v", filePath, err)
-		msg := "\r\n|01Error opening file.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(openError)), outputMode)
 		time.Sleep(1 * time.Second)
 		return
 	}
 	defer f.Close()
 
-	header := fmt.Sprintf("\r\n|15--- Viewing: %s ---|07\r\n\r\n", filename)
+	header := fmt.Sprintf(viewingHeaderFmt, sanitizeControlChars(filename))
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode)
 
 	linesPerPage := termHeight - 4
@@ -214,7 +174,7 @@ func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath stri
 		lineCount++
 
 		if lineCount >= linesPerPage {
-			if !pauseMore(s, terminal, outputMode) {
+			if !pauseMore(s, terminal, outputMode, morePrompt) {
 				return
 			}
 			lineCount = 0
@@ -225,15 +185,13 @@ func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath stri
 		log.Printf("WARN: Error reading file %s: %v", filePath, err)
 	}
 
-	footer := "\r\n|15--- End of File ---|07\r\n"
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(footer)), outputMode)
-	pauseEnter(s, terminal, outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(endOfFile)), outputMode)
+	pauseEnter(s, terminal, outputMode, pausePromptStr)
 }
 
 // pauseMore displays a "More" prompt and waits for user input.
 // Returns true to continue, false to abort.
-func pauseMore(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode) bool {
-	prompt := "|07[|15MORE|07: |15ENTER|07=Continue, |15Q|07=Quit] "
+func pauseMore(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, prompt string) bool {
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
 	bufioReader := bufio.NewReader(s)
@@ -254,8 +212,7 @@ func pauseMore(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMod
 }
 
 // pauseEnter displays a simple "press Enter" prompt.
-func pauseEnter(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode) {
-	prompt := "\r\n|07Press |15[ENTER]|07 to continue... "
+func pauseEnter(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, prompt string) {
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
 	bufioReader := bufio.NewReader(s)
@@ -289,7 +246,7 @@ func displayTextWithPaging_toWriter(w io.Writer, filePath string, filename strin
 	}
 	defer f.Close()
 
-	fmt.Fprintf(w, "\r\n--- Viewing: %s ---\r\n\r\n", filename)
+	fmt.Fprintf(w, "\r\n--- Viewing: %s ---\r\n\r\n", sanitizeControlChars(filename))
 
 	scanner := bufio.NewScanner(f)
 	scanner.Buffer(make([]byte, 4096), 4096)

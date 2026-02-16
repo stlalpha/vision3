@@ -233,8 +233,7 @@ func (e *MenuExecutor) processMatrixAction(
 		return "MATRIX", nil // Return to matrix after check
 
 	case "DISCONNECT":
-		msg := "\r\n|09Disconnecting...|07\r\n"
-		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MatrixDisconnecting)), outputMode)
 		return "DISCONNECT", nil
 
 	default:
@@ -254,8 +253,7 @@ func (e *MenuExecutor) handleCheckAccess(
 ) {
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 
-	prompt := "\r\n|09Enter your username to check access|07: "
-	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MatrixCheckAccessPrompt)), outputMode)
 
 	input, err := terminal.ReadLine()
 	if err != nil {
@@ -274,13 +272,12 @@ func (e *MenuExecutor) handleCheckAccess(
 	}
 
 	if !exists {
-		msg := "\r\n|01Username not found.|07\r\n"
-		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MatrixUserNotFound)), outputMode)
 	} else if foundUser.Validated {
-		msg := fmt.Sprintf("\r\n|10Account '%s' is |15validated|10. Access level: |15%d|07\r\n", foundUser.Handle, foundUser.AccessLevel)
+		msg := fmt.Sprintf(e.LoadedStrings.MatrixAccountValidated, foundUser.Handle, foundUser.AccessLevel)
 		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	} else {
-		msg := fmt.Sprintf("\r\n|14Account '%s' is |01not yet validated|14. Please wait for SysOp approval.|07\r\n", foundUser.Handle)
+		msg := fmt.Sprintf(e.LoadedStrings.MatrixAccountNotValidated, foundUser.Handle)
 		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	}
 

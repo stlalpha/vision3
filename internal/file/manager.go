@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/stlalpha/vision3/internal/ziplab"
 )
 
 // FileManager manages file areas and their associated file records.
@@ -277,6 +278,20 @@ func (fm *FileManager) GetFileCountForArea(areaID int) (int, error) {
 	}
 
 	return len(records), nil
+}
+
+// GetTotalFileCount returns the total number of files across all areas.
+func (fm *FileManager) GetTotalFileCount() int {
+	areas := fm.ListAreas()
+	total := 0
+	for _, area := range areas {
+		count, err := fm.GetFileCountForArea(area.ID)
+		if err != nil {
+			continue
+		}
+		total += count
+	}
+	return total
 }
 
 // GetFilesForAreaPaginated returns a slice of FileRecord for a given area ID,
@@ -551,8 +566,13 @@ func (fm *FileManager) GetAreaUploadPath(areaID int) (string, error) {
 }
 
 // IsSupportedArchive checks if the filename suggests a supported archive type.
-// Currently only supports .zip (case-insensitive).
+// Uses the ZipLab default archive extensions to stay in sync.
 func (fm *FileManager) IsSupportedArchive(filename string) bool {
 	lowerFilename := strings.ToLower(filename)
-	return strings.HasSuffix(lowerFilename, ".zip")
+	for _, ext := range ziplab.DefaultArchiveExtensions() {
+		if strings.HasSuffix(lowerFilename, ext) {
+			return true
+		}
+	}
+	return false
 }
