@@ -1385,7 +1385,7 @@ func main() {
 	sessionRegistry = session.NewSessionRegistry()
 
 	// Initialize MenuExecutor with new paths, loaded theme, server config, message manager, and connection tracker
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence)
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence, sessionRegistry)
 
 	// Initialize configuration file watcher for hot reload
 	var serverConfigMu sync.RWMutex

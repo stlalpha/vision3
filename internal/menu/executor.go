@@ -27,6 +27,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/stlalpha/vision3/internal/ansi"
 	"github.com/stlalpha/vision3/internal/conference"
+	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
@@ -75,15 +76,16 @@ type MenuExecutor struct {
 	FileMgr        *file.FileManager             // <-- ADDED FIELD: File manager instance
 	ConferenceMgr  *conference.ConferenceManager // Conference grouping manager
 	IPLockoutCheck IPLockoutChecker              // IP-based authentication lockout checker
-	LoginSequence  []config.LoginItem            // Configurable login sequence from login.json
-	configMu       sync.RWMutex                  // Mutex for thread-safe config updates
+	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
+	SessionRegistry *session.SessionRegistry      // Session registry for who's online
+	configMu        sync.RWMutex                  // Mutex for thread-safe config updates
 }
 
 // NewExecutor creates a new MenuExecutor.
 // Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, serverCfg, and ipLockoutCheck parameters
 // Updated paths to use new structure
 // << UPDATED Signature with msgMgr, fileMgr, serverCfg, and ipLockoutCheck
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem) *MenuExecutor {
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -104,7 +106,8 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 		FileMgr:        fileMgr,        // <-- ASSIGN FIELD
 		ConferenceMgr:  confMgr,        // Conference grouping manager
 		IPLockoutCheck: ipLockoutCheck, // IP-based lockout checker
-		LoginSequence:  loginSequence,  // Configurable login sequence
+		LoginSequence:   loginSequence,      // Configurable login sequence
+		SessionRegistry: sessionRegistry,    // Session registry for who's online
 	}
 }
 
