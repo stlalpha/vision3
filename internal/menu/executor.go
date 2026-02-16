@@ -358,6 +358,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["CFG_COLOR"] = runCfgColor
 	registry["CFG_PASSWORD"] = runCfgPassword
 	registry["CFG_VIEWCONFIG"] = runCfgViewConfig
+	registry["SYSTEMSTATS"] = runSystemStats
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
