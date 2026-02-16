@@ -266,6 +266,67 @@ func runCfgNote(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMan
 	)
 }
 
+var colorSlotNames = [7]string{"Prompt", "Input", "Text", "Stat", "Text2", "Stat2", "Bar"}
+
+func runCfgColor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	if currentUser == nil {
+		return nil, "", nil
+	}
+
+	slot := 0
+	if trimmed := strings.TrimSpace(args); trimmed != "" {
+		if parsed, err := strconv.Atoi(trimmed); err == nil && parsed >= 0 && parsed < 7 {
+			slot = parsed
+		}
+	}
+
+	slotName := colorSlotNames[slot]
+
+	// Display color palette
+	var palette strings.Builder
+	palette.WriteString(fmt.Sprintf("\r\n|07Select %s Color:\r\n\r\n", slotName))
+	for i := 0; i < 16; i++ {
+		palette.WriteString(fmt.Sprintf("|%02d  %2d  ", i, i))
+		if i == 7 {
+			palette.WriteString("\r\n")
+		}
+	}
+	palette.WriteString("|07\r\n\r\nColor number (0-15): ")
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(palette.String())), outputMode)
+
+	input, err := terminal.ReadLine()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return currentUser, "", nil
+	}
+
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return currentUser, "", nil
+	}
+
+	val, parseErr := strconv.Atoi(input)
+	if parseErr != nil || val < 0 || val > 15 {
+		msg := "\r\n|09Invalid color. Must be 0-15.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(500 * time.Millisecond)
+		return currentUser, "", nil
+	}
+
+	currentUser.Colors[slot] = val
+	if err := userManager.UpdateUser(currentUser); err != nil {
+		log.Printf("ERROR: Node %d: Failed to save color: %v", nodeNumber, err)
+		return currentUser, "", nil
+	}
+
+	msg := fmt.Sprintf("\r\n|07%s Color set to |%02d%d|07.\r\n", slotName, val, val)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+	time.Sleep(500 * time.Millisecond)
+	return currentUser, "", nil
+}
+
 func runCfgCustomPrompt(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 	if currentUser == nil {
 		return nil, "", nil
