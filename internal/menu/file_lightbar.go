@@ -167,7 +167,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				fileRec := allFiles[idx]
 
 				fileNumStr := fmt.Sprintf("%3d", idx+1)
-				fileNameStr := fmt.Sprintf("%-12s", fileRec.Filename)
+				name := fileRec.Filename
+				if len(name) > 18 {
+					name = name[:18]
+				}
+				fileNameStr := fmt.Sprintf("%-18s", name)
 				dateStr := fileRec.UploadedAt.Format("01/02/06")
 				sizeStr := fmt.Sprintf("%7s", formatSize(fileRec.Size))
 
