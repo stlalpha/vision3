@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/stlalpha/vision3/internal/jam"
@@ -359,6 +360,7 @@ func cmdFix(args []string) {
 		}
 
 		issues := 0
+		cleanedReplyIDs := 0
 		if !*quiet {
 			fmt.Printf("Checking %s...\n", meta.Tag)
 		}
@@ -426,11 +428,65 @@ func cmdFix(args []string) {
 			}
 		}
 
-		if issues == 0 && !*quiet {
+		// Check 6: ReplyID integrity (clean malformed values)
+		modifiedMessages := false
+		if *repair {
+			messages, err := b.ScanMessages(1, 0)
+			if err == nil {
+				for _, msg := range messages {
+					if msg.ReplyID != "" {
+						// Extract only the first MSGID token from malformed REPLY values
+						if parts := strings.Fields(msg.ReplyID); len(parts) > 1 {
+							originalReplyID := msg.ReplyID
+							msg.ReplyID = parts[0]
+							if !*quiet {
+								fmt.Printf("  REPAIR: Cleaned ReplyID %q -> %q\n", originalReplyID, msg.ReplyID)
+							}
+							cleanedReplyIDs++
+							modifiedMessages = true
+						}
+					}
+				}
+				// If we cleaned any ReplyIDs, rebuild the message base to save changes
+				if modifiedMessages {
+					_, err := b.Pack()
+					if err == nil {
+						if !*quiet {
+							fmt.Printf("  REPAIR: Rebuilt message base with cleaned ReplyIDs\n")
+						}
+					} else {
+						fmt.Printf("  ERROR: Failed to rebuild message base: %v\n", err)
+						issues++
+					}
+				}
+			}
+		} else {
+			// In non-repair mode, just check for malformed ReplyIDs
+			messages, err := b.ScanMessages(1, 0)
+			if err == nil {
+				for _, msg := range messages {
+					if msg.ReplyID != "" {
+						if parts := strings.Fields(msg.ReplyID); len(parts) > 1 {
+							fmt.Printf("  ISSUE: Malformed ReplyID: %q (use --repair to fix)\n", msg.ReplyID)
+							issues++
+						}
+					}
+				}
+			}
+		}
+
+		if issues == 0 && cleanedReplyIDs == 0 && !*quiet {
 			fmt.Printf("  OK: %d messages, %d active, no issues\n", total, actualActive)
-		} else if issues > 0 {
-			hadErrors = true
-			fmt.Printf("  Found %d issue(s)\n", issues)
+		} else if issues > 0 || cleanedReplyIDs > 0 {
+			if issues > 0 {
+				hadErrors = true
+			}
+			if cleanedReplyIDs > 0 {
+				fmt.Printf("  Cleaned %d malformed ReplyIDs\n", cleanedReplyIDs)
+			}
+			if issues > 0 {
+				fmt.Printf("  Found %d issue(s)\n", issues)
+			}
 		}
 		b.Close()
 	}
