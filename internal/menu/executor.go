@@ -3766,7 +3766,7 @@ func loadBarFile(barName string, e *MenuExecutor) ([]LightbarOption, error) {
 			regularColor = 15
 		}
 
-		hotkey := strings.TrimSpace(parts[4])
+		hotkey := strings.ToUpper(strings.TrimSpace(parts[4]))
 		returnValue := strings.TrimSpace(parts[5])
 		displayText := strings.TrimSpace(parts[6])
 
