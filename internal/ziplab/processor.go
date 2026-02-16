@@ -206,19 +206,42 @@ func (p *Processor) StepRemoveAdsAndDIZ(workDir, archivePath string) (string, er
 	return diz, nil
 }
 
+// copyZipEntryRaw copies a ZIP entry without decompressing/recompressing.
+// This preserves entries exactly as-is, avoiding checksum errors on entries
+// with symlinks, resource forks, or other platform-specific features.
+func copyZipEntryRaw(w *zip.Writer, f *zip.File) error {
+	fh := f.FileHeader
+	fw, err := w.CreateRaw(&fh)
+	if err != nil {
+		return err
+	}
+	rc, err := f.OpenRaw()
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(fw, rc)
+	return err
+}
+
 // removeFilesFromZip rewrites a ZIP excluding entries that match any of the patterns (case-insensitive).
-func (p *Processor) removeFilesFromZip(zipPath string, patterns []string) error {
+func (p *Processor) removeFilesFromZip(zipPath string, patterns []string) (retErr error) {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return fmt.Errorf("failed to open zip: %w", err)
 	}
+	defer r.Close()
 
 	tmpPath := zipPath + ".tmp"
 	outFile, err := os.Create(tmpPath)
 	if err != nil {
-		r.Close()
 		return fmt.Errorf("failed to create temp zip: %w", err)
 	}
+	defer func() {
+		outFile.Close()
+		if retErr != nil {
+			os.Remove(tmpPath)
+		}
+	}()
 
 	w := zip.NewWriter(outFile)
 	if r.Comment != "" {
@@ -238,45 +261,19 @@ func (p *Processor) removeFilesFromZip(zipPath string, patterns []string) error 
 		}
 		seen[f.Name] = true
 
-		fw, err := w.CreateHeader(&f.FileHeader)
-		if err != nil {
+		if err := copyZipEntryRaw(w, f); err != nil {
 			w.Close()
-			outFile.Close()
-			r.Close()
-			os.Remove(tmpPath)
 			return fmt.Errorf("failed to copy entry %s: %w", f.Name, err)
-		}
-		if !f.FileInfo().IsDir() {
-			rc, err := f.Open()
-			if err != nil {
-				w.Close()
-				outFile.Close()
-				r.Close()
-				os.Remove(tmpPath)
-				return fmt.Errorf("failed to read entry %s: %w", f.Name, err)
-			}
-			if _, err := io.Copy(fw, rc); err != nil {
-				rc.Close()
-				w.Close()
-				outFile.Close()
-				r.Close()
-				os.Remove(tmpPath)
-				return fmt.Errorf("failed to copy data for %s: %w", f.Name, err)
-			}
-			rc.Close()
 		}
 	}
 
-	r.Close()
 	if err := w.Close(); err != nil {
-		outFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("failed to finalize zip: %w", err)
 	}
-	outFile.Close()
 
 	if removed == 0 {
 		os.Remove(tmpPath)
+		retErr = nil
 		return nil
 	}
 
@@ -390,64 +387,39 @@ func (p *Processor) StepAddComment(archivePath string) error {
 }
 
 // setZipComment rewrites a ZIP file with the given comment.
-func (p *Processor) setZipComment(zipPath, comment string) error {
-	// Read existing ZIP
+func (p *Processor) setZipComment(zipPath, comment string) (retErr error) {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return fmt.Errorf("failed to open zip: %w", err)
 	}
+	defer r.Close()
 
-	// Create temp file for rewrite
 	tmpPath := zipPath + ".tmp"
 	outFile, err := os.Create(tmpPath)
 	if err != nil {
-		r.Close()
 		return fmt.Errorf("failed to create temp zip: %w", err)
 	}
+	defer func() {
+		outFile.Close()
+		if retErr != nil {
+			os.Remove(tmpPath)
+		}
+	}()
 
 	w := zip.NewWriter(outFile)
 	w.SetComment(comment)
 
-	// Copy all entries
 	for _, f := range r.File {
-		fw, err := w.CreateHeader(&f.FileHeader)
-		if err != nil {
+		if err := copyZipEntryRaw(w, f); err != nil {
 			w.Close()
-			outFile.Close()
-			r.Close()
-			os.Remove(tmpPath)
 			return fmt.Errorf("failed to copy entry %s: %w", f.Name, err)
 		}
-		if !f.FileInfo().IsDir() {
-			rc, err := f.Open()
-			if err != nil {
-				w.Close()
-				outFile.Close()
-				r.Close()
-				os.Remove(tmpPath)
-				return fmt.Errorf("failed to read entry %s: %w", f.Name, err)
-			}
-			if _, err := io.Copy(fw, rc); err != nil {
-				rc.Close()
-				w.Close()
-				outFile.Close()
-				r.Close()
-				os.Remove(tmpPath)
-				return fmt.Errorf("failed to copy data for %s: %w", f.Name, err)
-			}
-			rc.Close()
-		}
 	}
 
-	r.Close()
 	if err := w.Close(); err != nil {
-		outFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("failed to finalize zip: %w", err)
 	}
-	outFile.Close()
 
-	// Replace original with rewritten file
 	return os.Rename(tmpPath, zipPath)
 }
 
@@ -476,27 +448,31 @@ func (p *Processor) StepIncludeFile(archivePath string) error {
 }
 
 // addFileToZip rewrites a ZIP adding a new file entry.
-func (p *Processor) addFileToZip(zipPath, name string, data []byte) error {
+func (p *Processor) addFileToZip(zipPath, name string, data []byte) (retErr error) {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return fmt.Errorf("failed to open zip: %w", err)
 	}
+	defer r.Close()
 
 	tmpPath := zipPath + ".tmp"
 	outFile, err := os.Create(tmpPath)
 	if err != nil {
-		r.Close()
 		return fmt.Errorf("failed to create temp zip: %w", err)
 	}
+	defer func() {
+		outFile.Close()
+		if retErr != nil {
+			os.Remove(tmpPath)
+		}
+	}()
 
 	w := zip.NewWriter(outFile)
 
-	// Preserve existing comment
 	if r.Comment != "" {
 		w.SetComment(r.Comment)
 	}
 
-	// Copy existing entries, skipping duplicates of the new file
 	seen := make(map[string]bool)
 	for _, f := range r.File {
 		if seen[f.Name] {
@@ -504,64 +480,29 @@ func (p *Processor) addFileToZip(zipPath, name string, data []byte) error {
 		}
 		seen[f.Name] = true
 
-		fw, err := w.CreateHeader(&f.FileHeader)
-		if err != nil {
+		if err := copyZipEntryRaw(w, f); err != nil {
 			w.Close()
-			outFile.Close()
-			r.Close()
-			os.Remove(tmpPath)
 			return fmt.Errorf("failed to copy entry %s: %w", f.Name, err)
-		}
-		if !f.FileInfo().IsDir() {
-			rc, err := f.Open()
-			if err != nil {
-				w.Close()
-				outFile.Close()
-				r.Close()
-				os.Remove(tmpPath)
-				return err
-			}
-			if _, err := io.Copy(fw, rc); err != nil {
-				rc.Close()
-				w.Close()
-				outFile.Close()
-				r.Close()
-				os.Remove(tmpPath)
-				return fmt.Errorf("failed to copy data for %s: %w", f.Name, err)
-			}
-			rc.Close()
 		}
 	}
 
-	r.Close()
-
-	// Add the new file (skip if already seen from existing entries)
 	if seen[name] {
 		w.Close()
-		outFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("entry %s already exists in archive", name)
 	}
 	fw, err := w.Create(name)
 	if err != nil {
 		w.Close()
-		outFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("failed to add %s: %w", name, err)
 	}
 	if _, err := fw.Write(data); err != nil {
 		w.Close()
-		outFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("failed to write %s: %w", name, err)
 	}
 
 	if err := w.Close(); err != nil {
-		outFile.Close()
-		os.Remove(tmpPath)
 		return fmt.Errorf("failed to finalize zip: %w", err)
 	}
-	outFile.Close()
 
 	return os.Rename(tmpPath, zipPath)
 }
