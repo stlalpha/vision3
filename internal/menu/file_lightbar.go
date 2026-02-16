@@ -64,12 +64,8 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	}
 	// Footer: bot template line + status line.
 	footerLines := 2
-	// Detail pane: separator + filename + desc lines + uploaded + downloads + blank.
-	// FILE_ID.DIZ spec: up to 10 lines of 45 chars each.
-	descMaxLines := 10
-	detailPaneLines := 4 + descMaxLines + 1 // separator(1) + filename(1) + desc(10) + uploaded(1) + downloads(1) + blank(1)
 	// +1 for the CRLF after the top template write.
-	visibleRows := termHeight - headerLines - 1 - footerLines - detailPaneLines
+	visibleRows := termHeight - headerLines - 1 - footerLines
 	if visibleRows < 3 {
 		visibleRows = 3
 	}
@@ -309,61 +305,6 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			linesUsed++
 		}
 
-		// Separator line.
-		sep := "|08" + strings.Repeat("-", 78) + "|07"
-		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(sep+"\r\n")), outputMode); err != nil {
-			return err
-		}
-
-		// Detail pane.
-		if len(allFiles) == 0 {
-			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07No files in this area.\r\n")), outputMode); err != nil {
-				return err
-			}
-			for i := 0; i < detailPaneLines-2; i++ { // -2 for separator and the "no files" line
-				if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
-					return err
-				}
-			}
-		} else {
-			sel := allFiles[selectedIndex]
-			descWidth := termWidth - 14 // visible prefix "Desc      : " is ~14 chars
-			descLines := wrapText(sel.Description, descWidth, descMaxLines)
-
-			d1 := fmt.Sprintf("|15Filename  : |07%-40s |15Size : |07%s\r\n", sel.Filename, formatSize(sel.Size))
-			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d1)), outputMode); err != nil {
-				return err
-			}
-
-			// Description lines — first line has the label, continuation lines are indented.
-			for i := 0; i < descMaxLines; i++ {
-				var dLine string
-				if i == 0 {
-					if len(descLines) > 0 {
-						dLine = fmt.Sprintf("|15Desc      : |07%s\r\n", descLines[0])
-					} else {
-						dLine = "|15Desc      : |07\r\n"
-					}
-				} else if i < len(descLines) {
-					dLine = fmt.Sprintf("|07            %s\r\n", descLines[i])
-				} else {
-					dLine = "\r\n"
-				}
-				if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(dLine)), outputMode); err != nil {
-					return err
-				}
-			}
-
-			d3 := fmt.Sprintf("|15Uploaded  : |07%-20s |15By   : |07%s\r\n", sel.UploadedAt.Format("01/02/2006 15:04"), sel.UploadedBy)
-			d4 := fmt.Sprintf("|15Downloads : |07%d\r\n", sel.DownloadCount)
-			d5 := "\r\n"
-			for _, line := range []string{d3, d4, d5} {
-				if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode); err != nil {
-					return err
-				}
-			}
-		}
-
 		// Bottom template with pagination.
 		currentPage := 1
 		if len(allFiles) > 0 && visibleRows > 0 {
@@ -381,7 +322,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 
 		// Status line.
-		statusLine := "\r\n|08[|15Up/Dn|08] Navigate  [|15Space|08] Mark  [|15V|08]iew  [|15D|08]ownload  [|15U|08]pload  [|15Q|08]uit"
+		statusLine := "\r\n|08[|15Up/Dn|08] Navigate  [|15Space|08] Mark  [|15I|08]nfo  [|15V|08]iew  [|15D|08]ownload  [|15U|08]pload  [|15Q|08]uit"
 		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(statusLine)), outputMode); err != nil {
 			return err
 		}
@@ -445,6 +386,44 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 		case "q", "Q":
 			return nil, "", nil
+
+		case "i", "I": // Info: show file detail overlay
+			if len(allFiles) > 0 {
+				sel := allFiles[selectedIndex]
+				descWidth := termWidth - 14
+				descMaxLines := 10
+				descLines := wrapText(sel.Description, descWidth, descMaxLines)
+
+				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+
+				d1 := fmt.Sprintf("|15Filename  : |07%s\r\n", sel.Filename)
+				d2 := fmt.Sprintf("|15Size      : |07%s\r\n", formatSize(sel.Size))
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d1)), outputMode)
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d2)), outputMode)
+
+				for i, dl := range descLines {
+					var dLine string
+					if i == 0 {
+						dLine = fmt.Sprintf("|15Desc      : |07%s\r\n", dl)
+					} else {
+						dLine = fmt.Sprintf("|07            %s\r\n", dl)
+					}
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(dLine)), outputMode)
+				}
+				if len(descLines) == 0 {
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15Desc      : |07(none)\r\n")), outputMode)
+				}
+
+				d3 := fmt.Sprintf("|15Uploaded  : |07%s\r\n", sel.UploadedAt.Format("01/02/2006 15:04"))
+				d4 := fmt.Sprintf("|15Uploader  : |07%s\r\n", sel.UploadedBy)
+				d5 := fmt.Sprintf("|15Downloads : |07%d\r\n", sel.DownloadCount)
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d3)), outputMode)
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d4)), outputMode)
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d5)), outputMode)
+
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|08Press any key to return...|07")), outputMode)
+				_, _ = readKeySequence(reader)
+			}
 
 		case "v", "V":
 			if len(allFiles) > 0 {
