@@ -3175,7 +3175,135 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 	renderFastLoginScreen()
 
+	// Check for lightbar BAR file.
+	barPath := filepath.Join(e.MenuSetPath, "bar", "FASTLOGN.BAR")
+	lightbarOptions, barLoadErr := loadLightbarOptions("FASTLOGN", e)
+	isLightbar := barLoadErr == nil && len(lightbarOptions) > 0
+	if barLoadErr != nil {
+		if _, statErr := os.Stat(barPath); statErr == nil {
+			log.Printf("WARN: Node %d: BAR file exists but failed to load: %v", nodeNumber, barLoadErr)
+		}
+	}
+
+	// Dispatch command by key string against CFG commands.
+	dispatchCommand := func(keyStr string) (*user.User, string, error, bool) {
+		for _, cmd := range commands {
+			keys := strings.Fields(strings.ToUpper(cmd.Keys))
+			matched := false
+			for _, key := range keys {
+				if key == keyStr {
+					matched = true
+					break
+				}
+			}
+			if !matched {
+				continue
+			}
+			if cmd.ACS != "" && cmd.ACS != "*" {
+				if !checkACS(cmd.ACS, currentUser, s, terminal, sessionStartTime) {
+					continue
+				}
+			}
+			if cmd.Command == "RUN:FULL_LOGIN_SEQUENCE" {
+				log.Printf("DEBUG: Node %d: FASTLOGIN - user chose to continue full sequence", nodeNumber)
+				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+				return currentUser, "", nil, true
+			}
+			if strings.HasPrefix(cmd.Command, "GOTO:") {
+				nextMenu := strings.ToUpper(strings.TrimPrefix(cmd.Command, "GOTO:"))
+				log.Printf("DEBUG: Node %d: FASTLOGIN - user chose GOTO:%s", nodeNumber, nextMenu)
+				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+				return currentUser, "GOTO:" + nextMenu, nil, true
+			}
+			if cmd.Command == "RUN:MAINLOGOFF" || cmd.Command == "LOGOFF" {
+				return currentUser, "LOGOFF", nil, true
+			}
+			if cmd.Command == "RUN:IMMEDIATELOGOFF" {
+				return nil, "LOGOFF", io.EOF, true
+			}
+		}
+		return nil, "", nil, false
+	}
+
 	bufioReader := bufio.NewReader(s)
+
+	if isLightbar {
+		log.Printf("DEBUG: Node %d: FASTLOGIN using lightbar mode (%d options)", nodeNumber, len(lightbarOptions))
+		selectedIndex := 0
+		_ = drawLightbarMenu(terminal, nil, lightbarOptions, selectedIndex, outputMode, false)
+
+		for {
+			r, _, readErr := bufioReader.ReadRune()
+			if readErr != nil {
+				if errors.Is(readErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+				return currentUser, "", readErr
+			}
+
+			switch r {
+			case 27: // ESC — check for arrow keys
+				time.Sleep(20 * time.Millisecond)
+				seq := make([]byte, 0, 8)
+				for bufioReader.Buffered() > 0 && len(seq) < 8 {
+					b, bErr := bufioReader.ReadByte()
+					if bErr != nil {
+						break
+					}
+					seq = append(seq, b)
+				}
+				if len(seq) >= 2 && seq[0] == '[' {
+					switch seq[1] {
+					case 'A': // Up
+						if selectedIndex > 0 {
+							prev := selectedIndex
+							selectedIndex--
+							_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
+							_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+						}
+					case 'B': // Down
+						if selectedIndex < len(lightbarOptions)-1 {
+							prev := selectedIndex
+							selectedIndex++
+							_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
+							_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+						}
+					}
+				}
+			case '\r', '\n': // Enter — select current
+				if selectedIndex >= 0 && selectedIndex < len(lightbarOptions) {
+					keyStr := lightbarOptions[selectedIndex].HotKey
+					if u, action, err, matched := dispatchCommand(keyStr); matched {
+						return u, action, err
+					}
+				}
+				return currentUser, "", nil
+			default:
+				// Direct number or hotkey
+				keyStr := strings.ToUpper(string(r))
+				// Check lightbar hotkeys
+				for i, opt := range lightbarOptions {
+					if keyStr == opt.HotKey {
+						prev := selectedIndex
+						selectedIndex = i
+						if prev != selectedIndex {
+							_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
+							_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+						}
+						if u, action, err, matched := dispatchCommand(keyStr); matched {
+							return u, action, err
+						}
+					}
+				}
+				// Also check non-lightbar commands (like G, /G)
+				if u, action, err, matched := dispatchCommand(keyStr); matched {
+					return u, action, err
+				}
+			}
+		}
+	}
+
+	// Fallback: standard keystroke input (no lightbar).
 	for {
 		r, _, readErr := bufioReader.ReadRune()
 		if readErr != nil {
@@ -3207,44 +3335,8 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			}
 		}
 
-		// Match against configured commands
-		for _, cmd := range commands {
-			keys := strings.Fields(strings.ToUpper(cmd.Keys))
-			matchedKey := false
-			for _, key := range keys {
-				if key == keyStr {
-					matchedKey = true
-					break
-				}
-			}
-
-			if matchedKey {
-				// Check ACS
-				if cmd.ACS != "" && cmd.ACS != "*" {
-					if !checkACS(cmd.ACS, currentUser, s, terminal, sessionStartTime) {
-						continue
-					}
-				}
-
-				// If this is the full login sequence command, return empty to continue
-				if cmd.Command == "RUN:FULL_LOGIN_SEQUENCE" {
-					log.Printf("DEBUG: Node %d: FASTLOGIN - user chose to continue full sequence", nodeNumber)
-					terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-					return currentUser, "", nil
-				}
-
-				// For GOTO commands, return the action to break out of login sequence
-				if strings.HasPrefix(cmd.Command, "GOTO:") {
-					nextMenu := strings.ToUpper(strings.TrimPrefix(cmd.Command, "GOTO:"))
-					log.Printf("DEBUG: Node %d: FASTLOGIN - user chose GOTO:%s", nodeNumber, nextMenu)
-					terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-					return currentUser, "GOTO:" + nextMenu, nil
-				}
-
-				if cmd.Command == "LOGOFF" {
-					return currentUser, "LOGOFF", nil
-				}
-			}
+		if u, action, err, matched := dispatchCommand(keyStr); matched {
+			return u, action, err
 		}
 
 		// If Enter was pressed with no match, continue sequence
