@@ -159,11 +159,6 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 		// File rows — each file can take multiple lines if description wraps.
 		linesUsed := 0
-		descIndent := "      " // 6-space indent for description continuation lines
-		descContWidth := termWidth - len(descIndent)
-		if descContWidth < 20 {
-			descContWidth = 20
-		}
 
 		if len(allFiles) == 0 {
 			msg := "|07   No files in this area."
@@ -205,6 +200,13 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				firstLineDescWidth := termWidth - prefixLen - 1 // -1 to avoid auto-wrap
 				if firstLineDescWidth < 10 {
 					firstLineDescWidth = 10
+				}
+
+				// Continuation lines align with description column (PCBoard style).
+				descIndent := strings.Repeat(" ", prefixLen)
+				descContWidth := termWidth - prefixLen - 1
+				if descContWidth < 20 {
+					descContWidth = 20
 				}
 
 				// Split description into first-line portion and remainder.
