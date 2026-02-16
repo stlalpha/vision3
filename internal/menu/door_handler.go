@@ -33,6 +33,8 @@ type doorUserInfo struct {
 	TimesCalled   int
 	PhoneNumber   string
 	GroupLocation string
+	ScreenWidth   int
+	ScreenHeight  int
 }
 
 // DoorCtx is the actual context used throughout door_handler.go.
@@ -59,7 +61,7 @@ type DoorCtx struct {
 // buildDoorCtx creates a DoorCtx from the standard RunnableFunc parameters.
 func buildDoorCtx(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userID int, handle, realName string, accessLevel, timeLimit, timesCalled int,
-	phoneNumber, groupLocation string,
+	phoneNumber, groupLocation string, screenWidth, screenHeight int,
 	nodeNumber int, sessionStartTime time.Time, outputMode ansi.OutputMode,
 	doorConfig config.DoorConfig, doorName string) *DoorCtx {
 
@@ -99,6 +101,8 @@ func buildDoorCtx(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			TimesCalled:   timesCalled,
 			PhoneNumber:   phoneNumber,
 			GroupLocation: groupLocation,
+			ScreenWidth:   screenWidth,
+			ScreenHeight:  screenHeight,
 		},
 		NodeNumber:       nodeNumber,
 		SessionStartTime: sessionStartTime,
@@ -148,7 +152,13 @@ func generateDoorSys(ctx *DoorCtx, dir string) error {
 	b.WriteString(strconv.Itoa(timeLeftSecs) + crlf)         // 18: Seconds remaining
 	b.WriteString("255" + crlf)                              // 19: Time limit (minutes)
 	b.WriteString("GR" + crlf)                               // 20: Graphics mode
-	b.WriteString("25" + crlf)                               // 21: Screen length
+
+	// Use user's saved screen height, default to 25 if not set
+	screenHeight := ctx.User.ScreenHeight
+	if screenHeight <= 0 {
+		screenHeight = 25
+	}
+	b.WriteString(strconv.Itoa(screenHeight) + crlf)         // 21: Screen length
 	b.WriteString("N" + crlf)                                // 22: Expert mode
 	b.WriteString(crlf)                                      // 23: Conferences registered
 	b.WriteString(crlf)                                      // 24: Conference exited to
@@ -267,8 +277,18 @@ func generateChainTxt(ctx *DoorCtx, dir string) error {
 	b.WriteString("M" + crlf)                                // 6: Gender
 	b.WriteString("0" + crlf)                                // 7: Pause (0=no)
 	b.WriteString("01/01/71" + crlf)                         // 8: Last call date
-	b.WriteString("80" + crlf)                               // 9: Screen width
-	b.WriteString("25" + crlf)                               // 10: Screen height
+
+	// Use user's saved screen dimensions, default to 80x25 if not set
+	screenWidth := ctx.User.ScreenWidth
+	if screenWidth <= 0 {
+		screenWidth = 80
+	}
+	screenHeight := ctx.User.ScreenHeight
+	if screenHeight <= 0 {
+		screenHeight = 25
+	}
+	b.WriteString(strconv.Itoa(screenWidth) + crlf)          // 9: Screen width
+	b.WriteString(strconv.Itoa(screenHeight) + crlf)         // 10: Screen height
 	b.WriteString(strconv.Itoa(ctx.User.AccessLevel) + crlf) // 11: Security level
 	b.WriteString("0" + crlf)                                // 12: CO-sysop flag
 	b.WriteString("0" + crlf)                                // 13: File ratio flag
@@ -630,24 +650,50 @@ func executeNativeDoor(ctx *DoorCtx) error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("BBS_TIMELEFT=%s", ctx.TimeLeftStr))
 	}
 
+	// Set LINES and COLUMNS from user's saved preferences (for terminal size detection)
+	screenHeight := ctx.User.ScreenHeight
+	if screenHeight <= 0 {
+		screenHeight = 25
+	}
+	screenWidth := ctx.User.ScreenWidth
+	if screenWidth <= 0 {
+		screenWidth = 80
+	}
+	cmd.Env = append(cmd.Env, fmt.Sprintf("LINES=%d", screenHeight))
+	cmd.Env = append(cmd.Env, fmt.Sprintf("COLUMNS=%d", screenWidth))
+	log.Printf("DEBUG: Node %d: Set door env LINES=%d COLUMNS=%d", ctx.NodeNumber, screenHeight, screenWidth)
+
 	// Execute command
-	ptyReq, winChOrig, isPty := ctx.Session.Pty()
+	_, winChOrig, isPty := ctx.Session.Pty()
 	var cmdErr error
 
 	if doorConfig.RequiresRawTerminal && isPty {
 		log.Printf("INFO: Node %d: Starting door '%s' with PTY/Raw mode", ctx.NodeNumber, ctx.DoorName)
-		ptmx, err := pty.Start(cmd)
+
+		// Set PTY size from user's saved preferences - BEFORE starting the command
+		doorScreenHeight := uint16(ctx.User.ScreenHeight)
+		if doorScreenHeight <= 0 {
+			doorScreenHeight = 25
+		}
+		doorScreenWidth := uint16(ctx.User.ScreenWidth)
+		if doorScreenWidth <= 0 {
+			doorScreenWidth = 80
+		}
+		doorSize := &pty.Winsize{Rows: doorScreenHeight, Cols: doorScreenWidth}
+		log.Printf("DEBUG: Node %d: Starting door with PTY size %dx%d (from user preferences)", ctx.NodeNumber, doorScreenWidth, doorScreenHeight)
+
+		ptmx, err := pty.StartWithSize(cmd, doorSize)
 		if err != nil {
 			cmdErr = fmt.Errorf("failed to start pty for door '%s': %w", ctx.DoorName, err)
 		} else {
 			ctx.Session.Signals(nil)
 			ctx.Session.Break(nil)
+
+			// Drain window resize events but don't apply them - respect user's saved preferences
 			go func() {
-				if ptyReq.Window.Width > 0 || ptyReq.Window.Height > 0 {
-					pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(ptyReq.Window.Height), Cols: uint16(ptyReq.Window.Width)})
-				}
 				for win := range winChOrig {
-					pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(win.Height), Cols: uint16(win.Width)})
+					log.Printf("DEBUG: Node %d: Ignoring SSH resize event %dx%d (keeping user preference %dx%d)",
+						ctx.NodeNumber, win.Width, win.Height, doorScreenWidth, doorScreenHeight)
 				}
 			}()
 
@@ -764,7 +810,7 @@ func doorErrorMessage(ctx *DoorCtx, msg string) {
 // --- Door Menu Runnables ---
 
 // runListDoors displays a list of all configured doors.
-func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running LISTDOORS", nodeNumber)
 
 	if currentUser == nil {
@@ -838,7 +884,7 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 }
 
 // runOpenDoor prompts the user for a door name and launches it.
-func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running OPENDOOR", nodeNumber)
 
 	if currentUser == nil {
@@ -871,7 +917,7 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 
 	if upperInput == "?" {
 		// Show door list inline then return to menu (which will redraw and prompt again)
-		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode)
+		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
 		return currentUser, "", nil
 	}
 
@@ -885,10 +931,12 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	// Build context and execute
+	// Use passed termWidth/termHeight (from user preferences) instead of reading from User struct
 	ctx := buildDoorCtx(e, s, terminal,
 		currentUser.ID, currentUser.Handle, currentUser.RealName,
 		currentUser.AccessLevel, currentUser.TimeLimit, currentUser.TimesCalled,
 		currentUser.PhoneNumber, currentUser.GroupLocation,
+		termWidth, termHeight,
 		nodeNumber, sessionStartTime, outputMode,
 		doorConfig, upperInput)
 
@@ -905,7 +953,7 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 }
 
 // runDoorInfo displays information about a specific door.
-func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running DOORINFO", nodeNumber)
 
 	if currentUser == nil {
@@ -937,7 +985,7 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	if upperInput == "?" {
-		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode)
+		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
 		return currentUser, "", nil
 	}
 

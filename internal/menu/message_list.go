@@ -134,6 +134,13 @@ func buildMessageList(msgMgr *message.MessageManager, areaID int, username strin
 
 // drawMessageListScreen renders the complete message list display
 func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, areaName string, confName string, outputMode ansi.OutputMode) error {
+	log.Printf("DEBUG: drawMessageListScreen outputMode = %v", outputMode)
+
+	// Reset attributes directly (bypass WriteProcessedBytes to avoid UTF-8 decode issues)
+	if _, err := terminal.Write([]byte("\x1b[0m")); err != nil {
+		return err
+	}
+
 	// Hide cursor for cleaner display
 	if err := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode); err != nil {
 		return err
@@ -158,7 +165,7 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 
 	// Draw header with CP437 box characters (bright cyan borders)
 	// Top border: ┌─...─┐ (total width: 79 chars = 1 + 77 + 1)
-	header := fmt.Sprintf("|11\xDA%s\xBF|07\r\n", strings.Repeat("\xC4", 77))
+	header := fmt.Sprintf("|11┌%s┐|07\r\n", strings.Repeat("─", 77))
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode); err != nil {
 		return err
 	}
@@ -170,7 +177,7 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 	}
 	title = truncateString(title, 75)
 	padding := (77 - len(title)) / 2
-	titleLine := fmt.Sprintf("|11\xB3|13%s%s%s|11\xB3|07\r\n",
+	titleLine := fmt.Sprintf("|11│|13%s%s%s|11│|07\r\n",
 		strings.Repeat(" ", padding),
 		title,
 		strings.Repeat(" ", 77-padding-len(title)))
@@ -179,14 +186,14 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 	}
 
 	// Separator: ├─...─┤ (total width: 79 chars = 1 + 77 + 1)
-	separator := fmt.Sprintf("|11\xC3%s\xB4|07\r\n", strings.Repeat("\xC4", 77))
+	separator := fmt.Sprintf("|11├%s┤|07\r\n", strings.Repeat("─", 77))
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(separator)), outputMode); err != nil {
 		return err
 	}
 
 	// Column headers (bright white text, total interior: 77 chars)
 	// Layout: Status(1) + " N#" (3) + "  " (2) + "Subject" + pad (33) + "    " (4) + "From" + pad (17) + "  " (2) + "To" + pad (15) = 77
-	columnHeaders := "|11\xB3|15 N#  Subject                               From               To             |11\xB3|07\r\n"
+	columnHeaders := "|11│|15 N#  Subject                               From               To             |11│|07\r\n"
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(columnHeaders)), outputMode); err != nil {
 		return err
 	}
@@ -208,7 +215,7 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 	// Fill remaining lines with empty rows if needed
 	linesShown := end - start
 	for i := linesShown; i < state.ItemsPerPage; i++ {
-		emptyLine := fmt.Sprintf("|15\xB3|07%s|15\xB3|07\r\n", strings.Repeat(" ", 77))
+		emptyLine := fmt.Sprintf("|11│|07%s|11│|07\r\n", strings.Repeat(" ", 77))
 		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(emptyLine)), outputMode); err != nil {
 			return err
 		}
@@ -231,7 +238,7 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 	leftPad := (77 - pageInfoLen) / 2
 	rightPad := 77 - pageInfoLen - leftPad
 	pageInfoPadded := fmt.Sprintf("%s%s%s", strings.Repeat(" ", leftPad), pageInfo, strings.Repeat(" ", rightPad))
-	pageLine := fmt.Sprintf("|11\xB3|11%s|11\xB3|07\r\n", pageInfoPadded)
+	pageLine := fmt.Sprintf("|11│|11%s|11│|07\r\n", pageInfoPadded)
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(pageLine)), outputMode); err != nil {
 		return err
 	}
@@ -247,14 +254,14 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 	leftPad = (77 - helpTextLen) / 2
 	rightPad = 77 - helpTextLen - leftPad
 	helpPadded := fmt.Sprintf("%s%s%s", strings.Repeat(" ", leftPad), helpText, strings.Repeat(" ", rightPad))
-	helpLine := fmt.Sprintf("|11\xB3|13%s|11\xB3|07\r\n", helpPadded)
+	helpLine := fmt.Sprintf("|11│|13%s|11│|07\r\n", helpPadded)
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(helpLine)), outputMode); err != nil {
 		return err
 	}
 
 	// Bottom border: └─...─┘ (total width: 79 chars = 1 + 77 + 1)
 	// NOTE: No \r\n at end to prevent scrolling when cursor reaches bottom of terminal
-	footer := fmt.Sprintf("|11\xC0%s\xD9|07", strings.Repeat("\xC4", 77))
+	footer := fmt.Sprintf("|11└%s┘|07", strings.Repeat("─", 77))
 	if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(footer)), outputMode); err != nil {
 		return err
 	}
@@ -282,15 +289,15 @@ func drawMessageListLine(terminal *term.Terminal, entry MessageListEntry, isHigh
 	var line string
 	if isHighlighted {
 		// Use ANSI reverse video for highlighting (black on white)
-		line = fmt.Sprintf("|11\xB3\x1b[7m%s%s  %-33s    %-17s  %-15s\x1b[27m|11\xB3|07\r\n",
+		line = fmt.Sprintf("|11│\x1b[7m%s%s  %-33s    %-17s  %-15s\x1b[27m|11│|07\r\n",
 			statusStr,
 			numStr,
 			subject,
 			from,
 			to)
 	} else {
-		// Normal display (gray text on black)
-		line = fmt.Sprintf("|11\xB3|07%s%s  %-33s    %-17s  %-15s|11\xB3|07\r\n",
+		// Normal display (bright white text on black)
+		line = fmt.Sprintf("|11│|15%s%s  %-33s    %-17s  %-15s|11│|07\r\n",
 			statusStr,
 			numStr,
 			subject,
@@ -334,7 +341,7 @@ func drawPageInfoAtRow(terminal *term.Terminal, state *MessageListState, row int
 	leftPad := (77 - pageInfoLen) / 2
 	rightPad := 77 - pageInfoLen - leftPad
 	pageInfoPadded := fmt.Sprintf("%s%s%s", strings.Repeat(" ", leftPad), pageInfo, strings.Repeat(" ", rightPad))
-	pageLine := fmt.Sprintf("|11\xB3|11%s|11\xB3|07", pageInfoPadded)
+	pageLine := fmt.Sprintf("|11│|11%s|11│|07", pageInfoPadded)
 
 	// Position cursor and draw
 	positionCmd := fmt.Sprintf("\x1b[%d;1H", row)
@@ -368,7 +375,7 @@ func refreshPageContent(terminal *term.Terminal, state *MessageListState, output
 			if err := terminalio.WriteProcessedBytes(terminal, []byte(positionCmd), outputMode); err != nil {
 				return err
 			}
-			emptyLine := fmt.Sprintf("|11\xB3|07%s|11\xB3|07", strings.Repeat(" ", 77))
+			emptyLine := fmt.Sprintf("|11│|07%s|11│|07", strings.Repeat(" ", 77))
 			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(emptyLine)), outputMode); err != nil {
 				return err
 			}
@@ -470,7 +477,7 @@ func runMessageListNavigation(reader *bufio.Reader, state *MessageListState) (ac
 // runListMsgs is the main entry point for the message list command
 func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
-	sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 
 	// Validate user is logged in
 	if currentUser == nil {
@@ -525,12 +532,8 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return currentUser, "", nil
 	}
 
-	// Get terminal dimensions from PTY
-	termHeight := 24
-	ptyReq, _, isPty := s.Pty()
-	if isPty && ptyReq.Window.Height > 0 {
-		termHeight = ptyReq.Window.Height
-	}
+	// Use passed termHeight (from user preferences or PTY detection in main.go)
+	// Don't read from PTY here as it may not reflect user's saved preferences
 
 	// Calculate items per page based on terminal height
 	// Header: 5 lines (top border, title, separator, column headers, separator)
@@ -582,10 +585,20 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			return currentUser, "", nil
 
 		case "READ":
+			// Get terminal dimensions from user preferences
+			tw := currentUser.ScreenWidth
+			if tw == 0 {
+				tw = 80
+			}
+			th := currentUser.ScreenHeight
+			if th == 0 {
+				th = 24
+			}
+
 			// Call message reader
 			_, nextAction, err := runMessageReader(e, s, terminal, userManager,
 				currentUser, nodeNumber, sessionStartTime, outputMode,
-				selectedMsg, state.TotalMessages, false)
+				selectedMsg, state.TotalMessages, false, tw, th)
 
 			if err != nil {
 				log.Printf("ERROR: Node %d: Message reader error: %v", nodeNumber, err)

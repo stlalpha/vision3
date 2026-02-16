@@ -28,6 +28,8 @@ func (e *MenuExecutor) RunMatrixScreen(
 	userManager *user.UserMgr,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth int,
+	termHeight int,
 ) (string, error) {
 	const menuName = "PDMATRIX"
 
@@ -175,7 +177,7 @@ func (e *MenuExecutor) RunMatrixScreen(
 			}
 			log.Printf("INFO: Node %d: Matrix selection: %s (%s)", nodeNumber, options[selectedIndex].Text, action)
 
-			result, err := e.processMatrixAction(action, s, terminal, userManager, nodeNumber, outputMode)
+			result, err := e.processMatrixAction(action, s, terminal, userManager, nodeNumber, outputMode, termWidth, termHeight)
 			if err != nil {
 				return result, err
 			}
@@ -204,6 +206,8 @@ func (e *MenuExecutor) processMatrixAction(
 	userManager *user.UserMgr,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth int,
+	termHeight int,
 ) (string, error) {
 	switch action {
 	case "LOGIN":
@@ -215,7 +219,7 @@ func (e *MenuExecutor) processMatrixAction(
 		// Clear screen immediately when transitioning from matrix to new user flow
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode) // Show cursor
-		err := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode)
+		err := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode, termWidth, termHeight)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return "DISCONNECT", io.EOF

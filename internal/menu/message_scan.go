@@ -248,7 +248,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	sessionStartTime time.Time, outputMode ansi.OutputMode,
-	currentOnly bool) (*user.User, string, error) {
+	currentOnly bool, termWidth int, termHeight int) (*user.User, string, error) {
 
 	if currentUser == nil {
 		msg := "\r\n|01Error: You must be logged in to scan for new messages.|07\r\n"
@@ -309,8 +309,18 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		startMsg := determineStartMessage(e, scanCfg, currentAreaID, currentUser.Handle, totalCount)
 
+		// Get terminal dimensions from user preferences
+		tw := currentUser.ScreenWidth
+		if tw == 0 {
+			tw = 80
+		}
+		th := currentUser.ScreenHeight
+		if th == 0 {
+			th = 24
+		}
+
 		_, action, readErr := runMessageReader(e, s, terminal, userManager, currentUser,
-			nodeNumber, sessionStartTime, outputMode, startMsg, totalCount, true)
+			nodeNumber, sessionStartTime, outputMode, startMsg, totalCount, true, tw, th)
 		if readErr != nil || action == "LOGOFF" {
 			return nil, "LOGOFF", readErr
 		}
@@ -395,7 +405,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				// Fall through to call runMessageReader below
 			case 'P': // Post
 				_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
-					sessionStartTime, "", outputMode)
+				sessionStartTime, "", outputMode, termWidth, termHeight)
 				continue
 			case 'J': // Jump to message #
 				handleJump(reader, terminal, outputMode, &startMsg, totalCount)
@@ -413,9 +423,19 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			break
 		}
 
+		// Get terminal dimensions from user preferences
+		tw := currentUser.ScreenWidth
+		if tw == 0 {
+			tw = 80
+		}
+		th := currentUser.ScreenHeight
+		if th == 0 {
+			th = 24
+		}
+
 		// Read messages in this area
 		_, action, readErr := runMessageReader(e, s, terminal, userManager, currentUser,
-			nodeNumber, sessionStartTime, outputMode, startMsg, totalCount, true)
+			nodeNumber, sessionStartTime, outputMode, startMsg, totalCount, true, tw, th)
 		if readErr != nil || action == "LOGOFF" {
 			return nil, "LOGOFF", readErr
 		}
@@ -474,7 +494,7 @@ type areaListItem struct {
 // Similar to retrograde's subscription system but using Vision3 styling.
 func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
-	sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 
 	if currentUser == nil {
 		msg := "\r\n|01Error: You must be logged in to configure newscan.|07\r\n"
@@ -564,11 +584,11 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	// Get terminal dimensions (default 24x80)
-	termHeight := currentUser.ScreenHeight
+	termHeight = currentUser.ScreenHeight
 	if termHeight == 0 {
 		termHeight = 24
 	}
-	termWidth := currentUser.ScreenWidth
+	termWidth = currentUser.ScreenWidth
 	if termWidth == 0 {
 		termWidth = 80
 	}

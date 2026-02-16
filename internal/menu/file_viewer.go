@@ -133,7 +133,7 @@ func promptAndResolveFile(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 // runViewFile prompts for a filename and displays it intelligently:
 // archives show their contents listing, text files are displayed with paging.
-func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running VIEW_FILE", nodeNumber)
 
 	record, filePath, retUser, retAction, retErr := promptAndResolveFile(e, s, terminal, currentUser, nodeNumber, "view", outputMode)
@@ -144,7 +144,7 @@ func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
 		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
-		_, termHeight := getTerminalSize(s)
+		_, termHeight = getTerminalSize(s)
 		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight)
 	}
 
@@ -152,7 +152,7 @@ func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 }
 
 // runTypeTextFile prompts for a filename and displays it as raw text with paging.
-func runTypeTextFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runTypeTextFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running TYPE_TEXT_FILE", nodeNumber)
 
 	record, filePath, retUser, retAction, retErr := promptAndResolveFile(e, s, terminal, currentUser, nodeNumber, "type", outputMode)
@@ -160,14 +160,14 @@ func runTypeTextFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return retUser, retAction, retErr
 	}
 
-	_, termHeight := getTerminalSize(s)
+	_, termHeight = getTerminalSize(s)
 	displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight)
 
 	return currentUser, "", nil
 }
 
 // viewFileByRecord displays a file given its record, used from the lightbar file list.
-func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, record *file.FileRecord, outputMode ansi.OutputMode) {
+func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, record *file.FileRecord, outputMode ansi.OutputMode, termWidth int, termHeight int) {
 	filePath, err := e.FileMgr.GetFilePath(record.ID)
 	if err != nil {
 		log.Printf("ERROR: Failed to get path for file %s: %v", record.ID, err)
@@ -180,7 +180,6 @@ func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, r
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
 		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
-		_, termHeight := getTerminalSize(s)
 		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight)
 	}
 }

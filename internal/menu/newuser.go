@@ -34,6 +34,8 @@ func (e *MenuExecutor) handleNewUserApplication(
 	userManager *user.UserMgr,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth int,
+	termHeight int,
 ) error {
 	log.Printf("INFO: Node %d: Starting new user application", nodeNumber)
 
@@ -42,7 +44,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 	if applyPrompt == "" {
 		applyPrompt = "|08A|07p|15ply |08F|07o|15r |08A|07c|15cess? @"
 	}
-	applyYes, err := e.promptYesNo(s, terminal, applyPrompt, outputMode, nodeNumber)
+	applyYes, err := e.promptYesNo(s, terminal, applyPrompt, outputMode, nodeNumber, termWidth, termHeight)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return io.EOF
@@ -475,8 +477,8 @@ func validateRealName(name string) bool {
 }
 
 // runNewUser is the RUN:NEWUSER handler for menu system integration.
-func runNewUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
-	err := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode)
+func runNewUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	err := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode, termWidth, termHeight)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF

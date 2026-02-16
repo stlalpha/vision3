@@ -23,7 +23,7 @@ import (
 
 // runChangeMsgConference lists accessible conferences and lets the user select one.
 // On selection, updates the user's current conference and sets the first accessible area.
-func runChangeMsgConference(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runChangeMsgConference(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running CHANGEMSGCONF", nodeNumber)
 
 	if currentUser == nil {
@@ -132,12 +132,12 @@ func runChangeMsgConference(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 }
 
 // runNextMsgArea moves to the next accessible message area within the current conference.
-func runNextMsgArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runNextMsgArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	return navigateMsgArea(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, outputMode, true)
 }
 
 // runPrevMsgArea moves to the previous accessible message area within the current conference.
-func runPrevMsgArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runPrevMsgArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	return navigateMsgArea(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, outputMode, false)
 }
 

@@ -52,6 +52,15 @@ struct ssh_channel_callbacks_struct* vision3_new_channel_cb(void *userdata) {
 	ssh_callbacks_init(cb);
 	return cb;
 }
+
+// Expose SSH_BIND_OPTIONS enum values via macros for CGO access.
+// These are needed for legacy algorithm configuration.
+#define VISION3_SSH_BIND_OPTIONS_HOSTKEY_ALGORITHMS SSH_BIND_OPTIONS_HOSTKEY_ALGORITHMS
+#define VISION3_SSH_BIND_OPTIONS_KEY_EXCHANGE SSH_BIND_OPTIONS_KEY_EXCHANGE
+#define VISION3_SSH_BIND_OPTIONS_CIPHERS_C_S SSH_BIND_OPTIONS_CIPHERS_C_S
+#define VISION3_SSH_BIND_OPTIONS_CIPHERS_S_C SSH_BIND_OPTIONS_CIPHERS_S_C
+#define VISION3_SSH_BIND_OPTIONS_HMAC_C_S SSH_BIND_OPTIONS_HMAC_C_S
+#define VISION3_SSH_BIND_OPTIONS_HMAC_S_C SSH_BIND_OPTIONS_HMAC_S_C
 */
 import "C"
 import (
@@ -208,6 +217,53 @@ func NewServer(config Config) (*Server, error) {
 	if C.ssh_bind_options_set(bind, C.SSH_BIND_OPTIONS_BINDPORT, unsafe.Pointer(&cPort)) != C.SSH_OK {
 		C.ssh_bind_free(bind)
 		return nil, fmt.Errorf("failed to set port")
+	}
+
+	// Enable legacy host key algorithms for older SSH clients (e.g., NetRunner, SyncTerm).
+	// Modern clients will still prefer rsa-sha2-512/256, but legacy clients can fall back to ssh-rsa.
+	// Security note: ssh-rsa uses SHA-1 which is cryptographically weak, but is necessary
+	// for compatibility with retro BBS terminal software.
+	cHostKeyAlgos := C.CString("rsa-sha2-512,rsa-sha2-256,ssh-rsa")
+	defer C.free(unsafe.Pointer(cHostKeyAlgos))
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_HOSTKEY_ALGORITHMS, unsafe.Pointer(cHostKeyAlgos)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set host key algorithms")
+	}
+
+	// Enable a broader set of key exchange algorithms for legacy client compatibility.
+	// Includes modern algorithms (curve25519, ecdh) and older ones (diffie-hellman-group1-sha1)
+	// that may be needed by retro terminal software.
+	cKexAlgos := C.CString("curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1")
+	defer C.free(unsafe.Pointer(cKexAlgos))
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_KEY_EXCHANGE, unsafe.Pointer(cKexAlgos)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set key exchange algorithms")
+	}
+
+	// Enable legacy ciphers for older SSH clients.
+	// Modern clients will prefer chacha20 or AES-GCM, but legacy clients may need AES-CBC or 3des.
+	cCiphers := C.CString("chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc")
+	defer C.free(unsafe.Pointer(cCiphers))
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_CIPHERS_C_S, unsafe.Pointer(cCiphers)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set client-to-server ciphers")
+	}
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_CIPHERS_S_C, unsafe.Pointer(cCiphers)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set server-to-client ciphers")
+	}
+
+	// Enable legacy MACs for older SSH clients.
+	// Modern clients will prefer ETM MACs, but legacy clients may need non-ETM or SHA-1 MACs.
+	cMACs := C.CString("hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1")
+	defer C.free(unsafe.Pointer(cMACs))
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_HMAC_C_S, unsafe.Pointer(cMACs)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set client-to-server MACs")
+	}
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_HMAC_S_C, unsafe.Pointer(cMACs)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set server-to-client MACs")
 	}
 
 	return server, nil

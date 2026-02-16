@@ -48,7 +48,8 @@ var msgReaderOptions = []MsgLightbarOption{
 func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	sessionStartTime time.Time, outputMode ansi.OutputMode,
-	startMsg int, totalMsgCount int, isNewScan bool) (*user.User, string, error) {
+	startMsg int, totalMsgCount int, isNewScan bool,
+	termWidth int, termHeight int) (*user.User, string, error) {
 
 	currentAreaID := currentUser.CurrentMessageAreaID
 	currentAreaTag := currentUser.CurrentMessageAreaTag
@@ -88,13 +89,13 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 	}
 
-	// Get terminal dimensions
-	termWidth := 80
-	termHeight := 24
-	ptyReq, _, isPty := s.Pty()
-	if isPty && ptyReq.Window.Width > 0 && ptyReq.Window.Height > 0 {
-		termWidth = ptyReq.Window.Width
-		termHeight = ptyReq.Window.Height
+	// Terminal dimensions are now passed as parameters to use user's adjusted preferences
+	// Default to 80x24 if not provided
+	if termWidth <= 0 {
+		termWidth = 80
+	}
+	if termHeight <= 0 {
+		termHeight = 24
 	}
 
 	reader := bufio.NewReader(s)
@@ -457,7 +458,7 @@ readerLoop:
 			case 'P': // Post new message
 				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 				_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
-					sessionStartTime, "", outputMode)
+				sessionStartTime, "", outputMode, termWidth, termHeight)
 				// Refresh total count
 				newTotal, _ := e.MessageMgr.GetMessageCountForArea(currentAreaID)
 				if newTotal > 0 {
@@ -1117,7 +1118,7 @@ func discoverMessageHeaders(templatesPath string) ([]MessageHeaderTemplate, erro
 // Discovers all MSGHDR.*.ans templates dynamically and presents them in a lightbar menu.
 func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
-	sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 
 	if currentUser == nil {
 		return nil, "", nil
@@ -1364,7 +1365,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 			terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[14;%dH", promptX)), outputMode)
 
-			pickYes, pickErr := e.promptYesNo(s, terminal, pickPrompt, outputMode, nodeNumber)
+			pickYes, pickErr := e.promptYesNo(s, terminal, pickPrompt, outputMode, nodeNumber, termWidth, termHeight)
 			if pickErr != nil {
 				if errors.Is(pickErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF
