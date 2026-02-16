@@ -32,7 +32,8 @@ type BbsSession struct {
 	Pty         *ssh.Pty             // Store PTY info
 	AutoRunLog  types.AutoRunTracker // Tracks run-once commands executed (Use types.AutoRunTracker)
 	LastMenu    string               // Tracks the previously visited menu
-	StartTime   time.Time            // Tracks the session start time
+	StartTime    time.Time            // Tracks the session start time
+	LastActivity time.Time            // Tracks last user input for idle calculation
 }
 
 // NewSession creates a new Session object.
