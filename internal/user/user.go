@@ -60,6 +60,14 @@ type User struct {
 	ScreenHeight int `json:"screenHeight,omitempty"` // Detected/preferred terminal height (default 25)
 	MsgHdr       int `json:"msgHdr,omitempty"`       // Selected message header style (1-14, 0=unset)
 
+	// User Configuration Preferences
+	HotKeys          bool   `json:"hotKeys,omitempty"`
+	MorePrompts      bool   `json:"morePrompts,omitempty"`
+	FullScreenEditor bool   `json:"fullScreenEditor,omitempty"`
+	CustomPrompt     string `json:"customPrompt,omitempty"`
+	OutputMode       string `json:"outputMode,omitempty"`
+	Colors           [7]int `json:"colors,omitempty"`
+
 	// Soft Delete (user marked as deleted but data preserved)
 	DeletedUser bool       `json:"deletedUser,omitempty"` // True if user is soft-deleted
 	DeletedAt   *time.Time `json:"deletedAt,omitempty"`   // Timestamp when user was deleted (nil if not deleted)
