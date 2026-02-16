@@ -3723,6 +3723,67 @@ func loadLightbarOptions(menuName string, e *MenuExecutor) ([]LightbarOption, er
 	return options, nil
 }
 
+// loadBarFile loads and parses a standalone BAR file (no matching CFG required).
+// Returns nil, nil if the file does not exist.
+func loadBarFile(barName string, e *MenuExecutor) ([]LightbarOption, error) {
+	barPath := filepath.Join(e.MenuSetPath, "bar", barName+".BAR")
+
+	barFile, err := os.Open(barPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to open BAR file %s: %w", barPath, err)
+	}
+	defer barFile.Close()
+
+	var options []LightbarOption
+	scanner := bufio.NewScanner(barFile)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, ";") {
+			continue
+		}
+
+		parts := strings.SplitN(line, ",", 7)
+		if len(parts) != 7 {
+			log.Printf("WARN: Malformed BAR line in %s (expected 7 fields): %s", barName, line)
+			continue
+		}
+
+		x, xerr := strconv.Atoi(strings.TrimSpace(parts[0]))
+		y, yerr := strconv.Atoi(strings.TrimSpace(parts[1]))
+		if xerr != nil || yerr != nil {
+			log.Printf("WARN: Invalid coordinates in BAR line (%s): %s", barName, line)
+			continue
+		}
+
+		highlightColor, hcErr := strconv.Atoi(strings.TrimSpace(parts[2]))
+		regularColor, rcErr := strconv.Atoi(strings.TrimSpace(parts[3]))
+		if hcErr != nil || rcErr != nil {
+			log.Printf("WARN: Invalid color codes in BAR line (%s): %s", barName, line)
+			highlightColor = 7
+			regularColor = 15
+		}
+
+		hotkey := strings.TrimSpace(parts[4])
+		returnValue := strings.TrimSpace(parts[5])
+		displayText := strings.TrimSpace(parts[6])
+
+		options = append(options, LightbarOption{
+			X:              x,
+			Y:              y,
+			Text:           displayText,
+			HotKey:         hotkey,
+			ReturnValue:    returnValue,
+			HighlightColor: highlightColor,
+			RegularColor:   regularColor,
+		})
+	}
+
+	return options, nil
+}
+
 // drawLightbarMenu draws the lightbar menu with the specified option selected
 func drawLightbarOption(terminal *term.Terminal, opt LightbarOption, selected bool, outputMode ansi.OutputMode) error {
 	posCmd := fmt.Sprintf("\x1b[%d;%dH", opt.Y, opt.X)
@@ -7866,12 +7927,23 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		filesOnPage = []file.FileRecord{} // Ensure empty slice if no files
 	}
 
+	// Load optional BAR files for file listing lightbar.
+	cmdBarOptions, cmdBarErr := loadBarFile("FILELISTCMD", e)
+	if cmdBarErr != nil {
+		log.Printf("WARN: Node %d: Failed to load FILELISTCMD.BAR: %v", nodeNumber, cmdBarErr)
+	}
+	hiBarOptions, hiBarErr := loadBarFile("FILELISTHI", e)
+	if hiBarErr != nil {
+		log.Printf("WARN: Node %d: Failed to load FILELISTHI.BAR: %v", nodeNumber, hiBarErr)
+	}
+
 	// 4. Dispatch based on file listing mode
 	if !strings.EqualFold(e.ServerCfg.FileListingMode, "classic") {
 		return runListFilesLightbar(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime,
 			currentAreaID, currentAreaTag, area,
 			processedTopTemplate, processedMidTemplate, processedBotTemplate,
-			filesPerPage, totalFiles, totalPages, outputMode)
+			filesPerPage, totalFiles, totalPages,
+			cmdBarOptions, hiBarOptions, outputMode)
 	}
 
 	// Classic display loop
