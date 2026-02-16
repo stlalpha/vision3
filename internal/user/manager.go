@@ -580,6 +580,23 @@ func (um *UserMgr) GetAllUsers() []*User {
 	return usersSlice
 }
 
+// GetUserCount returns the total number of registered users.
+func (um *UserMgr) GetUserCount() int {
+	um.mu.RLock()
+	defer um.mu.RUnlock()
+	return len(um.users)
+}
+
+// GetTotalCalls returns the total number of calls (logins) recorded.
+func (um *UserMgr) GetTotalCalls() uint64 {
+	um.mu.RLock()
+	defer um.mu.RUnlock()
+	if um.nextCallNumber <= 1 {
+		return 0
+	}
+	return um.nextCallNumber - 1
+}
+
 // MarkUserOnline marks a user as currently online/connected
 func (um *UserMgr) MarkUserOnline(userID int) {
 	um.mu.Lock()

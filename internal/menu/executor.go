@@ -302,6 +302,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["MAINLOGOFF"] = runMainLogoffCommand   // MAIN menu logoff with confirmation + GOODBYE.ANS
 	registry["IMMEDIATELOGOFF"] = runImmediateLogoffCommand
 	registry["SHOWSTATS"] = runShowStats
+	registry["SYSTEMSTATS"] = runSystemStats
 	registry["LASTCALLERS"] = runLastCallers
 	registry["AUTHENTICATE"] = runAuthenticate
 	registry["ONELINER"] = runOneliners                              // Register new placeholder

@@ -280,6 +280,20 @@ func (fm *FileManager) GetFileCountForArea(areaID int) (int, error) {
 	return len(records), nil
 }
 
+// GetTotalFileCount returns the total number of files across all areas.
+func (fm *FileManager) GetTotalFileCount() int {
+	areas := fm.ListAreas()
+	total := 0
+	for _, area := range areas {
+		count, err := fm.GetFileCountForArea(area.ID)
+		if err != nil {
+			continue
+		}
+		total += count
+	}
+	return total
+}
+
 // GetFilesForAreaPaginated returns a slice of FileRecord for a given area ID,
 // limited to the specified page and pageSize.
 // Returns an empty slice if the area doesn't exist, has no files, or the page is out of bounds.

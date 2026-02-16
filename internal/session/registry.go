@@ -35,6 +35,13 @@ func (r *SessionRegistry) Get(nodeID int) *BbsSession {
 	return r.sessions[nodeID]
 }
 
+// ActiveCount returns the number of currently active sessions.
+func (r *SessionRegistry) ActiveCount() int {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.sessions)
+}
+
 func (r *SessionRegistry) ListActive() []*BbsSession {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
