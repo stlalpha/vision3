@@ -203,9 +203,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				if idx == selectedIndex {
 					// Strip ANSI colors so highlight color applies uniformly.
 					plain := stripAnsi(processed)
-					// Pad to terminal width so highlight bar spans the full row.
-					if len(plain) < termWidth {
-						plain += strings.Repeat(" ", termWidth-len(plain))
+					// Pad to near-full width so highlight bar spans the row.
+					// Use termWidth-1 to avoid terminal auto-wrap adding an extra line.
+					padWidth := termWidth - 1
+					if len(plain) < padWidth {
+						plain += strings.Repeat(" ", padWidth-len(plain))
 					}
 					wrapped := hiColorSeq + plain + "\x1b[0m"
 					if err := terminalio.WriteProcessedBytes(terminal, []byte(wrapped), outputMode); err != nil {
