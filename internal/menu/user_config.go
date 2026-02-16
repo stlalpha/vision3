@@ -1,10 +1,13 @@
 package menu
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -381,6 +384,93 @@ func runCfgColor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	msg := fmt.Sprintf("\r\n|07%s Color set to |%02d%d|07.\r\n", slotName, val, val)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(500 * time.Millisecond)
+	return currentUser, "", nil
+}
+
+func runCfgViewConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	if currentUser == nil {
+		return nil, "", nil
+	}
+
+	topPath := filepath.Join(e.MenuSetPath, "templates", "USRCFGV.TOP")
+	botPath := filepath.Join(e.MenuSetPath, "templates", "USRCFGV.BOT")
+
+	topBytes, _ := os.ReadFile(topPath)
+	botBytes, _ := os.ReadFile(botPath)
+
+	topBytes = stripSauceMetadata(topBytes)
+	botBytes = stripSauceMetadata(botBytes)
+	topBytes = normalizePipeCodeDelimiters(topBytes)
+	botBytes = normalizePipeCodeDelimiters(botBytes)
+
+	var buf bytes.Buffer
+
+	if len(topBytes) > 0 {
+		buf.Write(ansi.ReplacePipeCodes(topBytes))
+		buf.WriteString("\r\n")
+	}
+
+	boolStr := func(v bool) string {
+		if v {
+			return "|10ON|07"
+		}
+		return "|09OFF|07"
+	}
+
+	width := currentUser.ScreenWidth
+	if width == 0 {
+		width = 80
+	}
+	height := currentUser.ScreenHeight
+	if height == 0 {
+		height = 25
+	}
+	outMode := currentUser.OutputMode
+	if outMode == "" {
+		outMode = "cp437"
+	}
+
+	lines := []string{
+		fmt.Sprintf(" |07Screen Width:       |15%d", width),
+		fmt.Sprintf(" |07Screen Height:      |15%d", height),
+		fmt.Sprintf(" |07Terminal Type:       |15%s", strings.ToUpper(outMode)),
+		fmt.Sprintf(" |07Full-Screen Editor:  %s", boolStr(currentUser.FullScreenEditor)),
+		fmt.Sprintf(" |07Hot Keys:            %s", boolStr(currentUser.HotKeys)),
+		fmt.Sprintf(" |07More Prompts:        %s", boolStr(currentUser.MorePrompts)),
+		fmt.Sprintf(" |07Message Header:      |15%d", currentUser.MsgHdr),
+		fmt.Sprintf(" |07Custom Prompt:       |15%s", currentUser.CustomPrompt),
+		"",
+		fmt.Sprintf(" |07Prompt Color:  |%02d%d|07    Input Color: |%02d%d|07", currentUser.Colors[0], currentUser.Colors[0], currentUser.Colors[1], currentUser.Colors[1]),
+		fmt.Sprintf(" |07Text Color:    |%02d%d|07    Stat Color:  |%02d%d|07", currentUser.Colors[2], currentUser.Colors[2], currentUser.Colors[3], currentUser.Colors[3]),
+		"",
+		fmt.Sprintf(" |07Real Name:     |15%s", currentUser.RealName),
+		fmt.Sprintf(" |07Phone:         |15%s", currentUser.PhoneNumber),
+		fmt.Sprintf(" |07Note:          |15%s", currentUser.PrivateNote),
+	}
+
+	for _, line := range lines {
+		buf.Write(ansi.ReplacePipeCodes([]byte(line)))
+		buf.WriteString("\r\n")
+	}
+
+	if len(botBytes) > 0 {
+		buf.Write(ansi.ReplacePipeCodes(botBytes))
+		buf.WriteString("\r\n")
+	}
+
+	terminalio.WriteProcessedBytes(terminal, buf.Bytes(), outputMode)
+
+	// Pause
+	pausePrompt := e.LoadedStrings.PauseString
+	if pausePrompt == "" {
+		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
+	}
+	if err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode); err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+	}
+
 	return currentUser, "", nil
 }
 
