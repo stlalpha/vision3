@@ -64,9 +64,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	}
 	// Footer: bot template line + status line.
 	footerLines := 2
-	// Detail pane: separator + filename + 3 desc lines + uploaded + downloads + blank.
-	descMaxLines := 3
-	detailPaneLines := 4 + descMaxLines + 1 // separator(1) + filename(1) + desc(3) + uploaded(1) + downloads(1) + blank(1)
+	// Detail pane: separator + filename + desc lines + uploaded + downloads + blank.
+	// FILE_ID.DIZ spec: up to 10 lines of 45 chars each.
+	descMaxLines := 10
+	detailPaneLines := 4 + descMaxLines + 1 // separator(1) + filename(1) + desc(10) + uploaded(1) + downloads(1) + blank(1)
 	// +1 for the CRLF after the top template write.
 	visibleRows := termHeight - headerLines - 1 - footerLines - detailPaneLines
 	if visibleRows < 3 {
