@@ -345,6 +345,9 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["DOORINFO"] = runDoorInfo                               // Show door information
 	registry["UPLOADFILE"] = runUploadFile                            // ZMODEM file upload
 	registry["WHOISONLINE"] = runWhoIsOnline                          // Who's online display
+	registry["CFG_HOTKEYS"] = runCfgHotKeys
+	registry["CFG_MOREPROMPTS"] = runCfgMorePrompts
+	registry["CFG_FSEDITOR"] = runCfgFSEditor
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
