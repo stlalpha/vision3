@@ -1,0 +1,19 @@
+|12User Configuration|07
+|08────────────────────────────────────────────────────────────────────────────────
+|15 Terminal                          |15 Personal Info
+|08 ──────────                        |08 ─────────────
+|07 [|15A|07] Screen Width              |07 [|15M|07] Real Name
+|07 [|15B|07] Screen Height             |07 [|15N|07] Phone Number
+|07 [|15C|07] Terminal Type             |07 [|15O|07] User Note
+|07 [|15D|07] Full-Screen Editor        |07 [|15P|07] Change Password
+|07 [|15E|07] Hot Keys
+|07 [|15F|07] More Prompts              |15 Colors
+|07 [|15G|07] Message Header Style      |08 ──────
+                                     |07 [|15I|07] Prompt Color
+|15 Display                           |07 [|15J|07] Input Color
+|08 ───────                           |07 [|15K|07] Text Color
+|07 [|15H|07] Custom Prompt             |07 [|15L|07] Stat Color
+|07 [|15V|07] View Current Config
+
+|07 [|15Q|07] Return to Main Menu
+|08────────────────────────────────────────────────────────────────────────────────
