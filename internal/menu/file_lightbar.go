@@ -95,17 +95,6 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		return ansiRe.ReplaceAllString(s, "")
 	}
 
-	// truncate limits a string to maxLen characters.
-	truncate := func(s string, maxLen int) string {
-		if maxLen <= 0 {
-			return ""
-		}
-		if len(s) <= maxLen {
-			return s
-		}
-		return s[:maxLen]
-	}
-
 	// wrapText splits text into lines of at most maxWidth characters.
 	wrapText := func(text string, maxWidth int, maxLines int) []string {
 		// Normalize whitespace: replace newlines with spaces.
@@ -167,72 +156,104 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			return err
 		}
 
-		// File rows.
-		endIndex := topIndex + visibleRows
-		if len(allFiles) > 0 && endIndex > len(allFiles) {
-			endIndex = len(allFiles)
+		// File rows — each file can take multiple lines if description wraps.
+		linesUsed := 0
+		descIndent := "      " // 6-space indent for description continuation lines
+		descContWidth := termWidth - len(descIndent)
+		if descContWidth < 20 {
+			descContWidth = 20
 		}
 
 		if len(allFiles) == 0 {
-			// Pad all visible rows, first one gets a message.
 			msg := "|07   No files in this area."
 			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg+"\r\n")), outputMode); err != nil {
 				return err
 			}
-			for i := 1; i < visibleRows; i++ {
-				if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
-					return err
-				}
-			}
+			linesUsed++
 		} else {
-			for idx := topIndex; idx < endIndex; idx++ {
+			for idx := topIndex; idx < len(allFiles) && linesUsed < visibleRows; idx++ {
 				fileRec := allFiles[idx]
-				line := processedMidTemplate
 
 				fileNumStr := strconv.Itoa(idx + 1)
 				fileNameStr := fileRec.Filename
 				dateStr := fileRec.UploadedAt.Format("01/02/06")
 				sizeStr := formatSize(fileRec.Size)
-				// Truncate description to prevent line wrapping.
-				// Replace any embedded newlines with spaces first.
-				descStr := strings.ReplaceAll(fileRec.Description, "\n", " ")
-				descStr = strings.ReplaceAll(descStr, "\r", "")
+
+				// Normalize description whitespace.
+				fullDesc := strings.ReplaceAll(fileRec.Description, "\r", "")
+				fullDesc = strings.ReplaceAll(fullDesc, "\n", " ")
+				fullDesc = strings.TrimSpace(fullDesc)
 
 				markStr := " "
 				if isFileTagged(fileRec.ID) {
 					markStr = "*"
 				}
 
+				// Build the first line from the MID template with a placeholder for desc.
+				line := processedMidTemplate
 				line = strings.ReplaceAll(line, "^MARK", markStr)
 				line = strings.ReplaceAll(line, "^NUM", fileNumStr)
 				line = strings.ReplaceAll(line, "^NAME", fileNameStr)
 				line = strings.ReplaceAll(line, "^DATE", dateStr)
 				line = strings.ReplaceAll(line, "^SIZE", sizeStr)
-				line = strings.ReplaceAll(line, "^DESC", descStr)
 
-				// Process pipe codes, then measure visible length and truncate to terminal width.
-				processed := string(ansi.ReplacePipeCodes([]byte(line)))
-				visibleLen := len(stripAnsi(processed))
-				if visibleLen > termWidth {
-					// Truncate the visible text to terminal width.
-					plain := stripAnsi(processed)
-					descStr = truncate(descStr, len(descStr)-(visibleLen-termWidth))
-					line = processedMidTemplate
-					line = strings.ReplaceAll(line, "^MARK", markStr)
-					line = strings.ReplaceAll(line, "^NUM", fileNumStr)
-					line = strings.ReplaceAll(line, "^NAME", fileNameStr)
-					line = strings.ReplaceAll(line, "^DATE", dateStr)
-					line = strings.ReplaceAll(line, "^SIZE", sizeStr)
-					line = strings.ReplaceAll(line, "^DESC", descStr)
-					processed = string(ansi.ReplacePipeCodes([]byte(line)))
-					_ = plain // used for length calculation
+				// Measure how much space the description has on the first line.
+				lineWithoutDesc := strings.ReplaceAll(line, "^DESC", "")
+				processedNoDesc := string(ansi.ReplacePipeCodes([]byte(lineWithoutDesc)))
+				prefixLen := len(stripAnsi(processedNoDesc))
+				firstLineDescWidth := termWidth - prefixLen - 1 // -1 to avoid auto-wrap
+				if firstLineDescWidth < 10 {
+					firstLineDescWidth = 10
 				}
 
+				// Split description into first-line portion and remainder.
+				firstDesc := fullDesc
+				remainDesc := ""
+				if len(fullDesc) > firstLineDescWidth {
+					// Word-wrap at space boundary.
+					cut := firstLineDescWidth
+					if spIdx := strings.LastIndex(fullDesc[:firstLineDescWidth], " "); spIdx > 0 {
+						cut = spIdx
+					}
+					firstDesc = fullDesc[:cut]
+					remainDesc = strings.TrimSpace(fullDesc[cut:])
+				}
+
+				line = strings.ReplaceAll(line, "^DESC", firstDesc)
+				processed := string(ansi.ReplacePipeCodes([]byte(line)))
+
+				// Build continuation lines from the remainder.
+				var contLines []string
+				remaining := remainDesc
+				for remaining != "" && len(contLines) < 2 { // max 2 continuation lines
+					cl := remaining
+					if len(cl) > descContWidth {
+						cut := descContWidth
+						if spIdx := strings.LastIndex(remaining[:descContWidth], " "); spIdx > 0 {
+							cut = spIdx
+						}
+						cl = remaining[:cut]
+						remaining = strings.TrimSpace(remaining[cut:])
+					} else {
+						remaining = ""
+					}
+					contLines = append(contLines, cl)
+				}
+
+				// Check if this entry fits in remaining visible rows.
+				entryLines := 1 + len(contLines)
+				if linesUsed+entryLines > visibleRows {
+					// Only show what fits — show the first line at minimum.
+					contLines = nil
+					if linesUsed+1 > visibleRows {
+						break
+					}
+					entryLines = 1
+				}
+
+				// Render first line.
 				if idx == selectedIndex {
-					// Strip ANSI colors so highlight color applies uniformly.
 					plain := stripAnsi(processed)
-					// Pad to near-full width so highlight bar spans the row.
-					// Use termWidth-1 to avoid terminal auto-wrap adding an extra line.
 					padWidth := termWidth - 1
 					if len(plain) < padWidth {
 						plain += strings.Repeat(" ", padWidth-len(plain))
@@ -249,14 +270,40 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
 					return err
 				}
-			}
+				linesUsed++
 
-			// Pad empty rows.
-			for i := endIndex; i < topIndex+visibleRows; i++ {
-				if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
-					return err
+				// Render continuation lines.
+				for _, cl := range contLines {
+					contText := descIndent + cl
+					if idx == selectedIndex {
+						padWidth := termWidth - 1
+						if len(contText) < padWidth {
+							contText += strings.Repeat(" ", padWidth-len(contText))
+						}
+						wrapped := hiColorSeq + contText + "\x1b[0m"
+						if err := terminalio.WriteProcessedBytes(terminal, []byte(wrapped), outputMode); err != nil {
+							return err
+						}
+					} else {
+						contFormatted := "|07" + descIndent + cl
+						if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(contFormatted)), outputMode); err != nil {
+							return err
+						}
+					}
+					if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
+						return err
+					}
+					linesUsed++
 				}
 			}
+		}
+
+		// Pad empty rows.
+		for linesUsed < visibleRows {
+			if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
+				return err
+			}
+			linesUsed++
 		}
 
 		// Separator line.
