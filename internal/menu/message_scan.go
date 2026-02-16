@@ -44,7 +44,7 @@ var scanAreaOptions = []MsgLightbarOption{
 }
 
 // runGetScanType displays the Pascal-style scan configuration menu.
-func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
+func runGetScanType(reader *bufio.Reader, e *MenuExecutor, terminal *term.Terminal,
 	outputMode ansi.OutputMode, numMsgs int, currentOnly bool,
 	hiColor int, loColor int) (*ScanConfig, error) {
 
@@ -76,7 +76,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		} else if cfg.ScanDate > 0 {
 			dateStr = fmt.Sprintf("From: %s", time.Unix(cfg.ScanDate, 0).Format("01/02/06"))
 		}
-		line := fmt.Sprintf("|08[|11D|08] |03Date: |09%s|07\r\n", dateStr)
+		line := fmt.Sprintf(e.LoadedStrings.ScanDateLine, dateStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// To
@@ -84,7 +84,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		if cfg.SearchTo != "" {
 			toStr = fmt.Sprintf("Search For %s", cfg.SearchTo)
 		}
-		line = fmt.Sprintf("|08[|11T|08] |03To: |09%s|07\r\n", toStr)
+		line = fmt.Sprintf(e.LoadedStrings.ScanToLine, toStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// From
@@ -92,7 +92,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		if cfg.SearchFrom != "" {
 			fromStr = fmt.Sprintf("Search For %s", cfg.SearchFrom)
 		}
-		line = fmt.Sprintf("|08[|11F|08] |03From: |09%s|07\r\n", fromStr)
+		line = fmt.Sprintf(e.LoadedStrings.ScanFromLine, fromStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// Range
@@ -100,7 +100,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		if cfg.RangeStart > 0 && cfg.RangeEnd > 0 {
 			rangeStr = fmt.Sprintf("%d-%d", cfg.RangeStart, cfg.RangeEnd)
 		}
-		line = fmt.Sprintf("|08[|11R|08] |03Range: |09%s|07\r\n", rangeStr)
+		line = fmt.Sprintf(e.LoadedStrings.ScanRangeLine, rangeStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// Update Pointers
@@ -108,7 +108,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		if !cfg.UpdatePointers {
 			upStr = "No"
 		}
-		line = fmt.Sprintf("|08[|11U|08] |03Update NewScan Pointers: |09%s|07\r\n", upStr)
+		line = fmt.Sprintf(e.LoadedStrings.ScanUpdateLine, upStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// Which Areas
@@ -121,14 +121,14 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 		case 3:
 			whichStr = "Current Area Only"
 		}
-		line = fmt.Sprintf("|08[|11S|08] |03Scan Which Areas?: |09%s|07\r\n", whichStr)
+		line = fmt.Sprintf(e.LoadedStrings.ScanWhichLine, whichStr)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
-		line = "|08[|11A|08] |03Abort Message Scanning\r\n\r\n"
+		line = e.LoadedStrings.ScanAbortLine
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 
 		// Prompt - "Selection;" Dark Cyan (|03), "(Cr" Bright Cyan (|11), "/" Bright Magenta (|13), "Scan) :" Bright Cyan (|11)
-		prompt := "|03Selection; (|11Cr|13/|11Scan) : "
+		prompt := e.LoadedStrings.ScanSelectionPrompt
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 	}
 
@@ -151,7 +151,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 			return cfg, nil
 
 		case 'D': // Date
-			prompt := "\r\n|07Scan From; |15A|07ll, |15N|07ew Messages, or Enter |15Date|07: |15"
+			prompt := e.LoadedStrings.ScanDatePrompt
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 			input, readErr := readLineInput(reader, terminal, outputMode, 10)
 			if readErr != nil {
@@ -173,7 +173,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 			}
 
 		case 'T': // To
-			prompt := "\r\n|07\"To\" string to Search for (Cr/cancel): |15"
+			prompt := e.LoadedStrings.ScanToPrompt
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 			input, readErr := readLineInput(reader, terminal, outputMode, 30)
 			if readErr != nil {
@@ -182,7 +182,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 			cfg.SearchTo = input
 
 		case 'F': // From
-			prompt := "\r\n|07\"From\" string to Search for: |15"
+			prompt := e.LoadedStrings.ScanFromPrompt
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 			input, readErr := readLineInput(reader, terminal, outputMode, 30)
 			if readErr != nil {
@@ -191,7 +191,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 			cfg.SearchFrom = input
 
 		case 'R': // Range
-			prompt := fmt.Sprintf("\r\n|07Range Start (|151-%d|07) : |15", numMsgs)
+			prompt := fmt.Sprintf(e.LoadedStrings.ScanRangeStartPrompt, numMsgs)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 			startInput, readErr := readLineInput(reader, terminal, outputMode, 6)
 			if readErr != nil {
@@ -205,7 +205,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 			}
 			cfg.RangeStart = startNum
 
-			prompt = fmt.Sprintf("\r\n|07Range End (|15%d-%d|07) : |15", startNum, numMsgs)
+			prompt = fmt.Sprintf(e.LoadedStrings.ScanRangeEndPrompt, startNum, numMsgs)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 			endInput, readErr := readLineInput(reader, terminal, outputMode, 6)
 			if readErr != nil {
@@ -222,7 +222,7 @@ func runGetScanType(reader *bufio.Reader, terminal *term.Terminal,
 			cfg.UpdatePointers = !cfg.UpdatePointers
 
 		case 'S': // Scan which areas
-			prompt := "\r\n|15M|07arked Areas, |15A|07ll Areas, |15C|07urrent Area : |15"
+			prompt := e.LoadedStrings.ScanWhichPrompt
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 			aKey, aErr := readSingleKey(reader)
 			if aErr != nil {
@@ -251,8 +251,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	currentOnly bool) (*user.User, string, error) {
 
 	if currentUser == nil {
-		msg := "\r\n|01Error: You must be logged in to scan for new messages.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanLoginRequired)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
@@ -271,7 +270,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	loColor := e.Theme.YesNoRegularColor
 
 	// Show scan setup menu
-	scanCfg, err := runGetScanType(reader, terminal, outputMode, numMsgs, currentOnly, hiColor, loColor)
+	scanCfg, err := runGetScanType(reader, e, terminal, outputMode, numMsgs, currentOnly, hiColor, loColor)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -284,8 +283,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Display "Scanning Messages..."
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	header := "\r\n|15Scanning Messages...|07\r\n"
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanHeader)), outputMode)
 
 	nonStop := false
 	quitNewScan := false
@@ -293,16 +291,14 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// If current area only, scan just that area
 	if scanCfg.WhichAreas == 3 {
 		if currentAreaID <= 0 {
-			msg := "\r\n|01No message area selected.|07\r\n"
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanNoAreaSelected)), outputMode)
 			time.Sleep(1 * time.Second)
 			return nil, "", nil
 		}
 
 		totalCount, _ := e.MessageMgr.GetMessageCountForArea(currentAreaID)
 		if totalCount == 0 {
-			msg := "\r\n|07No messages in current area.|07\r\n"
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanNoMessages)), outputMode)
 			time.Sleep(1 * time.Second)
 			return nil, "", nil
 		}
@@ -322,9 +318,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// If tagged areas mode, check if user has any tagged areas
 	if scanCfg.WhichAreas == 1 && (currentUser.TaggedMessageAreaIDs == nil || len(currentUser.TaggedMessageAreaIDs) == 0) {
-		msg := "\r\n|07No message areas tagged for newscan.|07\r\n" +
-			"|07Use |15Newscan Config|07 to select areas to scan.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanNoTaggedAreas)), outputMode)
 		time.Sleep(2 * time.Second)
 		return nil, "", nil
 	}
@@ -373,7 +367,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		e.setUserMsgConference(currentUser, area.ConferenceID)
 
 		// Display "Current (AreaName)..."
-		boardMsg := fmt.Sprintf("\r\n|09Scanning |01(|13%s|01)... |07[|15%d|07/|15%d|07 msgs]",
+		boardMsg := fmt.Sprintf(e.LoadedStrings.ScanAreaProgress,
 			area.Tag, startMsg, totalCount)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardMsg)), outputMode)
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
@@ -398,7 +392,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					sessionStartTime, "", outputMode)
 				continue
 			case 'J': // Jump to message #
-				handleJump(reader, terminal, outputMode, &startMsg, totalCount)
+				handleJump(reader, terminal, outputMode, &startMsg, totalCount, e.LoadedStrings.MsgJumpPrompt, e.LoadedStrings.MsgInvalidMsgNum)
 			case 'S': // Skip this area
 				continue
 			case 'Q': // Quit scanning
@@ -432,8 +426,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	// Newscan complete
-	complete := "\r\n|15Newscan complete!|07\r\n"
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(complete)), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanComplete)), outputMode)
 	time.Sleep(1 * time.Second)
 
 	return nil, "", nil
@@ -477,8 +470,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
 
 	if currentUser == nil {
-		msg := "\r\n|01Error: You must be logged in to configure newscan.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanConfigLoginRequired)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
@@ -488,8 +480,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Get all accessible message areas
 	allAreas := e.MessageMgr.ListAreas()
 	if len(allAreas) == 0 {
-		msg := "\r\n|07No message areas available.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanNoAreasAvailable)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
@@ -542,8 +533,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	if len(accessibleAreas) == 0 {
-		msg := "\r\n|07No accessible message areas found.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanNoAccessibleAreas)), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
@@ -917,10 +907,9 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 			if err := userManager.UpdateUser(currentUser); err != nil {
 				log.Printf("ERROR: Node %d: Failed to save newscan config: %v", nodeNumber, err)
-				msg := "|01Error saving newscan configuration.|07\r\n"
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanConfigError)), outputMode)
 			} else {
-				msg := fmt.Sprintf("|07Newscan configuration saved (%d areas tagged).|07\r\n", len(taggedIDs))
+				msg := fmt.Sprintf(e.LoadedStrings.ScanConfigSaved, len(taggedIDs))
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			}
 			time.Sleep(1 * time.Second)

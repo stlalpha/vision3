@@ -285,6 +285,61 @@ type StringsConfig struct {
 	CfgViewPhone          string `json:"cfgViewPhone"`
 	CfgViewNote           string `json:"cfgViewNote"`
 
+	// Message reader strings (V3-specific)
+	MsgEndOfMessages       string `json:"msgEndOfMessages"`
+	MsgMailReplyDeferred   string `json:"msgMailReplyDeferred"`
+	MsgListDeferred        string `json:"msgListDeferred"`
+	MsgHdrLoadError        string `json:"msgHdrLoadError"`
+	MsgBoardInfoFormat     string `json:"msgBoardInfoFormat"`
+	MsgScrollPercent       string `json:"msgScrollPercent"`
+	MsgNewScanSuffix       string `json:"msgNewScanSuffix"`
+	MsgReadingSuffix       string `json:"msgReadingSuffix"`
+	MsgThreadPrompt        string `json:"msgThreadPrompt"`
+	MsgNoThreadFound       string `json:"msgNoThreadFound"`
+	MsgJumpPrompt          string `json:"msgJumpPrompt"`
+	MsgInvalidMsgNum       string `json:"msgInvalidMsgNum"`
+	MsgReplySubjectEmpty   string `json:"msgReplySubjectEmpty"`
+	MsgLaunchingEditor     string `json:"msgLaunchingEditor"`
+	MsgReplyCancelled      string `json:"msgReplyCancelled"`
+	MsgReplyError          string `json:"msgReplyError"`
+	MsgReplySuccess        string `json:"msgReplySuccess"`
+	MsgEditorError         string `json:"msgEditorError"`
+
+	// Message scan strings (V3-specific)
+	ScanDateLine            string `json:"scanDateLine"`
+	ScanToLine              string `json:"scanToLine"`
+	ScanFromLine            string `json:"scanFromLine"`
+	ScanRangeLine           string `json:"scanRangeLine"`
+	ScanUpdateLine          string `json:"scanUpdateLine"`
+	ScanWhichLine           string `json:"scanWhichLine"`
+	ScanAbortLine           string `json:"scanAbortLine"`
+	ScanSelectionPrompt     string `json:"scanSelectionPrompt"`
+	ScanDatePrompt          string `json:"scanDatePrompt"`
+	ScanToPrompt            string `json:"scanToPrompt"`
+	ScanFromPrompt          string `json:"scanFromPrompt"`
+	ScanRangeStartPrompt    string `json:"scanRangeStartPrompt"`
+	ScanRangeEndPrompt      string `json:"scanRangeEndPrompt"`
+	ScanWhichPrompt         string `json:"scanWhichPrompt"`
+	ScanHeader              string `json:"scanHeader"`
+	ScanNoAreaSelected      string `json:"scanNoAreaSelected"`
+	ScanNoMessages          string `json:"scanNoMessages"`
+	ScanNoTaggedAreas       string `json:"scanNoTaggedAreas"`
+	ScanAreaProgress        string `json:"scanAreaProgress"`
+	ScanComplete            string `json:"scanComplete"`
+	ScanLoginRequired       string `json:"scanLoginRequired"`
+	ScanNoAreasAvailable    string `json:"scanNoAreasAvailable"`
+	ScanNoAccessibleAreas   string `json:"scanNoAccessibleAreas"`
+	ScanConfigSaved         string `json:"scanConfigSaved"`
+	ScanConfigError         string `json:"scanConfigError"`
+	ScanConfigLoginRequired string `json:"scanConfigLoginRequired"`
+
+	// Message list strings (V3-specific)
+	MsgListLoginRequired  string `json:"msgListLoginRequired"`
+	MsgListNoAreaSelected string `json:"msgListNoAreaSelected"`
+	MsgListAreaNotFound   string `json:"msgListAreaNotFound"`
+	MsgListLoadError      string `json:"msgListLoadError"`
+	MsgListNoMessages     string `json:"msgListNoMessages"`
+
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
 	DefColor2 uint8 `json:"defColor2"`
