@@ -538,11 +538,11 @@ Expected: All tests PASS, clean build
 **Step 3: Verify string count**
 
 ```bash
-# Count entries in strings.json
-grep -c '"' configs/strings.json
+# Count JSON keys in strings.json
+jq 'keys | length' configs/strings.json
 ```
 
-Expected: ~280+ entries (101 original + 80 V2 populated + ~100 V3 new)
+Expected: ~373 entries (101 original + 80 V2 populated + ~192 V3 new). Admin UI strings (user editor, validation browser) are deferred to future work.
 
 **Step 4: Commit**
 
