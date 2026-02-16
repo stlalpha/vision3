@@ -25,7 +25,7 @@ func runPage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 
 	// Show online nodes
 	sessions := e.SessionRegistry.ListActive()
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|12Online Nodes:|07\r\n")), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageOnlineNodesHeader)), outputMode)
 	for _, sess := range sessions {
 		sess.Mutex.RLock()
 		sessHandle := "Unknown"
@@ -38,12 +38,12 @@ func runPage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 		if sessNodeID == nodeNumber {
 			continue // Skip self
 		}
-		line := fmt.Sprintf(" |15Node %d|07: %s\r\n", sessNodeID, sessHandle)
+		line := fmt.Sprintf(e.LoadedStrings.PageNodeListEntry, sessNodeID, sessHandle)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 	}
 
 	// Prompt for target node
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Page which node? (|15Q|07 to cancel): ")), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageWhichNodePrompt)), outputMode)
 	nodeInput, err := terminal.ReadLine()
 	if err != nil {
 		if err == io.EOF {
@@ -58,26 +58,26 @@ func runPage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 
 	targetNodeID, err := strconv.Atoi(nodeInput)
 	if err != nil {
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|09Invalid node number.|07\r\n")), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageInvalidNode)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return nil, "", nil
 	}
 
 	if targetNodeID == nodeNumber {
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|09You can't page yourself.|07\r\n")), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageSelfError)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return nil, "", nil
 	}
 
 	targetSession := e.SessionRegistry.Get(targetNodeID)
 	if targetSession == nil {
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|09That node is not online.|07\r\n")), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageNodeOffline)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return nil, "", nil
 	}
 
 	// Prompt for message
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Message: ")), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageMessagePrompt)), outputMode)
 	msgInput, err := terminal.ReadLine()
 	if err != nil {
 		if err == io.EOF {
@@ -87,17 +87,17 @@ func runPage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	}
 	msgInput = strings.TrimSpace(msgInput)
 	if msgInput == "" {
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|09Page cancelled.|07\r\n")), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageCancelled)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return nil, "", nil
 	}
 
 	// Queue the page on target session
-	pageMsg := fmt.Sprintf("|09Page from |15%s|09: %s|07", handle, msgInput)
+	pageMsg := fmt.Sprintf(e.LoadedStrings.PageMessageFormat, handle, msgInput)
 	targetSession.AddPage(pageMsg)
 
 	log.Printf("INFO: Node %d (%s) paged Node %d (%d chars)", nodeNumber, handle, targetNodeID, len(msgInput))
-	confirm := fmt.Sprintf("|10Page sent to Node %d.|07\r\n", targetNodeID)
+	confirm := fmt.Sprintf(e.LoadedStrings.PageSent, targetNodeID)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(confirm)), outputMode)
 	time.Sleep(500 * time.Millisecond)
 

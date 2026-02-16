@@ -205,6 +205,26 @@ type StringsConfig struct {
 	FileAreaPassword       string `json:"fileAreaPassword"`
 	QuotePrefix            string `json:"QuotePrefix"`
 
+	// Chat strings (V3-specific)
+	ChatHeader        string `json:"chatHeader"`
+	ChatSeparator     string `json:"chatSeparator"`
+	ChatUserEntered   string `json:"chatUserEntered"`
+	ChatUserLeft      string `json:"chatUserLeft"`
+	ChatSystemPrefix  string `json:"chatSystemPrefix"`
+	ChatMessageFormat string `json:"chatMessageFormat"`
+
+	// Page strings (V3-specific)
+	PageOnlineNodesHeader string `json:"pageOnlineNodesHeader"`
+	PageNodeListEntry     string `json:"pageNodeListEntry"`
+	PageWhichNodePrompt   string `json:"pageWhichNodePrompt"`
+	PageMessagePrompt     string `json:"pageMessagePrompt"`
+	PageMessageFormat     string `json:"pageMessageFormat"`
+	PageSent              string `json:"pageSent"`
+	PageCancelled         string `json:"pageCancelled"`
+	PageInvalidNode       string `json:"pageInvalidNode"`
+	PageSelfError         string `json:"pageSelfError"`
+	PageNodeOffline       string `json:"pageNodeOffline"`
+
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
 	DefColor2 uint8 `json:"defColor2"`

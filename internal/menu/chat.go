@@ -40,12 +40,12 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 
 	// Clear screen and show header
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	header := "|12Teleconference Chat|07  |08(type |15/Q|08 to quit)|07"
+	header := e.LoadedStrings.ChatHeader
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode)
 
 	// Separator on line 2
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(2, 1)), outputMode)
-	sep := "|08────────────────────────────────────────────────────────────────────────────────|07"
+	sep := e.LoadedStrings.ChatSeparator
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(sep)), outputMode)
 
 	// Set scroll region to lines 3..(height-2) for messages
@@ -75,18 +75,18 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	// Show recent history in scroll region
 	history := e.ChatRoom.History()
 	for _, msg := range history {
-		writeChatLine(formatChatMessage(msg))
+		writeChatLine(formatChatMessage(msg, e.LoadedStrings.ChatSystemPrefix, e.LoadedStrings.ChatMessageFormat))
 	}
 
 	// Subscribe to room
 	msgCh := e.ChatRoom.Subscribe(nodeNumber, handle)
 
 	// Announce join
-	e.ChatRoom.BroadcastSystem(fmt.Sprintf("|10%s has entered chat|07", handle))
-	writeChatLine(fmt.Sprintf("|10%s has entered chat|07", handle))
+	e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserEntered, handle))
+	writeChatLine(fmt.Sprintf(e.LoadedStrings.ChatUserEntered, handle))
 
 	// Draw input line separator and position cursor
-	inputSep := "|08────────────────────────────────────────────────────────────────────────────────|07"
+	inputSep := e.LoadedStrings.ChatSeparator
 	rawWrite([]byte(ansi.MoveCursor(height-1, 1)))
 	rawWrite(ansi.ReplacePipeCodes([]byte(inputSep)))
 	rawWrite([]byte(ansi.MoveCursor(height, 1)))
@@ -100,7 +100,7 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	go func() {
 		defer close(done)
 		for msg := range msgCh {
-			writeChatLine(formatChatMessage(msg))
+			writeChatLine(formatChatMessage(msg, e.LoadedStrings.ChatSystemPrefix, e.LoadedStrings.ChatMessageFormat))
 		}
 	}()
 
@@ -109,7 +109,7 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 		input, err := terminal.ReadLine()
 		if err != nil {
 			if err == io.EOF {
-				e.ChatRoom.BroadcastSystem(fmt.Sprintf("|09%s has left chat|07", handle))
+				e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserLeft, handle))
 				e.ChatRoom.Unsubscribe(nodeNumber)
 				<-done
 				rawWrite([]byte("\x1B[r")) // reset scroll region
@@ -140,11 +140,11 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 			Text:      trimmed,
 			Timestamp: time.Now(),
 		}
-		writeChatLine(formatChatMessage(ownMsg))
+		writeChatLine(formatChatMessage(ownMsg, e.LoadedStrings.ChatSystemPrefix, e.LoadedStrings.ChatMessageFormat))
 	}
 
 	// Announce departure and clean up
-	e.ChatRoom.BroadcastSystem(fmt.Sprintf("|09%s has left chat|07", handle))
+	e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserLeft, handle))
 	e.ChatRoom.Unsubscribe(nodeNumber) // closes msgCh, which ends the receiver goroutine
 	<-done                              // wait for receiver goroutine to finish
 
@@ -155,9 +155,9 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	return nil, "", nil
 }
 
-func formatChatMessage(msg chat.ChatMessage) string {
+func formatChatMessage(msg chat.ChatMessage, systemFmt, userFmt string) string {
 	if msg.IsSystem {
-		return fmt.Sprintf(" |08*** %s|07", msg.Text)
+		return fmt.Sprintf(systemFmt, msg.Text)
 	}
-	return fmt.Sprintf("|11<%s|11>|07 %s", msg.Handle, msg.Text)
+	return fmt.Sprintf(userFmt, msg.Handle, msg.Text)
 }
