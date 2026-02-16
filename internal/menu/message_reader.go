@@ -75,12 +75,12 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Load the MSGHDR template file
 	hdrTemplatePath := filepath.Join(e.MenuSetPath, "templates", "message_headers",
 		fmt.Sprintf("MSGHDR.%d.ans", hdrStyle))
-	hdrTemplateBytes, hdrErr := os.ReadFile(hdrTemplatePath)
+	hdrTemplateBytes, hdrErr := ansi.GetAnsiFileContent(hdrTemplatePath)
 	if hdrErr != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGHDR.%d.ans: %v", nodeNumber, hdrStyle, hdrErr)
 		// Fallback to style 2 (simple text format)
 		hdrTemplatePath = filepath.Join(e.MenuSetPath, "templates", "message_headers", "MSGHDR.2.ans")
-		hdrTemplateBytes, hdrErr = os.ReadFile(hdrTemplatePath)
+		hdrTemplateBytes, hdrErr = ansi.GetAnsiFileContent(hdrTemplatePath)
 		if hdrErr != nil {
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgHdrLoadError)), outputMode)
 			time.Sleep(1 * time.Second)
@@ -139,7 +139,7 @@ readerLoop:
 				replyCount = count
 			}
 		}
-		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel, !templateUsesUserNote, replyCount)
+		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel, !templateUsesUserNote, replyCount, confName, areaName)
 
 		// Process template with substitutions (auto-detects @CODE@ or |X format)
 		processedHeader := processTemplate(hdrTemplateBytes, substitutions)
@@ -457,7 +457,7 @@ readerLoop:
 			case 'P': // Post new message
 				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 				_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
-				sessionStartTime, "", outputMode, termWidth, termHeight)
+					sessionStartTime, "", outputMode, termWidth, termHeight)
 				// Refresh total count
 				newTotal, _ := e.MessageMgr.GetMessageCountForArea(currentAreaID)
 				if newTotal > 0 {
@@ -675,7 +675,7 @@ func formatMessageBody(body, originAddr string, includeOrigin bool) string {
 }
 
 // buildMsgSubstitutions creates the Pascal-style substitution map for MSGHDR templates.
-func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userNote string, userLevel int, includeNoteInFrom bool, replyCount int) map[byte]string {
+func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userNote string, userLevel int, includeNoteInFrom bool, replyCount int, confName string, areaName string) map[byte]string {
 	// Import jam constants
 	const (
 		msgTypeLocal = 0x00800000
@@ -775,8 +775,9 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		'W': msg.DateTime.Format("3:04 pm"),
 		'P': replyStr,
 		'E': strconv.Itoa(replyCount),
-		'O': msg.OrigAddr, // Origin address
-		'A': msg.DestAddr, // Destination address
+		'O': msg.OrigAddr,                               // Origin address
+		'A': msg.DestAddr,                               // Destination address
+		'Z': fmt.Sprintf("%s > %s", confName, areaName), // Conference > Area Name
 	}
 }
 
@@ -1174,7 +1175,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Display the header selection ANSI screen
 	selectionPath := filepath.Join(e.MenuSetPath, "templates", "message_headers", "MSGHDR.ANS")
-	selectionBytes, err := os.ReadFile(selectionPath)
+	selectionBytes, err := ansi.GetAnsiFileContent(selectionPath)
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGHDR.ANS: %v", nodeNumber, err)
 		msg := "\r\n|01MSGHDR.ANS not found! Please notify SysOp.|07\r\n"
@@ -1182,9 +1183,6 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
 	}
-
-	// Strip SAUCE metadata from ANSI file
-	selectionBytes = stripSauceMetadata(selectionBytes)
 
 	// Hide cursor during lightbar selection
 	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
@@ -1194,7 +1192,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	reader := bufio.NewReader(s)
 
 	const maxVisibleItems = 15 // Maximum items visible in lightbar (Y=6 to Y=20)
-	selectedIndex := 0          // Currently highlighted option
+	selectedIndex := 0         // Currently highlighted option
 
 	// Helper to draw one lightbar option using BAR file attributes
 	drawOption := func(idx int, highlighted bool) {
@@ -1324,7 +1322,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			hdrPath := filepath.Join(e.MenuSetPath, "templates", "message_headers", fmt.Sprintf("MSGHDR.%d.ans", templateNum))
 
 			// Preview with sample data
-			hdrBytes, readErr := os.ReadFile(hdrPath)
+			hdrBytes, readErr := ansi.GetAnsiFileContent(hdrPath)
 			if readErr != nil {
 				log.Printf("ERROR: Node %d: Failed to read header file MSGHDR.%d.ans: %v", nodeNumber, templateNum, readErr)
 				continue
@@ -1347,6 +1345,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				'E': "0",
 				'O': "",
 				'A': "",
+				'Z': "GENERAL > General Discussion",
 			}
 
 			processedPreview := processTemplate(hdrBytes, sampleSubs)

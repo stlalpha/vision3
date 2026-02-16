@@ -78,7 +78,7 @@ func TestProcessPlaceholderTemplate(t *testing.T) {
 		{"simple substitution", "@T@", "Test Subject"},
 		{"multiple placeholders", "From: @F@ To: @S@", "From: John Doe To: Jane Smith"},
 		{"with width constraint", "@F:5@", "John "},
-		{"visual width longer", "@F#############@", "John Doe     "}, // 13 # = width 13
+		{"visual width longer", "@F#############@", "John Doe        "}, // 16 total chars = width 16
 		{"no placeholders", "Plain text", "Plain text"},
 		{"hash code", "Msg @#@/@N@", "Msg 42/100"},
 		{"missing code", "@X@", "@X@"}, // Unknown code preserved

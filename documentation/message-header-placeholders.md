@@ -14,24 +14,25 @@ The visual placeholder format is particularly useful for ANSI art templates wher
 
 ## Available Placeholders
 
-| Code   | Replaced With                                                                                                                           |
-| ------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `@B@`  | Current message area tag                                                                                                                |
-| `@T@`  | Message subject                                                                                                                         |
-| `@F@`  | From (sender). Includes FTN origin address when available; may also include the user note when `@U@` is not present in the template |
-| `@S@`  | To (recipient). Includes FTN destination address when available                                                                         |
-| `@U@`  | User note (local messages only). Blank for echomail/netmail                                                                             |
-| `@M@`  | Message status (LOCAL, ECHOMAIL, NETMAIL, READ, PRIVATE, etc.)                                                                          |
-| `@L@`  | User access level                                                                                                                       |
-| `@R@`  | Real name (not available in JAM; currently empty)                                                                                       |
-| `@#@`  | Current message number (1-based)                                                                                                        |
-| `@N@`  | Total messages in area                                                                                                                  |
-| `@D@`  | Message date (`MM/DD/YY`)                                                                                                               |
-| `@W@`  | Message time (`h:mm am/pm`)                                                                                                             |
-| `@P@`  | Reply message ID (or `None`)                                                                                                            |
-| `@E@`  | Replies count (not tracked in JAM; currently `0`)                                                                                       |
-| `@O@`  | Origin FTN address (if present)                                                                                                         |
-| `@A@`  | Destination FTN address (if present)                                                                                                    |
+| Code  | Replaced With                                                                                                                       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `@B@` | Current message area tag                                                                                                            |
+| `@T@` | Message subject                                                                                                                     |
+| `@F@` | From (sender). Includes FTN origin address when available; may also include the user note when `@U@` is not present in the template |
+| `@S@` | To (recipient). Includes FTN destination address when available                                                                     |
+| `@U@` | User note (local messages only). Blank for echomail/netmail                                                                         |
+| `@M@` | Message status (LOCAL, ECHOMAIL, NETMAIL, READ, PRIVATE, etc.)                                                                      |
+| `@L@` | User access level                                                                                                                   |
+| `@R@` | Real name (not available in JAM; currently empty)                                                                                   |
+| `@#@` | Current message number (1-based)                                                                                                    |
+| `@N@` | Total messages in area                                                                                                              |
+| `@D@` | Message date (`MM/DD/YY`)                                                                                                           |
+| `@W@` | Message time (`h:mm am/pm`)                                                                                                         |
+| `@P@` | Reply message ID (or `None`)                                                                                                        |
+| `@E@` | Replies count (not tracked in JAM; currently `0`)                                                                                   |
+| `@O@` | Origin FTN address (if present)                                                                                                     |
+| `@A@` | Destination FTN address (if present)                                                                                                |
+| `@Z@` | Combined conference and area name (format: `CONF NAME > AREA NAME`)                                                                 |
 
 ## Width Control Features
 
@@ -51,15 +52,15 @@ Use `:NUMBER` after the code for explicit width control:
 Use `#` characters to show the intended field width directly in your template:
 
 ```
-@T########################@  - Subject field (24 characters wide)
-@F###################@      - From field (19 characters wide)
-@M################@         - Status field (16 characters wide)
+@T########################@  - Subject field (26 characters wide - full placeholder length)
+@F###################@      - From field (21 characters wide - full placeholder length)
+@M################@         - Status field (18 characters wide - full placeholder length)
 ```
 
 **How it works:**
-- The total width is determined by counting the `#` characters
+- The total width is determined by the complete placeholder length (including @, code, #'s, and final @)
 - When rendered, the entire placeholder tag is replaced with the value padded/truncated to that exact width
-- This makes templates self-documenting - you can see the field allocations visually
+- This makes templates self-documenting - you can see the exact field allocations visually
 - ANSI color codes are preserved when truncating values
 
 **Example template:**
@@ -163,6 +164,7 @@ If you have old templates using `|X` format, they will continue to work. To conv
 3. Replace all `|F` with `@F@`
 4. (Continue for all 16 codes: B, T, F, S, U, M, L, R, #, N, D, W, P, E, O, A)
 5. Optionally add width constraints for better layout control
+6. Consider using new `@Z@` placeholder for combined conference/area display (not available in legacy format)
 
 Example conversion:
 ```
