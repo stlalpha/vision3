@@ -31,7 +31,7 @@ Each chat participant runs a goroutine reading from their channel and writing to
 
 ## Paging
 
-Send a one-line message to a specific node. Accessible via `!` and `/SE` keys.
+Send a one-line message to a specific node. Accessible via `/SE` from the main menu. Note: `!` maps to `RUN:CHAT` (teleconference) and `/SE` maps to `RUN:PAGE` in `MAIN.CFG`.
 
 ### Flow
 

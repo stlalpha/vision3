@@ -480,8 +480,8 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	}
 
 	// Subscribe to room
-	msgCh := e.ChatRoom.Subscribe(nodeID, handle)
-	defer e.ChatRoom.Unsubscribe(nodeID)
+	msgCh := e.ChatRoom.Subscribe(nodeNumber, handle)
+	defer e.ChatRoom.Unsubscribe(nodeNumber)
 
 	// Announce join
 	e.ChatRoom.BroadcastSystem(fmt.Sprintf("|10%s has entered chat|07", handle))
@@ -521,11 +521,11 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 		}
 
 		// Broadcast message to others
-		e.ChatRoom.Broadcast(nodeID, handle, trimmed)
+		e.ChatRoom.Broadcast(nodeNumber, handle, trimmed)
 
 		// Display own message locally
 		ownMsg := chat.ChatMessage{
-			NodeID:    nodeID,
+			NodeID:    nodeNumber,
 			Handle:    handle,
 			Text:      trimmed,
 			Timestamp: time.Now(),
@@ -551,7 +551,7 @@ func formatChatMessage(msg chat.ChatMessage) string {
 }
 ```
 
-**Important:** In the code above, replace `nodeID` with `nodeNumber` — that's the parameter name from the `RunnableFunc` signature.
+**Note:** The code above uses `nodeNumber`, which is the parameter name from the `RunnableFunc` signature.
 
 **Step 2: Register CHAT in executor.go**
 
@@ -587,7 +587,7 @@ git commit -m "feat: add teleconference chat handler (VIS-26)"
 - Modify: `internal/menu/executor.go:300-340` (register `PAGE`)
 - Modify: `menus/v3/cfg/MAIN.CFG` (/SE key → `RUN:PAGE`)
 
-**Context:** The handler shows online nodes, prompts for a target node number, prompts for a message, then queues it on the target `BbsSession` via `AddPage()`. The session is looked up via `e.SessionRegistry.Get(nodeID)`.
+**Context:** The handler shows online nodes, prompts for a target node number, prompts for a message, then queues it on the target `BbsSession` via `AddPage()`. The session is looked up via `e.SessionRegistry.Get(targetNodeID)`.
 
 **Step 1: Create the handler**
 

@@ -31,6 +31,9 @@ type ChatRoom struct {
 
 // NewChatRoom creates a chat room with the given history buffer size.
 func NewChatRoom(maxHistory int) *ChatRoom {
+	if maxHistory <= 0 {
+		maxHistory = 100
+	}
 	return &ChatRoom{
 		subscribers: make(map[int]*subscriber),
 		history:     make([]ChatMessage, 0, maxHistory),
@@ -39,9 +42,14 @@ func NewChatRoom(maxHistory int) *ChatRoom {
 }
 
 // Subscribe adds a node to the chat room and returns its message channel.
+// If the node is already subscribed, the previous channel is closed first.
 func (r *ChatRoom) Subscribe(nodeID int, handle string) <-chan ChatMessage {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
+	if prev, ok := r.subscribers[nodeID]; ok && prev.ch != nil {
+		close(prev.ch)
+	}
 
 	ch := make(chan ChatMessage, 64)
 	r.subscribers[nodeID] = &subscriber{

@@ -96,7 +96,7 @@ func runPage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	pageMsg := fmt.Sprintf("|09Page from |15%s|09: %s|07", handle, msgInput)
 	targetSession.AddPage(pageMsg)
 
-	log.Printf("INFO: Node %d (%s) paged Node %d: %s", nodeNumber, handle, targetNodeID, msgInput)
+	log.Printf("INFO: Node %d (%s) paged Node %d (%d chars)", nodeNumber, handle, targetNodeID, len(msgInput))
 	confirm := fmt.Sprintf("|10Page sent to Node %d.|07\r\n", targetNodeID)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(confirm)), outputMode)
 	time.Sleep(500 * time.Millisecond)

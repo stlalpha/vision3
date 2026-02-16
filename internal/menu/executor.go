@@ -2797,13 +2797,19 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 
 // deliverPendingPages checks for and displays any queued page messages.
 func (e *MenuExecutor) deliverPendingPages(terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) {
+	if e.SessionRegistry == nil {
+		return
+	}
 	sess := e.SessionRegistry.Get(nodeNumber)
 	if sess == nil {
 		return
 	}
 	pages := sess.DrainPages()
 	for _, page := range pages {
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+page+"\r\n")), outputMode)
+		if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+page+"\r\n")), outputMode); err != nil {
+			log.Printf("ERROR: Node %d: failed to deliver page: %v", nodeNumber, err)
+			return
+		}
 	}
 }
 
