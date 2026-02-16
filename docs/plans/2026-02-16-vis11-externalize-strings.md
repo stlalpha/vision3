@@ -1,6 +1,5 @@
 # VIS-11: Externalize Hardcoded Strings Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Replace all hardcoded user-facing strings with configurable entries in strings.json, using original Vision 2 defaults.
 

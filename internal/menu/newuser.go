@@ -391,6 +391,9 @@ func (e *MenuExecutor) promptForLocation(
 	outputMode ansi.OutputMode,
 ) (string, error) {
 	prompt := e.LoadedStrings.NewUserLocationPrompt
+	if prompt == "" {
+		prompt = "|08E|07n|15ter |08L|07o|15cation |09: "
+	}
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+prompt)), outputMode)
 
 	input, err := styledInput(terminal, s, outputMode, newUserLocationMaxLen, "")
