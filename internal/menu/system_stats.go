@@ -73,18 +73,18 @@ func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	botBytes = replaceTokens(botBytes)
 
 	lines := []string{
-		fmt.Sprintf(" |07BBS Name:       |15%s", tokens["BBSNAME"]),
-		fmt.Sprintf(" |07SysOp:          |15%s", tokens["SYSOP"]),
-		fmt.Sprintf(" |07Version:        |15ViSiON/3 v%s", tokens["VERSION"]),
+		fmt.Sprintf(e.LoadedStrings.StatsBBSName, tokens["BBSNAME"]),
+		fmt.Sprintf(e.LoadedStrings.StatsSysOp, tokens["SYSOP"]),
+		fmt.Sprintf(e.LoadedStrings.StatsVersion, tokens["VERSION"]),
 		"",
-		fmt.Sprintf(" |07Total Users:    |15%s", tokens["TOTALUSERS"]),
-		fmt.Sprintf(" |07Total Calls:    |15%s", tokens["TOTALCALLS"]),
-		fmt.Sprintf(" |07Total Messages: |15%s", tokens["TOTALMSGS"]),
-		fmt.Sprintf(" |07Total Files:    |15%s", tokens["TOTALFILES"]),
-		fmt.Sprintf(" |07Active Nodes:   |15%s |07/ |15%s", tokens["ACTIVENODES"], tokens["MAXNODES"]),
+		fmt.Sprintf(e.LoadedStrings.StatsTotalUsers, tokens["TOTALUSERS"]),
+		fmt.Sprintf(e.LoadedStrings.StatsTotalCalls, tokens["TOTALCALLS"]),
+		fmt.Sprintf(e.LoadedStrings.StatsTotalMsgs, tokens["TOTALMSGS"]),
+		fmt.Sprintf(e.LoadedStrings.StatsTotalFiles, tokens["TOTALFILES"]),
+		fmt.Sprintf(e.LoadedStrings.StatsActiveNodes, tokens["ACTIVENODES"], tokens["MAXNODES"]),
 		"",
-		fmt.Sprintf(" |07Date:           |15%s", tokens["DATE"]),
-		fmt.Sprintf(" |07Time:           |15%s", tokens["TIME"]),
+		fmt.Sprintf(e.LoadedStrings.StatsDate, tokens["DATE"]),
+		fmt.Sprintf(e.LoadedStrings.StatsTime, tokens["TIME"]),
 	}
 
 	var buf bytes.Buffer

@@ -234,6 +234,18 @@ type StringsConfig struct {
 	NewUserAccountCreated   string `json:"newUserAccountCreated"`
 	NewUserCreationError    string `json:"newUserCreationError"`
 
+	// System stats strings (V3-specific)
+	StatsBBSName     string `json:"statsBBSName"`
+	StatsSysOp       string `json:"statsSysOp"`
+	StatsVersion     string `json:"statsVersion"`
+	StatsTotalUsers  string `json:"statsTotalUsers"`
+	StatsTotalCalls  string `json:"statsTotalCalls"`
+	StatsTotalMsgs   string `json:"statsTotalMessages"`
+	StatsTotalFiles  string `json:"statsTotalFiles"`
+	StatsActiveNodes string `json:"statsActiveNodes"`
+	StatsDate        string `json:"statsDate"`
+	StatsTime        string `json:"statsTime"`
+
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
 	DefColor2 uint8 `json:"defColor2"`
