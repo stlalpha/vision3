@@ -192,3 +192,91 @@ func runCfgTermType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
 }
+
+// runCfgStringInput is a generic string input handler for user preferences.
+func runCfgStringInput(
+	e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
+	userManager *user.UserMgr, currentUser *user.User,
+	nodeNumber int, outputMode ansi.OutputMode,
+	fieldName string, maxLen int,
+	getter func(*user.User) string,
+	setter func(*user.User, string),
+) (*user.User, string, error) {
+	if currentUser == nil {
+		return nil, "", nil
+	}
+
+	current := getter(currentUser)
+	prompt := fmt.Sprintf("\r\n|07%s |08(|07max %d chars|08)|07: ", fieldName, maxLen)
+	if current != "" {
+		prompt = fmt.Sprintf("\r\n|07%s |08[|07%s|08] (|07max %d|08)|07: ", fieldName, current, maxLen)
+	}
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+
+	input, err := terminal.ReadLine()
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return currentUser, "", nil
+	}
+
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return currentUser, "", nil
+	}
+
+	if len(input) > maxLen {
+		input = input[:maxLen]
+	}
+
+	setter(currentUser, input)
+	if err := userManager.UpdateUser(currentUser); err != nil {
+		log.Printf("ERROR: Node %d: Failed to save %s: %v", nodeNumber, fieldName, err)
+		return currentUser, "", nil
+	}
+
+	msg := fmt.Sprintf("\r\n|07%s updated.|07\r\n", fieldName)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+	time.Sleep(500 * time.Millisecond)
+	return currentUser, "", nil
+}
+
+func runCfgRealName(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	return runCfgStringInput(e, s, terminal, userManager, currentUser, nodeNumber, outputMode,
+		"Real Name", 40,
+		func(u *user.User) string { return u.RealName },
+		func(u *user.User, v string) { u.RealName = v },
+	)
+}
+
+func runCfgPhone(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	return runCfgStringInput(e, s, terminal, userManager, currentUser, nodeNumber, outputMode,
+		"Phone Number", 15,
+		func(u *user.User) string { return u.PhoneNumber },
+		func(u *user.User, v string) { u.PhoneNumber = v },
+	)
+}
+
+func runCfgNote(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	return runCfgStringInput(e, s, terminal, userManager, currentUser, nodeNumber, outputMode,
+		"User Note", 35,
+		func(u *user.User) string { return u.PrivateNote },
+		func(u *user.User, v string) { u.PrivateNote = v },
+	)
+}
+
+func runCfgCustomPrompt(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	if currentUser == nil {
+		return nil, "", nil
+	}
+
+	help := "\r\n|08Format codes: |07|MN|08=Menu |07|TL|08=Time Left |07|TN|08=Time |07|DN|08=Date |07|CR|08=Return\r\n"
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(help)), outputMode)
+
+	return runCfgStringInput(e, s, terminal, userManager, currentUser, nodeNumber, outputMode,
+		"Custom Prompt", 80,
+		func(u *user.User) string { return u.CustomPrompt },
+		func(u *user.User, v string) { u.CustomPrompt = v },
+	)
+}

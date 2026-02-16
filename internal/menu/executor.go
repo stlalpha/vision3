@@ -351,6 +351,10 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["CFG_SCREENWIDTH"] = runCfgScreenWidth
 	registry["CFG_SCREENHEIGHT"] = runCfgScreenHeight
 	registry["CFG_TERMTYPE"] = runCfgTermType
+	registry["CFG_REALNAME"] = runCfgRealName
+	registry["CFG_PHONE"] = runCfgPhone
+	registry["CFG_NOTE"] = runCfgNote
+	registry["CFG_CUSTOMPROMPT"] = runCfgCustomPrompt
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
