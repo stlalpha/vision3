@@ -3,7 +3,7 @@
   "PASSWORD": "",
   "PROMPT1": " Which one, Ace?",
   "PROMPT2": "",
-  "USEPROMPT": true,
+  "USEPROMPT": false,
   "FORCEHOTKEY": false,
   "ACS": "*",
   "FALLBACK": "FASTLOGN",
