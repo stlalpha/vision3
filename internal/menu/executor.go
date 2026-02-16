@@ -7447,6 +7447,12 @@ func (e *MenuExecutor) runUploadFiles(
 	successCount := 0
 	duplicateCount := 0
 
+	// Load ZipLab config once for all files
+	zlCfg, zlErr := ziplab.LoadConfig(e.RootConfigPath)
+	if zlErr != nil {
+		log.Printf("WARN: Node %d: Failed to load ZipLab config: %v", nodeNumber, zlErr)
+	}
+
 	for _, nf := range newFiles {
 		incomingPath := filepath.Join(incomingDir, nf.name)
 
@@ -7474,11 +7480,6 @@ func (e *MenuExecutor) runUploadFiles(
 		// ZipLab processing for supported archive types (runs on file in incoming dir)
 		var description string
 		filePath := incomingPath
-
-		zlCfg, zlErr := ziplab.LoadConfig(e.RootConfigPath)
-		if zlErr != nil {
-			log.Printf("WARN: Node %d: Failed to load ZipLab config: %v", nodeNumber, zlErr)
-		}
 
 		if zlErr == nil && zlCfg.Enabled && zlCfg.RunOnUpload && zlCfg.IsArchiveSupported(nf.name) {
 			log.Printf("INFO: Node %d: Running ZipLab pipeline on %s", nodeNumber, nf.name)

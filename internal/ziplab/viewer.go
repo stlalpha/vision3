@@ -18,6 +18,7 @@ import (
 	"github.com/stlalpha/vision3/internal/ansi"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/transfer"
+	"github.com/stlalpha/vision3/internal/util"
 )
 
 // sanitizeEntryName strips control characters (including ANSI ESC) and pipe
@@ -35,18 +36,6 @@ func sanitizeEntryName(s string) string {
 	}, s)
 }
 
-// viewerFormatFileSize returns a human-readable file size string.
-// Same logic as internal/menu/file_viewer.go formatFileSize.
-func viewerFormatFileSize(size int64) string {
-	if size < 1024 {
-		return fmt.Sprintf("%d", size)
-	} else if size < 1024*1024 {
-		return fmt.Sprintf("%.1fK", float64(size)/1024.0)
-	} else if size < 1024*1024*1024 {
-		return fmt.Sprintf("%.1fM", float64(size)/(1024.0*1024.0))
-	}
-	return fmt.Sprintf("%.1fG", float64(size)/(1024.0*1024.0*1024.0))
-}
 
 // formatArchiveListing opens a ZIP file and writes a numbered, pipe-code-formatted
 // listing to w. Returns the file count and any error opening the archive.
@@ -69,7 +58,7 @@ func formatArchiveListing(w io.Writer, zipPath string, filename string, termHeig
 
 	for _, f := range r.File {
 		fileCount++
-		sizeStr := viewerFormatFileSize(int64(f.UncompressedSize64))
+		sizeStr := util.FormatFileSize(int64(f.UncompressedSize64))
 		dateStr := f.Modified.Format("01/02/2006")
 
 		fmt.Fprintf(w, "|07 %3d  %9s  %s  |15%s|07\r\n",
@@ -80,7 +69,7 @@ func formatArchiveListing(w io.Writer, zipPath string, filename string, termHeig
 
 	// Summary
 	fmt.Fprintf(w, "\r\n|07 %d file(s), %s total\r\n",
-		fileCount, viewerFormatFileSize(int64(totalSize)))
+		fileCount, util.FormatFileSize(int64(totalSize)))
 
 	// Prompt
 	fmt.Fprintf(w, "\r\n|07[|15#|07]=Extract  [|15Q|07]=Quit\r\n")

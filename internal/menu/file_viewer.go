@@ -1,7 +1,6 @@
 package menu
 
 import (
-	"archive/zip"
 	"bufio"
 	"errors"
 	"fmt"
@@ -34,51 +33,6 @@ func findFileInArea(fm *file.FileManager, areaID int, filename string) (*file.Fi
 	return nil, fmt.Errorf("file not found: %s", filename)
 }
 
-// formatFileSize returns a human-readable file size string.
-func formatFileSize(size int64) string {
-	if size < 1024 {
-		return fmt.Sprintf("%d", size)
-	} else if size < 1024*1024 {
-		return fmt.Sprintf("%.1fK", float64(size)/1024.0)
-	} else if size < 1024*1024*1024 {
-		return fmt.Sprintf("%.1fM", float64(size)/(1024.0*1024.0))
-	}
-	return fmt.Sprintf("%.1fG", float64(size)/(1024.0*1024.0*1024.0))
-}
-
-// displayArchiveListing_toWriter writes ZIP archive contents to a writer (testable).
-func displayArchiveListing_toWriter(w io.Writer, filePath string, filename string, termHeight int) {
-	r, err := zip.OpenReader(filePath)
-	if err != nil {
-		log.Printf("ERROR: Failed to open archive %s: %v", filePath, err)
-		fmt.Fprintf(w, "\r\nError reading archive.\r\n")
-		return
-	}
-	defer r.Close()
-
-	fmt.Fprintf(w, "\r\n--- Archive Contents: %s ---\r\n\r\n", sanitizeControlChars(filename))
-	fmt.Fprintf(w, "  Size       Date       Time     Name\r\n")
-	fmt.Fprintf(w, "----------  ----------  -------  --------------------------------\r\n")
-
-	totalSize := uint64(0)
-	fileCount := 0
-
-	for _, f := range r.File {
-		mod := f.Modified
-		sizeStr := formatFileSize(int64(f.UncompressedSize64))
-		dateStr := mod.Format("01/02/2006")
-		timeStr := mod.Format("15:04")
-
-		fmt.Fprintf(w, "%10s  %s  %s  %s\r\n", sizeStr, dateStr, timeStr, sanitizeControlChars(f.Name))
-
-		totalSize += f.UncompressedSize64
-		fileCount++
-	}
-
-	fmt.Fprintf(w, "----------                       --------------------------------\r\n")
-	fmt.Fprintf(w, "%10s                       %d file(s)\r\n", formatFileSize(int64(totalSize)), fileCount)
-	fmt.Fprintf(w, "\r\n--- End of Archive ---\r\n")
-}
 
 // promptAndResolveFile handles the shared logic for file viewing commands:
 // validates the user/area, prompts for filename, looks up the record, and resolves the path.
