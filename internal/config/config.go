@@ -667,6 +667,7 @@ type ServerConfig struct {
 	IPAllowlistPath     string `json:"ipAllowlistPath"`
 	MaxFailedLogins     int    `json:"maxFailedLogins"`
 	LockoutMinutes      int    `json:"lockoutMinutes"`
+	FileListingMode     string `json:"fileListingMode"`
 }
 
 // EventConfig defines a scheduled event configuration
