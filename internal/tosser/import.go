@@ -229,7 +229,12 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 	// Extract REPLY kludge
 	for _, k := range parsed.Kludges {
 		if strings.HasPrefix(k, "REPLY: ") {
-			jamMsg.ReplyID = strings.TrimPrefix(k, "REPLY: ")
+			replyValue := strings.TrimPrefix(k, "REPLY: ")
+			// Extract only the first MSGID - split on spaces and take first token
+			// This handles cases where REPLY contains multiple MSGIDs or malformed data
+			if parts := strings.Fields(replyValue); len(parts) > 0 {
+				jamMsg.ReplyID = parts[0]
+			}
 			break
 		}
 	}
@@ -244,4 +249,3 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 	log.Printf("INFO: Tossed message from %s to %s in %s (MSGID: %s)", msg.From, msg.To, parsed.Area, msgID)
 	return nil
 }
-
