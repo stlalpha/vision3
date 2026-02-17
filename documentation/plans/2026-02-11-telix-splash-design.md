@@ -56,7 +56,7 @@ Splash uses same approach as `.crt-frame`: `max-width: calc(100vh * 4 / 3)`, cen
 
 Bottom of the 4:3 frame. Styled like the real Telix v3.51 status line:
 
-```
+```text
  Telix v3.51 │ COM1:14400 │ N-8-1 │ ANSI-BBS │ 314-567-3833
 ```
 
@@ -66,7 +66,7 @@ Cyan/white text on dark blue background. Visible throughout the entire sequence.
 
 Before the sequence begins, the terminal area shows:
 
-```
+```text
 [blinking cursor]
 ```
 

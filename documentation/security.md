@@ -504,18 +504,103 @@ To manually unlock an IP, simply restart the BBS (lockouts are in-memory only). 
 
 ### SSH Authentication
 
-SSH-authenticated users bypass the login screen:
+ViSiON/3 implements a **two-tier authentication design** that balances BBS usability (supporting new user registration) with security (rate limiting and lockout tracking).
 
-- User must exist in `data/users/users.json`
-- Username from SSH auth is looked up in database
-- If found, user is automatically logged in
-- If not found, user goes through normal login
+#### How SSH Authentication Works
 
-**Security implications:**
+**For existing users:**
+- SSH password is validated against the bcrypt hash in `data/users/users.json`
+- If correct, user is automatically logged in to the BBS
+- If incorrect, SSH authentication fails at the protocol level
 
-- Disable SSH password authentication, use keys only
-- Keep SSH keys secure
-- Monitor `data/users/call_history.json` for suspicious activity
+**For unknown users (not in database):**
+- SSH authentication **intentionally allows** the connection through
+- User then goes through the normal BBS login/new user registration flow
+- This allows new users to create accounts while still providing security
+
+#### Security Considerations
+
+**Why allow unknown users through SSH auth?**
+
+This design enables the classic BBS new user experience while maintaining security through application-level controls:
+
+1. **Connection-level protection:**
+   - IP blocklist/allowlist filtering (see [IP Filtering](#ip-filtering))
+   - Per-IP connection limits (see [Max Connections Per IP](#max-connections-per-ip))
+   - Total node limits (see [Max Nodes](#max-nodes))
+
+2. **Authentication-level protection:**
+   - **IP-based lockout** after failed BBS login attempts (see [Authentication Lockout](#authentication-lockout))
+   - Failed attempts tracked at application layer, not SSH layer
+   - Prevents brute force attacks at the BBS login prompt
+
+3. **Why not reject unknown users at SSH level?**
+   - Would prevent new user registration entirely
+   - Would require all accounts to be created by SysOp
+   - SSH brute force attacks are mitigated by IP-based lockout at BBS layer
+
+**Attack mitigation:**
+
+The system protects against SSH brute force attempts through:
+- **IP connection limits:** Prevents connection flooding
+- **Failed login tracking:** After `maxFailedLogins` failed BBS login attempts from an IP, that IP is locked out for `lockoutMinutes`
+- **IP blocklist:** Persistent IPs can be permanently blocked
+- **Monitoring:** All authentication attempts are logged for analysis
+
+**Important:** While SSH protocol auth allows unknown users through, the BBS login layer provides the actual security enforcement. An attacker repeatedly trying invalid credentials will:
+1. Be allowed to connect (SSH auth succeeds)
+2. Reach the BBS login prompt
+3. Fail BBS authentication multiple times
+4. Trigger IP-based lockout (default: 5 attempts = 30 minute lockout)
+5. Be unable to make further login attempts from that IP
+
+#### Configuration Example
+
+For a secure public BBS that allows new users:
+
+```json
+{
+  "maxFailedLogins": 5,
+  "lockoutMinutes": 30,
+  "maxConnectionsPerIP": 3,
+  "maxNodes": 20
+}
+```
+
+This configuration:
+- Allows new users to register via SSH
+- Limits each IP to 3 concurrent connections
+- Locks out IPs after 5 failed BBS logins for 30 minutes
+- Prevents resource exhaustion with 20 total nodes max
+
+#### SSH Key Authentication (Optional)
+
+For admin accounts, consider using SSH key-only authentication by configuring your SSH client:
+
+```bash
+# In ~/.ssh/config
+Host mybbs.example.com
+    User sysop
+    IdentityFile ~/.ssh/bbs_sysop_key
+    PasswordAuthentication no
+```
+
+However, password authentication is still needed for regular users to support the standard BBS login flow.
+
+#### Monitoring Recommendations
+
+Monitor authentication attempts regularly:
+
+```bash
+# Watch for suspicious patterns
+grep "Failed authentication" data/logs/vision3.log | tail -50
+
+# Check IP lockouts
+grep "locked out" data/logs/vision3.log
+
+# Monitor successful logins
+grep "authenticated successfully" data/logs/vision3.log
+```
 
 ## Best Practices
 
