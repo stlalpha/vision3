@@ -59,8 +59,9 @@ func (e *MenuExecutor) RunMatrixScreen(
 	}
 
 	// Load the ANSI background (convention: PDMATRIX.ANS)
+	// Use GetAnsiFileContent to automatically strip SAUCE metadata
 	ansPath := filepath.Join(e.MenuSetPath, "ansi", menuName+".ANS")
-	ansBackground, err := os.ReadFile(ansPath)
+	ansBackground, err := ansi.GetAnsiFileContent(ansPath)
 	if err != nil {
 		log.Printf("WARN: Node %d: Failed to load %s.ANS: %v, skipping matrix", nodeNumber, menuName, err)
 		return "LOGIN", nil
@@ -325,7 +326,8 @@ func (e *MenuExecutor) showPrelogon(terminal *term.Terminal, nodeNumber int, out
 		idx = int(time.Now().UnixNano() % int64(len(candidates)))
 	}
 
-	rawContent, err := os.ReadFile(candidates[idx])
+	// Use GetAnsiFileContent to automatically strip SAUCE metadata
+	rawContent, err := ansi.GetAnsiFileContent(candidates[idx])
 	if err != nil {
 		log.Printf("WARN: Node %d: Failed to read prelogon file %s: %v", nodeNumber, candidates[idx], err)
 		return
