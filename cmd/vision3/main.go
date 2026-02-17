@@ -1053,13 +1053,14 @@ func sessionHandler(s ssh.Session) {
 
 			currentMenuName = "MAIN" // Will be overridden by login sequence result
 		} else {
-			log.Printf("Node %d: SSH user '%s' not found in BBS database, requiring manual login", nodeID, sshUsername)
-			// User not in database, proceed with normal LOGIN flow
+			log.Printf("Node %d: SSH user '%s' not found in BBS database, sending to PDMATRIX screen", nodeID, sshUsername)
+			// User not in database, send to PDMATRIX like telnet users
+			// (sshUsername will be kept for potential use in matrix or login)
 		}
 	}
 
-	// Pre-login matrix screen for telnet users (no SSH auto-login)
-	if authenticatedUser == nil && sshUsername == "" {
+	// Pre-login matrix screen for unauthenticated users (telnet or SSH without account)
+	if authenticatedUser == nil {
 		matrixAction, matrixErr := menuExecutor.RunMatrixScreen(s, terminal, userMgr, int(nodeID), effectiveMode, int(termWidth.Load()), int(termHeight.Load()))
 		if matrixErr != nil {
 			log.Printf("Node %d: Matrix screen error: %v", nodeID, matrixErr)

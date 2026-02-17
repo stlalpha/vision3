@@ -1375,13 +1375,21 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			return "", nil, fmt.Errorf("failed to read screen file %s: %w", ansFilename, readErr)
 		}
 
-		// Successfully read, now process for coords and display bytes using the passed outputMode
-		ansiProcessResult, processErr = ansi.ProcessAnsiAndExtractCoords(rawAnsiContent, outputMode)
+		// Process for coords and display bytes
+		// Use CP437 mode to keep raw bytes for coordinate tracking, then convert based on outputMode
+		ansiProcessResult, processErr = ansi.ProcessAnsiAndExtractCoords(rawAnsiContent, ansi.OutputModeCP437)
 		if processErr != nil {
 			log.Printf("ERROR: Failed to process ANSI file %s: %v. Display may be incorrect.", ansFilename, processErr)
 			// Processing error is also critical, return error
 			return "", nil, fmt.Errorf("failed to process screen file %s: %w", ansFilename, processErr)
 		}
+
+		// Convert encoding based on output mode (similar to SHOWSTATS fix)
+		if outputMode == ansi.OutputModeUTF8 {
+			// UTF-8 mode: Convert CP437 bytes to UTF-8 for proper display
+			ansiProcessResult.DisplayBytes = ansi.CP437BytesToUTF8(ansiProcessResult.DisplayBytes)
+		}
+		// CP437 mode: DisplayBytes already contain raw CP437, pass through as-is
 
 		// --- SPECIAL HANDLING FOR LOGIN MENU INTERACTION ---
 		if currentMenuName == "LOGIN" {
@@ -1437,7 +1445,15 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						len(lines), termHeight, termHeight)
 				}
 			}
-			wErr := terminalio.WriteProcessedBytes(terminal, displayBytes, outputMode)
+			// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+			// (some CP437 byte pairs like 0xDF 0xB2 accidentally form valid UTF-8)
+			// For UTF-8 mode, bytes are already converted to UTF-8, pass through
+			var wErr error
+			if outputMode == ansi.OutputModeCP437 {
+				_, wErr = terminal.Write(displayBytes)
+			} else {
+				wErr = terminalio.WriteProcessedBytes(terminal, displayBytes, outputMode)
+			}
 			if wErr != nil {
 				log.Printf("ERROR: Failed to write processed LOGIN.ANS bytes to terminal: %v", wErr)
 				return "", nil, fmt.Errorf("failed to display LOGIN.ANS: %w", wErr)

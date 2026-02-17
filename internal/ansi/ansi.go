@@ -885,6 +885,11 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 						params = append(params, currentParam)
 						currentParam = 0
 						paramStarted = false
+					} else if char == '?' || char == '=' || char == '>' || char == '<' {
+						// DEC private mode and other special CSI prefixes
+						// These appear after '[' and before parameters (e.g., ESC[?7h)
+						// Just skip them - they don't affect our coordinate tracking
+						continue
 					} else if char >= 0x40 && char <= 0x7e { // Found terminator
 						terminatorIndex = j
 						terminator = char
