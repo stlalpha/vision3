@@ -88,6 +88,12 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 	}
 
+	// Trim trailing empty lines from header template to prevent scrolling.
+	// ANSI templates are often padded to 24/25 rows, but the message reader
+	// handles body/footer positioning separately, so trailing blank lines
+	// just push header content off the top of the screen.
+	hdrTemplateBytes = bytes.TrimRight(hdrTemplateBytes, "\r\n ")
+
 	// Terminal dimensions are now passed as parameters to use user's adjusted preferences
 	// Default to 80x24 if not provided
 	if termWidth <= 0 {
@@ -130,7 +136,11 @@ readerLoop:
 		}
 
 		// Build Pascal-style substitution map
-		templateUsesUserNote := bytes.Contains(hdrTemplateBytes, []byte("|U"))
+		templateUsesUserNote := bytes.Contains(hdrTemplateBytes, []byte("|U")) ||
+			bytes.Contains(hdrTemplateBytes, []byte("@U@")) ||
+			bytes.Contains(hdrTemplateBytes, []byte("@U:")) ||
+			bytes.Contains(hdrTemplateBytes, []byte("@U#")) ||
+			bytes.Contains(hdrTemplateBytes, []byte("@U*"))
 		replyCount := 0
 		if e.MessageMgr != nil {
 			if count, err := e.MessageMgr.GetThreadReplyCount(currentAreaID, currentMsg.MsgNum, currentMsg.Subject); err != nil {
@@ -139,10 +149,11 @@ readerLoop:
 				replyCount = count
 			}
 		}
-		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel, !templateUsesUserNote, replyCount, confName, areaName, e.MessageMgr, currentAreaID)
+		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.AccessLevel, !templateUsesUserNote, replyCount, confName, areaName, e.MessageMgr, currentAreaID, userManager)
+		autoWidths := buildAutoWidths(substitutions, totalMsgCount, termWidth)
 
 		// Process template with substitutions (auto-detects @CODE@ or |X format)
-		processedHeader := processTemplate(hdrTemplateBytes, substitutions)
+		processedHeader := processTemplate(hdrTemplateBytes, substitutions, autoWidths)
 
 		// Process message body and pre-format all lines
 		area, _ := e.MessageMgr.GetAreaByID(currentAreaID)
@@ -224,7 +235,12 @@ readerLoop:
 			if needsRedraw {
 				// Clear screen and display header
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-				terminalio.WriteProcessedBytes(terminal, processedHeader, outputMode)
+				// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+				if outputMode == ansi.OutputModeCP437 {
+					terminal.Write(processedHeader)
+				} else {
+					terminalio.WriteProcessedBytes(terminal, processedHeader, outputMode)
+				}
 
 				drawBody()
 
@@ -662,7 +678,7 @@ func findMessageByMSGID(msgMgr *message.MessageManager, areaID int, msgID string
 }
 
 // buildMsgSubstitutions creates the Pascal-style substitution map for MSGHDR templates.
-func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userNote string, userLevel int, includeNoteInFrom bool, replyCount int, confName string, areaName string, msgMgr *message.MessageManager, areaID int) map[byte]string {
+func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userLevel int, includeNoteInFrom bool, replyCount int, confName string, areaName string, msgMgr *message.MessageManager, areaID int, userMgr *user.UserMgr) map[byte]string {
 	// Import jam constants
 	const (
 		msgTypeLocal = 0x00800000
@@ -680,10 +696,12 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 	isRead := (msg.Attributes & msgRead) != 0
 	isPrivate := (msg.Attributes & msgPrivate) != 0
 
-	// Only show user note for local messages
-	userNoteToUse := userNote
-	if isEcho || isNet {
-		userNoteToUse = ""
+	// Look up the message author's user note from users.json
+	userNoteToUse := ""
+	if userMgr != nil {
+		if authorUser, found := userMgr.GetUserByHandle(msg.From); found {
+			userNoteToUse = authorUser.PrivateNote
+		}
 	}
 
 	// Truncate user note if too long (max 25 characters for display)
@@ -764,7 +782,6 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		'U': userNoteToUse,           // User note from user profile (local only)
 		'M': msgStatusStr,            // Message status (LOCAL, PRIVATE, ECHOMAIL, NETMAIL)
 		'L': strconv.Itoa(userLevel), // User level/access level
-		'R': "",                      // Real name - not available in JAM
 		'#': strconv.Itoa(msgNum),
 		'N': strconv.Itoa(totalMsgs),
 		'C': fmt.Sprintf("[%d/%d]", msgNum, totalMsgs), // Message count display
@@ -775,8 +792,60 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		'O': msg.OrigAddr,                                                          // Origin address
 		'A': msg.DestAddr,                                                          // Destination address
 		'Z': fmt.Sprintf("%s > %s", confName, areaName),                            // Conference > Area Name
-		'X': fmt.Sprintf("%s > %s [%d/%d]", confName, areaName, msgNum, totalMsgs), // Conference > Area [current/total]
+		'V': fmt.Sprintf("%d of %d", msgNum, totalMsgs),                                // Verbose count: "1 of 24"
+		'X': fmt.Sprintf("%s > %s [%d/%d]", confName, areaName, msgNum, totalMsgs),      // Conference > Area [current/total]
 	}
+}
+
+// buildAutoWidths calculates the maximum display width for each placeholder code.
+// Used by the @CODE*@ auto-width modifier so templates don't need hardcoded widths.
+// Width is based on the maximum possible value for each code in the current context:
+//   - Numeric codes (#, N, C): based on totalMsgs digit count
+//   - Fixed-format codes (D, W): known max format lengths
+//   - Context codes (Z, X): based on current conference/area names + max count width
+//   - All others: width of the current substitution value
+func buildAutoWidths(subs map[byte]string, totalMsgs int, termWidth int) map[byte]int {
+	widths := make(map[byte]int)
+
+	maxMsgNumWidth := len(strconv.Itoa(totalMsgs))
+
+	// Fixed-format codes
+	widths['D'] = 8 // MM/DD/YY always 8
+	widths['W'] = 8 // max "12:00 pm" = 8
+
+	// Numeric codes: pad to width of largest possible message number
+	widths['#'] = maxMsgNumWidth
+	widths['N'] = maxMsgNumWidth
+
+	// Count display [current/total]: max when current = totalMsgs
+	maxCountStr := fmt.Sprintf("[%d/%d]", totalMsgs, totalMsgs)
+	widths['C'] = len(maxCountStr)
+
+	// Verbose count "X of Y": max when current = totalMsgs
+	maxVerboseStr := fmt.Sprintf("%d of %d", totalMsgs, totalMsgs)
+	widths['V'] = len(maxVerboseStr)
+
+	// Z = "confName > areaName" (same for all messages in area)
+	if zVal, ok := subs['Z']; ok {
+		widths['Z'] = len(zVal)
+		// X = Z + " " + [current/total], max when current = totalMsgs
+		widths['X'] = len(zVal) + 1 + len(maxCountStr)
+	}
+
+	// Gap fill: target width is terminal width minus 1 to avoid auto-wrap
+	// at column 80 which creates blank lines for sequential text output
+	if termWidth > 1 {
+		widths['G'] = termWidth - 1
+	}
+
+	// All other codes: use current value length
+	for code, val := range subs {
+		if _, exists := widths[code]; !exists {
+			widths[code] = len(val)
+		}
+	}
+
+	return widths
 }
 
 // findHeaderEndRow parses processed ANSI bytes and tracks cursor position
@@ -1246,7 +1315,13 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Helper to redraw all options
 	redrawAll := func() {
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(selectionBytes), outputMode)
+		// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+		processedSelBytes := ansi.ReplacePipeCodes(selectionBytes)
+		if outputMode == ansi.OutputModeCP437 {
+			terminal.Write(processedSelBytes)
+		} else {
+			terminalio.WriteProcessedBytes(terminal, processedSelBytes, outputMode)
+		}
 
 		// Draw all options from BAR file
 		for i := 0; i < len(options); i++ {
@@ -1325,6 +1400,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				log.Printf("ERROR: Node %d: Failed to read header file MSGHDR.%d.ans: %v", nodeNumber, templateNum, readErr)
 				continue
 			}
+			hdrBytes = bytes.TrimRight(hdrBytes, "\r\n ")
 
 			sampleSubs := map[byte]string{
 				'B': "GENERAL",
@@ -1334,10 +1410,10 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				'U': currentUser.PrivateNote,
 				'M': "LOCAL",
 				'L': strconv.Itoa(currentUser.AccessLevel),
-				'R': currentUser.RealName,
 				'#': "1",
 				'N': "42",
 				'C': "[1/42]",
+				'V': "1 of 42",
 				'D': time.Now().Format("01/02/06"),
 				'W': time.Now().Format("3:04 pm"),
 				'P': "None",
@@ -1347,10 +1423,16 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				'Z': "GENERAL > General Discussion",
 				'X': "GENERAL > General Discussion [1/42]",
 			}
+			sampleAutoWidths := buildAutoWidths(sampleSubs, 42, 80)
 
-			processedPreview := processTemplate(hdrBytes, sampleSubs)
+			processedPreview := processTemplate(hdrBytes, sampleSubs, sampleAutoWidths)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-			terminalio.WriteProcessedBytes(terminal, processedPreview, outputMode)
+			// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+			if outputMode == ansi.OutputModeCP437 {
+				terminal.Write(processedPreview)
+			} else {
+				terminalio.WriteProcessedBytes(terminal, processedPreview, outputMode)
+			}
 
 			// Ask "Pick this header?" - centered at row 14
 			pickPrompt := "|08P|07i|15ck |08t|07h|15is |08h|07e|15ader? "
