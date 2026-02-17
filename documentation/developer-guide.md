@@ -90,17 +90,35 @@ if err != nil {
     return nil, "", err
 }
 
-// Process for display
+// Process for display and extract field coordinates
 result, err := ansi.ProcessAnsiAndExtractCoords(rawContent, outputMode)
 if err != nil {
     log.Printf("ERROR: Node %d: Failed processing ANSI: %v", nodeNumber, err)
     return nil, "", err
 }
 
+// result contains:
+// - result.DisplayBytes: Processed ANSI content ready for display
+// - result.FieldCoords: Map of field codes (|P, |O, etc.) to their (X, Y) coordinates
+// - result.FieldColors: Map of field codes to their ANSI color sequences (cumulative SGR state)
+
 // Write to terminal
 wErr := terminalio.WriteProcessedBytes(terminal, result.DisplayBytes, outputMode)
 if wErr != nil {
     log.Printf("ERROR: Node %d: Failed writing display: %v", nodeNumber, wErr)
+}
+
+// Use field coordinates and colors for positioned input
+if coord, ok := result.FieldCoords["P"]; ok {
+    // Move cursor to field position
+    terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(coord.Y, coord.X)), outputMode)
+    // Apply the color that was active at |P position (respects foreground, background, bold, etc.)
+    if color, ok := result.FieldColors["P"]; ok && color != "" {
+        terminalio.WriteProcessedBytes(terminal, []byte(color), outputMode)
+    }
+    input, _ := terminal.ReadLine()
+    // Reset color attributes after input (required for bright colors and backgrounds)
+    terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
 }
 ```
 

@@ -1459,8 +1459,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				return "", nil, fmt.Errorf("failed to display LOGIN.ANS: %w", wErr)
 			}
 
-			// Handle the interactive login prompt using extracted coordinates
-			authenticatedUserResult, loginErr := e.handleLoginPrompt(s, terminal, userManager, nodeNumber, ansiProcessResult.FieldCoords, outputMode, termWidth, termHeight)
+			// Handle the interactive login prompt using extracted coordinates and colors
+			authenticatedUserResult, loginErr := e.handleLoginPrompt(s, terminal, userManager, nodeNumber, ansiProcessResult.FieldCoords, ansiProcessResult.FieldColors, outputMode, termWidth, termHeight)
 
 			// Process result of login attempt
 			if loginErr != nil {
@@ -2052,7 +2052,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 // handleLoginPrompt manages the interactive username/password entry using coordinates.
 // Added outputMode parameter.
-func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, nodeNumber int, coords map[string]struct{ X, Y int }, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, error) {
+func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, nodeNumber int, coords map[string]struct{ X, Y int }, colors map[string]string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, error) {
 	// Get coordinates for username and password fields from the map
 	userCoord, userOk := coords["P"] // Use 'P' for Handle/Name field based on LOGIN.ANS
 	passCoord, passOk := coords["O"] // Use 'O' for Password field based on LOGIN.ANS
@@ -2079,7 +2079,13 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 
 	// Move to Username position (coordinates are accurate since display is truncated to fit)
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(userCoord.Y, userCoord.X)), outputMode)
+	// Apply the color that was at the |P position in the ANSI file
+	if userColor, ok := colors["P"]; ok && userColor != "" {
+		terminalio.WriteProcessedBytes(terminal, []byte(userColor), outputMode)
+	}
 	usernameInput, err := terminal.ReadLine()
+	// Reset color attributes after input (required for bright colors)
+	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
 	if err != nil {
 		if err == io.EOF {
 			return nil, io.EOF // Signal disconnection
@@ -2108,7 +2114,13 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 
 	// Move to Password position (coordinates are accurate since display is truncated to fit)
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(passCoord.Y, passCoord.X)), outputMode)
+	// Apply the color that was at the |O position in the ANSI file
+	if passColor, ok := colors["O"]; ok && passColor != "" {
+		terminalio.WriteProcessedBytes(terminal, []byte(passColor), outputMode)
+	}
 	password, err := readPasswordSecurely(s, terminal, outputMode) // Use ssh.Session 's'
+	// Reset color attributes after input (required for bright colors)
+	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, io.EOF // Signal disconnection
