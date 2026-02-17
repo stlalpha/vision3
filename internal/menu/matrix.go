@@ -335,7 +335,12 @@ func (e *MenuExecutor) showPrelogon(terminal *term.Terminal, nodeNumber int, out
 
 	log.Printf("INFO: Node %d: Displaying prelogon screen: %s", nodeNumber, filepath.Base(candidates[idx]))
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	terminalio.WriteProcessedBytes(terminal, rawContent, outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(rawContent)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, rawContent, outputMode)
+	}
 
 	// HoldScreen — pause before proceeding to login
 	pausePrompt := e.LoadedStrings.PauseString
@@ -356,7 +361,12 @@ func drawMatrixScreen(
 ) error {
 	// Clear screen and draw background
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	terminalio.WriteProcessedBytes(terminal, ansBackground, outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(ansBackground)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, ansBackground, outputMode)
+	}
 
 	// Draw options with highlighting
 	return drawMatrixOptions(terminal, options, selectedIndex, outputMode)

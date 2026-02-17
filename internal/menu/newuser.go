@@ -185,7 +185,13 @@ func (e *MenuExecutor) displayNewUserScreen(terminal *term.Terminal, outputMode 
 	}
 
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	terminalio.WriteProcessedBytes(terminal, rawContent, outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	// (some CP437 byte pairs accidentally form valid UTF-8)
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(rawContent)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, rawContent, outputMode)
+	}
 	return nil
 }
 
