@@ -244,6 +244,36 @@ Subj: Welcome to Vision3!
 
 The `@#*@` auto-pads to 4 characters (matching the width of "1500"), keeping alignment consistent across all messages.
 
+#### Using Alignment Modifiers
+
+```text
+Msg: @#|R4@/@N|R4@       Posted: @D:8@ @W|R8@
+From: @F:30@                To: @S:25@
+Subj: @T:70@
+```
+
+With 1500 messages, message 3 at 2:30 pm:
+```text
+Msg:    3/1500       Posted: 01/15/26  2:30 pm
+From: sysop                         To: All
+Subj: Welcome to Vision3!
+```
+
+The `@#|R4@` right-justifies the message number so `3` appears as `   3`, and `@W|R8@` right-justifies the time so `2:30 pm` appears as ` 2:30 pm`.
+
+#### Centered Fields
+
+```text
+@T|C70@
+From: @F:30@                To: @S:25@
+```
+
+With subject "Hello World":
+```text
+                              Hello World                              
+From: sysop                         To: All
+```
+
 #### ANSI Art with Visual Placeholders
 
 ```text
@@ -287,6 +317,21 @@ Vision3 maintains support for legacy `|X` format templates:
 - Both formats work in the same system
 - Gradual migration is supported
 
+## Full-Screen Editor Placeholders (FSEDITOR.ANS)
+
+The full-screen editor header template (`menus/v3/ansi/FSEDITOR.ANS`) uses the same `@CODE@` placeholder system with alignment modifiers. The editor supports these codes:
+
+| Code  | Replaced With                             |
+| ----- | ----------------------------------------- |
+| `@S@` | Recipient (To field)                      |
+| `@F@` | Sender (From field)                       |
+| `@E@` | Subject                                   |
+| `@T@` | Current time                              |
+| `@D@` | Current date                              |
+| `@I@` | Insert/Overwrite mode indicator (dynamic) |
+
+The default FSEDITOR.ANS template uses `@T|R8@` to right-justify the time display in an 8-character field.
+
 ## Notes
 
 - Templates are raw ANSI with absolute cursor positioning
@@ -294,6 +339,7 @@ Vision3 maintains support for legacy `|X` format templates:
 - If your template includes `@U@`, the user note is not also injected into `@F@`
 - Visual placeholders make it easy to design precise ANSI layouts
 - The `@` delimiter was chosen to avoid conflicts with ANSI editor pipe codes
+- Alignment modifiers work in both message header templates and editor header templates
 
 ## Migration from Legacy Format
 
@@ -323,3 +369,4 @@ With width: @#:4@: @T:50@
 - ✅ **Width control** - Precise layouts with parameter or visual width
 - ✅ **ANSI-aware** - Color codes preserved during truncation
 - ✅ **Simple workflow** - No encode/decode scripts required
+- ✅ **Alignment modifiers** - Right-justify, center, or left-justify fields with `|R`, `|C`, `|L`
