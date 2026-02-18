@@ -323,9 +323,9 @@ func TestLoadServerConfig_PartialOverlayPreservesDefaults(t *testing.T) {
 func TestLoadStrings_ValidFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := map[string]interface{}{
-		"pauseString":  "Press any key...",
+		"pauseString":   "Press any key...",
 		"anonymousName": "Anonymous Coward",
-		"defColor1":    14,
+		"defColor1":     14,
 	}
 	data, _ := json.Marshal(cfg)
 	os.WriteFile(filepath.Join(tmpDir, "strings.json"), data, 0644)
@@ -432,5 +432,90 @@ func TestLoadOneLiners_EmptyFile(t *testing.T) {
 	}
 	if len(result) != 0 {
 		t.Errorf("expected 0 oneliners from empty file, got %d", len(result))
+	}
+}
+
+func TestLoadServerConfig_AllowNewUsersDefaultTrue(t *testing.T) {
+	tmpDir := t.TempDir()
+	// No config.json — AllowNewUsers should default to true
+	result, err := LoadServerConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.AllowNewUsers {
+		t.Error("expected AllowNewUsers to default to true")
+	}
+}
+
+func TestLoadServerConfig_AllowNewUsersExplicitFalse(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := map[string]interface{}{
+		"allowNewUsers": false,
+	}
+	data, _ := json.Marshal(cfg)
+	os.WriteFile(filepath.Join(tmpDir, "config.json"), data, 0644)
+
+	result, err := LoadServerConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.AllowNewUsers {
+		t.Error("expected AllowNewUsers to be false when explicitly set")
+	}
+}
+
+func TestLoadServerConfig_AllowNewUsersExplicitTrue(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := map[string]interface{}{
+		"boardName":     "Test BBS",
+		"allowNewUsers": true,
+	}
+	data, _ := json.Marshal(cfg)
+	os.WriteFile(filepath.Join(tmpDir, "config.json"), data, 0644)
+
+	result, err := LoadServerConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.AllowNewUsers {
+		t.Error("expected AllowNewUsers to be true when explicitly set")
+	}
+	if result.BoardName != "Test BBS" {
+		t.Errorf("expected 'Test BBS', got %s", result.BoardName)
+	}
+}
+
+func TestLoadServerConfig_AllowNewUsersPreservedInPartialOverlay(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Only override boardName — AllowNewUsers should keep default (true)
+	cfg := map[string]interface{}{
+		"boardName": "Partial BBS",
+	}
+	data, _ := json.Marshal(cfg)
+	os.WriteFile(filepath.Join(tmpDir, "config.json"), data, 0644)
+
+	result, err := LoadServerConfig(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.AllowNewUsers {
+		t.Error("expected AllowNewUsers to remain true when not specified in config")
+	}
+}
+
+func TestLoadStrings_NewUsersClosedStr(t *testing.T) {
+	tmpDir := t.TempDir()
+	cfg := map[string]interface{}{
+		"newUsersClosedStr": "|12Registration is closed.|07",
+	}
+	data, _ := json.Marshal(cfg)
+	os.WriteFile(filepath.Join(tmpDir, "strings.json"), data, 0644)
+
+	result, err := LoadStrings(tmpDir)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.NewUsersClosedStr != "|12Registration is closed.|07" {
+		t.Errorf("expected custom NewUsersClosedStr, got %q", result.NewUsersClosedStr)
 	}
 }

@@ -20,5 +20,6 @@
   "maxFailedLogins": 5,
   "lockoutMinutes": 30,
   "fileListingMode": "lightbar",
-  "legacySSHAlgorithms": true
+  "legacySSHAlgorithms": true,
+  "allowNewUsers": true
 }

@@ -39,6 +39,24 @@ func (e *MenuExecutor) handleNewUserApplication(
 ) error {
 	log.Printf("INFO: Node %d: Starting new user application", nodeNumber)
 
+	// Check if new user registration is allowed
+	serverCfg := e.GetServerConfig()
+	if !serverCfg.AllowNewUsers {
+		log.Printf("INFO: Node %d: New user registration is disabled", nodeNumber)
+		closedMsg := e.LoadedStrings.NewUsersClosedStr
+		if closedMsg == "" {
+			closedMsg = "\r\n|12This BBS is not accepting new users at this time.|07\r\n"
+		}
+		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(closedMsg)), outputMode)
+		pausePrompt := e.LoadedStrings.PauseString
+		if pausePrompt == "" {
+			pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
+		}
+		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(pausePrompt)), outputMode)
+		terminal.ReadLine()
+		return nil
+	}
+
 	// 1. "Apply for access?" prompt (before showing the ANS screen, matching Pascal flow)
 	applyPrompt := e.LoadedStrings.ApplyAsNewStr
 	if applyPrompt == "" {

@@ -226,6 +226,7 @@ type StringsConfig struct {
 	PageNodeOffline       string `json:"pageNodeOffline"`
 
 	// Newuser strings (V3-specific)
+	NewUsersClosedStr       string `json:"newUsersClosedStr"`
 	NewUserLocationPrompt   string `json:"newUserLocationPrompt"`
 	NewUserPasswordTooShort string `json:"newUserPasswordTooShort"`
 	NewUserPasswordMismatch string `json:"newUserPasswordMismatch"`
@@ -669,6 +670,7 @@ type ServerConfig struct {
 	LockoutMinutes      int    `json:"lockoutMinutes"`
 	FileListingMode     string `json:"fileListingMode"`
 	LegacySSHAlgorithms bool   `json:"legacySSHAlgorithms"`
+	AllowNewUsers       bool   `json:"allowNewUsers"`
 }
 
 // EventConfig defines a scheduled event configuration
@@ -719,6 +721,7 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		MaxConnectionsPerIP: 3,
 		MaxFailedLogins:     5,
 		LockoutMinutes:      30,
+		AllowNewUsers:       true,
 	}
 
 	data, err := os.ReadFile(filePath)
