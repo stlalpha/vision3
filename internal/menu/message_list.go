@@ -527,15 +527,24 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return currentUser, "", nil
 	}
 
-	// Use passed termHeight (from user preferences or PTY detection in main.go)
-	// Don't read from PTY here as it may not reflect user's saved preferences
+	// Derive an effective terminal height.
+	// Prefer live PTY height, then user profile height, then passed fallback.
+	effectiveHeight := termHeight
+	if ptyReq, _, ok := s.Pty(); ok && ptyReq.Window.Height > 0 {
+		effectiveHeight = ptyReq.Window.Height
+	} else if currentUser.ScreenHeight > 0 {
+		effectiveHeight = currentUser.ScreenHeight
+	}
+	if effectiveHeight <= 0 {
+		effectiveHeight = 24
+	}
 
 	// Calculate items per page based on terminal height
 	// Header: 5 lines (top border, title, separator, column headers, separator)
 	// Footer: 5 lines (separator, page info, separator, help, bottom border)
 	headerHeight := 5
 	footerHeight := 5
-	itemsPerPage := termHeight - headerHeight - footerHeight
+	itemsPerPage := effectiveHeight - headerHeight - footerHeight
 	if itemsPerPage < 3 {
 		itemsPerPage = 3 // Minimum
 	}
@@ -552,7 +561,7 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	// Main navigation loop
-	reader := bufio.NewReader(s)
+	reader := bufio.NewReader(getSessionIH(s))
 
 	// Ensure cursor is restored when exiting
 	defer func() {
