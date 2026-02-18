@@ -606,6 +606,11 @@ func (s *Screen) RefreshLine(lineNum int, lineContent string, topLine int) {
 
 // RefreshScreen redraws all visible lines (incremental update)
 func (s *Screen) RefreshScreen(buffer *MessageBuffer, topLine, currentLine, currentCol int, insertMode bool, forceStatusUpdate bool) {
+	// Hide cursor during redraw so intermediate cursor moves (line repaints at col 1)
+	// are not visible as flicker to the user.
+	s.WriteDirect("\x1b[?25l")
+	defer s.WriteDirect("\x1b[?25h")
+
 	lineCount := buffer.GetLineCount()
 
 	// Draw visible lines
