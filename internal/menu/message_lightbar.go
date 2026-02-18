@@ -269,6 +269,17 @@ func promptSingleChar(reader *bufio.Reader, terminal *term.Terminal, prompt stri
 // readKeySequence reads a key sequence, handling escape sequences for arrow keys, page up/down, etc.
 // Returns the complete sequence as a string for switch handling.
 func readKeySequence(reader *bufio.Reader) (string, error) {
+	waitForBuffered := func(timeout time.Duration) bool {
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			if reader.Buffered() > 0 {
+				return true
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+		return reader.Buffered() > 0
+	}
+
 	// Read first byte
 	firstByte, err := reader.ReadByte()
 	if err != nil {
@@ -277,19 +288,15 @@ func readKeySequence(reader *bufio.Reader) (string, error) {
 
 	// Check if it's an escape sequence
 	if firstByte == 0x1B { // ESC
-		// Try to read next byte(s) quickly - check if buffered
-		time.Sleep(25 * time.Millisecond) // Small delay for escape sequence
-
-		if reader.Buffered() > 0 {
+		// Wait briefly for the next byte so arrow keys aren't split into a lone ESC
+		// on slower links/PTY scheduling.
+		if waitForBuffered(60 * time.Millisecond) {
 			secondByte, err := reader.ReadByte()
 			if err == nil && secondByte == '[' {
 				// ANSI escape sequence - read until we get a letter or tilde
 				seq := []byte{0x1B, '['}
 				for {
-					if reader.Buffered() == 0 {
-						time.Sleep(10 * time.Millisecond)
-					}
-					if reader.Buffered() > 0 {
+					if waitForBuffered(20 * time.Millisecond) {
 						b, err := reader.ReadByte()
 						if err != nil {
 							break
