@@ -1,7 +1,6 @@
 package menu
 
 import (
-	"bufio"
 	"fmt"
 	"log"
 	"strings"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
@@ -389,9 +389,9 @@ func refreshPageContent(terminal *term.Terminal, state *MessageListState, output
 }
 
 // runMessageListNavigation handles keyboard input for list navigation
-func runMessageListNavigation(reader *bufio.Reader, state *MessageListState) (action string, selectedMsg int, err error) {
+func runMessageListNavigation(ih *editor.InputHandler, state *MessageListState) (action string, selectedMsg int, err error) {
 	for {
-		keySeq, err := readKeySequence(reader)
+		key, err := ih.ReadKey()
 		if err != nil {
 			return "ERROR", 0, err
 		}
@@ -406,8 +406,8 @@ func runMessageListNavigation(reader *bufio.Reader, state *MessageListState) (ac
 		start, end := calculatePagination(len(state.Entries), state.ItemsPerPage, state.CurrentPage)
 		itemsOnPage := end - start
 
-		switch keySeq {
-		case "\x1b[A": // Up arrow
+		switch key {
+		case editor.KeyArrowUp, editor.KeyCtrlE: // Up arrow
 			if state.SelectedIndex > 0 {
 				state.SelectedIndex--
 				return "REFRESH_LINE", 0, nil
@@ -419,7 +419,7 @@ func runMessageListNavigation(reader *bufio.Reader, state *MessageListState) (ac
 				return "REFRESH_FULL", 0, nil
 			}
 
-		case "\x1b[B": // Down arrow
+		case editor.KeyArrowDown, editor.KeyCtrlX: // Down arrow
 			if state.SelectedIndex < itemsOnPage-1 {
 				state.SelectedIndex++
 				return "REFRESH_LINE", 0, nil
@@ -430,44 +430,44 @@ func runMessageListNavigation(reader *bufio.Reader, state *MessageListState) (ac
 				return "REFRESH_FULL", 0, nil
 			}
 
-		case "\x1b[5~": // Page Up
+		case editor.KeyPageUp, editor.KeyCtrlR: // Page Up
 			if state.CurrentPage > 1 {
 				state.CurrentPage--
 				state.SelectedIndex = 0
 				return "REFRESH_FULL", 0, nil
 			}
 
-		case "\x1b[6~": // Page Down
+		case editor.KeyPageDown, editor.KeyCtrlC: // Page Down
 			if state.CurrentPage < totalPages {
 				state.CurrentPage++
 				state.SelectedIndex = 0
 				return "REFRESH_FULL", 0, nil
 			}
 
-		case "\x1b[H": // Home
+		case editor.KeyHome, editor.KeyCtrlW: // Home
 			if state.CurrentPage != 1 || state.SelectedIndex != 0 {
 				state.CurrentPage = 1
 				state.SelectedIndex = 0
 				return "REFRESH_FULL", 0, nil
 			}
 
-		case "\x1b[F": // End
+		case editor.KeyEnd, editor.KeyCtrlP: // End
 			lastPage := totalPages
 			state.CurrentPage = lastPage
 			start, end := calculatePagination(len(state.Entries), state.ItemsPerPage, state.CurrentPage)
 			state.SelectedIndex = (end - start) - 1
 			return "REFRESH_FULL", 0, nil
 
-		case "\r", "\n": // Enter - read selected message
+		case editor.KeyEnter: // Enter - read selected message
 			actualIndex := start + state.SelectedIndex
 			if actualIndex < len(state.Entries) {
 				return "READ", state.Entries[actualIndex].MsgNum, nil
 			}
 
-		case "Q", "q": // Quit
+		case 'Q', 'q': // Quit
 			return "QUIT", 0, nil
 
-		case "?": // Help (future enhancement)
+		case '?': // Help (future enhancement)
 			// TODO: Show help screen
 			return "REFRESH_FULL", 0, nil
 		}
@@ -561,7 +561,7 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	// Main navigation loop
-	reader := bufio.NewReader(getSessionIH(s))
+	sessionIH := getSessionIH(s)
 
 	// Ensure cursor is restored when exiting
 	defer func() {
@@ -578,7 +578,7 @@ func runListMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	for {
 		// Handle navigation
-		action, selectedMsg, err := runMessageListNavigation(reader, state)
+		action, selectedMsg, err := runMessageListNavigation(sessionIH, state)
 		if err != nil {
 			log.Printf("ERROR: Node %d: Navigation error: %v", nodeNumber, err)
 			return currentUser, "LOGOFF", err
