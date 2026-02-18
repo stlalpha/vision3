@@ -15,9 +15,9 @@ import (
 
 	"github.com/stlalpha/vision3/internal/ansi"
 	"github.com/stlalpha/vision3/internal/config"
-	"github.com/stlalpha/vision3/internal/jam"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
+	"github.com/stlalpha/vision3/internal/version"
 )
 
 func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
@@ -51,7 +51,7 @@ func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	tokens := map[string]string{
 		"BBSNAME":     e.ServerCfg.BoardName,
 		"SYSOP":       sysopName,
-		"VERSION":     jam.Version,
+		"VERSION":     version.Number,
 		"TOTALUSERS":  strconv.Itoa(userManager.GetUserCount()),
 		"TOTALCALLS":  strconv.FormatUint(userManager.GetTotalCalls(), 10),
 		"TOTALMSGS":   strconv.Itoa(e.MessageMgr.GetTotalMessageCount()),

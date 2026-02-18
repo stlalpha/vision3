@@ -36,6 +36,7 @@ import (
 	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
+	"github.com/stlalpha/vision3/internal/version"
 	"github.com/stlalpha/vision3/internal/ziplab"
 	"golang.org/x/term"
 )
@@ -6712,12 +6713,15 @@ func runDeleteUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, user
 	return nil, "", nil
 }
 
-// runShowVersion displays static version information.
+// runShowVersion displays configured version information.
 func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running SHOWVERSION", nodeNumber)
 
-	// Define the version string (can be made dynamic later)
-	versionString := e.LoadedStrings.ExecVersionString
+	versionTemplate := e.LoadedStrings.ExecVersionString
+	versionString := versionTemplate
+	if strings.Contains(versionTemplate, "%s") {
+		versionString = fmt.Sprintf(versionTemplate, version.Number)
+	}
 
 	// Display the version
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode) // Optional: Clear screen

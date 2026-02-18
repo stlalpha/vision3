@@ -10,9 +10,8 @@ import (
 	"time"
 
 	"github.com/stlalpha/vision3/internal/jam"
+	"github.com/stlalpha/vision3/internal/version"
 )
-
-const version = "1.0.0"
 
 // areaConfig is a minimal struct for parsing message_areas.json
 // without importing the heavyweight message package.
@@ -31,7 +30,7 @@ func main() {
 
 	cmd := os.Args[1]
 	if cmd == "--version" || cmd == "-version" {
-		fmt.Printf("jamutil %s - JAM Message Base Utility for Vision3\n", version)
+		fmt.Printf("jamutil %s - JAM Message Base Utility for Vision3\n", version.Number)
 		return
 	}
 	if cmd == "--help" || cmd == "-h" || cmd == "help" {
@@ -89,7 +88,7 @@ Examples:
   jamutil link --all
   jamutil lastread data/msgbases/general
   jamutil lastread --reset testuser data/msgbases/general
-`, version)
+`, version.Number)
 }
 
 // resolveBasePaths returns base paths from positional args or --all flag.

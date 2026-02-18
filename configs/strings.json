@@ -371,5 +371,5 @@
   "execRunCommandNotFound": "\r\n|01Internal command '%s' not found.|07\r\n",
   "execRunDoorError": "\r\n|01Error running door '%s': %v|07\r\n",
   "execLoginCriticalError": "\r\n|01CRITICAL ERROR: Login screen configuration invalid (Missing P/O).|07\r\n",
-  "execVersionString": "|15ViSiON/3 Go Edition - v0.1.0 (Pre-Alpha)|07"
+  "execVersionString": "|15ViSiON/3 Go Edition - v%s (Pre-Alpha)|07"
 }
