@@ -648,7 +648,6 @@ type FTNConfig struct {
 // ServerConfig defines server-wide settings
 type ServerConfig struct {
 	BoardName           string `json:"boardName"`
-	BoardPhoneNumber    string `json:"boardPhoneNumber"`
 	SysOpName           string `json:"sysOpName"`
 	Timezone            string `json:"timezone,omitempty"`
 	SysOpLevel          int    `json:"sysOpLevel"`
@@ -704,7 +703,6 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 	// Default config values
 	defaultConfig := ServerConfig{
 		BoardName:           "ViSiON/3 BBS",
-		BoardPhoneNumber:    "",
 		Timezone:            "",
 		SysOpLevel:          255,
 		CoSysOpLevel:        250,

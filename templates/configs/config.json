@@ -1,6 +1,5 @@
 {
   "boardName": "My BBS",
-  "boardPhoneNumber": "555-555-5555",
   "timezone": "America/Chicago",
   "sysOpLevel": 255,
   "coSysOpLevel": 250,
