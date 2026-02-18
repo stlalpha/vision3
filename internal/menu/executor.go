@@ -321,6 +321,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["BANUSER"] = runBanUser                                 // Quick-ban user accounts
 	registry["DELETEUSER"] = runDeleteUser                           // Soft-delete user accounts (data preserved)
 	registry["ADMINLISTUSERS"] = runAdminListUsers                   // Admin detailed user browser
+	registry["TOGGLEALLOWNEWUSERS"] = runAdminToggleAllowNewUsers    // Toggle allowNewUsers config flag
 	registry["LISTMSGAR"] = runListMessageAreas                      // <-- ADDED: Register message area list runnable
 	registry["COMPOSEMSG"] = runComposeMessage                       // <-- ADDED: Register compose message runnable
 	registry["PROMPTANDCOMPOSEMESSAGE"] = runPromptAndComposeMessage // <-- ADDED: Register prompt/compose runnable (Corrected key to uppercase)
@@ -1357,9 +1358,18 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 		// Process the associated ANSI file to get display bytes and coordinates
 		rawAnsiContent, readErr := ansi.GetAnsiFileContent(fullAnsPath)
-		if readErr == nil && currentMenuName == "ADMIN" {
-			pendingCount := pendingValidationCount(userManager)
-			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("{{PENDING_VALIDATIONS}}"), []byte(strconv.Itoa(pendingCount)))
+		if readErr == nil {
+			if currentMenuName == "ADMIN" {
+				pendingCount := pendingValidationCount(userManager)
+				rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("{{PENDING_VALIDATIONS}}"), []byte(strconv.Itoa(pendingCount)))
+			}
+			// Substitute global server-state placeholders before ANSI processing,
+			// so multi-letter codes like |NEWUSERS aren't mis-parsed as coord markers.
+			newUsersVal := "NO"
+			if e.GetServerConfig().AllowNewUsers {
+				newUsersVal = "YES"
+			}
+			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|NEWUSERS"), []byte(newUsersVal))
 		}
 		var ansiProcessResult ansi.ProcessAnsiResult
 		var processErr error
@@ -2907,13 +2917,19 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 
 	log.Printf("DEBUG: Displaying menu prompt for: %s", currentMenuName)
 
+	newUsersStatus := "NO"
+	if e.GetServerConfig().AllowNewUsers {
+		newUsersStatus = "YES"
+	}
+
 	placeholders := map[string]string{
-		"|NODE":   strconv.Itoa(nodeNumber), // Node Number
-		"|DATE":   time.Now().Format("01/02/06"),
-		"|TIME":   time.Now().Format("15:04"),
-		"|MN":     currentMenuName, // Menu Name
-		"|PV":     "0",             // Pending validations
-		"|UH":     "Guest",         // User Handle
+		"|NODE":     strconv.Itoa(nodeNumber), // Node Number
+		"|DATE":     time.Now().Format("01/02/06"),
+		"|TIME":     time.Now().Format("15:04"),
+		"|MN":       currentMenuName, // Menu Name
+		"|PV":       "0",             // Pending validations
+		"|UH":       "Guest",         // User Handle
+		"|NEWUSERS": newUsersStatus,  // Allow new users (YES/NO)
 		"|ALIAS":  "Guest",         // Default
 		"|HANDLE": "Guest",         // Default
 		"|LEVEL":  "0",             // Default
@@ -5380,6 +5396,40 @@ func runPendingValidationNotice(e *MenuExecutor, s ssh.Session, terminal *term.T
 		return nil, "", err
 	}
 
+	return nil, "", nil
+}
+
+// runAdminToggleAllowNewUsers toggles the allowNewUsers config flag and persists it to config.json.
+func runAdminToggleAllowNewUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	if currentUser == nil {
+		return nil, "", nil
+	}
+	sysOpACS := fmt.Sprintf("S%d", e.ServerCfg.SysOpLevel)
+	if !checkACS(sysOpACS, currentUser, s, terminal, sessionStartTime) {
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Access denied.|07\r\n")), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	cfg := e.GetServerConfig()
+	cfg.AllowNewUsers = !cfg.AllowNewUsers
+
+	if err := config.SaveServerConfig(e.RootConfigPath, cfg); err != nil {
+		log.Printf("ERROR: Node %d: Failed to save config after toggling allowNewUsers: %v", nodeNumber, err)
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error saving config.|07\r\n")), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	e.SetServerConfig(cfg)
+
+	stateStr := "|12CLOSED|07"
+	if cfg.AllowNewUsers {
+		stateStr = "|10OPEN|07"
+	}
+	msg := fmt.Sprintf("\r\n|07New user registrations: %s\r\n", stateStr)
+	_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+	time.Sleep(1 * time.Second)
 	return nil, "", nil
 }
 

@@ -788,6 +788,20 @@ func LoadFTNConfig(configPath string) (FTNConfig, error) {
 	return config, nil
 }
 
+// SaveServerConfig writes the ServerConfig back to config.json in the given configPath directory.
+func SaveServerConfig(configPath string, cfg ServerConfig) error {
+	filePath := filepath.Join(configPath, "config.json")
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal server config: %w", err)
+	}
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file %s: %w", filePath, err)
+	}
+	log.Printf("INFO: Server configuration saved to %s", filePath)
+	return nil
+}
+
 // LoadEventsConfig loads the event scheduler configuration from events.json
 func LoadEventsConfig(configPath string) (EventsConfig, error) {
 	filePath := filepath.Join(configPath, "events.json")

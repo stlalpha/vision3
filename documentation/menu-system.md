@@ -179,6 +179,7 @@ Dynamic content placeholders in prompts and ANSI files:
 - `|GL` - Group/Location (from user profile)
 - `|UN` - User note (privateNote from user profile)
 - `|CC` - Current message conference
+- `|NEWUSERS` - New user registration status (`YES` or `NO`)
 
 ### Coordinate Codes
 
@@ -470,6 +471,7 @@ Functions available via `RUN:` command:
 
 - `ONELINER` - One-liner system
 - `SHOWVERSION` - Display BBS version
+- `TOGGLEALLOWNEWUSERS` - Toggle new user registration open/closed (SysOp only)
 
 ### Last Callers (`RUN:LASTCALLERS`)
 
