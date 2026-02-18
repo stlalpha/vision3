@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // StringsConfig holds all the configurable strings for the BBS.
@@ -842,4 +843,29 @@ func LoadEventsConfig(configPath string) (EventsConfig, error) {
 	log.Printf("INFO: Loaded event scheduler configuration: %d event(s), %d enabled", len(config.Events), enabledCount)
 
 	return config, nil
+}
+
+// LoadTimezone returns a *time.Location for the given timezone string.
+// It tries the value from config.json first, then the VISION3_TIMEZONE and TZ
+// environment variables, falling back to time.Local if none resolve.
+func LoadTimezone(configTZ string) *time.Location {
+	tz := strings.TrimSpace(configTZ)
+	if tz == "" {
+		tz = strings.TrimSpace(os.Getenv("VISION3_TIMEZONE"))
+	}
+	if tz == "" {
+		tz = strings.TrimSpace(os.Getenv("TZ"))
+	}
+	if tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			return loc
+		}
+		log.Printf("WARN: Invalid timezone '%s'. Falling back to server local timezone.", tz)
+	}
+	return time.Local
+}
+
+// NowIn returns the current time in the configured timezone.
+func NowIn(configTZ string) time.Time {
+	return time.Now().In(LoadTimezone(configTZ))
 }

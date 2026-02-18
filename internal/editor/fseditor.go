@@ -82,6 +82,11 @@ func (e *FSEditor) SetMetadata(subject, recipient, fromName string, isAnon bool)
 	e.isAnon = isAnon
 }
 
+// SetTimezone configures the timezone used for date/time display in the editor header.
+func (e *FSEditor) SetTimezone(configTZ string) {
+	e.screen.configTimezone = configTZ
+}
+
 // SetQuoteData sets message data to be used for the /Q quote command
 func (e *FSEditor) SetQuoteData(data *QuoteData) {
 	e.commands.SetQuoteData(data)

@@ -14,6 +14,7 @@ import (
 	term "golang.org/x/term"
 
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/jam"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
@@ -46,7 +47,7 @@ func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		sysopName = sysopUser.Handle
 	}
 
-	now := time.Now()
+	now := config.NowIn(e.ServerCfg.Timezone)
 	tokens := map[string]string{
 		"BBSNAME":     e.ServerCfg.BoardName,
 		"SYSOP":       sysopName,

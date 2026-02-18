@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/terminalio"
 )
 
@@ -28,6 +29,8 @@ type Screen struct {
 	lastStatusUpdate string         // Track last status to avoid redundant updates
 	insertModeRow    int            // Terminal row of the @I@ insert-mode indicator (1-based)
 	insertModeCol    int            // Terminal col of the @I@ insert-mode indicator (1-based)
+	timeLoc          *time.Location // Timezone for date/time display
+	configTimezone   string         // Raw timezone string from config
 }
 
 // NewScreen creates a new screen manager
@@ -109,7 +112,12 @@ func isEditorNewFormat(content string) bool {
 func (s *Screen) processPipeCodes(content []byte, subject, recipient, fromName string, isAnon bool) []byte {
 	str := string(content)
 
-	now := time.Now()
+	loc := s.timeLoc
+	if loc == nil {
+		loc = config.LoadTimezone(s.configTimezone)
+		s.timeLoc = loc
+	}
+	now := time.Now().In(loc)
 	dateStr := now.Format("01/02/2006")
 	timeStr := now.Format("3:04 PM")
 

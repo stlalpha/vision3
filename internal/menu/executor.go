@@ -2804,22 +2804,7 @@ func formatLastCallerShortLocalTime(t time.Time, timeLoc *time.Location) string 
 }
 
 func getLastCallerTimeLocation(configTZ string) *time.Location {
-	tzName := strings.TrimSpace(configTZ)
-	if tzName == "" {
-		tzName = strings.TrimSpace(os.Getenv("VISION3_TIMEZONE"))
-	}
-	if tzName == "" {
-		tzName = strings.TrimSpace(os.Getenv("TZ"))
-	}
-
-	if tzName != "" {
-		if loc, err := time.LoadLocation(tzName); err == nil {
-			return loc
-		}
-		log.Printf("WARN: Invalid LASTCALLERS timezone '%s'. Falling back to server local timezone.", tzName)
-	}
-
-	return time.Local
+	return config.LoadTimezone(configTZ)
 }
 
 // displayFile reads and displays an ANSI file from the MENU SET's ansi directory.
@@ -2924,27 +2909,27 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 
 	placeholders := map[string]string{
 		"|NODE":     strconv.Itoa(nodeNumber), // Node Number
-		"|DATE":     time.Now().Format("01/02/06"),
-		"|TIME":     time.Now().Format("15:04"),
+		"|DATE":     config.NowIn(e.ServerCfg.Timezone).Format("01/02/06"),
+		"|TIME":     config.NowIn(e.ServerCfg.Timezone).Format("15:04"),
 		"|MN":       currentMenuName, // Menu Name
 		"|PV":       "0",             // Pending validations
 		"|UH":       "Guest",         // User Handle
 		"|NEWUSERS": newUsersStatus,  // Allow new users (YES/NO)
-		"|ALIAS":  "Guest",         // Default
-		"|HANDLE": "Guest",         // Default
-		"|LEVEL":  "0",             // Default
-		"|NAME":   "Guest User",    // Default
-		"|PHONE":  "",              // Default
-		"|GL":     "",              // Group/Location default
-		"|UN":     "",              // User note (privateNote) default
-		"|UPLDS":  "0",             // Default
-		"|DNLDS":  "0",             // Default
-		"|POSTS":  "0",             // Default
-		"|CALLS":  "0",             // Default
-		"|LCALL":  "Never",         // Default
-		"|TL":     "N/A",           // Default
-		"|CA":     "None",          // Default
-		"|CC":     "None",          // Current conference default
+		"|ALIAS":    "Guest",         // Default
+		"|HANDLE":   "Guest",         // Default
+		"|LEVEL":    "0",             // Default
+		"|NAME":     "Guest User",    // Default
+		"|PHONE":    "",              // Default
+		"|GL":       "",              // Group/Location default
+		"|UN":       "",              // User note (privateNote) default
+		"|UPLDS":    "0",             // Default
+		"|DNLDS":    "0",             // Default
+		"|POSTS":    "0",             // Default
+		"|CALLS":    "0",             // Default
+		"|LCALL":    "Never",         // Default
+		"|TL":       "N/A",           // Default
+		"|CA":       "None",          // Default
+		"|CC":       "None",          // Current conference default
 	}
 
 	// Populate user-specific placeholders if logged in

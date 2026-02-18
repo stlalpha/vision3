@@ -18,6 +18,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/terminalio"
@@ -792,8 +793,8 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		'O': msg.OrigAddr,                                                          // Origin address
 		'A': msg.DestAddr,                                                          // Destination address
 		'Z': fmt.Sprintf("%s > %s", confName, areaName),                            // Conference > Area Name
-		'V': fmt.Sprintf("%d of %d", msgNum, totalMsgs),                                // Verbose count: "1 of 24"
-		'X': fmt.Sprintf("%s > %s [%d/%d]", confName, areaName, msgNum, totalMsgs),      // Conference > Area [current/total]
+		'V': fmt.Sprintf("%d of %d", msgNum, totalMsgs),                            // Verbose count: "1 of 24"
+		'X': fmt.Sprintf("%s > %s [%d/%d]", confName, areaName, msgNum, totalMsgs), // Conference > Area [current/total]
 	}
 }
 
@@ -1414,8 +1415,8 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				'N': "42",
 				'C': "[1/42]",
 				'V': "1 of 42",
-				'D': time.Now().Format("01/02/06"),
-				'W': time.Now().Format("3:04 pm"),
+				'D': config.NowIn(e.ServerCfg.Timezone).Format("01/02/06"),
+				'W': config.NowIn(e.ServerCfg.Timezone).Format("3:04 pm"),
 				'P': "None",
 				'E': "0",
 				'O': "",

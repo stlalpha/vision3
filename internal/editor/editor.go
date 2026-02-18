@@ -99,6 +99,11 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, outputM
 	// double-encode and corrupt CP437 box-drawing characters.
 	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
 
+	// Load configured timezone for date/time display
+	if serverCfg, cfgErr := config.LoadServerConfig(rootConfigPath); cfgErr == nil {
+		editor.SetTimezone(serverCfg.Timezone)
+	}
+
 	// Load initial content
 	if initialContent != "" {
 		editor.LoadContent(initialContent)
@@ -191,6 +196,11 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 	// handles CP437/UTF-8 conversion so wrapping with SelectiveCP437Writer would
 	// double-encode and corrupt CP437 box-drawing characters.
 	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
+
+	// Load configured timezone for date/time display
+	if serverCfg, cfgErr := config.LoadServerConfig(rootConfigPath); cfgErr == nil {
+		editor.SetTimezone(serverCfg.Timezone)
+	}
 
 	// Set metadata
 	editor.SetMetadata(subject, recipient, fromName, isAnon)
