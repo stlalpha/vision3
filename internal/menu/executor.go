@@ -9025,6 +9025,12 @@ func styledInput(terminal *term.Terminal, session ssh.Session, outputMode ansi.O
 	shadeChar := "\u2591"
 
 	input := make([]byte, 0, maxLen)
+	if defaultValue != "" {
+		input = append(input, []byte(defaultValue)...)
+		if len(input) > maxLen {
+			input = input[:maxLen]
+		}
+	}
 	cursorStyleSet := false
 	savedCursor := false
 
@@ -9096,15 +9102,6 @@ func styledInput(terminal *term.Terminal, session ssh.Session, outputMode ansi.O
 		case 13, 10: // Enter or LF
 			// User pressed Enter
 			result := string(input)
-			if result == "" && defaultValue != "" {
-				input = append(input[:0], []byte(defaultValue)...)
-				if len(input) > maxLen {
-					input = input[:maxLen]
-				}
-				renderBox(true)
-				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-				return defaultValue, nil
-			}
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 			return strings.TrimSpace(result), nil
 
