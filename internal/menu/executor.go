@@ -7022,20 +7022,29 @@ func runComposeMessageWithIH(e *MenuExecutor, s ssh.Session, ih *editor.InputHan
 		log.Printf("WARN: Node %d: Failed to write title prompt: %v", nodeNumber, wErr)
 	}
 
-	subject, err := styledInput(terminal, s, outputMode, 30, "")
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			log.Printf("INFO: Node %d: User disconnected during title input.", nodeNumber)
-			return nil, "LOGOFF", io.EOF
+	var subject string
+	var err error
+	for {
+		subject, err = styledInput(terminal, s, outputMode, 30, "")
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				log.Printf("INFO: Node %d: User disconnected during title input.", nodeNumber)
+				return nil, "LOGOFF", io.EOF
+			}
+			log.Printf("ERROR: Node %d: Failed reading title input: %v", nodeNumber, err)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading title.\r\n"), outputMode)
+			time.Sleep(1 * time.Second)
+			return nil, "", nil // Return to menu
 		}
-		log.Printf("ERROR: Node %d: Failed reading title input: %v", nodeNumber, err)
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading title.\r\n"), outputMode)
-		time.Sleep(1 * time.Second)
-		return nil, "", nil // Return to menu
-	}
-	subject = strings.TrimSpace(subject)
-	if subject == "" {
-		subject = "(no subject)"
+		subject = strings.TrimSpace(subject)
+		if subject != "" {
+			break
+		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Subject is required.|07\r\n")), outputMode)
+		wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(titlePrompt)), outputMode)
+		if wErr != nil {
+			log.Printf("WARN: Node %d: Failed to rewrite title prompt: %v", nodeNumber, wErr)
+		}
 	}
 
 	// 3. Prompt for To (24 chars, default "All")
@@ -9196,20 +9205,28 @@ func runSendPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		log.Printf("WARN: Node %d: Failed to write subject prompt: %v", nodeNumber, wErr)
 	}
 
-	subject, err := styledInput(terminal, s, outputMode, 30, "")
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			log.Printf("INFO: Node %d: User disconnected during subject input.", nodeNumber)
-			return nil, "LOGOFF", io.EOF
+	var subject string
+	for {
+		subject, err = styledInput(terminal, s, outputMode, 30, "")
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				log.Printf("INFO: Node %d: User disconnected during subject input.", nodeNumber)
+				return nil, "LOGOFF", io.EOF
+			}
+			log.Printf("ERROR: Node %d: Failed reading subject input: %v", nodeNumber, err)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading subject.\r\n"), outputMode)
+			time.Sleep(1 * time.Second)
+			return nil, "", nil
 		}
-		log.Printf("ERROR: Node %d: Failed reading subject input: %v", nodeNumber, err)
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading subject.\r\n"), outputMode)
-		time.Sleep(1 * time.Second)
-		return nil, "", nil
-	}
-	subject = strings.TrimSpace(subject)
-	if subject == "" {
-		subject = "(no subject)"
+		subject = strings.TrimSpace(subject)
+		if subject != "" {
+			break
+		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Subject is required.|07\r\n")), outputMode)
+		wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(titlePrompt)), outputMode)
+		if wErr != nil {
+			log.Printf("WARN: Node %d: Failed to rewrite subject prompt: %v", nodeNumber, wErr)
+		}
 	}
 
 	// Launch editor
