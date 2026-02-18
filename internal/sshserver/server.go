@@ -7,6 +7,7 @@ package sshserver
 #include <libssh/callbacks.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 // Forward declarations of Go callback functions (defined in callbacks.go via //export)
 extern int go_auth_password_cb(ssh_session session, const char *user, const char *password, void *userdata);
@@ -52,6 +53,10 @@ struct ssh_channel_callbacks_struct* vision3_new_channel_cb(void *userdata) {
 	ssh_callbacks_init(cb);
 	return cb;
 }
+
+// Convert a Go cgo.Handle (uintptr) to void* for use as C callback userdata.
+// This avoids the unsafe.Pointer(uintptr(...)) pattern that go vet flags.
+static inline void* handle_to_ptr(uintptr_t h) { return (void*)h; }
 
 // Expose SSH_BIND_OPTIONS enum values via macros for CGO access.
 // These are needed for legacy algorithm configuration.
@@ -373,7 +378,7 @@ func (s *Server) handleConnection(sshSession C.ssh_session) {
 
 	// Register server callbacks BEFORE key exchange
 	// Auth callbacks must be in place before the protocol proceeds
-	serverCb := C.vision3_new_server_cb(unsafe.Pointer(uintptr(cs.handle)))
+	serverCb := C.vision3_new_server_cb(C.handle_to_ptr(C.uintptr_t(cs.handle)))
 	if serverCb == nil {
 		log.Printf("ERROR: Failed to allocate server callbacks")
 		return
