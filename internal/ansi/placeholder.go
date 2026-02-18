@@ -91,21 +91,24 @@ func ProcessEditorPlaceholders(template []byte, substitutions map[byte]string) [
 }
 
 // FindEditorPlaceholderPos returns the terminal row and column (both 1-based) at which
-// the first occurrence of a placeholder for the given code letter begins in template.
+// the first occurrence of a placeholder for the given code letter begins in template,
+// along with the ANSI SGR escape sequence that restores the color/attribute state active
+// at that position. This lets callers dynamically overwrite the placeholder later while
+// preserving the original template colors.
 //
 // It works by scanning through the raw template bytes (before substitution) and tracking
 // the terminal cursor position via ANSI CSI escape sequences. Because visual-width
 // placeholders (@X####@) occupy the same byte count as their rendered field width, cursor
 // tracking against the raw template gives the same result as tracking the rendered output.
 //
-// Returns (0, 0) if the placeholder is not found.
-func FindEditorPlaceholderPos(template []byte, code byte) (row, col int) {
-	// Build candidate prefixes: "@X@", "@X:", "@X#"
-	prefix2 := []byte{'@', code}
-
+// Returns (0, 0, "") if the placeholder is not found.
+func FindEditorPlaceholderPos(template []byte, code byte) (row, col int, colorEsc string) {
 	row, col = 1, 1
 	i := 0
 	n := len(template)
+
+	// SGR attribute accumulator — tracks the "current color" state as we scan.
+	var sgr sgrState
 
 	for i < n {
 		// Detect our placeholder: starts with @<code> followed by @, :, #, or |
@@ -113,14 +116,14 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int) {
 			if i+2 < n {
 				next := template[i+2]
 				if next == '@' || next == ':' || next == '#' || next == '|' {
-					return row, col
+					return row, col, sgr.escape()
 				}
 			}
 		}
-		_ = prefix2
 
 		// ANSI/VT escape sequence: ESC [
 		if template[i] == 0x1b && i+1 < n && template[i+1] == '[' {
+			seqStart := i
 			i += 2
 			// Collect parameter bytes (digits, semicolons, spaces)
 			paramStart := i
@@ -132,6 +135,7 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int) {
 			}
 			cmd := template[i]
 			i++
+			_ = seqStart
 
 			switch cmd {
 			case 'H', 'f': // cursor absolute position ESC[row;colH
@@ -170,7 +174,9 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int) {
 			case 'D': // cursor back (left)
 				n2 := parseSingleParam(template[paramStart:i-1], 1)
 				col -= n2
-				// All other sequences (m, J, K, s, u, etc.) don't move the cursor
+			case 'm': // SGR — color/attribute change
+				sgr.applyParams(string(template[paramStart : i-1]))
+				// All other sequences (J, K, s, u, etc.) don't move the cursor
 			}
 			continue
 		}
@@ -198,7 +204,110 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int) {
 		i++
 	}
 
-	return 0, 0 // not found
+	return 0, 0, "" // not found
+}
+
+// sgrState tracks the accumulated SGR (Select Graphic Rendition) attributes
+// as we scan through ANSI content. This lets us reconstruct the active
+// foreground, background, bold, blink state at any point.
+type sgrState struct {
+	bold  bool
+	faint bool
+	blink bool
+	fg    int // -1 = default, 30-37 = normal, 90-97 = bright
+	bg    int // -1 = default, 40-47 = normal, 100-107 = bright
+}
+
+// applyParams processes a semicolon-separated SGR parameter string (e.g. "1;36").
+func (s *sgrState) applyParams(paramStr string) {
+	if paramStr == "" {
+		// ESC[m with no params is equivalent to ESC[0m (reset)
+		*s = sgrState{fg: -1, bg: -1}
+		return
+	}
+	parts := splitSGR(paramStr)
+	for _, p := range parts {
+		switch {
+		case p == 0: // reset
+			*s = sgrState{fg: -1, bg: -1}
+		case p == 1:
+			s.bold = true
+		case p == 2:
+			s.faint = true
+		case p == 5:
+			s.blink = true
+		case p == 22: // normal intensity
+			s.bold = false
+			s.faint = false
+		case p == 25: // blink off
+			s.blink = false
+		case p >= 30 && p <= 37:
+			s.fg = p
+		case p == 39: // default fg
+			s.fg = -1
+		case p >= 40 && p <= 47:
+			s.bg = p
+		case p == 49: // default bg
+			s.bg = -1
+		case p >= 90 && p <= 97: // bright fg
+			s.fg = p
+		case p >= 100 && p <= 107: // bright bg
+			s.bg = p
+		}
+	}
+}
+
+// escape returns the ANSI escape sequence that restores this SGR state.
+// Returns "" if the state is completely default.
+func (s *sgrState) escape() string {
+	var parts []byte
+	parts = append(parts, '0') // always start with reset for a clean slate
+	if s.bold {
+		parts = append(parts, ';', '1')
+	}
+	if s.faint {
+		parts = append(parts, ';', '2')
+	}
+	if s.blink {
+		parts = append(parts, ';', '5')
+	}
+	if s.fg >= 0 {
+		parts = append(parts, ';')
+		parts = strconv.AppendInt(parts, int64(s.fg), 10)
+	}
+	if s.bg >= 0 {
+		parts = append(parts, ';')
+		parts = strconv.AppendInt(parts, int64(s.bg), 10)
+	}
+	// Only "0" with no other attributes → fully default, still emit for safety.
+	return "\x1b[" + string(parts) + "m"
+}
+
+// splitSGR splits a semicolon-separated parameter string into ints.
+func splitSGR(s string) []int {
+	var result []int
+	val := 0
+	hasDigit := false
+	for i := 0; i < len(s); i++ {
+		if s[i] >= '0' && s[i] <= '9' {
+			val = val*10 + int(s[i]-'0')
+			hasDigit = true
+		} else if s[i] == ';' {
+			if hasDigit {
+				result = append(result, val)
+			} else {
+				result = append(result, 0) // missing param = 0
+			}
+			val = 0
+			hasDigit = false
+		}
+	}
+	if hasDigit {
+		result = append(result, val)
+	} else {
+		result = append(result, 0)
+	}
+	return result
 }
 
 // parseSingleParam parses an optional integer from CSI parameter bytes, returning def if absent.

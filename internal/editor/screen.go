@@ -29,6 +29,7 @@ type Screen struct {
 	lastStatusUpdate string         // Track last status to avoid redundant updates
 	insertModeRow    int            // Terminal row of the @I@ insert-mode indicator (1-based)
 	insertModeCol    int            // Terminal col of the @I@ insert-mode indicator (1-based)
+	insertModeColor  string         // ANSI SGR escape to restore colors at @I@ position
 	timeLoc          *time.Location // Timezone for date/time display
 	configTimezone   string         // Raw timezone string from config
 }
@@ -140,9 +141,10 @@ func (s *Screen) processPipeCodes(content []byte, subject, recipient, fromName s
 		//  - Visual-width placeholders (@S####@) occupy the same byte count as their
 		//    rendered field width, so the cursor column count is unchanged
 		//  - CP437 high bytes each count as one column
-		if row, col := ansi.FindEditorPlaceholderPos(content, 'I'); row > 0 {
+		if row, col, colorEsc := ansi.FindEditorPlaceholderPos(content, 'I'); row > 0 {
 			s.insertModeRow = row
 			s.insertModeCol = col
+			s.insertModeColor = colorEsc
 		}
 
 		// All substitutions in a single pass (including @I@ initial placeholder).
@@ -278,6 +280,8 @@ func (s *Screen) DisplayStatusLine(insertMode bool, currentLine, totalLines int)
 
 // updateDynamicHeaderFields updates the insert-mode indicator in the header.
 // The position is determined at template load time by tracking the @I@ placeholder.
+// The ANSI color state captured from the original template is restored before
+// writing so the indicator inherits the template's foreground/background colors.
 func (s *Screen) updateDynamicHeaderFields(insertMode bool, currentLine, totalLines int) {
 	if s.insertModeRow == 0 {
 		return // position not known (template has no @I@ placeholder)
@@ -286,8 +290,14 @@ func (s *Screen) updateDynamicHeaderFields(insertMode bool, currentLine, totalLi
 	if !insertMode {
 		modeStr = "Ovr"
 	}
+	// Save cursor, move to @I@ position, restore template color, write, restore cursor
+	s.WriteDirect("\x1b[s") // save cursor position
 	s.GoXY(s.insertModeCol, s.insertModeRow)
+	if s.insertModeColor != "" {
+		s.WriteDirect(s.insertModeColor) // restore template color at @I@ position
+	}
 	s.WriteDirect(fmt.Sprintf("%-3s", modeStr))
+	s.WriteDirect("\x1b[u") // restore cursor position
 }
 
 // RefreshLine redraws a single line if it has changed

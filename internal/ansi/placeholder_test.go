@@ -66,8 +66,26 @@ func TestProcessEditorPlaceholdersANSI(t *testing.T) {
 func TestFindEditorPlaceholderPosWithModifier(t *testing.T) {
 	// Template with modifier format: position should still be found
 	template := []byte("Header\r\n@T|R8@\r\n")
-	row, col := FindEditorPlaceholderPos(template, 'T')
+	row, col, _ := FindEditorPlaceholderPos(template, 'T')
 	if row != 2 || col != 1 {
 		t.Errorf("FindEditorPlaceholderPos with modifier: got (%d,%d), want (2,1)", row, col)
+	}
+}
+
+func TestFindEditorPlaceholderPosColor(t *testing.T) {
+	// Template that sets bold cyan on blue background before @I@
+	template := []byte("\x1b[0;44m     \x1b[1;36m@I@\x1b[0;44m ")
+	row, col, colorEsc := FindEditorPlaceholderPos(template, 'I')
+	if row != 1 || col != 6 {
+		t.Errorf("FindEditorPlaceholderPos color: pos got (%d,%d), want (1,6)", row, col)
+	}
+	// Should restore bold, cyan fg (36), blue bg (44)
+	if colorEsc == "" {
+		t.Error("FindEditorPlaceholderPos color: expected non-empty color escape")
+	}
+	// The escape should contain bold (1), fg 36, bg 44
+	want := "\x1b[0;1;36;44m"
+	if colorEsc != want {
+		t.Errorf("FindEditorPlaceholderPos color: got %q, want %q", colorEsc, want)
 	}
 }
