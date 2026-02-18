@@ -615,12 +615,9 @@ func (s *Screen) RefreshScreen(buffer *MessageBuffer, topLine, currentLine, curr
 			lineContent := buffer.GetLine(msgLine)
 			s.RefreshLine(msgLine, lineContent, topLine)
 		} else {
-			// Clear empty lines below message content
-			screenY := s.editingStartY + i
-			if screenY < s.statusLineY {
-				s.GoXY(1, screenY)
-				s.ClearEOL()
-			}
+			// Track empty lines through the same cache path so unchanged blank rows
+			// are not redundantly cleared on every keypress (prevents cursor flicker).
+			s.RefreshLine(msgLine, "", topLine)
 		}
 	}
 
