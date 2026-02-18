@@ -5,21 +5,35 @@ import (
 	"strconv"
 )
 
-// editorPlaceholderRegex matches @CODE@, @CODE:N@, or @CODE####@ for any single uppercase letter.
-// Unlike the message-header placeholder regex, this accepts any letter so editor-specific
-// codes (F, E, I, etc.) are all handled by the same function.
-var editorPlaceholderRegex = regexp.MustCompile(`@([A-Z])(?::(\d+)|([#]+))?@`)
+// editorPlaceholderRegex matches @CODE@ placeholders with optional alignment modifiers.
+// Formats:
+//
+//	@T@           — value as-is
+//	@T:20@        — explicit width, left-aligned (default)
+//	@T########@   — visual width, left-aligned
+//	@T|R8@        — modifier R, width 8 (Synchronet-style)
+//	@T|R:8@       — modifier R, explicit width 8
+//	@T|R########@ — modifier R, visual width
+//	@T|R@         — modifier R, no width (value as-is)
+//
+// Modifiers: L (left-justify), R (right-justify), C (center).
+// Groups: 1=code, 2=modifier(opt), 3=width-after-modifier(opt), 4=:N width(opt), 5=###(opt)
+var editorPlaceholderRegex = regexp.MustCompile(`@([A-Z])(?:\|([LRC])(\d+)?)?(?::(\d+)|([#]+))?@`)
 
 // ProcessEditorPlaceholders replaces @CODE@ placeholders in editor template files.
 //
 // Supported formats:
 //
-//	@S@        — insert value as-is (no width constraint)
-//	@S:20@     — explicit width: truncate/pad to exactly 20 visible characters
-//	@S########@ — visual width: total placeholder length (including delimiters) is the field width
+//	@S@          — insert value as-is (no width constraint)
+//	@S:20@       — explicit width: truncate/pad to exactly 20 visible characters
+//	@S########@  — visual width: total placeholder length (including delimiters) is the field width
+//	@S|R8@       — right-justify in 8-char field (Synchronet-style width)
+//	@S|R:20@     — right-justify in 20-char field (explicit colon width)
+//	@S|R#######@ — right-justify in visual-width field
+//	@S|C:20@     — center in 20-char field
 //
-// Unknown codes (not present in substitutions) are replaced with an empty string.
-// Color ANSI codes within values are preserved during truncation via ApplyWidthConstraint.
+// Unknown codes (not present in substitutions) are preserved unchanged.
+// Color ANSI codes within values are preserved during truncation via ApplyWidthConstraintAligned.
 func ProcessEditorPlaceholders(template []byte, substitutions map[byte]string) []byte {
 	matches := editorPlaceholderRegex.FindAllSubmatchIndex(template, -1)
 	if len(matches) == 0 {
@@ -30,10 +44,12 @@ func ProcessEditorPlaceholders(template []byte, substitutions map[byte]string) [
 	lastEnd := 0
 
 	for _, match := range matches {
-		// match[0:1]  = full match extent
-		// match[2:3]  = code letter
-		// match[4:5]  = :N digits (or -1 if absent)
-		// match[6:7]  = ### chars (or -1 if absent)
+		// match[0:1]   = full match extent
+		// match[2:3]   = code letter
+		// match[4:5]   = modifier letter L/R/C (or -1 if absent)
+		// match[6:7]   = digits after modifier (or -1 if absent)
+		// match[8:9]   = :N digits (or -1 if absent)
+		// match[10:11] = ### chars (or -1 if absent)
 
 		result = append(result, template[lastEnd:match[0]]...)
 
@@ -46,15 +62,24 @@ func ProcessEditorPlaceholders(template []byte, substitutions map[byte]string) [
 			continue
 		}
 
+		// Parse alignment modifier
+		align := AlignLeft
+		if match[4] != -1 {
+			align = ParseAlignment(string(template[match[4]:match[5]]))
+		}
+
+		// Parse width: digits-after-modifier > colon-width > visual-hash-width
 		width := 0
-		if match[4] != -1 { // explicit :N width
-			width, _ = strconv.Atoi(string(template[match[4]:match[5]]))
-		} else if match[6] != -1 { // visual width = total placeholder byte length
+		if match[6] != -1 { // digits immediately after modifier (e.g. @T|R8@)
+			width, _ = strconv.Atoi(string(template[match[6]:match[7]]))
+		} else if match[8] != -1 { // explicit :N width (e.g. @T:20@ or @T|R:20@)
+			width, _ = strconv.Atoi(string(template[match[8]:match[9]]))
+		} else if match[10] != -1 { // visual width = total placeholder byte length
 			width = match[1] - match[0]
 		}
 
 		if width > 0 {
-			value = ApplyWidthConstraint(value, width)
+			value = ApplyWidthConstraintAligned(value, width, align)
 		}
 
 		result = append(result, []byte(value)...)
@@ -83,11 +108,11 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int) {
 	n := len(template)
 
 	for i < n {
-		// Detect our placeholder: starts with @<code> followed by @, :, or #
+		// Detect our placeholder: starts with @<code> followed by @, :, #, or |
 		if i+2 <= n && template[i] == '@' && template[i+1] == code {
 			if i+2 < n {
 				next := template[i+2]
-				if next == '@' || next == ':' || next == '#' {
+				if next == '@' || next == ':' || next == '#' || next == '|' {
 					return row, col
 				}
 			}
@@ -145,7 +170,7 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int) {
 			case 'D': // cursor back (left)
 				n2 := parseSingleParam(template[paramStart:i-1], 1)
 				col -= n2
-			// All other sequences (m, J, K, s, u, etc.) don't move the cursor
+				// All other sequences (m, J, K, s, u, etc.) don't move the cursor
 			}
 			continue
 		}

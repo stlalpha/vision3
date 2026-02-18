@@ -2,6 +2,8 @@ package menu
 
 import (
 	"testing"
+
+	"github.com/stlalpha/vision3/internal/ansi"
 )
 
 func TestParsePlaceholders(t *testing.T) {
@@ -49,6 +51,44 @@ func TestParsePlaceholders(t *testing.T) {
 	}
 }
 
+func TestParsePlaceholdersAlignment(t *testing.T) {
+	tests := []struct {
+		name      string
+		template  string
+		wantCode  string
+		wantWidth int
+		wantAlign ansi.Alignment
+	}{
+		{"right modifier digits", "@T|R8@", "T", 8, ansi.AlignRight},
+		{"left modifier digits", "@F|L20@", "F", 20, ansi.AlignLeft},
+		{"center modifier digits", "@S|C15@", "S", 15, ansi.AlignCenter},
+		{"right modifier colon", "@T|R:8@", "T", 8, ansi.AlignRight},
+		{"right-justify visual", "@#|R####@", "#", 9, ansi.AlignRight},
+		{"right modifier auto", "@T|R*@", "T", 0, ansi.AlignRight},
+		{"no modifier", "@T:8@", "T", 8, ansi.AlignLeft},
+		{"modifier no width", "@T|R@", "T", 0, ansi.AlignRight},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches := parsePlaceholders([]byte(tt.template))
+			if len(matches) != 1 {
+				t.Fatalf("got %d matches, want 1", len(matches))
+			}
+			m := matches[0]
+			if m.Code != tt.wantCode {
+				t.Errorf("code = %q, want %q", m.Code, tt.wantCode)
+			}
+			if m.Width != tt.wantWidth {
+				t.Errorf("width = %d, want %d", m.Width, tt.wantWidth)
+			}
+			if m.Align != tt.wantAlign {
+				t.Errorf("align = %v, want %v", m.Align, tt.wantAlign)
+			}
+		})
+	}
+}
+
 func TestParsePlaceholdersPositions(t *testing.T) {
 	template := "Start @T@ middle @F:10@ end"
 	matches := parsePlaceholders([]byte(template))
@@ -77,6 +117,7 @@ func TestProcessPlaceholderTemplate(t *testing.T) {
 		'N': "100",
 		'C': "[42/100]",
 		'X': "Local Areas > General Discussion [42/100]",
+		'W': "2:30 pm",
 	}
 
 	tests := []struct {
@@ -93,6 +134,14 @@ func TestProcessPlaceholderTemplate(t *testing.T) {
 		{"count display", "@C@", "[42/100]"},
 		{"combined area and count", "@X@", "Local Areas > General Discussion [42/100]"},
 		{"missing code", "@Q@", "@Q@"}, // Unknown code preserved
+		// Alignment modifier tests
+		{"right-justify explicit", "@#|R5@", "   42"},
+		{"right-justify colon", "@#|R:5@", "   42"},
+		{"left-justify explicit", "@#|L5@", "42   "},
+		{"center explicit", "@F|C20@", "      John Doe      "},
+		{"right-justify visual", "@#|R#####@", "        42"}, // 10-char placeholder = width 10
+		{"modifier no width", "@T|R@", "Test Subject"},       // No width = no alignment applied
+		{"right-justify time", "@W|R8@", " 2:30 pm"},         // 7 chars + 1 pad
 	}
 
 	for _, tt := range tests {

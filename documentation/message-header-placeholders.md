@@ -4,12 +4,36 @@ Vision3 replaces `@X@` placeholders in message header templates (`menus/v3/templ
 
 ## Placeholder Format
 
-Vision3 supports four placeholder formats:
+Vision3 supports four placeholder formats, with optional alignment modifiers:
 
 1. **Simple format**: `@T@` - Inserts value as-is (no width constraint)
 2. **Parameter width**: `@T:20@` - Explicit width (truncates/pads to exactly 20 characters)
 3. **Visual width**: `@T############@` - Width shown by # character count (self-documenting)
 4. **Auto-width**: `@T*@` - Width automatically calculated from context (see below)
+
+### Alignment Modifiers
+
+All width-constrained formats support an optional alignment modifier using `|` followed by a letter:
+
+| Modifier | Purpose                                        |
+| -------- | ---------------------------------------------- |
+| `L`      | Left-justify (pad right) — this is the default |
+| `R`      | Right-justify (pad left)                       |
+| `C`      | Center (pad both sides)                        |
+
+**Modifier syntax examples:**
+
+```
+@T|R8@       - Right-justify time in 8-char field (Synchronet-style width)
+@T|R:20@     - Right-justify in 20-char field (explicit colon width)
+@T|R#######@ - Right-justify in visual-width field
+@T|R*@       - Right-justify with auto-calculated width
+@F|C:30@     - Center from-field in 30-char field
+@#|R4@       - Right-justify message number in 4-char field
+@T|L:20@     - Left-justify (same as @T:20@, explicit for clarity)
+```
+
+The modifier is placed between the code letter and the width specifier, separated by `|`. This syntax is inspired by Synchronet BBS @-codes.
 
 The visual placeholder format is particularly useful for ANSI art templates where precise character positioning is critical. The `#` characters show exactly how much horizontal space the field will occupy, making it easy to design layouts visually.
 

@@ -94,7 +94,7 @@ func (s *Screen) createMinimalHeader(subject, recipient string) string {
 
 // isEditorNewFormat reports whether the template uses @CODE@ placeholder syntax.
 func isEditorNewFormat(content string) bool {
-	for _, pat := range []string{"@S@", "@S#", "@S:", "@F@", "@F#", "@F:", "@E@", "@E#", "@E:", "@T@", "@T#", "@T:", "@I@", "@I#"} {
+	for _, pat := range []string{"@S@", "@S#", "@S:", "@S|", "@F@", "@F#", "@F:", "@F|", "@E@", "@E#", "@E:", "@E|", "@T@", "@T#", "@T:", "@T|", "@I@", "@I#", "@I|"} {
 		if strings.Contains(content, pat) {
 			return true
 		}

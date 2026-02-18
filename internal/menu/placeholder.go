@@ -11,19 +11,23 @@ import (
 
 // PlaceholderMatch represents a parsed placeholder from a template.
 type PlaceholderMatch struct {
-	Code      string // Single letter (T, F, S, etc.)
-	Width     int    // 0 = no width constraint
-	AutoWidth bool   // true = use auto-calculated width from context
-	FullMatch string // Complete matched text "@T###@"
-	StartPos  int    // Byte offset in template
-	EndPos    int    // End byte offset
+	Code      string         // Single letter (T, F, S, etc.)
+	Width     int            // 0 = no width constraint
+	AutoWidth bool           // true = use auto-calculated width from context
+	Align     ansi.Alignment // AlignLeft (default), AlignRight, AlignCenter
+	FullMatch string         // Complete matched text "@T###@"
+	StartPos  int            // Byte offset in template
+	EndPos    int            // End byte offset
 }
 
 // Regex compiled once for performance.
-// Matches: @CODE@, @CODE:20@, @CODE###@, or @CODE*@
-// Groups: 1=code letter, 2=:WIDTH (optional), 3=### (optional), 4=* (optional)
+// Matches: @CODE@, @CODE:20@, @CODE###@, @CODE*@, or @CODE|MODIFIER...@
+// Groups: 1=code letter, 2=modifier(opt), 3=digits-after-modifier(opt),
+//
+//	4=:WIDTH (optional), 5=### (optional), 6=* (optional)
+//
 // G = gap fill: fills remaining line width with ─ (CP437 0xC4) characters.
-var placeholderRegex = regexp.MustCompile(`@([BTFSUL#NDWPEOMAZCXGV])(?::(\d+)|([#]+)|(\*))?@`)
+var placeholderRegex = regexp.MustCompile(`@([BTFSUL#NDWPEOMAZCXGV])(?:\|([LRC])(\d+)?)?(?::(\d+)|([#]+)|(\*))?@`)
 
 // parsePlaceholders extracts all @CODE@ patterns from template bytes.
 func parsePlaceholders(template []byte) []PlaceholderMatch {
@@ -31,26 +35,38 @@ func parsePlaceholders(template []byte) []PlaceholderMatch {
 	result := make([]PlaceholderMatch, 0, len(matches))
 
 	for _, match := range matches {
-		// match[0], match[1] = full match start/end
-		// match[2], match[3] = code letter start/end
-		// match[4], match[5] = :WIDTH start/end (or -1 if not present)
-		// match[6], match[7] = ### start/end (or -1 if not present)
-		// match[8], match[9] = * start/end (or -1 if not present)
+		// match[0], match[1]   = full match start/end
+		// match[2], match[3]   = code letter start/end
+		// match[4], match[5]   = modifier L/R/C start/end (or -1 if not present)
+		// match[6], match[7]   = digits after modifier (or -1 if not present)
+		// match[8], match[9]   = :WIDTH start/end (or -1 if not present)
+		// match[10], match[11] = ### start/end (or -1 if not present)
+		// match[12], match[13] = * start/end (or -1 if not present)
 
 		code := string(template[match[2]:match[3]])
 		fullMatch := string(template[match[0]:match[1]])
 
-		// Calculate width
+		// Parse alignment modifier
+		align := ansi.AlignLeft
+		if match[4] != -1 {
+			align = ansi.ParseAlignment(string(template[match[4]:match[5]]))
+		}
+
+		// Calculate width: digits-after-modifier > colon-width > visual-hash-width
 		width := 0
 		autoWidth := false
-		if match[4] != -1 && match[4] < match[5] {
-			// Parameter width :20 (regex captures digits only, not colon)
-			widthStr := string(template[match[4]:match[5]])
+		if match[6] != -1 && match[6] < match[7] {
+			// Digits immediately after modifier (e.g. @T|R8@)
+			widthStr := string(template[match[6]:match[7]])
 			width, _ = strconv.Atoi(widthStr)
-		} else if match[6] != -1 && match[6] < match[7] {
+		} else if match[8] != -1 && match[8] < match[9] {
+			// Parameter width :20 (regex captures digits only, not colon)
+			widthStr := string(template[match[8]:match[9]])
+			width, _ = strconv.Atoi(widthStr)
+		} else if match[10] != -1 && match[10] < match[11] {
 			// Visual width - use total placeholder length including @, code, #'s, and @
 			width = match[1] - match[0]
-		} else if match[8] != -1 {
+		} else if match[12] != -1 {
 			// Auto-width: width determined at render time from context
 			autoWidth = true
 		}
@@ -59,6 +75,7 @@ func parsePlaceholders(template []byte) []PlaceholderMatch {
 			Code:      code,
 			Width:     width,
 			AutoWidth: autoWidth,
+			Align:     align,
 			FullMatch: fullMatch,
 			StartPos:  match[0],
 			EndPos:    match[1],
@@ -125,13 +142,13 @@ func processPlaceholderTemplate(template []byte, substitutions map[byte]string, 
 				}
 			}
 
-			// Apply width constraint if specified
+			// Apply width constraint if specified (with alignment)
 			if match.AutoWidth && autoWidths != nil {
 				if w, ok := autoWidths[match.Code[0]]; ok && w > 0 {
-					value = ansi.ApplyWidthConstraint(value, w)
+					value = ansi.ApplyWidthConstraintAligned(value, w, match.Align)
 				}
 			} else if match.Width > 0 {
-				value = ansi.ApplyWidthConstraint(value, match.Width)
+				value = ansi.ApplyWidthConstraintAligned(value, match.Width, match.Align)
 			}
 
 			// Append processed value
