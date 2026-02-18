@@ -150,7 +150,7 @@ readerLoop:
 				replyCount = count
 			}
 		}
-		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.AccessLevel, !templateUsesUserNote, replyCount, confName, areaName, e.MessageMgr, currentAreaID, userManager)
+		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.AccessLevel, !templateUsesUserNote, replyCount, confName, areaName, e.MessageMgr, currentAreaID, userManager, nodeNumber)
 		autoWidths := buildAutoWidths(substitutions, totalMsgCount, termWidth)
 
 		// Process template with substitutions (auto-detects @CODE@ or |X format)
@@ -443,7 +443,7 @@ readerLoop:
 
 			case 'R': // Reply
 				replyResult := handleReply(e, s, terminal, userManager, currentUser, nodeNumber,
-					outputMode, currentMsg, currentAreaID, &totalMsgCount, &currentMsgNum)
+					outputMode, currentMsg, currentAreaID, &totalMsgCount, &currentMsgNum, confName, areaName)
 				if replyResult == "LOGOFF" {
 					return nil, "LOGOFF", io.EOF
 				}
@@ -679,7 +679,7 @@ func findMessageByMSGID(msgMgr *message.MessageManager, areaID int, msgID string
 }
 
 // buildMsgSubstitutions creates the Pascal-style substitution map for MSGHDR templates.
-func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userLevel int, includeNoteInFrom bool, replyCount int, confName string, areaName string, msgMgr *message.MessageManager, areaID int, userMgr *user.UserMgr) map[byte]string {
+func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userLevel int, includeNoteInFrom bool, replyCount int, confName string, areaName string, msgMgr *message.MessageManager, areaID int, userMgr *user.UserMgr, nodeNumber int) map[byte]string {
 	// Import jam constants
 	const (
 		msgTypeLocal = 0x00800000
@@ -795,6 +795,7 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		'Z': fmt.Sprintf("%s > %s", confName, areaName),                            // Conference > Area Name
 		'V': fmt.Sprintf("%d of %d", msgNum, totalMsgs),                            // Verbose count: "1 of 24"
 		'X': fmt.Sprintf("%s > %s [%d/%d]", confName, areaName, msgNum, totalMsgs), // Conference > Area [current/total]
+		'K': strconv.Itoa(nodeNumber),                                              // Node number
 	}
 }
 
@@ -937,7 +938,7 @@ func findLastCursorPos(data []byte) (int, int) {
 func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	outputMode ansi.OutputMode, currentMsg *message.DisplayMessage,
-	currentAreaID int, totalMsgCount *int, currentMsgNum *int) string {
+	currentAreaID int, totalMsgCount *int, currentMsgNum *int, confName, areaName string) string {
 
 	// Prepare quote data for /Q command
 	// Split message body into lines for quoting
@@ -959,8 +960,14 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Start with empty editor - user will use /Q command to quote if desired
 	// Pass message metadata for quoting (from, title, date, time, isAnon, lines)
+	replyNextMsg := *totalMsgCount + 1
+	replyCtx := editor.EditorContext{
+		NodeNumber: nodeNumber,
+		NextMsgNum: replyNextMsg,
+		ConfArea:   fmt.Sprintf("%s > %s", confName, areaName),
+	}
 	replyBody, saved, editErr := editor.RunEditorWithMetadata("", s, s, outputMode, newSubject, currentMsg.To, currentUser.Handle, false,
-		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines)
+		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines, replyCtx)
 	if editErr != nil {
 		log.Printf("ERROR: Node %d: Editor failed: %v", nodeNumber, editErr)
 		terminalio.WriteProcessedBytes(terminal, []byte(e.LoadedStrings.MsgEditorError), outputMode)
@@ -1423,6 +1430,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				'A': "",
 				'Z': "GENERAL > General Discussion",
 				'X': "GENERAL > General Discussion [1/42]",
+				'K': strconv.Itoa(nodeNumber),
 			}
 			sampleAutoWidths := buildAutoWidths(sampleSubs, 42, 80)
 

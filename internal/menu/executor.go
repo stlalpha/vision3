@@ -7046,8 +7046,25 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	log.Printf("DEBUG: Node %d: Clearing screen before calling editor.RunEditor", nodeNumber)
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode) // Clear screen before editor
 
+	// Build editor context for FSEDITOR.ANS header placeholders
+	nextMsgNum := 0
+	if msgCount, mcErr := e.MessageMgr.GetMessageCountForArea(area.ID); mcErr == nil {
+		nextMsgNum = msgCount + 1
+	}
+	composeConfName := "Local"
+	if area.ConferenceID != 0 && e.ConferenceMgr != nil {
+		if conf, ok := e.ConferenceMgr.GetByID(area.ConferenceID); ok {
+			composeConfName = conf.Name
+		}
+	}
+	editorCtx := editor.EditorContext{
+		NodeNumber: nodeNumber,
+		NextMsgNum: nextMsgNum,
+		ConfArea:   fmt.Sprintf("%s > %s", composeConfName, area.Name),
+	}
+
 	// No quote data for new messages
-	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, toUser, fromName, isAnonymous, "", "", "", "", false, nil)
+	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, toUser, fromName, isAnonymous, "", "", "", "", false, nil, editorCtx)
 	log.Printf("DEBUG: Node %d: editor.RunEditorWithMetadata returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
 
 	if err != nil {
@@ -9129,7 +9146,16 @@ func runSendPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 
 	// Launch editor for private mail (no anonymous option for private mail)
-	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, recipientUser.Handle, currentUser.Handle, false, "", "", "", "", false, nil)
+	privNextMsg := 0
+	if msgCount, mcErr := e.MessageMgr.GetMessageCountForArea(privmailArea.ID); mcErr == nil {
+		privNextMsg = msgCount + 1
+	}
+	privEditorCtx := editor.EditorContext{
+		NodeNumber: nodeNumber,
+		NextMsgNum: privNextMsg,
+		ConfArea:   "Private Mail",
+	}
+	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, recipientUser.Handle, currentUser.Handle, false, "", "", "", "", false, nil, privEditorCtx)
 	log.Printf("DEBUG: Node %d: editor.RunEditorWithMetadata returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
 
 	if err != nil {

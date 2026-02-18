@@ -87,6 +87,14 @@ func (e *FSEditor) SetTimezone(configTZ string) {
 	e.screen.configTimezone = configTZ
 }
 
+// SetEditorContext sets optional context fields displayed in the editor header
+// (node number, next message number, conference > area name).
+func (e *FSEditor) SetEditorContext(ctx EditorContext) {
+	e.screen.nodeNumber = ctx.NodeNumber
+	e.screen.nextMsgNum = ctx.NextMsgNum
+	e.screen.confArea = ctx.ConfArea
+}
+
 // SetQuoteData sets message data to be used for the /Q quote command
 func (e *FSEditor) SetQuoteData(data *QuoteData) {
 	e.commands.SetQuoteData(data)

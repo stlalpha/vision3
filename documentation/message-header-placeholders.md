@@ -60,6 +60,7 @@ The visual placeholder format is particularly useful for ANSI art templates wher
 | `@A@` | Destination FTN address (if present)                                                                                                |
 | `@Z@` | Combined conference and area name (format: `CONF NAME > AREA NAME`)                                                                 |
 | `@X@` | Combined conference/area and message count (format: `CONF NAME > AREA NAME [current/total]`)                                        |
+| `@K@` | Current node number                                                                                                                 |
 | `@G@` | Gap fill: fills remaining line width with `─` (CP437 0xC4). See Gap Fill section below                                              |
 
 ## Width Control Features
@@ -329,6 +330,9 @@ The full-screen editor header template (`menus/v3/ansi/FSEDITOR.ANS`) uses the s
 | `@T@` | Current time                              |
 | `@D@` | Current date                              |
 | `@I@` | Insert/Overwrite mode indicator (dynamic) |
+| `@K@` | Current node number                       |
+| `@#@` | Next message number                       |
+| `@Z@` | Conference > Area name                    |
 
 The default FSEDITOR.ANS template uses `@T|R8@` to right-justify the time display in an 8-character field.
 

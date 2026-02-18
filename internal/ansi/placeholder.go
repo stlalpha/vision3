@@ -18,7 +18,7 @@ import (
 //
 // Modifiers: L (left-justify), R (right-justify), C (center).
 // Groups: 1=code, 2=modifier(opt), 3=width-after-modifier(opt), 4=:N width(opt), 5=###(opt)
-var editorPlaceholderRegex = regexp.MustCompile(`@([A-Z])(?:\|([LRC])(\d+)?)?(?::(\d+)|([#]+))?@`)
+var editorPlaceholderRegex = regexp.MustCompile(`@([A-Z#])(?:\|([LRC])(\d+)?)?(?::(\d+)|([#]+))?@`)
 
 // ProcessEditorPlaceholders replaces @CODE@ placeholders in editor template files.
 //

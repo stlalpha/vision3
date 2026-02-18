@@ -11,6 +11,15 @@ import (
 	"github.com/stlalpha/vision3/internal/config"
 )
 
+// EditorContext carries optional display-only metadata for the editor header.
+// Pass this to RunEditorWithMetadata to populate @K@ (node), @#@ (msg num),
+// and @Z@ (conference > area) placeholders in FSEDITOR.ANS.
+type EditorContext struct {
+	NodeNumber int    // Current node number (@K@)
+	NextMsgNum int    // Next message number in the area (@#@)
+	ConfArea   string // "Conference > Area" combined string (@Z@)
+}
+
 func resolveEditorPaths() (menuSetPath, rootConfigPath string) {
 	menuSetPath = os.Getenv("VISION3_MENU_PATH")
 	rootConfigPath = os.Getenv("VISION3_CONFIG_PATH")
@@ -141,7 +150,7 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, outputM
 // handle by default, their real name when the area requires it, or the configured
 // anonymous string when the user chose to post anonymously.
 func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Writer, outputMode ansi.OutputMode,
-	subject, recipient, fromName string, isAnon bool, quoteFrom, quoteTitle, quoteDate, quoteTime string, quoteIsAnon bool, quoteLines []string) (content string, saved bool, err error) {
+	subject, recipient, fromName string, isAnon bool, quoteFrom, quoteTitle, quoteDate, quoteTime string, quoteIsAnon bool, quoteLines []string, ctx ...EditorContext) (content string, saved bool, err error) {
 
 	// Get session from input (must be ssh.Session)
 	session, ok := input.(ssh.Session)
@@ -204,6 +213,11 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 
 	// Set metadata
 	editor.SetMetadata(subject, recipient, fromName, isAnon)
+
+	// Apply optional editor context (node number, message number, conference > area)
+	if len(ctx) > 0 {
+		editor.SetEditorContext(ctx[0])
+	}
 
 	// Set quote data for /Q command
 	if len(quoteLines) > 0 {

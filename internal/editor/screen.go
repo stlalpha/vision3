@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -32,6 +33,9 @@ type Screen struct {
 	insertModeColor  string         // ANSI SGR escape to restore colors at @I@ position
 	timeLoc          *time.Location // Timezone for date/time display
 	configTimezone   string         // Raw timezone string from config
+	nodeNumber       int            // Node number for @K@ placeholder
+	nextMsgNum       int            // Next message number for @#@ placeholder
+	confArea         string         // "Conference > Area" for @Z@ placeholder
 }
 
 // NewScreen creates a new screen manager
@@ -98,7 +102,7 @@ func (s *Screen) createMinimalHeader(subject, recipient string) string {
 
 // isEditorNewFormat reports whether the template uses @CODE@ placeholder syntax.
 func isEditorNewFormat(content string) bool {
-	for _, pat := range []string{"@S@", "@S#", "@S:", "@S|", "@F@", "@F#", "@F:", "@F|", "@E@", "@E#", "@E:", "@E|", "@T@", "@T#", "@T:", "@T|", "@I@", "@I#", "@I|"} {
+	for _, pat := range []string{"@S@", "@S#", "@S:", "@S|", "@F@", "@F#", "@F:", "@F|", "@E@", "@E#", "@E:", "@E|", "@T@", "@T#", "@T:", "@T|", "@I@", "@I#", "@I|", "@K@", "@K#", "@K:", "@K|", "@Z@", "@Z#", "@Z:", "@Z|", "@#@", "@#:", "@##", "@#|"} {
 		if strings.Contains(content, pat) {
 			return true
 		}
@@ -154,7 +158,10 @@ func (s *Screen) processPipeCodes(content []byte, subject, recipient, fromName s
 			'E': subject,
 			'T': timeStr,
 			'D': dateStr,
-			'I': "   ", // initial value; updated dynamically by updateDynamicHeaderFields
+			'I': "   ",                      // initial value; updated dynamically by updateDynamicHeaderFields
+			'K': strconv.Itoa(s.nodeNumber), // node number
+			'#': strconv.Itoa(s.nextMsgNum), // next message number
+			'Z': s.confArea,                 // conference > area name
 		}
 
 		// Always convert CP437→UTF-8 before placeholder substitution,
