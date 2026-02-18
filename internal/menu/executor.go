@@ -1440,6 +1440,10 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				newUsersVal = "YES"
 			}
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|NEWUSERS"), []byte(newUsersVal))
+			currentAreaTag, currentAreaDisplayName := e.resolveCurrentAreaTokens(currentUser, currentAreaName)
+			// Replace longer token first to avoid partial replacement conflicts with |CA.
+			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CAN"), []byte(currentAreaDisplayName))
+			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CA"), []byte(currentAreaTag))
 		}
 		var ansiProcessResult ansi.ProcessAnsiResult
 		var processErr error
@@ -2860,6 +2864,37 @@ func getLastCallerTimeLocation(configTZ string) *time.Location {
 	return config.LoadTimezone(configTZ)
 }
 
+func (e *MenuExecutor) resolveCurrentAreaTokens(currentUser *user.User, currentAreaName string) (string, string) {
+	areaTag := "None"
+	areaName := strings.TrimSpace(currentAreaName)
+
+	if currentUser == nil {
+		if areaName == "" {
+			areaName = "None"
+		}
+		return areaTag, areaName
+	}
+
+	if currentUser.CurrentMessageAreaTag != "" {
+		areaTag = currentUser.CurrentMessageAreaTag
+	}
+	if e.MessageMgr != nil && currentUser.CurrentMessageAreaID > 0 {
+		if area, found := e.MessageMgr.GetAreaByID(currentUser.CurrentMessageAreaID); found {
+			if strings.TrimSpace(area.Tag) != "" {
+				areaTag = area.Tag
+			}
+			if strings.TrimSpace(area.Name) != "" {
+				areaName = area.Name
+			}
+		}
+	}
+
+	if areaName == "" {
+		areaName = "None"
+	}
+	return areaTag, areaName
+}
+
 // displayFile reads and displays an ANSI file from the MENU SET's ansi directory.
 func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, outputMode ansi.OutputMode) error {
 	// Construct full path using MenuSetPath
@@ -2940,11 +2975,7 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 
 	promptString := strings.Join(promptParts, "\r\n")
 
-	// Special handling for MSGMENU prompt (Corrected menu name)
-	if currentMenuName == "MSGMENU" && e.LoadedStrings.MessageMenuPrompt != "" {
-		promptString = e.LoadedStrings.MessageMenuPrompt
-		log.Printf("DEBUG: Using MessageMenuPrompt for MSGMENU")
-	} else if promptString == "" {
+	if promptString == "" {
 		if e.LoadedStrings.DefPrompt != "" { // Use loaded strings
 			promptString = e.LoadedStrings.DefPrompt
 		} else {
@@ -2960,10 +2991,13 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		newUsersStatus = "YES"
 	}
 
+	now := config.NowIn(e.ServerCfg.Timezone)
+	currentAreaTag, currentAreaDisplayName := e.resolveCurrentAreaTokens(currentUser, currentAreaName)
+
 	placeholders := map[string]string{
 		"|NODE":     strconv.Itoa(nodeNumber), // Node Number
-		"|DATE":     config.NowIn(e.ServerCfg.Timezone).Format("01/02/06"),
-		"|TIME":     config.NowIn(e.ServerCfg.Timezone).Format("15:04"),
+		"|DATE":     now.Format("01/02/06"),
+		"|TIME":     now.Format("3:04 pm"),
 		"|MN":       currentMenuName, // Menu Name
 		"|PV":       "0",             // Pending validations
 		"|UH":       "Guest",         // User Handle
@@ -2981,7 +3015,8 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		"|CALLS":    "0",             // Default
 		"|LCALL":    "Never",         // Default
 		"|TL":       "N/A",           // Default
-		"|CA":       "None",          // Default
+		"|CA":       currentAreaTag,  // Current area tag
+		"|CAN":      currentAreaDisplayName, // Current area display name
 		"|CC":       "None",          // Current conference default
 	}
 
@@ -2999,15 +3034,6 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		placeholders["|CALLS"] = strconv.Itoa(currentUser.TimesCalled)
 		if !currentUser.LastLogin.IsZero() {
 			placeholders["|LCALL"] = currentUser.LastLogin.Format("01/02/06")
-		}
-
-		// Set |CA based on user's current area tag if available
-		if currentUser.CurrentMessageAreaTag != "" {
-			placeholders["|CA"] = currentUser.CurrentMessageAreaTag
-			log.Printf("DEBUG: Using user's CurrentMessageAreaTag '%s' for |CA placeholder", currentUser.CurrentMessageAreaTag)
-		} else {
-			// Keep default "None" if user tag is empty
-			log.Printf("DEBUG: User's CurrentMessageAreaTag is empty, using default 'None' for |CA placeholder")
 		}
 
 		// Set |CC based on user's current message conference tag
@@ -3034,11 +3060,19 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		}
 	} // End if currentUser != nil
 
-	substitutedPrompt := promptString
-	for key, val := range placeholders {
-		substitutedPrompt = strings.ReplaceAll(substitutedPrompt, key, val) // Corrected keys from |KEY| to |KEY
-		substitutedPrompt = strings.ReplaceAll(substitutedPrompt, key, val)
+	// Replace longer placeholders before shorter ones to avoid prefix collisions (e.g. |CAN vs |CA).
+	replacementPairs := make([]string, 0, len(placeholders)*2)
+	orderedKeys := make([]string, 0, len(placeholders))
+	for key := range placeholders {
+		orderedKeys = append(orderedKeys, key)
 	}
+	sort.SliceStable(orderedKeys, func(i, j int) bool {
+		return len(orderedKeys[i]) > len(orderedKeys[j])
+	})
+	for _, key := range orderedKeys {
+		replacementPairs = append(replacementPairs, key, placeholders[key])
+	}
+	substitutedPrompt := strings.NewReplacer(replacementPairs...).Replace(promptString)
 
 	processedPrompt, err := e.processFileIncludes(substitutedPrompt, 0) // Pass 'e'
 	if err != nil {

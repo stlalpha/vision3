@@ -105,9 +105,6 @@ type StringsConfig struct {
 	NoPromptText            string `json:"noPromptText"`
 	AbortMessagePrompt      string `json:"abortMessagePrompt"`
 
-	// Added field for message menu prompt
-	MessageMenuPrompt string `json:"messageMenuPrompt"`
-
 	// Added from Page 5
 	AddBBSName          string `json:"addBBSName"`
 	AddBBSNumber        string `json:"addBBSNumber"`
