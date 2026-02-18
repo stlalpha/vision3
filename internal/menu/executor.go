@@ -7044,12 +7044,25 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	// TODO: Implement upload functionality if uploadYes == true
 	_ = uploadYes // Suppress unused warning for now
 
-	// 6. Call the Editor
+	// 6. Determine the sender display name for the editor header (@F@ field).
+	// Priority: anonymous string > real name (if area requires it) > handle.
+	fromName := currentUser.Handle
+	if area.RealNameOnly && strings.TrimSpace(currentUser.RealName) != "" {
+		fromName = currentUser.RealName
+	}
+	if isAnonymous {
+		fromName = strings.TrimSpace(e.LoadedStrings.AnonymousName)
+		if fromName == "" {
+			fromName = "Anonymous"
+		}
+	}
+
+	// 7. Call the Editor
 	log.Printf("DEBUG: Node %d: Clearing screen before calling editor.RunEditor", nodeNumber)
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode) // Clear screen before editor
 
 	// No quote data for new messages
-	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, toUser, isAnonymous, "", "", "", "", false, nil)
+	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, toUser, fromName, isAnonymous, "", "", "", "", false, nil)
 	log.Printf("DEBUG: Node %d: editor.RunEditorWithMetadata returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
 
 	if err != nil {
@@ -7074,15 +7087,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		return nil, "", nil // Return to current menu
 	}
 
-	// 7. Save the Message via JAM backend
-	// Determine the "from" name (may be anonymous)
-	fromName := currentUser.Handle
-	if isAnonymous {
-		fromName = strings.TrimSpace(e.LoadedStrings.AnonymousName)
-		if fromName == "" {
-			fromName = "Anonymous"
-		}
-	}
+	// 7. Save the Message via JAM backend (fromName already computed above)
 
 	msgNum, err := e.MessageMgr.AddMessage(area.ID, fromName, toUser, subject, body, "")
 	if err != nil {
@@ -9139,7 +9144,7 @@ func runSendPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 
 	// Launch editor for private mail (no anonymous option for private mail)
-	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, recipientUser.Handle, false, "", "", "", "", false, nil)
+	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, recipientUser.Handle, currentUser.Handle, false, "", "", "", "", false, nil)
 	log.Printf("DEBUG: Node %d: editor.RunEditorWithMetadata returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
 
 	if err != nil {

@@ -34,6 +34,7 @@ type FSEditor struct {
 	// Metadata
 	subject     string
 	recipient   string
+	fromName    string // sender display name: handle, real name, or anonymous string
 	isAnon      bool
 	menuSetPath string
 
@@ -73,10 +74,11 @@ func NewFSEditor(session ssh.Session, terminal io.Writer, outputMode ansi.Output
 	}
 }
 
-// SetMetadata sets the message metadata (subject, recipient, etc.)
-func (e *FSEditor) SetMetadata(subject, recipient string, isAnon bool) {
+// SetMetadata sets the message metadata (subject, recipient, sender, etc.)
+func (e *FSEditor) SetMetadata(subject, recipient, fromName string, isAnon bool) {
 	e.subject = subject
 	e.recipient = recipient
+	e.fromName = fromName
 	e.isAnon = isAnon
 }
 
@@ -100,7 +102,7 @@ func (e *FSEditor) LoadContent(content string) {
 // Run starts the editor main loop
 func (e *FSEditor) Run() (string, bool, error) {
 	// Load and display header
-	err := e.screen.LoadHeaderTemplate(e.menuSetPath, e.subject, e.recipient, e.isAnon)
+	err := e.screen.LoadHeaderTemplate(e.menuSetPath, e.subject, e.recipient, e.fromName, e.isAnon)
 	if err != nil {
 		// Non-fatal - continue with minimal header
 	}

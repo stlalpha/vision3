@@ -958,7 +958,7 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Start with empty editor - user will use /Q command to quote if desired
 	// Pass message metadata for quoting (from, title, date, time, isAnon, lines)
-	replyBody, saved, editErr := editor.RunEditorWithMetadata("", s, s, outputMode, newSubject, currentMsg.To, false,
+	replyBody, saved, editErr := editor.RunEditorWithMetadata("", s, s, outputMode, newSubject, currentMsg.To, currentUser.Handle, false,
 		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines)
 	if editErr != nil {
 		log.Printf("ERROR: Node %d: Editor failed: %v", nodeNumber, editErr)

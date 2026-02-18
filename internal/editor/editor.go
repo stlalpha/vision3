@@ -131,9 +131,12 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, outputM
 	return finalContent, wasSaved, editorErr
 }
 
-// RunEditorWithMetadata is an extended version that accepts message metadata
+// RunEditorWithMetadata is an extended version that accepts message metadata.
+// fromName is the sender display name shown in the @F@ header field: the user's
+// handle by default, their real name when the area requires it, or the configured
+// anonymous string when the user chose to post anonymously.
 func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Writer, outputMode ansi.OutputMode,
-	subject, recipient string, isAnon bool, quoteFrom, quoteTitle, quoteDate, quoteTime string, quoteIsAnon bool, quoteLines []string) (content string, saved bool, err error) {
+	subject, recipient, fromName string, isAnon bool, quoteFrom, quoteTitle, quoteDate, quoteTime string, quoteIsAnon bool, quoteLines []string) (content string, saved bool, err error) {
 
 	// Get session from input (must be ssh.Session)
 	session, ok := input.(ssh.Session)
@@ -190,7 +193,7 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
 
 	// Set metadata
-	editor.SetMetadata(subject, recipient, isAnon)
+	editor.SetMetadata(subject, recipient, fromName, isAnon)
 
 	// Set quote data for /Q command
 	if len(quoteLines) > 0 {

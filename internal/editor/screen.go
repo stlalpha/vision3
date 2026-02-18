@@ -13,19 +13,21 @@ import (
 
 // Screen handles all screen rendering and ANSI control
 type Screen struct {
-	terminal      io.Writer
-	outputMode    ansi.OutputMode
-	termWidth     int
-	termHeight    int
-	editingStartY int // First Y position for text entry
-	statusLineY   int // Y position of status line
-	screenLines   int // Number of editing lines available
+	terminal         io.Writer
+	outputMode       ansi.OutputMode
+	termWidth        int
+	termHeight       int
+	editingStartY    int // First Y position for text entry
+	statusLineY      int // Y position of status line
+	screenLines      int // Number of editing lines available
 	headerHeight     int // Height of header
 	headerContent    string
 	physicalLines    map[int]string // Track last rendered state for incremental updates
 	lastInsertMode   bool           // Track last insert mode to avoid redundant updates
 	lastCurrentLine  int            // Track last current line to avoid redundant updates
 	lastStatusUpdate string         // Track last status to avoid redundant updates
+	insertModeRow    int            // Terminal row of the @I@ insert-mode indicator (1-based)
+	insertModeCol    int            // Terminal col of the @I@ insert-mode indicator (1-based)
 }
 
 // NewScreen creates a new screen manager
@@ -56,8 +58,9 @@ func (s *Screen) calculateGeometry() {
 	}
 }
 
-// LoadHeaderTemplate loads and processes the FSEDITOR.ANS template
-func (s *Screen) LoadHeaderTemplate(menuSetPath, subject, recipient string, isAnon bool) error {
+// LoadHeaderTemplate loads and processes the FSEDITOR.ANS template.
+// fromName is the sender display name: handle, real name, or anonymous string.
+func (s *Screen) LoadHeaderTemplate(menuSetPath, subject, recipient, fromName string, isAnon bool) error {
 	templatePath := filepath.Join(menuSetPath, "ansi", "FSEDITOR.ANS")
 	content, err := ansi.GetAnsiFileContent(templatePath)
 	if err != nil {
@@ -68,7 +71,7 @@ func (s *Screen) LoadHeaderTemplate(menuSetPath, subject, recipient string, isAn
 
 	// Process pipe codes and substitutions
 	s.parseGeometryMarkers(string(content))
-	processed := s.processPipeCodes(content, subject, recipient, isAnon)
+	processed := s.processPipeCodes(content, subject, recipient, fromName, isAnon)
 	s.headerContent = string(processed)
 
 	return nil
@@ -89,52 +92,96 @@ func (s *Screen) createMinimalHeader(subject, recipient string) string {
 	return header.String()
 }
 
-// processPipeCodes processes pipe codes in the header template
-func (s *Screen) processPipeCodes(content []byte, subject, recipient string, isAnon bool) []byte {
+// isEditorNewFormat reports whether the template uses @CODE@ placeholder syntax.
+func isEditorNewFormat(content string) bool {
+	for _, pat := range []string{"@S@", "@S#", "@S:", "@F@", "@F#", "@F:", "@E@", "@E#", "@E:", "@T@", "@T#", "@T:", "@I@", "@I#"} {
+		if strings.Contains(content, pat) {
+			return true
+		}
+	}
+	return false
+}
+
+// processPipeCodes processes substitution codes in the header template.
+// It auto-detects the template format:
+//   - New format: @CODE@ / @CODE####@ visual-width placeholders (preferred)
+//   - Legacy format: |X pipe codes (backward compatibility)
+func (s *Screen) processPipeCodes(content []byte, subject, recipient, fromName string, isAnon bool) []byte {
 	str := string(content)
 
-	// Get current date/time
 	now := time.Now()
 	dateStr := now.Format("01/02/2006")
 	timeStr := now.Format("3:04 PM")
 
-	// Ensure values have content (use space if empty)
 	if recipient == "" {
 		recipient = " "
 	}
 	if subject == "" {
 		subject = " "
 	}
-
-	// Perform substitutions
-	replacements := map[string]string{
-		"|S": recipient,
-		"|E": subject,
-		"|D": dateStr,
-		"|T": timeStr,
-		"|A": func() string {
-			if isAnon {
-				return "Yes"
-			}
-			return "No "
-		}(),
-		"|I": "   ", // Insert mode indicator (will be updated dynamically)
-		"|L": "   ", // Line number (will be updated dynamically)
+	if fromName == "" {
+		fromName = " "
 	}
 
-	// Apply replacements - do this BEFORE processing color codes
-	for code, value := range replacements {
-		str = strings.ReplaceAll(str, code, value)
+	if isEditorNewFormat(str) {
+		// --- New @CODE@ format ---
+
+		// Locate @I@ in the ORIGINAL raw content (before any substitution).
+		// Visual cursor tracking works on raw CP437 bytes because:
+		//  - ANSI escape sequences use ASCII only (unaffected by encoding)
+		//  - Visual-width placeholders (@S####@) occupy the same byte count as their
+		//    rendered field width, so the cursor column count is unchanged
+		//  - CP437 high bytes each count as one column
+		if row, col := ansi.FindEditorPlaceholderPos(content, 'I'); row > 0 {
+			s.insertModeRow = row
+			s.insertModeCol = col
+		}
+
+		// All substitutions in a single pass (including @I@ initial placeholder).
+		subs := map[byte]string{
+			'S': recipient,
+			'F': fromName,
+			'E': subject,
+			'T': timeStr,
+			'D': dateStr,
+			'I': "   ", // initial value; updated dynamically by updateDynamicHeaderFields
+		}
+
+		// Always convert CP437→UTF-8 before placeholder substitution,
+		// regardless of output mode. This prevents WriteStringCP437 from
+		// misinterpreting pairs of raw CP437 high bytes (e.g. 0xC4 0xBF)
+		// as valid UTF-8 multi-byte sequences, which would produce '?'
+		// instead of the intended box-drawing characters (─┐).
+		// WriteStringCP437 correctly round-trips UTF-8 → CP437 via the
+		// UnicodeToCP437 reverse map.
+		utf8Content := ansi.CP437BytesToUTF8(content)
+		str = string(ansi.ProcessEditorPlaceholders(utf8Content, subs))
+	} else {
+		// --- Legacy |X format ---
+		anonStr := "No "
+		if isAnon {
+			anonStr = "Yes"
+		}
+		replacements := map[string]string{
+			"|S": recipient,
+			"|E": subject,
+			"|D": dateStr,
+			"|T": timeStr,
+			"|A": anonStr,
+			"|I": "   ", // Insert mode indicator (updated dynamically)
+			"|L": "   ", // Line number (updated dynamically)
+		}
+		for code, value := range replacements {
+			str = strings.ReplaceAll(str, code, value)
+		}
 	}
 
-	// Remove control markers (|# and |=) and everything between them
-	// These are special markers for screen geometry and should not be displayed
+	// Strip geometry markers (|#N, |=N) — these are processed by parseGeometryMarkers
+	// and must not appear in the rendered output.
 	str = s.removeControlMarkers(str)
 
-	// Process standard pipe codes for colors
-	processedBytes := ansi.ReplacePipeCodes([]byte(str))
-
-	return processedBytes
+	// Process any residual |XX pipe color codes (no-op for raw ANSI files).
+	return ansi.ReplacePipeCodes([]byte(str))
 }
 
 // removeControlMarkers removes control markers like |#8 and |=15; from the template
@@ -221,22 +268,18 @@ func (s *Screen) DisplayStatusLine(insertMode bool, currentLine, totalLines int)
 	s.updateDynamicHeaderFields(insertMode, currentLine, totalLines)
 }
 
-// updateDynamicHeaderFields updates the Ins and Line values in the header
+// updateDynamicHeaderFields updates the insert-mode indicator in the header.
+// The position is determined at template load time by tracking the @I@ placeholder.
 func (s *Screen) updateDynamicHeaderFields(insertMode bool, currentLine, totalLines int) {
-	// Update Insert mode indicator (typically at line 3, col 59 based on FSEDITOR.ANS)
+	if s.insertModeRow == 0 {
+		return // position not known (template has no @I@ placeholder)
+	}
 	modeStr := "Ins"
 	if !insertMode {
 		modeStr = "Ovr"
 	}
-	// Pad to 3 characters to overwrite any previous content
-	modeStr = fmt.Sprintf("%-3s", modeStr)
-	s.GoXY(59, 3)
-	s.WriteDirect(modeStr)
-
-	// Update Line number (typically at line 4, col 59)
-	lineStr := fmt.Sprintf("%-3d", currentLine) // Left-align, pad to 3 chars
-	s.GoXY(59, 4)
-	s.WriteDirect(lineStr)
+	s.GoXY(s.insertModeCol, s.insertModeRow)
+	s.WriteDirect(fmt.Sprintf("%-3s", modeStr))
 }
 
 // RefreshLine redraws a single line if it has changed
