@@ -2,6 +2,7 @@ package editor
 
 import (
 	"io"
+	"sync"
 	"time"
 )
 
@@ -63,6 +64,11 @@ type InputHandler struct {
 	incoming  chan byte // raw bytes from background reader goroutine
 	unreadBuf []byte   // bytes pushed back for re-reading
 	debug     bool
+
+	// Optional read interrupt integration for sessions that support it.
+	readInterrupt    chan struct{}
+	setReadInterrupt func(<-chan struct{})
+	closeOnce        sync.Once
 }
 
 // NewInputHandler creates a new input handler.
@@ -71,7 +77,21 @@ func NewInputHandler(input io.Reader) *InputHandler {
 	ih := &InputHandler{
 		incoming: make(chan byte, 256),
 	}
+
+	// If the reader supports read interruption (ssh/telnet adapters do),
+	// wire one in so Close() can stop the background goroutine cleanly.
+	if ri, ok := input.(interface{ SetReadInterrupt(<-chan struct{}) }); ok {
+		ih.readInterrupt = make(chan struct{})
+		ih.setReadInterrupt = ri.SetReadInterrupt
+		ih.setReadInterrupt(ih.readInterrupt)
+	}
+
 	go func() {
+		defer close(ih.incoming)
+		if ih.setReadInterrupt != nil {
+			defer ih.setReadInterrupt(nil)
+		}
+
 		buf := [1]byte{}
 		for {
 			n, err := input.Read(buf[:])
@@ -79,12 +99,21 @@ func NewInputHandler(input io.Reader) *InputHandler {
 				ih.incoming <- buf[0]
 			}
 			if err != nil {
-				close(ih.incoming)
 				return
 			}
 		}
 	}()
 	return ih
+}
+
+// Close stops the background read loop for handlers backed by sessions that
+// support SetReadInterrupt. It is safe to call multiple times.
+func (ih *InputHandler) Close() {
+	ih.closeOnce.Do(func() {
+		if ih.readInterrupt != nil {
+			close(ih.readInterrupt)
+		}
+	})
 }
 
 // Read implements io.Reader. It reads exactly one byte from the incoming channel,

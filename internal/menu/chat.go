@@ -106,7 +106,7 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 
 	// Main input loop
 	for {
-		input, err := terminal.ReadLine()
+		input, err := readLineFromSessionIH(s, terminal)
 		if err != nil {
 			if err == io.EOF {
 				e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserLeft, handle))

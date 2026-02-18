@@ -904,7 +904,7 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	// Prompt for door name
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt)), outputMode)
 
-	inputName, err := terminal.ReadLine()
+	inputName, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -946,7 +946,11 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 		nodeNumber, sessionStartTime, outputMode,
 		doorConfig, upperInput)
 
+	// Doors read directly from ssh.Session; reset shared InputHandler first
+	// so it does not race and steal door/menu keystrokes.
+	resetSessionIH(s)
 	cmdErr := executeDoor(ctx)
+	_ = getSessionIH(s)
 
 	if cmdErr != nil {
 		log.Printf("ERROR: Node %d: Door execution failed for user %s, door %s: %v", nodeNumber, currentUser.Handle, upperInput, cmdErr)
@@ -971,7 +975,7 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	// Prompt for door name
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt)), outputMode)
 
-	inputName, err := terminal.ReadLine()
+	inputName, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF

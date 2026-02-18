@@ -50,7 +50,7 @@ func runChangeMsgConference(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 	}
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	inputLine, err := terminal.ReadLine()
+	inputLine, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF

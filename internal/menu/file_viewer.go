@@ -50,7 +50,7 @@ func promptAndResolveFile(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	prompt := fmt.Sprintf(e.LoadedStrings.FilePromptFormat, promptVerb)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "", nil, "LOGOFF", io.EOF

@@ -213,7 +213,7 @@ func (e *MenuExecutor) processMatrixAction(
 	switch action {
 	case "LOGIN":
 		// Show PRELOGON ANSI file before login screen (matches Pascal: Printfile(PRELOGON.x) + HoldScreen)
-		e.showPrelogon(terminal, nodeNumber, outputMode)
+		e.showPrelogon(s, terminal, nodeNumber, outputMode)
 		return "LOGIN", nil
 
 	case "NEWUSER":
@@ -256,7 +256,7 @@ func (e *MenuExecutor) handleCheckAccess(
 
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MatrixCheckAccessPrompt)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		return
 	}
@@ -288,13 +288,13 @@ func (e *MenuExecutor) handleCheckAccess(
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(pausePrompt)), outputMode)
-	terminal.ReadLine()
+	_, _ = readLineFromSessionIH(s, terminal)
 }
 
 // showPrelogon displays a random PRELOGON ANSI file before the login screen.
 // Matches Pascal: Printfile(PRELOGON.x) + HoldScreen where x is random 1..NumPrelogon.
 // Looks for numbered files (PRELOGON.1, PRELOGON.2, ...) first, falls back to PRELOGON.ANS.
-func (e *MenuExecutor) showPrelogon(terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) {
+func (e *MenuExecutor) showPrelogon(s ssh.Session, terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) {
 	ansiDir := filepath.Join(e.MenuSetPath, "ansi")
 
 	// Look for numbered PRELOGON files (Pascal pattern: PRELOGON.1, PRELOGON.2, ...)
@@ -348,7 +348,7 @@ func (e *MenuExecutor) showPrelogon(terminal *term.Terminal, nodeNumber int, out
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+pausePrompt)), outputMode)
-	terminal.ReadLine()
+	_, _ = readLineFromSessionIH(s, terminal)
 }
 
 // drawMatrixScreen clears the screen, draws the ANSI background, and highlights the selected option.

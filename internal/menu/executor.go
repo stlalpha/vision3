@@ -64,6 +64,18 @@ func getSessionIH(s ssh.Session) *editor.InputHandler {
 	return ih
 }
 
+// resetSessionIH stops and removes any session-scoped InputHandler for s.
+// Use this before flows that must read from ssh.Session directly (doors/zmodem),
+// then recreate via getSessionIH(s) after returning to menu input.
+func resetSessionIH(s ssh.Session) {
+	if v, ok := sessionInputHandlers.Load(s); ok {
+		if ih, ok := v.(*editor.InputHandler); ok {
+			ih.Close()
+		}
+		sessionInputHandlers.Delete(s)
+	}
+}
+
 // readLineFromSessionIH reads a simple command line from the shared session
 // InputHandler so menu input never races with other session readers.
 func readLineFromSessionIH(s ssh.Session, terminal *term.Terminal) (string, error) {
@@ -337,7 +349,11 @@ func registerPlaceholderRunnables(registry map[string]RunnableFunc) { // Use loc
 			nodeNumber, sessionStartTime, outputMode,
 			doorConfig, doorName)
 
+		// Doors read directly from ssh.Session; reset shared InputHandler first
+		// so it does not race and steal door/menu keystrokes.
+		resetSessionIH(s)
 		cmdErr := executeDoor(ctx)
+		_ = getSessionIH(s)
 
 		if cmdErr != nil {
 			log.Printf("ERROR: Node %d: Door execution failed for user %s, door %s: %v", nodeNumber, currentUser.Handle, doorName, cmdErr)
@@ -1141,7 +1157,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			log.Printf("ERROR: Node %d: Failed writing EnterOneLiner prompt: %v", nodeNumber, wErr)
 		}
 
-		newOneliner, err := terminal.ReadLine()
+		newOneliner, err := readLineFromSessionIH(s, terminal)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				log.Printf("INFO: Node %d: User disconnected while entering oneliner.", nodeNumber)
@@ -1240,7 +1256,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		log.Printf("ERROR: Node %d: Failed writing username prompt: %v", nodeNumber, wErr)
 		// Continue anyway?
 	}
-	usernameInput, err := terminal.ReadLine()
+	usernameInput, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if err == io.EOF {
 			log.Printf("INFO: Node %d: User disconnected during username input.", nodeNumber)
@@ -2136,7 +2152,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 	if userColor, ok := colors["P"]; ok && userColor != "" {
 		terminalio.WriteProcessedBytes(terminal, []byte(userColor), outputMode)
 	}
-	usernameInput, err := terminal.ReadLine()
+	usernameInput, err := readLineFromSessionIH(s, terminal)
 	// Reset color attributes after input (required for bright colors)
 	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
 	if err != nil {
@@ -3700,13 +3716,12 @@ func writeCenteredPausePrompt(s ssh.Session, terminal *term.Terminal, pausePromp
 		return wErr
 	}
 
-	bufioReader := bufio.NewReader(s)
 	for {
-		r, _, err := bufioReader.ReadRune()
+		key, err := getSessionIH(s).ReadKey()
 		if err != nil {
 			return err
 		}
-		if r == '\r' || r == '\n' {
+		if key == editor.KeyEnter {
 			break
 		}
 	}
@@ -4217,7 +4232,7 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 		}
 
 		// Read user input
-		input, err := terminal.ReadLine()
+		input, err := readLineFromSessionIH(s, terminal)
 		if err != nil {
 			// Clean up line on error using WriteProcessedBytes
 			wErr := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode) // Assuming CRLF is enough cleanup here
@@ -7234,7 +7249,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.T
 		log.Printf("WARN: Node %d: Failed to write area selection prompt: %v", nodeNumber, wErr)
 	}
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			log.Printf("INFO: Node %d: User disconnected during area selection.", nodeNumber)
@@ -7360,7 +7375,7 @@ func runReadMsgs(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(noNewMsg+totalMsg)), outputMode)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(promptMsg)), outputMode)
 
-		input, readErr := terminal.ReadLine()
+		input, readErr := readLineFromSessionIH(s, terminal)
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -7758,7 +7773,7 @@ func (e *MenuExecutor) runUploadFiles(
 	msg := fmt.Sprintf("\r\n|15Uploading to: |14%s|07\r\n\r\n|11Start the ZMODEM send in your terminal.|07\r\n|07After transfer, you will be prompted for file descriptions.\r\n\r\n|07Press |15ENTER|07 to begin or |15Q|07 to cancel: ", area.Name)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return err
@@ -7899,7 +7914,7 @@ func (e *MenuExecutor) runUploadFiles(
 			descPrompt := fmt.Sprintf("\r\n|15%s|07 (%d bytes)\r\n|11Desc:|07 ", nf.name, nf.size)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(descPrompt)), outputMode)
 
-			descInput, err := terminal.ReadLine()
+			descInput, err := readLineFromSessionIH(s, terminal)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					return err
@@ -8232,7 +8247,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		}
 
 		// 4.6 Read User Input
-		input, err := terminal.ReadLine()
+		input, err := readLineFromSessionIH(s, terminal)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				log.Printf("INFO: Node %d: User disconnected during LISTFILES.", nodeNumber)
@@ -8467,7 +8482,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			log.Printf("DEBUG: Node %d: View command entered in file list", nodeNumber)
 			viewPrompt := "\r\n|07Enter file # to view (or |15ENTER|07 to cancel): |15"
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(viewPrompt)), outputMode)
-			viewInput, viewErr := terminal.ReadLine()
+			viewInput, viewErr := readLineFromSessionIH(s, terminal)
 			if viewErr != nil {
 				if errors.Is(viewErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF
@@ -8785,7 +8800,7 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		return currentUser, "", nil
 	}
 
-	inputTag, err := terminal.ReadLine()
+	inputTag, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			log.Printf("INFO: Node %d: User disconnected during SELECTFILEAREA prompt.", nodeNumber)
@@ -8911,7 +8926,7 @@ func runSelectMessageArea(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	}
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	inputTag, err := terminal.ReadLine()
+	inputTag, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF

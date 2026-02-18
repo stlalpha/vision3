@@ -95,7 +95,7 @@ func runCfgScreenWidth(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	prompt := fmt.Sprintf(e.LoadedStrings.CfgScreenWidthPrompt, current)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -140,7 +140,7 @@ func runCfgScreenHeight(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	prompt := fmt.Sprintf(e.LoadedStrings.CfgScreenHeightPrompt, current)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -220,7 +220,7 @@ func runCfgStringInput(
 	}
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -357,7 +357,7 @@ func runCfgColor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	palette.WriteString(e.LoadedStrings.CfgColorInputPrompt)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(palette.String())), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF

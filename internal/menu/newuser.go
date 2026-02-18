@@ -53,7 +53,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 			pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 		}
 		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(pausePrompt)), outputMode)
-		terminal.ReadLine()
+		_, _ = readLineFromSessionIH(s, terminal)
 		return nil
 	}
 
@@ -89,7 +89,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 			pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 		}
 		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n\r\n"+pausePrompt)), outputMode)
-		terminal.ReadLine()
+		_, _ = readLineFromSessionIH(s, terminal)
 	}
 
 	// 3. Handle/Alias entry
@@ -185,7 +185,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+pausePrompt)), outputMode)
-	terminal.ReadLine()
+	_, _ = readLineFromSessionIH(s, terminal)
 
 	return nil
 }
