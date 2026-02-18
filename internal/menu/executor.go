@@ -7066,25 +7066,7 @@ func runComposeMessageWithIH(e *MenuExecutor, s ssh.Session, ih *editor.InputHan
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 	}
 
-	// 5. Prompt for Upload (Y/N)
-	uploadPrompt := e.LoadedStrings.UploadMsgStr
-	if uploadPrompt == "" {
-		uploadPrompt = "|07Upload Message? @"
-	}
-	uploadYes, err := e.promptYesNo(s, terminal, uploadPrompt, outputMode, nodeNumber, termWidth, termHeight)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			log.Printf("INFO: Node %d: User disconnected during upload input.", nodeNumber)
-			return nil, "LOGOFF", io.EOF
-		}
-		log.Printf("ERROR: Node %d: Failed reading upload input: %v", nodeNumber, err)
-		uploadYes = false
-	}
-	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-	// TODO: Implement upload functionality if uploadYes == true
-	_ = uploadYes // Suppress unused warning for now
-
-	// 6. Determine the sender display name for the editor header (@F@ field).
+	// 5. Determine the sender display name for the editor header (@F@ field).
 	// Priority: anonymous string > real name (if area requires it) > handle.
 	fromName := currentUser.Handle
 	if area.RealNameOnly && strings.TrimSpace(currentUser.RealName) != "" {
@@ -7097,7 +7079,7 @@ func runComposeMessageWithIH(e *MenuExecutor, s ssh.Session, ih *editor.InputHan
 		}
 	}
 
-	// 7. Call the Editor
+	// 6. Call the Editor
 	log.Printf("DEBUG: Node %d: Clearing screen before calling editor.RunEditor", nodeNumber)
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode) // Clear screen before editor
 

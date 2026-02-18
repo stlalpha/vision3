@@ -29,7 +29,6 @@ type StringsConfig struct {
 	PostOnBoardStr          string `json:"postOnBoardStr"`
 	MsgTitleStr             string `json:"msgTitleStr"`
 	MsgToStr                string `json:"msgToStr"`
-	UploadMsgStr            string `json:"uploadMsgStr"`
 	MsgAnonStr              string `json:"msgAnonStr"`
 	AnonymousName           string `json:"anonymousName"`
 	SlashStr                string `json:"slashStr"`
