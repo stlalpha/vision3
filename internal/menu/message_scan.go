@@ -64,7 +64,12 @@ func runGetScanType(reader *bufio.Reader, e *MenuExecutor, terminal *term.Termin
 		ansPath := "menus/v3/ansi/NSCANHDR.ANS"
 		headerContent, ansErr := ansi.GetAnsiFileContent(ansPath)
 		if ansErr == nil {
-			terminalio.WriteProcessedBytes(terminal, headerContent, outputMode)
+			// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+			if outputMode == ansi.OutputModeCP437 {
+				terminal.Write(headerContent)
+			} else {
+				terminalio.WriteProcessedBytes(terminal, headerContent, outputMode)
+			}
 			// Position cursor on line 5 (after 4-row header)
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		}
@@ -787,7 +792,12 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	ansPath := filepath.Join(e.MenuSetPath, "ansi", "NEWSCAN.ANS")
 	headerContent, ansErr := ansi.GetAnsiFileContent(ansPath)
 	if ansErr == nil {
-		terminalio.WriteProcessedBytes(terminal, headerContent, outputMode)
+		// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+		if outputMode == ansi.OutputModeCP437 {
+			terminal.Write(headerContent)
+		} else {
+			terminalio.WriteProcessedBytes(terminal, headerContent, outputMode)
+		}
 	} else {
 		// Fallback to text header
 		header := "|15Newscan Configuration|07\r\n" +

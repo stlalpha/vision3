@@ -836,7 +836,13 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	// Display header
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(topBytes), outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	processedTop := ansi.ReplacePipeCodes(topBytes)
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(processedTop)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, processedTop, outputMode)
+	}
 
 	// Get door registry atomically
 	e.configMu.RLock()
@@ -875,7 +881,12 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	// Display footer
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(botBytes), outputMode)
+	processedBot := ansi.ReplacePipeCodes(botBytes)
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(processedBot)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, processedBot, outputMode)
+	}
 
 	return currentUser, "", nil
 }

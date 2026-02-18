@@ -1750,7 +1750,14 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						currentMenuName, len(lines), termHeight, termHeight)
 				}
 			}
-			if wErr := terminalio.WriteProcessedBytes(terminal, displayBytes, outputMode); wErr != nil {
+			// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+			var wErr error
+			if outputMode == ansi.OutputModeCP437 {
+				_, wErr = terminal.Write(displayBytes)
+			} else {
+				wErr = terminalio.WriteProcessedBytes(terminal, displayBytes, outputMode)
+			}
+			if wErr != nil {
 				log.Printf("ERROR: Failed writing ANSI screen for %s: %v", currentMenuName, wErr)
 				return "", nil, fmt.Errorf("failed displaying screen: %w", wErr)
 			}
@@ -2824,13 +2831,14 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 		return writeErr
 	}
 
-	// Write the data using the new helper (this assumes displayFile is ONLY for ANSI files)
-	// We should ideally process the file content using ProcessAnsiAndExtractCoords first,
-	// but for a quick fix, let's assume CP437 output is desired here.
-	// Use the passed outputMode for the file content
-	err = terminalio.WriteProcessedBytes(terminal, data, outputMode) // Use passed outputMode
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	if outputMode == ansi.OutputModeCP437 {
+		_, err = terminal.Write(data)
+	} else {
+		err = terminalio.WriteProcessedBytes(terminal, data, outputMode)
+	}
 	if err != nil {
-		log.Printf("ERROR: Failed to write ANSI file %s using WriteProcessedBytes: %v", filePath, err)
+		log.Printf("ERROR: Failed to write ANSI file %s: %v", filePath, err)
 		return err
 	}
 
@@ -2905,11 +2913,14 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		"|TIME":   time.Now().Format("15:04"),
 		"|MN":     currentMenuName, // Menu Name
 		"|PV":     "0",             // Pending validations
+		"|UH":     "Guest",         // User Handle
 		"|ALIAS":  "Guest",         // Default
 		"|HANDLE": "Guest",         // Default
 		"|LEVEL":  "0",             // Default
 		"|NAME":   "Guest User",    // Default
 		"|PHONE":  "",              // Default
+		"|GL":     "",              // Group/Location default
+		"|UN":     "",              // User note (privateNote) default
 		"|UPLDS":  "0",             // Default
 		"|DNLDS":  "0",             // Default
 		"|POSTS":  "0",             // Default
@@ -2917,15 +2928,19 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		"|LCALL":  "Never",         // Default
 		"|TL":     "N/A",           // Default
 		"|CA":     "None",          // Default
+		"|CC":     "None",          // Current conference default
 	}
 
 	// Populate user-specific placeholders if logged in
 	if currentUser != nil {
+		placeholders["|UH"] = currentUser.Handle
 		placeholders["|ALIAS"] = currentUser.Handle
 		placeholders["|HANDLE"] = currentUser.Handle
 		placeholders["|LEVEL"] = strconv.Itoa(currentUser.AccessLevel)
 		placeholders["|NAME"] = currentUser.RealName
 		placeholders["|PHONE"] = currentUser.PhoneNumber
+		placeholders["|GL"] = currentUser.GroupLocation
+		placeholders["|UN"] = currentUser.PrivateNote
 		placeholders["|UPLDS"] = strconv.Itoa(currentUser.NumUploads)
 		placeholders["|CALLS"] = strconv.Itoa(currentUser.TimesCalled)
 		if !currentUser.LastLogin.IsZero() {
@@ -2939,6 +2954,11 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		} else {
 			// Keep default "None" if user tag is empty
 			log.Printf("DEBUG: User's CurrentMessageAreaTag is empty, using default 'None' for |CA placeholder")
+		}
+
+		// Set |CC based on user's current message conference tag
+		if currentUser.CurrentMsgConferenceTag != "" {
+			placeholders["|CC"] = currentUser.CurrentMsgConferenceTag
 		}
 
 		// Calculate Time Left |TL
@@ -3857,7 +3877,13 @@ func drawLightbarOption(terminal *term.Terminal, opt LightbarOption, selected bo
 
 func drawLightbarMenu(terminal *term.Terminal, backgroundBytes []byte, options []LightbarOption, selectedIndex int, outputMode ansi.OutputMode, drawBackground bool) error {
 	if drawBackground {
-		err := terminalio.WriteProcessedBytes(terminal, backgroundBytes, outputMode)
+		// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+		var err error
+		if outputMode == ansi.OutputModeCP437 {
+			_, err = terminal.Write(backgroundBytes)
+		} else {
+			err = terminalio.WriteProcessedBytes(terminal, backgroundBytes, outputMode)
+		}
 		if err != nil {
 			return fmt.Errorf("failed writing lightbar background: %w", err)
 		}
@@ -4282,9 +4308,14 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		return nil, "", writeErr
 	}
 
-	// Use WriteProcessedBytes for the assembled template content
 	processedContent := outputBuffer.Bytes() // Contains already-processed ANSI bytes
-	wErr := terminalio.WriteProcessedBytes(terminal, processedContent, outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	var wErr error
+	if outputMode == ansi.OutputModeCP437 {
+		_, wErr = terminal.Write(processedContent)
+	} else {
+		wErr = terminalio.WriteProcessedBytes(terminal, processedContent, outputMode)
+	}
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing USERLIST output: %v", nodeNumber, wErr)
 		return nil, "", wErr
@@ -8567,7 +8598,13 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal
 	}
 
 	processedContent := outputBuffer.Bytes()
-	wErr := terminalio.WriteProcessedBytes(terminal, processedContent, outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	var wErr error
+	if outputMode == ansi.OutputModeCP437 {
+		_, wErr = terminal.Write(processedContent)
+	} else {
+		wErr = terminalio.WriteProcessedBytes(terminal, processedContent, outputMode)
+	}
 	if wErr != nil {
 		log.Printf("ERROR: Node %d: Failed writing file area list output: %v", nodeNumber, wErr)
 		return wErr // Return the error from writing

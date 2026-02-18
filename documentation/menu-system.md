@@ -131,15 +131,37 @@ ANSI files contain the visual display for menus. They support:
 
 ### Pipe Color Codes
 
+**Foreground Colors:**
+
 ```text
 |00 - Black       |08 - Dark Gray
-|01 - Red         |09 - Light Red
+|01 - Blue        |09 - Light Blue
 |02 - Green       |10 - Light Green
-|03 - Brown       |11 - Yellow
-|04 - Blue        |12 - Light Blue
+|03 - Cyan        |11 - Light Cyan
+|04 - Red         |12 - Light Red
 |05 - Magenta     |13 - Light Magenta
-|06 - Cyan        |14 - Light Cyan
+|06 - Brown       |14 - Yellow
 |07 - Light Gray  |15 - White
+```
+
+**Background Colors:**
+
+```text
+|B0  - Black BG       |B8  - Bright Black BG
+|B1  - Red BG         |B9  - Bright Red BG
+|B2  - Green BG       |B10 - Bright Green BG
+|B3  - Brown BG       |B11 - Bright Yellow BG
+|B4  - Blue BG        |B12 - Bright Blue BG
+|B5  - Magenta BG     |B13 - Bright Magenta BG
+|B6  - Cyan BG        |B14 - Bright Cyan BG
+|B7  - Gray BG        |B15 - Bright White BG
+```
+
+**Control Codes:**
+
+```text
+|CL - Clear screen    |DE - Clear to end of line
+|CR - Carriage return  |23 - Reset attributes
 ```
 
 ### Special Placeholder Codes
@@ -154,6 +176,9 @@ Dynamic content placeholders in prompts and ANSI files:
 - `|CALLS` - User's total calls
 - `|NODE` - Current node number
 - `|MN` - Current menu name
+- `|GL` - Group/Location (from user profile)
+- `|UN` - User note (privateNote from user profile)
+- `|CC` - Current message conference
 
 ### Coordinate Codes
 
