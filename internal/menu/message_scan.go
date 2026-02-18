@@ -261,7 +261,11 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
-	reader := bufio.NewReader(s)
+	// Use the session-scoped InputHandler so this scan loop, any editor
+	// invocations, and the lightbar menus all share a single goroutine reading
+	// from the SSH session — no keystrokes are lost when control transfers.
+	scanIH := getSessionIH(s)
+	reader := bufio.NewReader(scanIH)
 
 	// Get total message count for current area (for range display in setup)
 	currentAreaID := currentUser.CurrentMessageAreaID
@@ -409,7 +413,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			case 'R': // Read this area
 				// Fall through to call runMessageReader below
 			case 'P': // Post
-				_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
+				_, _, _ = runComposeMessageWithIH(e, s, scanIH, terminal, userManager, currentUser, nodeNumber,
 					sessionStartTime, "", outputMode, termWidth, termHeight)
 				continue
 			case 'J': // Jump to message #

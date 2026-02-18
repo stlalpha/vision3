@@ -18,7 +18,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
@@ -44,6 +43,56 @@ import (
 // Mutex for protecting access to the oneliners file
 var onelinerMutex sync.Mutex
 var lastCallerATTokenRegex = regexp.MustCompile(`@([A-Za-z]{2,12})(?::(-?\d+))?@`)
+
+// sessionInputHandlers stores a single *editor.InputHandler per ssh.Session.
+// A background goroutine inside InputHandler reads raw bytes from the session
+// into a channel; lightbar menus and the full-screen editor both read from that
+// channel. This prevents orphaned goroutines from consuming keystrokes after
+// the editor exits, which caused the "double key press" bug on return to a menu.
+var sessionInputHandlers sync.Map
+
+// getSessionIH returns (creating if necessary) the session-scoped InputHandler
+// for s. All callers within the same session share a single goroutine that
+// reads from the ssh.Session, so bytes are never lost when control passes
+// between the lightbar, message reader, scan, and full-screen editor.
+func getSessionIH(s ssh.Session) *editor.InputHandler {
+	if v, ok := sessionInputHandlers.Load(s); ok {
+		return v.(*editor.InputHandler)
+	}
+	ih := editor.NewInputHandler(s)
+	sessionInputHandlers.Store(s, ih)
+	return ih
+}
+
+// readLineFromSessionIH reads a simple command line from the shared session
+// InputHandler so menu input never races with other session readers.
+func readLineFromSessionIH(s ssh.Session, terminal *term.Terminal) (string, error) {
+	ih := getSessionIH(s)
+	line := make([]byte, 0, 64)
+
+	for {
+		key, err := ih.ReadKey()
+		if err != nil {
+			return "", err
+		}
+
+		switch key {
+		case editor.KeyEnter:
+			_, _ = terminal.Write([]byte("\r\n"))
+			return string(line), nil
+		case editor.KeyBackspace:
+			if len(line) > 0 {
+				line = line[:len(line)-1]
+				_, _ = terminal.Write([]byte("\b \b"))
+			}
+		default:
+			if key >= 32 && key < 127 {
+				line = append(line, byte(key))
+				_, _ = terminal.Write([]byte{byte(key)})
+			}
+		}
+	}
+}
 
 // IPLockoutChecker defines the interface for IP-based authentication lockout.
 // This allows the menu system to check and record failed login attempts without
@@ -1338,6 +1387,10 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 	var previousMenuName string // Track the last menu visited
 	// var authenticatedUserResult *user.User // Unused
 
+	// Clean up the session-scoped InputHandler when this Run() returns so the
+	// goroutine is not reused across re-entrant calls or after the session ends.
+	defer sessionInputHandlers.Delete(s)
+
 	if currentUser != nil {
 		log.Printf("DEBUG: Running menu for user %s (Level: %d)", currentUser.Handle, currentUser.AccessLevel)
 	} else {
@@ -1813,13 +1866,17 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 					log.Printf("ERROR: Failed to draw lightbar menu for %s: %v", currentMenuName, drawErr)
 					isLightbarMenu = false
 				} else {
-					// Process keyboard navigation for lightbar
+					// Process keyboard navigation for lightbar.
+					// Use the session-scoped InputHandler so the same goroutine that
+					// reads from the SSH session is shared with any editor invocations
+					// triggered from this menu (e.g. COMPOSEMSG). This prevents the
+					// orphaned goroutine from consuming the first keystroke after the
+					// editor exits, which caused the "double key press" bug.
 					lightbarResult := "" // Use a local variable for the result
 					inputLoop := true
-					bufioReader := bufio.NewReader(s)
+					sessionIH := getSessionIH(s)
 					for inputLoop {
-						// Read keyboard input for lightbar navigation
-						r, _, err := bufioReader.ReadRune()
+						key, err := sessionIH.ReadKey()
 						if err != nil {
 							if err == io.EOF {
 								log.Printf("INFO: User disconnected during lightbar input for %s", currentMenuName)
@@ -1828,77 +1885,56 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 							log.Printf("ERROR: Failed to read lightbar input for menu %s: %v", currentMenuName, err)
 							return "", nil, fmt.Errorf("failed reading lightbar input: %w", err)
 						}
-						log.Printf("DEBUG: Lightbar input rune: '%c' (%d)", r, r)
+						log.Printf("DEBUG: Lightbar input key: %d", key)
 
-						if r < 32 && r != '\r' && r != '\n' && r != 27 {
-							continue
-						}
-
-						// Map specific keys for navigation and selection
-						switch r {
-						case '1', '2', '3', '4', '5', '6', '7', '8', '9':
-							// Direct selection by number
-							numIndex := int(r - '1') // Convert 1-9 to 0-8
-							if numIndex >= 0 && numIndex < len(lightbarOptions) {
+						switch key {
+						case editor.KeyArrowUp:
+							if selectedIndex > 0 {
 								prevIndex := selectedIndex
-								selectedIndex = numIndex
-								if prevIndex != selectedIndex {
-									_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
-									_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
-								}
-								lightbarResult = lightbarOptions[numIndex].HotKey
-								inputLoop = false
+								selectedIndex--
+								_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
+								_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
 							}
-						case '\r', '\n': // Enter - select current item
+						case editor.KeyArrowDown:
+							if selectedIndex < len(lightbarOptions)-1 {
+								prevIndex := selectedIndex
+								selectedIndex++
+								_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
+								_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+							}
+						case int('\r'), int('\n'): // Enter (CR or LF) - select current item
 							if selectedIndex >= 0 && selectedIndex < len(lightbarOptions) {
 								lightbarResult = lightbarOptions[selectedIndex].HotKey
 								inputLoop = false
 							}
-						case 27: // ESC key - check for arrow keys in ANSI sequence
-							time.Sleep(20 * time.Millisecond)
-							seq := make([]byte, 0, 8)
-							for bufioReader.Buffered() > 0 && len(seq) < 8 {
-								b, readErr := bufioReader.ReadByte()
-								if readErr != nil {
-									break
-								}
-								seq = append(seq, b)
-							}
-
-							// Check for arrow keys and handle navigation
-							if len(seq) >= 2 && seq[0] == 91 { // '['
-								switch seq[1] {
-								case 65: // Up arrow
-									if selectedIndex > 0 {
-										prevIndex := selectedIndex
-										selectedIndex--
-										_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
-										_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
-									}
-								case 66: // Down arrow
-									if selectedIndex < len(lightbarOptions)-1 {
-										prevIndex := selectedIndex
-										selectedIndex++
-										_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
-										_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
-									}
-								}
-							}
-							continue // Continue waiting for more input after navigation
+						case editor.KeyEsc:
+							// Bare ESC (InputHandler already consumed any ANSI sequence) — ignore
 						default:
-							// Check if key matches any hotkey directly
-							keyStr := strings.ToUpper(string(r))
-							for _, opt := range lightbarOptions {
-								if keyStr == opt.HotKey {
-									lightbarResult = opt.HotKey
+							if key >= int('1') && key <= int('9') {
+								// Direct selection by number
+								numIndex := key - int('1') // Convert 1-9 to 0-8
+								if numIndex >= 0 && numIndex < len(lightbarOptions) {
+									prevIndex := selectedIndex
+									selectedIndex = numIndex
+									if prevIndex != selectedIndex {
+										_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
+										_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+									}
+									lightbarResult = lightbarOptions[numIndex].HotKey
 									inputLoop = false
-									break // Exit inner loop
+								}
+							} else if key >= 32 && key < 127 {
+								// Check if printable key matches any hotkey directly
+								keyStr := strings.ToUpper(string(rune(key)))
+								for _, opt := range lightbarOptions {
+									if keyStr == opt.HotKey {
+										lightbarResult = opt.HotKey
+										inputLoop = false
+										break
+									}
 								}
 							}
-							if !inputLoop {
-								break // Exit switch if hotkey matched
-							}
-							continue // Otherwise keep waiting for valid input
+							// Control chars and other special codes are ignored
 						}
 					}
 					log.Printf("DEBUG: Processed Lightbar input as: '%s'", lightbarResult)
@@ -1923,8 +1959,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 					log.Printf("DEBUG: Skipping prompt display for %s (UsePrompt: %t, Prompt1 empty: %t)", currentMenuName, menuRec.GetUsePrompt(), menuRec.Prompt1 == "")
 				}
 
-				// Read User Input Line
-				input, err := terminal.ReadLine()
+				// Read User Input Line via shared InputHandler to avoid reader races.
+				input, err := readLineFromSessionIH(s, terminal)
 				if err != nil {
 					if err == io.EOF {
 						log.Printf("INFO: User disconnected during menu input for %s", currentMenuName)
@@ -1953,8 +1989,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				log.Printf("DEBUG: Skipping prompt display for %s (UsePrompt: %t, Prompt1 empty: %t)", currentMenuName, menuRec.GetUsePrompt(), menuRec.Prompt1 == "")
 			}
 
-			// Read User Input Line
-			input, err := terminal.ReadLine()
+			// Read User Input Line via shared InputHandler to avoid reader races.
+			input, err := readLineFromSessionIH(s, terminal)
 			if err != nil {
 				if err == io.EOF {
 					log.Printf("INFO: User disconnected during menu input for %s", currentMenuName)
@@ -4110,9 +4146,11 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 		// Draw initial options
 		drawInlineOptions(selectedIndex)
 
-		bufioReader := bufio.NewReader(s)
+		// Use session-scoped InputHandler so we share the single goroutine
+		// reading from the SSH session (prevents "double key press" race).
+		yesNoIH := getSessionIH(s)
 		for {
-			r, _, err := bufioReader.ReadRune()
+			key, err := yesNoIH.ReadKey()
 			if err != nil {
 				if errors.Is(err, io.EOF) {
 					return false, io.EOF
@@ -4124,34 +4162,22 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 			selectionMade := false
 			result := false
 
-			switch unicode.ToUpper(r) {
-			case 'Y':
+			switch {
+			case key == int('Y') || key == int('y'):
 				selectionMade = true
 				result = true
-			case 'N':
+			case key == int('N') || key == int('n'):
 				selectionMade = true
 				result = false
-			case ' ', '\r', '\n':
+			case key == int(' ') || key == int('\r') || key == int('\n'):
 				selectionMade = true
 				result = (selectedIndex == 1)
-			case 27:
-				escSeq := make([]byte, 2)
-				n, readErr := bufioReader.Read(escSeq)
-				if readErr != nil || n != 2 {
-					log.Printf("DEBUG: Read %d bytes after ESC, err: %v. Ignoring ESC.", n, readErr)
-					continue
-				}
-				log.Printf("DEBUG: ESC sequence read: [%x %x]", escSeq[0], escSeq[1])
-				if escSeq[0] == 91 {
-					switch escSeq[1] {
-					case 67: // Right arrow
-						newSelectedIndex = 1 - selectedIndex
-					case 68: // Left arrow
-						newSelectedIndex = 1 - selectedIndex
-					}
-				}
+			case key == editor.KeyArrowLeft || key == editor.KeyArrowRight:
+				newSelectedIndex = 1 - selectedIndex
+			case key == editor.KeyEsc:
+				// Bare ESC (InputHandler consumed any ANSI sequence) — ignore
 			default:
-				// Ignore other chars
+				// Ignore other keys
 			}
 
 			if selectionMade {
@@ -6852,7 +6878,17 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *term.Terminal
 }
 
 // runComposeMessage handles the process of composing and saving a new message.
+// It is a RunnableFunc-compatible wrapper; use runComposeMessageWithIH when a
+// shared InputHandler is available to prevent the editor goroutine from consuming
+// bytes after the editor exits.
 func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	return runComposeMessageWithIH(e, s, getSessionIH(s), terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode, termWidth, termHeight)
+}
+
+// runComposeMessageWithIH is the internal implementation of runComposeMessage.
+// ih is an optional pre-created *InputHandler shared with the caller's reader loop;
+// pass nil to create a new one inside the editor.
+func runComposeMessageWithIH(e *MenuExecutor, s ssh.Session, ih *editor.InputHandler, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running COMPOSEMSG with args: %s", nodeNumber, args)
 
 	// 1. Determine Target Area
@@ -7064,7 +7100,7 @@ func runComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	}
 
 	// No quote data for new messages
-	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, toUser, fromName, isAnonymous, "", "", "", "", false, nil, editorCtx)
+	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, toUser, fromName, isAnonymous, "", "", "", "", false, nil, ih, editorCtx)
 	log.Printf("DEBUG: Node %d: editor.RunEditorWithMetadata returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
 
 	if err != nil {
@@ -9001,11 +9037,14 @@ func styledInput(terminal *term.Terminal, session ssh.Session, outputMode ansi.O
 		renderBox(false)
 	}
 
-	// Read character by character from session
+	// Read character by character via the session-scoped InputHandler so we share
+	// the single goroutine reading from the SSH session, preventing the race that
+	// caused the "double key press" bug when the lightbar's goroutine was also active.
+	ih := getSessionIH(session)
 	readBuf := make([]byte, 1)
 
 	for {
-		n, err := session.Read(readBuf)
+		n, err := ih.Read(readBuf)
 		if err != nil {
 			if err == io.EOF {
 				return "", err
@@ -9155,7 +9194,7 @@ func runSendPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		NextMsgNum: privNextMsg,
 		ConfArea:   "Private Mail",
 	}
-	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, recipientUser.Handle, currentUser.Handle, false, "", "", "", "", false, nil, privEditorCtx)
+	body, saved, err := editor.RunEditorWithMetadata("", s, s, outputMode, subject, recipientUser.Handle, currentUser.Handle, false, "", "", "", "", false, nil, nil, privEditorCtx)
 	log.Printf("DEBUG: Node %d: editor.RunEditorWithMetadata returned. Error: %v, Saved: %v, Body length: %d", nodeNumber, err, saved, len(body))
 
 	if err != nil {

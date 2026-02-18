@@ -310,6 +310,112 @@ func splitSGR(s string) []int {
 	return result
 }
 
+// FindEditorColorAtPos returns the ANSI SGR escape sequence active at the specified
+// terminal row and column (both 1-based) in the raw template bytes. It processes ANSI
+// escape sequences (which update SGR state without advancing the column counter) before
+// checking the column position, so the returned state accurately reflects the color that
+// would apply when drawing the character at that column.
+//
+// Use this to capture the color context of a specific template cell for cursor-overlay
+// rendering — for example, to get the dark shade color at the ░ padding position
+// adjacent to a dynamic number field.
+//
+// Returns "" if the target position is not reached in the template.
+func FindEditorColorAtPos(template []byte, targetRow, targetCol int) string {
+	row, col := 1, 1
+	i := 0
+	n := len(template)
+
+	var sgr sgrState
+
+	for i < n {
+		// Process ANSI/VT escape sequences first — they update SGR/cursor without
+		// advancing the visible column counter.
+		if template[i] == 0x1b && i+1 < n && template[i+1] == '[' {
+			i += 2
+			paramStart := i
+			for i < n && (template[i] >= '0' && template[i] <= '9' || template[i] == ';' || template[i] == ' ') {
+				i++
+			}
+			if i >= n {
+				break
+			}
+			cmd := template[i]
+			i++
+
+			switch cmd {
+			case 'H', 'f': // cursor absolute ESC[row;colH
+				paramBytes := template[paramStart : i-1]
+				r, c := 1, 1
+				semi := -1
+				for j, b := range paramBytes {
+					if b == ';' {
+						semi = j
+						break
+					}
+				}
+				if semi == -1 {
+					if v, err := strconv.Atoi(string(paramBytes)); err == nil && v > 0 {
+						r = v
+					}
+				} else {
+					if v, err := strconv.Atoi(string(paramBytes[:semi])); err == nil && v > 0 {
+						r = v
+					}
+					if v, err := strconv.Atoi(string(paramBytes[semi+1:])); err == nil && v > 0 {
+						c = v
+					}
+				}
+				row, col = r, c
+			case 'A':
+				row -= parseSingleParam(template[paramStart:i-1], 1)
+			case 'B':
+				row += parseSingleParam(template[paramStart:i-1], 1)
+			case 'C':
+				col += parseSingleParam(template[paramStart:i-1], 1)
+			case 'D':
+				col -= parseSingleParam(template[paramStart:i-1], 1)
+			case 'm':
+				sgr.applyParams(string(template[paramStart : i-1]))
+			}
+			continue
+		}
+
+		// ESC without [ — single-char escape, skip
+		if template[i] == 0x1b {
+			i += 2
+			continue
+		}
+
+		// Check target AFTER processing any ANSI sequences at this position,
+		// BEFORE advancing the column for the visible character.
+		if row == targetRow && col == targetCol {
+			return sgr.escape()
+		}
+		if row > targetRow {
+			return "" // passed the target row
+		}
+
+		// Advance cursor position for visible characters
+		switch template[i] {
+		case '\r':
+			col = 1
+		case '\n':
+			row++
+			col = 1
+		case '\t':
+			col = ((col-1)/8+1)*8 + 1
+		default:
+			if template[i] >= 0x20 {
+				col++
+			}
+		}
+		i++
+	}
+
+	return "" // target position not reached
+}
+
 // parseSingleParam parses an optional integer from CSI parameter bytes, returning def if absent.
 func parseSingleParam(b []byte, def int) int {
 	if len(b) == 0 {

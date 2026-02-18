@@ -104,7 +104,11 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		termHeight = 24
 	}
 
-	reader := bufio.NewReader(s)
+	// Use the session-scoped InputHandler so this reader loop, any editor
+	// invocations, and the lightbar menus all share a single goroutine reading
+	// from the SSH session — no keystrokes are lost when control transfers.
+	sessionIH := getSessionIH(s)
+	reader := bufio.NewReader(sessionIH)
 
 	// Lightbar colors from theme
 	hiColor := e.Theme.YesNoHighlightColor
@@ -442,7 +446,7 @@ readerLoop:
 				continue
 
 			case 'R': // Reply
-				replyResult := handleReply(e, s, terminal, userManager, currentUser, nodeNumber,
+				replyResult := handleReply(e, s, sessionIH, terminal, userManager, currentUser, nodeNumber,
 					outputMode, currentMsg, currentAreaID, &totalMsgCount, &currentMsgNum, confName, areaName)
 				if replyResult == "LOGOFF" {
 					return nil, "LOGOFF", io.EOF
@@ -453,7 +457,7 @@ readerLoop:
 
 			case 'P': // Post new message
 				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-				_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
+				_, _, _ = runComposeMessageWithIH(e, s, sessionIH, terminal, userManager, currentUser, nodeNumber,
 					sessionStartTime, "", outputMode, termWidth, termHeight)
 				// Refresh total count
 				newTotal, _ := e.MessageMgr.GetMessageCountForArea(currentAreaID)
@@ -935,7 +939,7 @@ func findLastCursorPos(data []byte) (int, int) {
 }
 
 // handleReply manages the reply flow matching Pascal's reply handling.
-func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
+func handleReply(e *MenuExecutor, s ssh.Session, ih *editor.InputHandler, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	outputMode ansi.OutputMode, currentMsg *message.DisplayMessage,
 	currentAreaID int, totalMsgCount *int, currentMsgNum *int, confName, areaName string) string {
@@ -967,7 +971,7 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		ConfArea:   fmt.Sprintf("%s > %s", confName, areaName),
 	}
 	replyBody, saved, editErr := editor.RunEditorWithMetadata("", s, s, outputMode, newSubject, currentMsg.To, currentUser.Handle, false,
-		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines, replyCtx)
+		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines, ih, replyCtx)
 	if editErr != nil {
 		log.Printf("ERROR: Node %d: Editor failed: %v", nodeNumber, editErr)
 		terminalio.WriteProcessedBytes(terminal, []byte(e.LoadedStrings.MsgEditorError), outputMode)

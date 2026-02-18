@@ -90,7 +90,7 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, outputM
 	stringsCfg, stringsErr := config.LoadStrings(rootConfigPath)
 	yesText := "Yes"
 	noText := "No"
-	abortText := "|14Abort message?"
+	abortText := "|07Abort Message & Quit, Are You Sure|09?"
 	if stringsErr == nil {
 		if v := strings.TrimSpace(stringsCfg.YesPromptText); v != "" {
 			yesText = v
@@ -106,11 +106,13 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, outputM
 	// Create the full-screen editor — pass raw output writer; WriteProcessedBytes
 	// handles CP437/UTF-8 conversion so wrapping with SelectiveCP437Writer would
 	// double-encode and corrupt CP437 box-drawing characters.
-	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
+	// nil InputHandler: RunEditor always creates its own (no shared reader needed here).
+	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText, nil)
 
-	// Load configured timezone for date/time display
+	// Load server config: timezone and board name (for footer @B@ placeholder)
 	if serverCfg, cfgErr := config.LoadServerConfig(rootConfigPath); cfgErr == nil {
 		editor.SetTimezone(serverCfg.Timezone)
+		editor.SetBoardName(serverCfg.BoardName)
 	}
 
 	// Load initial content
@@ -149,8 +151,12 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, outputM
 // fromName is the sender display name shown in the @F@ header field: the user's
 // handle by default, their real name when the area requires it, or the configured
 // anonymous string when the user chose to post anonymously.
+//
+// ih is an optional pre-created *InputHandler to share with the caller's reader.
+// Pass nil to create a new one internally. Passing a shared InputHandler prevents
+// the editor's goroutine from consuming bytes after the editor exits.
 func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Writer, outputMode ansi.OutputMode,
-	subject, recipient, fromName string, isAnon bool, quoteFrom, quoteTitle, quoteDate, quoteTime string, quoteIsAnon bool, quoteLines []string, ctx ...EditorContext) (content string, saved bool, err error) {
+	subject, recipient, fromName string, isAnon bool, quoteFrom, quoteTitle, quoteDate, quoteTime string, quoteIsAnon bool, quoteLines []string, ih *InputHandler, ctx ...EditorContext) (content string, saved bool, err error) {
 
 	// Get session from input (must be ssh.Session)
 	session, ok := input.(ssh.Session)
@@ -188,7 +194,7 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 	stringsCfg, stringsErr := config.LoadStrings(rootConfigPath)
 	yesText := "Yes"
 	noText := "No"
-	abortText := "|14Abort message?"
+	abortText := "|07Abort Message & Quit, Are You Sure|09?"
 	if stringsErr == nil {
 		if v := strings.TrimSpace(stringsCfg.YesPromptText); v != "" {
 			yesText = v
@@ -204,11 +210,13 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 	// Create the full-screen editor — pass raw output writer; WriteProcessedBytes
 	// handles CP437/UTF-8 conversion so wrapping with SelectiveCP437Writer would
 	// double-encode and corrupt CP437 box-drawing characters.
-	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
+	// Pass ih (may be nil) so a shared InputHandler is reused when available.
+	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText, ih)
 
-	// Load configured timezone for date/time display
+	// Load server config: timezone and board name (for footer @B@ placeholder)
 	if serverCfg, cfgErr := config.LoadServerConfig(rootConfigPath); cfgErr == nil {
 		editor.SetTimezone(serverCfg.Timezone)
+		editor.SetBoardName(serverCfg.BoardName)
 	}
 
 	// Set metadata
