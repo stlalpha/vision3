@@ -609,6 +609,42 @@ func (mm *MessageManager) GetNextUnreadMessage(areaID int, username string) (int
 	return next, nil
 }
 
+// DeleteMessage marks a message as deleted in the JAM base.
+// The message is flagged MsgDeleted; call PackAndLinkArea afterward to
+// physically remove and re-link, or run jamutil pack + link later.
+func (mm *MessageManager) DeleteMessage(areaID, msgNum int) error {
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return fmt.Errorf("open base for area %d: %w", areaID, err)
+	}
+	if err := b.DeleteMessage(msgNum); err != nil {
+		return fmt.Errorf("delete message %d in area %d: %w", msgNum, areaID, err)
+	}
+	// Invalidate caches so subsequent reads reflect the deletion
+	mm.invalidateThreadIndex(areaID)
+	delete(mm.msgidIndex, areaID)
+	return nil
+}
+
+// PackAndLinkArea packs the JAM base for the given area (removing deleted
+// messages and renumbering) then rebuilds reply threading chains. Caches
+// are invalidated afterward.
+func (mm *MessageManager) PackAndLinkArea(areaID int) error {
+	b, _, err := mm.openBase(areaID)
+	if err != nil {
+		return fmt.Errorf("open base for area %d: %w", areaID, err)
+	}
+	if _, err := b.Pack(); err != nil {
+		return fmt.Errorf("pack area %d: %w", areaID, err)
+	}
+	if _, err := b.Link(); err != nil {
+		return fmt.Errorf("link area %d: %w", areaID, err)
+	}
+	mm.invalidateThreadIndex(areaID)
+	delete(mm.msgidIndex, areaID)
+	return nil
+}
+
 // GetBase returns the underlying JAM base for an area. This is used by
 // the tosser for direct base access. The caller MUST close the base when done.
 func (mm *MessageManager) GetBase(areaID int) (*jam.Base, error) {

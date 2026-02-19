@@ -303,7 +303,7 @@
   "msgListNoAreaSelected": "\r\n|01Please select a message area first.|07\r\n",
   "msgListAreaNotFound": "\r\n|01Error: Message area not found.|07\r\n",
   "msgListLoadError": "\r\n|01Error loading messages.|07\r\n",
-  "msgListNoMessages": "\r\n|07No messages in this area.|07\r\n",
+  "msgListNoMessages": "\r\n|07 No messages in this area.|07\r\n",
   "fileNoAreaSelected": "\r\n|01No file area selected.|07\r\n",
   "filePromptFormat": "\r\n|07Enter filename to %s (or |15ENTER|07 to cancel): |15",
   "fileNotFoundFormat": "\r\n|01File '%s' not found in current area.|07\r\n",

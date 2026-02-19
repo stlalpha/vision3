@@ -33,7 +33,6 @@ const defaultMsgHdrStyle = 5
 var msgReaderOptions = []MsgLightbarOption{
 	{Label: " Next ", HotKey: 'N'},
 	{Label: " Reply ", HotKey: 'R'},
-	{Label: " Again ", HotKey: 'A'},
 	{Label: " Prev ", HotKey: 'S'},
 	{Label: " Thread ", HotKey: 'T'},
 	{Label: " Post ", HotKey: 'P'},
@@ -42,6 +41,10 @@ var msgReaderOptions = []MsgLightbarOption{
 	{Label: " List ", HotKey: 'L'},
 	{Label: " Quit ", HotKey: 'Q'},
 }
+
+// msgReaderDeleteOption is appended to the lightbar for sysop/co-sysop users only.
+// LoColor 4 (dark red) distinguishes it from regular options.
+var msgReaderDeleteOption = MsgLightbarOption{Label: " Delete ", HotKey: 'D', LoColor: 4}
 
 // runMessageReader is the core message reading loop matching Pascal's Scanboard + Readcurbul.
 // It displays messages using MSGHDR.<n> templates with DataFile substitution,
@@ -114,6 +117,15 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	hiColor := e.Theme.YesNoHighlightColor
 	loColor := 9 // Bright blue unselected items
 	boundsColor := 1
+
+	// Build option set: append Delete option for sysop/co-sysop users
+	cfg := e.GetServerConfig()
+	isSysop := currentUser.AccessLevel >= cfg.CoSysOpLevel
+	activeOptions := make([]MsgLightbarOption, len(msgReaderOptions))
+	copy(activeOptions, msgReaderOptions)
+	if isSysop {
+		activeOptions = append(activeOptions, msgReaderDeleteOption)
+	}
 
 	currentMsgNum := startMsg
 	quitNewscan := false
@@ -266,7 +278,7 @@ readerLoop:
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
 				// Draw the lightbar menu
-				drawMsgLightbarStatic(terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
+				drawMsgLightbarStatic(terminal, activeOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 
 				needsRedraw = false
 				needsBodyRedraw = false
@@ -352,7 +364,7 @@ readerLoop:
 					initialDir = 1 // Right arrow
 				}
 
-				selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, initialDir, true, boundsColor)
+				selKey, lbErr := runMsgLightbar(reader, terminal, activeOptions, outputMode, hiColor, loColor, suffixText, initialDir, true, boundsColor)
 				if lbErr != nil {
 					if errors.Is(lbErr, io.EOF) {
 						return nil, "LOGOFF", io.EOF
@@ -371,7 +383,7 @@ readerLoop:
 					singleKey := rune(key)
 					// Check if it's a direct command key
 					switch unicode.ToUpper(singleKey) {
-					case 'N', 'R', 'A', 'S', 'T', 'P', 'J', 'M', 'L', 'Q', '?':
+					case 'N', 'R', 'S', 'T', 'P', 'J', 'M', 'L', 'Q', 'D', '?':
 						selectedKey = unicode.ToUpper(singleKey)
 					default:
 						// Not a recognized command, show lightbar
@@ -385,7 +397,7 @@ readerLoop:
 						// Position cursor at last row for lightbar
 						terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
-						selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
+						selKey, lbErr := runMsgLightbar(reader, terminal, activeOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 						if lbErr != nil {
 							if errors.Is(lbErr, io.EOF) {
 								return nil, "LOGOFF", io.EOF
@@ -410,7 +422,7 @@ readerLoop:
 
 					terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
-					selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
+					selKey, lbErr := runMsgLightbar(reader, terminal, activeOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 					if lbErr != nil {
 						if errors.Is(lbErr, io.EOF) {
 							return nil, "LOGOFF", io.EOF
@@ -439,12 +451,6 @@ readerLoop:
 					time.Sleep(500 * time.Millisecond)
 					break readerLoop
 				}
-
-			case 'A': // Again - redisplay current message
-				// Reset scroll and redraw
-				scrollOffset = 0
-				needsRedraw = true
-				continue
 
 			case 'R': // Reply
 				replyResult := handleReply(e, s, sessionIH, terminal, userManager, currentUser, nodeNumber,
@@ -509,12 +515,53 @@ readerLoop:
 				needsRedraw = true
 				continue
 
+			case 'D': // Delete message (sysop/co-sysop only)
+				if !isSysop {
+					continue // Ignore if triggered without access
+				}
+				confirmed, confErr := promptSingleChar(reader, terminal,
+					"\r\n |04Delete this message? [Y/N] |07", outputMode)
+				if confErr != nil || confirmed != 'Y' {
+					needsRedraw = true
+					continue
+				}
+				if delErr := e.MessageMgr.DeleteMessage(currentAreaID, currentMsg.MsgNum); delErr != nil {
+					log.Printf("ERROR: Node %d: delete message %d area %d: %v",
+						nodeNumber, currentMsg.MsgNum, currentAreaID, delErr)
+					terminalio.WriteProcessedBytes(terminal,
+						ansi.ReplacePipeCodes([]byte("\r\n|01Error deleting message.|07\r\n")), outputMode)
+					time.Sleep(1 * time.Second)
+					needsRedraw = true
+					continue
+				}
+				// Pack the base (physically remove deleted messages and
+				// renumber) then rebuild reply threading chains.
+				if packErr := e.MessageMgr.PackAndLinkArea(currentAreaID); packErr != nil {
+					log.Printf("ERROR: Node %d: pack/link area %d after delete: %v",
+						nodeNumber, currentAreaID, packErr)
+				}
+				// Refresh total count after pack renumbered messages
+				newTotal, _ := e.MessageMgr.GetMessageCountForArea(currentAreaID)
+				if newTotal > 0 {
+					totalMsgCount = newTotal
+				}
+				// After pack, the deleted slot is gone. The message that
+				// was at currentMsgNum+1 is now at currentMsgNum, so keep
+				// the same position. If we deleted the last message, clamp.
+				if currentMsgNum > totalMsgCount {
+					currentMsgNum = totalMsgCount
+				}
+				if totalMsgCount <= 0 {
+					break readerLoop
+				}
+				break scrollLoop
+
 			case 'Q': // Quit
 				quitNewscan = true
 				break readerLoop
 
 			case '?': // Help
-				displayReaderHelp(terminal, outputMode)
+				displayReaderHelp(terminal, outputMode, isSysop)
 				needsRedraw = true
 				continue
 
@@ -1111,17 +1158,19 @@ func handleJump(reader *bufio.Reader, terminal *term.Terminal, outputMode ansi.O
 }
 
 // displayReaderHelp shows the help screen for message reader commands.
-func displayReaderHelp(terminal *term.Terminal, outputMode ansi.OutputMode) {
+func displayReaderHelp(terminal *term.Terminal, outputMode ansi.OutputMode, isSysop bool) {
 	help := "\r\n" +
 		"|15Message Reader Help|07\r\n" +
 		"|08" + strings.Repeat("-", 40) + "|07\r\n" +
 		"|15N|07ext Message          |15#|07 Read Message #\r\n" +
-		"|15A|07 Read Again          |15R|07eply to Message\r\n" +
-		"|15P|07ost a Message        |15S|07kip to Next Area\r\n" +
-		"|15T|07hread Search         |15J|07ump to Message #\r\n" +
-		"|15M|07ail Reply            |15L|07ist Titles\r\n" +
-		"|15Q|07uit Reader\r\n" +
-		"|08" + strings.Repeat("-", 40) + "|07\r\n"
+		"|15R|07eply to Message       |15P|07ost a Message\r\n" +
+		"|15S|07kip to Next Area     |15T|07hread Search\r\n" +
+		"|15J|07ump to Message #     |15M|07ail Reply\r\n" +
+		"|15L|07ist Titles           |15Q|07uit Reader\r\n"
+	if isSysop {
+		help += "|01D|07elete Message\r\n"
+	}
+	help += "|08" + strings.Repeat("-", 40) + "|07\r\n"
 
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(help)), outputMode)
 	time.Sleep(2 * time.Second)

@@ -17,8 +17,9 @@ import (
 
 // MsgLightbarOption defines an option in the message reader lightbar.
 type MsgLightbarOption struct {
-	Label  string // Display text including padding, e.g. " Next "
-	HotKey byte   // Single-char hotkey, e.g. 'N'
+	Label   string // Display text including padding, e.g. " Next "
+	HotKey  byte   // Single-char hotkey, e.g. 'N'
+	LoColor int    // Override unselected color (0 = use default loColor)
 }
 
 // readKeyWithEscapeHandling reads a single keypress, handling escape sequences
@@ -87,6 +88,8 @@ func drawMsgLightbarStatic(terminal *term.Terminal, options []MsgLightbarOption,
 		var colorSeq string
 		if i == selectedIdx {
 			colorSeq = colorCodeToAnsi(hiColor)
+		} else if opt.LoColor != 0 {
+			colorSeq = colorCodeToAnsi(opt.LoColor)
 		} else {
 			colorSeq = colorCodeToAnsi(loColor)
 		}
