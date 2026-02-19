@@ -35,6 +35,7 @@ import (
 	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/sshserver"
 	"github.com/stlalpha/vision3/internal/telnetserver"
+	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -1077,7 +1078,11 @@ func sessionHandler(s ssh.Session) {
 	for authenticatedUser == nil {
 		if currentMenuName == "" || currentMenuName == "LOGOFF" {
 			log.Printf("Node %d: Login failed or aborted. Terminating session.", nodeID)
-			fmt.Fprintln(terminal, "\r\nLogin failed or aborted.")
+			msg := loadedStrings.ExecLoginCancelled
+			if msg == "" {
+				msg = "\r\n|01Login cancelled.|07\r\n"
+			}
+			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), effectiveMode)
 			return
 		}
 
