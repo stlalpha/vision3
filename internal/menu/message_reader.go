@@ -18,6 +18,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/terminalio"
@@ -32,8 +33,7 @@ const defaultMsgHdrStyle = 5
 var msgReaderOptions = []MsgLightbarOption{
 	{Label: " Next ", HotKey: 'N'},
 	{Label: " Reply ", HotKey: 'R'},
-	{Label: " Again ", HotKey: 'A'},
-	{Label: " Skip ", HotKey: 'S'},
+	{Label: " Prev ", HotKey: 'S'},
 	{Label: " Thread ", HotKey: 'T'},
 	{Label: " Post ", HotKey: 'P'},
 	{Label: " Jump ", HotKey: 'J'},
@@ -42,13 +42,18 @@ var msgReaderOptions = []MsgLightbarOption{
 	{Label: " Quit ", HotKey: 'Q'},
 }
 
+// msgReaderDeleteOption is appended to the lightbar for sysop/co-sysop users only.
+// LoColor 4 (dark red) distinguishes it from regular options.
+var msgReaderDeleteOption = MsgLightbarOption{Label: " Delete ", HotKey: 'D', LoColor: 4}
+
 // runMessageReader is the core message reading loop matching Pascal's Scanboard + Readcurbul.
 // It displays messages using MSGHDR.<n> templates with DataFile substitution,
 // shows a 10-option lightbar for navigation, and handles single-key input.
 func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	sessionStartTime time.Time, outputMode ansi.OutputMode,
-	startMsg int, totalMsgCount int, isNewScan bool) (*user.User, string, error) {
+	startMsg int, totalMsgCount int, isNewScan bool,
+	termWidth int, termHeight int) (*user.User, string, error) {
 
 	currentAreaID := currentUser.CurrentMessageAreaID
 	currentAreaTag := currentUser.CurrentMessageAreaTag
@@ -74,12 +79,12 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Load the MSGHDR template file
 	hdrTemplatePath := filepath.Join(e.MenuSetPath, "templates", "message_headers",
 		fmt.Sprintf("MSGHDR.%d.ans", hdrStyle))
-	hdrTemplateBytes, hdrErr := os.ReadFile(hdrTemplatePath)
+	hdrTemplateBytes, hdrErr := ansi.GetAnsiFileContent(hdrTemplatePath)
 	if hdrErr != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGHDR.%d.ans: %v", nodeNumber, hdrStyle, hdrErr)
 		// Fallback to style 2 (simple text format)
 		hdrTemplatePath = filepath.Join(e.MenuSetPath, "templates", "message_headers", "MSGHDR.2.ans")
-		hdrTemplateBytes, hdrErr = os.ReadFile(hdrTemplatePath)
+		hdrTemplateBytes, hdrErr = ansi.GetAnsiFileContent(hdrTemplatePath)
 		if hdrErr != nil {
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgHdrLoadError)), outputMode)
 			time.Sleep(1 * time.Second)
@@ -87,21 +92,40 @@ func runMessageReader(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 	}
 
-	// Get terminal dimensions
-	termWidth := 80
-	termHeight := 24
-	ptyReq, _, isPty := s.Pty()
-	if isPty && ptyReq.Window.Width > 0 && ptyReq.Window.Height > 0 {
-		termWidth = ptyReq.Window.Width
-		termHeight = ptyReq.Window.Height
+	// Trim trailing empty lines from header template to prevent scrolling.
+	// ANSI templates are often padded to 24/25 rows, but the message reader
+	// handles body/footer positioning separately, so trailing blank lines
+	// just push header content off the top of the screen.
+	hdrTemplateBytes = bytes.TrimRight(hdrTemplateBytes, "\r\n ")
+
+	// Terminal dimensions are now passed as parameters to use user's adjusted preferences
+	// Default to 80x24 if not provided
+	if termWidth <= 0 {
+		termWidth = 80
+	}
+	if termHeight <= 0 {
+		termHeight = 24
 	}
 
-	reader := bufio.NewReader(s)
+	// Use the session-scoped InputHandler so this reader loop, any editor
+	// invocations, and the lightbar menus all share a single goroutine reading
+	// from the SSH session — no keystrokes are lost when control transfers.
+	sessionIH := getSessionIH(s)
+	reader := bufio.NewReader(sessionIH)
 
 	// Lightbar colors from theme
 	hiColor := e.Theme.YesNoHighlightColor
 	loColor := 9 // Bright blue unselected items
 	boundsColor := 1
+
+	// Build option set: append Delete option for sysop/co-sysop users
+	cfg := e.GetServerConfig()
+	isSysop := currentUser.AccessLevel >= cfg.CoSysOpLevel
+	activeOptions := make([]MsgLightbarOption, len(msgReaderOptions))
+	copy(activeOptions, msgReaderOptions)
+	if isSysop {
+		activeOptions = append(activeOptions, msgReaderDeleteOption)
+	}
 
 	currentMsgNum := startMsg
 	quitNewscan := false
@@ -129,7 +153,11 @@ readerLoop:
 		}
 
 		// Build Pascal-style substitution map
-		templateUsesUserNote := bytes.Contains(hdrTemplateBytes, []byte("|U"))
+		templateUsesUserNote := bytes.Contains(hdrTemplateBytes, []byte("|U")) ||
+			bytes.Contains(hdrTemplateBytes, []byte("@U@")) ||
+			bytes.Contains(hdrTemplateBytes, []byte("@U:")) ||
+			bytes.Contains(hdrTemplateBytes, []byte("@U#")) ||
+			bytes.Contains(hdrTemplateBytes, []byte("@U*"))
 		replyCount := 0
 		if e.MessageMgr != nil {
 			if count, err := e.MessageMgr.GetThreadReplyCount(currentAreaID, currentMsg.MsgNum, currentMsg.Subject); err != nil {
@@ -138,10 +166,11 @@ readerLoop:
 				replyCount = count
 			}
 		}
-		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.PrivateNote, currentUser.AccessLevel, !templateUsesUserNote, replyCount)
+		substitutions := buildMsgSubstitutions(currentMsg, currentAreaTag, currentMsgNum, totalMsgCount, currentUser.AccessLevel, !templateUsesUserNote, replyCount, confName, areaName, e.MessageMgr, currentAreaID, userManager, nodeNumber)
+		autoWidths := buildAutoWidths(substitutions, totalMsgCount, termWidth)
 
 		// Process template with substitutions (auto-detects @CODE@ or |X format)
-		processedHeader := processTemplate(hdrTemplateBytes, substitutions)
+		processedHeader := processTemplate(hdrTemplateBytes, substitutions, autoWidths)
 
 		// Process message body and pre-format all lines
 		area, _ := e.MessageMgr.GetAreaByID(currentAreaID)
@@ -181,7 +210,7 @@ readerLoop:
 		// Find the actual bottom row of the header using ANSI cursor tracking
 		headerEndRow := findHeaderEndRow(processedHeader)
 		bodyStartRow := headerEndRow + 1 // Start body on next row after header
-		barLines := 3                    // Horizontal line + board info line + lightbar
+		barLines := 2                    // Horizontal line + lightbar
 		bodyAvailHeight := termHeight - bodyStartRow - barLines
 		if bodyAvailHeight < 1 {
 			bodyAvailHeight = 5
@@ -223,11 +252,16 @@ readerLoop:
 			if needsRedraw {
 				// Clear screen and display header
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-				terminalio.WriteProcessedBytes(terminal, processedHeader, outputMode)
+				// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+				if outputMode == ansi.OutputModeCP437 {
+					terminal.Write(processedHeader)
+				} else {
+					terminalio.WriteProcessedBytes(terminal, processedHeader, outputMode)
+				}
 
 				drawBody()
 
-				// Display footer: board info and lightbar anchored to bottom
+				// Display footer: lightbar only
 				var suffixText string
 				if isNewScan {
 					suffixText = e.LoadedStrings.MsgNewScanSuffix
@@ -235,36 +269,16 @@ readerLoop:
 					suffixText = e.LoadedStrings.MsgReadingSuffix
 				}
 
-				// Add scroll percentage to the board info line if message is longer than display area.
-				scrollLabel := ""
-				if totalBodyLines > bodyAvailHeight {
-					maxScroll := totalBodyLines - bodyAvailHeight
-					scrollPercent := 0
-					if maxScroll > 0 {
-						scrollPercent = (scrollOffset * 100) / maxScroll
-						if scrollPercent > 100 {
-							scrollPercent = 100
-						}
-					}
-					scrollLabel = fmt.Sprintf(e.LoadedStrings.MsgScrollPercent, scrollPercent)
-				}
-
 				// Draw horizontal line above footer (CP437 character 196)
-				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-2, 1)), outputMode)
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)), outputMode)
 				horizontalLine := "|08" + strings.Repeat("\xC4", termWidth-1) + "|07" // CP437 horizontal line character
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(horizontalLine)), outputMode)
-
-				// Position cursor at second-to-last row for board info line
-				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)), outputMode)
-				boardLine := fmt.Sprintf(e.LoadedStrings.MsgBoardInfoFormat,
-					confName, areaName, currentMsgNum, totalMsgCount, scrollLabel)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardLine)), outputMode)
 
 				// Position cursor at last row for lightbar
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
 				// Draw the lightbar menu
-				drawMsgLightbarStatic(terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
+				drawMsgLightbarStatic(terminal, activeOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 
 				needsRedraw = false
 				needsBodyRedraw = false
@@ -274,8 +288,9 @@ readerLoop:
 				needsBodyRedraw = false
 			}
 
-			// Read key sequence (handles escape sequences for arrow keys, page up/down)
-			keySeq, keyErr := readKeySequence(reader)
+			// Read key directly from the shared session input handler so arrow/page
+			// keys are decoded consistently across reader/list/header lightbars.
+			key, keyErr := sessionIH.ReadKey()
 			if keyErr != nil {
 				if errors.Is(keyErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF
@@ -284,26 +299,26 @@ readerLoop:
 			}
 
 			// Handle scrolling keys first
-			switch keySeq {
-			case "\x1b": // ESC key - quit reader
+			switch key {
+			case editor.KeyEsc: // ESC key - quit reader
 				quitNewscan = true
 				break readerLoop
 
-			case "\x1b[A": // Up arrow - scroll up one line
+			case editor.KeyArrowUp, editor.KeyCtrlE: // Up arrow - scroll up one line
 				if scrollOffset > 0 {
 					scrollOffset--
 					needsBodyRedraw = true
 				}
 				continue
 
-			case "\x1b[B": // Down arrow - scroll down one line
+			case editor.KeyArrowDown, editor.KeyCtrlX: // Down arrow - scroll down one line
 				if totalBodyLines > bodyAvailHeight && scrollOffset < totalBodyLines-bodyAvailHeight {
 					scrollOffset++
 					needsBodyRedraw = true
 				}
 				continue
 
-			case "\x1b[5~": // Page Up
+			case editor.KeyPageUp, editor.KeyCtrlR: // Page Up
 				pageSize := bodyAvailHeight - 2
 				if pageSize < 5 {
 					pageSize = 5
@@ -315,7 +330,7 @@ readerLoop:
 				needsBodyRedraw = true
 				continue
 
-			case "\x1b[6~": // Page Down
+			case editor.KeyPageDown, editor.KeyCtrlC: // Page Down
 				pageSize := bodyAvailHeight - 2
 				if pageSize < 5 {
 					pageSize = 5
@@ -331,7 +346,7 @@ readerLoop:
 				needsBodyRedraw = true
 				continue
 
-			case "\x1b[D", "\x1b[C": // Left or Right arrow - activate interactive lightbar
+			case editor.KeyArrowLeft, editor.KeyArrowRight, editor.KeyCtrlS, editor.KeyCtrlD: // Left/Right arrow - activate interactive lightbar
 				var suffixText string
 				if isNewScan {
 					suffixText = e.LoadedStrings.MsgNewScanSuffix
@@ -343,13 +358,13 @@ readerLoop:
 
 				// Determine initial direction based on which arrow was pressed
 				initialDir := 0
-				if keySeq == "\x1b[D" {
+				if key == editor.KeyArrowLeft || key == editor.KeyCtrlS {
 					initialDir = -1 // Left arrow
-				} else if keySeq == "\x1b[C" {
+				} else if key == editor.KeyArrowRight || key == editor.KeyCtrlD {
 					initialDir = 1 // Right arrow
 				}
 
-				selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, initialDir, true, boundsColor)
+				selKey, lbErr := runMsgLightbar(reader, terminal, activeOptions, outputMode, hiColor, loColor, suffixText, initialDir, true, boundsColor)
 				if lbErr != nil {
 					if errors.Is(lbErr, io.EOF) {
 						return nil, "LOGOFF", io.EOF
@@ -364,16 +379,12 @@ readerLoop:
 			if selectedKey == 0 {
 				// If not a scrolling key, show the lightbar for command selection
 				// First handle simple single-key commands that bypass the lightbar
-				if len(keySeq) == 1 {
-					singleKey := rune(keySeq[0])
+				if key >= 32 && key <= 126 {
+					singleKey := rune(key)
 					// Check if it's a direct command key
 					switch unicode.ToUpper(singleKey) {
-					case 'N', 'R', 'A', 'S', 'T', 'P', 'J', 'M', 'L', 'Q', '?':
+					case 'N', 'R', 'S', 'T', 'P', 'J', 'M', 'L', 'Q', 'D', '?':
 						selectedKey = unicode.ToUpper(singleKey)
-					case '\r', '\n':
-						selectedKey = 'N' // Enter = Next
-					case '\x1b': // ESC = Quit
-						selectedKey = 'Q'
 					default:
 						// Not a recognized command, show lightbar
 						var suffixText string
@@ -386,7 +397,7 @@ readerLoop:
 						// Position cursor at last row for lightbar
 						terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
-						selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
+						selKey, lbErr := runMsgLightbar(reader, terminal, activeOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 						if lbErr != nil {
 							if errors.Is(lbErr, io.EOF) {
 								return nil, "LOGOFF", io.EOF
@@ -396,6 +407,10 @@ readerLoop:
 						}
 						selectedKey = rune(selKey)
 					}
+				} else if key == editor.KeyEnter {
+					selectedKey = 'N' // Enter = Next
+				} else if key == editor.KeyEsc {
+					selectedKey = 'Q' // ESC = Quit
 				} else {
 					// Multi-byte sequence that wasn't handled as scrolling - show lightbar
 					var suffixText string
@@ -407,7 +422,7 @@ readerLoop:
 
 					terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
 
-					selKey, lbErr := runMsgLightbar(reader, terminal, msgReaderOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
+					selKey, lbErr := runMsgLightbar(reader, terminal, activeOptions, outputMode, hiColor, loColor, suffixText, 0, true, boundsColor)
 					if lbErr != nil {
 						if errors.Is(lbErr, io.EOF) {
 							return nil, "LOGOFF", io.EOF
@@ -437,15 +452,9 @@ readerLoop:
 					break readerLoop
 				}
 
-			case 'A': // Again - redisplay current message
-				// Reset scroll and redraw
-				scrollOffset = 0
-				needsRedraw = true
-				continue
-
 			case 'R': // Reply
-				replyResult := handleReply(e, s, terminal, userManager, currentUser, nodeNumber,
-					outputMode, currentMsg, currentAreaID, &totalMsgCount, &currentMsgNum)
+				replyResult := handleReply(e, s, sessionIH, terminal, userManager, currentUser, nodeNumber,
+					outputMode, currentMsg, currentAreaID, &totalMsgCount, &currentMsgNum, confName, areaName)
 				if replyResult == "LOGOFF" {
 					return nil, "LOGOFF", io.EOF
 				}
@@ -455,8 +464,8 @@ readerLoop:
 
 			case 'P': // Post new message
 				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-				_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
-					sessionStartTime, "", outputMode)
+				_, _, _ = runComposeMessageWithIH(e, s, sessionIH, terminal, userManager, currentUser, nodeNumber,
+					sessionStartTime, "", outputMode, termWidth, termHeight)
 				// Refresh total count
 				newTotal, _ := e.MessageMgr.GetMessageCountForArea(currentAreaID)
 				if newTotal > 0 {
@@ -466,8 +475,16 @@ readerLoop:
 				needsRedraw = true
 				continue
 
-			case 'S': // Skip - exit current area, return to caller
-				break readerLoop
+			case 'S': // Prev - go back one message
+				if currentMsgNum > 1 {
+					currentMsgNum--
+					break scrollLoop
+				} else {
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgFirstMessage)), outputMode)
+					time.Sleep(500 * time.Millisecond)
+					needsRedraw = true
+					continue
+				}
 
 			case 'T': // Thread
 				handleThread(reader, e, terminal, outputMode, currentAreaID,
@@ -486,18 +503,65 @@ readerLoop:
 				needsRedraw = true
 				continue
 
-			case 'L': // List titles (deferred)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgListDeferred)), outputMode)
-				time.Sleep(1 * time.Second)
+			case 'L': // List messages in current area
+				updatedUser, nextAction, listErr := runListMsgs(e, s, terminal, userManager, currentUser,
+					nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
+				if updatedUser != nil {
+					currentUser = updatedUser
+				}
+				if listErr != nil || nextAction == "LOGOFF" {
+					return currentUser, "LOGOFF", listErr
+				}
 				needsRedraw = true
 				continue
+
+			case 'D': // Delete message (sysop/co-sysop only)
+				if !isSysop {
+					continue // Ignore if triggered without access
+				}
+				confirmed, confErr := promptSingleChar(reader, terminal,
+					"\r\n |04Delete this message? [Y/N] |07", outputMode)
+				if confErr != nil || confirmed != 'Y' {
+					needsRedraw = true
+					continue
+				}
+				if delErr := e.MessageMgr.DeleteMessage(currentAreaID, currentMsg.MsgNum); delErr != nil {
+					log.Printf("ERROR: Node %d: delete message %d area %d: %v",
+						nodeNumber, currentMsg.MsgNum, currentAreaID, delErr)
+					terminalio.WriteProcessedBytes(terminal,
+						ansi.ReplacePipeCodes([]byte("\r\n|01Error deleting message.|07\r\n")), outputMode)
+					time.Sleep(1 * time.Second)
+					needsRedraw = true
+					continue
+				}
+				// Pack the base (physically remove deleted messages and
+				// renumber) then rebuild reply threading chains.
+				if packErr := e.MessageMgr.PackAndLinkArea(currentAreaID); packErr != nil {
+					log.Printf("ERROR: Node %d: pack/link area %d after delete: %v",
+						nodeNumber, currentAreaID, packErr)
+				}
+				// Refresh total count after pack renumbered messages
+				newTotal, _ := e.MessageMgr.GetMessageCountForArea(currentAreaID)
+				if newTotal > 0 {
+					totalMsgCount = newTotal
+				}
+				// After pack, the deleted slot is gone. The message that
+				// was at currentMsgNum+1 is now at currentMsgNum, so keep
+				// the same position. If we deleted the last message, clamp.
+				if currentMsgNum > totalMsgCount {
+					currentMsgNum = totalMsgCount
+				}
+				if totalMsgCount <= 0 {
+					break readerLoop
+				}
+				break scrollLoop
 
 			case 'Q': // Quit
 				quitNewscan = true
 				break readerLoop
 
 			case '?': // Help
-				displayReaderHelp(terminal, outputMode)
+				displayReaderHelp(terminal, outputMode, isSysop)
 				needsRedraw = true
 				continue
 
@@ -673,8 +737,15 @@ func formatMessageBody(body, originAddr string, includeOrigin bool) string {
 	return strings.Join(out, "\n")
 }
 
+// findMessageByMSGID searches for a message in the current area that has the given MSGID.
+// Returns the message number (1-based) if found, or 0 if not found.
+// Delegates to MessageManager.FindMessageByMSGID which uses a cached index.
+func findMessageByMSGID(msgMgr *message.MessageManager, areaID int, msgID string) int {
+	return msgMgr.FindMessageByMSGID(areaID, msgID)
+}
+
 // buildMsgSubstitutions creates the Pascal-style substitution map for MSGHDR templates.
-func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userNote string, userLevel int, includeNoteInFrom bool, replyCount int) map[byte]string {
+func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, totalMsgs int, userLevel int, includeNoteInFrom bool, replyCount int, confName string, areaName string, msgMgr *message.MessageManager, areaID int, userMgr *user.UserMgr, nodeNumber int) map[byte]string {
 	// Import jam constants
 	const (
 		msgTypeLocal = 0x00800000
@@ -692,10 +763,12 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 	isRead := (msg.Attributes & msgRead) != 0
 	isPrivate := (msg.Attributes & msgPrivate) != 0
 
-	// Only show user note for local messages
-	userNoteToUse := userNote
-	if isEcho || isNet {
-		userNoteToUse = ""
+	// Look up the message author's user note from users.json
+	userNoteToUse := ""
+	if userMgr != nil {
+		if authorUser, found := userMgr.GetUserByHandle(msg.From); found {
+			userNoteToUse = authorUser.PrivateNote
+		}
 	}
 
 	// Truncate user note if too long (max 25 characters for display)
@@ -754,9 +827,18 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 
 	msgStatusStr := strings.Join(statusParts, " ")
 
+	// Determine reply-to display: use JAM header ReplyTo (message number) first,
+	// then fall back to MSGID index lookup, then "None".
 	replyStr := "None"
-	if msg.ReplyID != "" {
-		replyStr = msg.ReplyID
+	if msg.ReplyToNum > 0 {
+		// JAM header already has the parent message number (set by linker/tosser)
+		replyStr = strconv.Itoa(msg.ReplyToNum)
+	} else if msg.ReplyID != "" {
+		// Header ReplyTo not set — try MSGID index lookup as fallback
+		if replyMsgNum := findMessageByMSGID(msgMgr, areaID, msg.ReplyID); replyMsgNum > 0 {
+			replyStr = strconv.Itoa(replyMsgNum)
+		}
+		// If neither works, leave as "None" — no confusing text for users
 	}
 
 	return map[byte]string{
@@ -767,16 +849,71 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		'U': userNoteToUse,           // User note from user profile (local only)
 		'M': msgStatusStr,            // Message status (LOCAL, PRIVATE, ECHOMAIL, NETMAIL)
 		'L': strconv.Itoa(userLevel), // User level/access level
-		'R': "",                      // Real name - not available in JAM
 		'#': strconv.Itoa(msgNum),
 		'N': strconv.Itoa(totalMsgs),
+		'C': fmt.Sprintf("[%d/%d]", msgNum, totalMsgs), // Message count display
 		'D': msg.DateTime.Format("01/02/06"),
 		'W': msg.DateTime.Format("3:04 pm"),
 		'P': replyStr,
 		'E': strconv.Itoa(replyCount),
-		'O': msg.OrigAddr, // Origin address
-		'A': msg.DestAddr, // Destination address
+		'O': msg.OrigAddr,                                                          // Origin address
+		'A': msg.DestAddr,                                                          // Destination address
+		'Z': fmt.Sprintf("%s > %s", confName, areaName),                            // Conference > Area Name
+		'V': fmt.Sprintf("%d of %d", msgNum, totalMsgs),                            // Verbose count: "1 of 24"
+		'X': fmt.Sprintf("%s > %s [%d/%d]", confName, areaName, msgNum, totalMsgs), // Conference > Area [current/total]
+		'K': strconv.Itoa(nodeNumber),                                              // Node number
 	}
+}
+
+// buildAutoWidths calculates the maximum display width for each placeholder code.
+// Used by the @CODE*@ auto-width modifier so templates don't need hardcoded widths.
+// Width is based on the maximum possible value for each code in the current context:
+//   - Numeric codes (#, N, C): based on totalMsgs digit count
+//   - Fixed-format codes (D, W): known max format lengths
+//   - Context codes (Z, X): based on current conference/area names + max count width
+//   - All others: width of the current substitution value
+func buildAutoWidths(subs map[byte]string, totalMsgs int, termWidth int) map[byte]int {
+	widths := make(map[byte]int)
+
+	maxMsgNumWidth := len(strconv.Itoa(totalMsgs))
+
+	// Fixed-format codes
+	widths['D'] = 8 // MM/DD/YY always 8
+	widths['W'] = 8 // max "12:00 pm" = 8
+
+	// Numeric codes: pad to width of largest possible message number
+	widths['#'] = maxMsgNumWidth
+	widths['N'] = maxMsgNumWidth
+
+	// Count display [current/total]: max when current = totalMsgs
+	maxCountStr := fmt.Sprintf("[%d/%d]", totalMsgs, totalMsgs)
+	widths['C'] = len(maxCountStr)
+
+	// Verbose count "X of Y": max when current = totalMsgs
+	maxVerboseStr := fmt.Sprintf("%d of %d", totalMsgs, totalMsgs)
+	widths['V'] = len(maxVerboseStr)
+
+	// Z = "confName > areaName" (same for all messages in area)
+	if zVal, ok := subs['Z']; ok {
+		widths['Z'] = len(zVal)
+		// X = Z + " " + [current/total], max when current = totalMsgs
+		widths['X'] = len(zVal) + 1 + len(maxCountStr)
+	}
+
+	// Gap fill: target width is terminal width minus 1 to avoid auto-wrap
+	// at column 80 which creates blank lines for sequential text output
+	if termWidth > 1 {
+		widths['G'] = termWidth - 1
+	}
+
+	// All other codes: use current value length
+	for code, val := range subs {
+		if _, exists := widths[code]; !exists {
+			widths[code] = len(val)
+		}
+	}
+
+	return widths
 }
 
 // findHeaderEndRow parses processed ANSI bytes and tracks cursor position
@@ -864,10 +1001,10 @@ func findLastCursorPos(data []byte) (int, int) {
 }
 
 // handleReply manages the reply flow matching Pascal's reply handling.
-func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
+func handleReply(e *MenuExecutor, s ssh.Session, ih *editor.InputHandler, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	outputMode ansi.OutputMode, currentMsg *message.DisplayMessage,
-	currentAreaID int, totalMsgCount *int, currentMsgNum *int) string {
+	currentAreaID int, totalMsgCount *int, currentMsgNum *int, confName, areaName string) string {
 
 	// Prepare quote data for /Q command
 	// Split message body into lines for quoting
@@ -889,8 +1026,14 @@ func handleReply(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Start with empty editor - user will use /Q command to quote if desired
 	// Pass message metadata for quoting (from, title, date, time, isAnon, lines)
-	replyBody, saved, editErr := editor.RunEditorWithMetadata("", s, s, outputMode, newSubject, currentMsg.To, false,
-		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines)
+	replyNextMsg := *totalMsgCount + 1
+	replyCtx := editor.EditorContext{
+		NodeNumber: nodeNumber,
+		NextMsgNum: replyNextMsg,
+		ConfArea:   fmt.Sprintf("%s > %s", confName, areaName),
+	}
+	replyBody, saved, editErr := editor.RunEditorWithMetadata("", s, s, outputMode, newSubject, currentMsg.To, currentUser.Handle, false,
+		currentMsg.From, currentMsg.Subject, quoteDate, quoteTime, false, quoteLines, ih, replyCtx)
 	if editErr != nil {
 		log.Printf("ERROR: Node %d: Editor failed: %v", nodeNumber, editErr)
 		terminalio.WriteProcessedBytes(terminal, []byte(e.LoadedStrings.MsgEditorError), outputMode)
@@ -1015,17 +1158,19 @@ func handleJump(reader *bufio.Reader, terminal *term.Terminal, outputMode ansi.O
 }
 
 // displayReaderHelp shows the help screen for message reader commands.
-func displayReaderHelp(terminal *term.Terminal, outputMode ansi.OutputMode) {
+func displayReaderHelp(terminal *term.Terminal, outputMode ansi.OutputMode, isSysop bool) {
 	help := "\r\n" +
 		"|15Message Reader Help|07\r\n" +
 		"|08" + strings.Repeat("-", 40) + "|07\r\n" +
 		"|15N|07ext Message          |15#|07 Read Message #\r\n" +
-		"|15A|07 Read Again          |15R|07eply to Message\r\n" +
-		"|15P|07ost a Message        |15S|07kip to Next Area\r\n" +
-		"|15T|07hread Search         |15J|07ump to Message #\r\n" +
-		"|15M|07ail Reply            |15L|07ist Titles\r\n" +
-		"|15Q|07uit Reader\r\n" +
-		"|08" + strings.Repeat("-", 40) + "|07\r\n"
+		"|15R|07eply to Message       |15P|07ost a Message\r\n" +
+		"|15S|07kip to Next Area     |15T|07hread Search\r\n" +
+		"|15J|07ump to Message #     |15M|07ail Reply\r\n" +
+		"|15L|07ist Titles           |15Q|07uit Reader\r\n"
+	if isSysop {
+		help += "|01D|07elete Message\r\n"
+	}
+	help += "|08" + strings.Repeat("-", 40) + "|07\r\n"
 
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(help)), outputMode)
 	time.Sleep(2 * time.Second)
@@ -1051,7 +1196,7 @@ func extractHeaderNumber(filename string) (int, error) {
 // headerDisplayNames maps template numbers to their actual display names.
 var headerDisplayNames = map[int]string{
 	1:  "Generic Blue Box",
-	2:  "Extremly Simple Message Header",
+	2:  "Extremely Simple Message Header",
 	3:  "LiQUiD Blue Box Header",
 	4:  "Generic TCS Header",
 	5:  "Gray/White ViSiON/2 Header",
@@ -1115,7 +1260,7 @@ func discoverMessageHeaders(templatesPath string) ([]MessageHeaderTemplate, erro
 // Discovers all MSGHDR.*.ans templates dynamically and presents them in a lightbar menu.
 func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
-	sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 
 	if currentUser == nil {
 		return nil, "", nil
@@ -1173,7 +1318,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Display the header selection ANSI screen
 	selectionPath := filepath.Join(e.MenuSetPath, "templates", "message_headers", "MSGHDR.ANS")
-	selectionBytes, err := os.ReadFile(selectionPath)
+	selectionBytes, err := ansi.GetAnsiFileContent(selectionPath)
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGHDR.ANS: %v", nodeNumber, err)
 		msg := "\r\n|01MSGHDR.ANS not found! Please notify SysOp.|07\r\n"
@@ -1182,18 +1327,17 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
-	// Strip SAUCE metadata from ANSI file
-	selectionBytes = stripSauceMetadata(selectionBytes)
-
 	// Hide cursor during lightbar selection
 	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
 	// Ensure cursor is restored on exit
 	defer terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 
-	reader := bufio.NewReader(s)
+	// Use direct key decoding from the session-scoped input handler so arrow/home/end
+	// behavior is consistent with other lightbars.
+	sessionIH := getSessionIH(s)
 
 	const maxVisibleItems = 15 // Maximum items visible in lightbar (Y=6 to Y=20)
-	selectedIndex := 0          // Currently highlighted option
+	selectedIndex := 0         // Currently highlighted option
 
 	// Helper to draw one lightbar option using BAR file attributes
 	drawOption := func(idx int, highlighted bool) {
@@ -1249,7 +1393,13 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Helper to redraw all options
 	redrawAll := func() {
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(selectionBytes), outputMode)
+		// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+		processedSelBytes := ansi.ReplacePipeCodes(selectionBytes)
+		if outputMode == ansi.OutputModeCP437 {
+			terminal.Write(processedSelBytes)
+		} else {
+			terminalio.WriteProcessedBytes(terminal, processedSelBytes, outputMode)
+		}
 
 		// Draw all options from BAR file
 		for i := 0; i < len(options); i++ {
@@ -1275,8 +1425,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Main selection loop
 	for {
-		// Read single key/character
-		r, _, readErr := reader.ReadRune()
+		key, readErr := sessionIH.ReadKey()
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -1284,50 +1433,42 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			return nil, "", nil
 		}
 
-		// Handle escape sequences for arrow keys
-		if r == '\x1b' {
-			// Check for arrow keys: ESC [ A (up) or ESC [ B (down)
-			next, _, _ := reader.ReadRune()
-			if next == '[' {
-				arrow, _, _ := reader.ReadRune()
-				if arrow == 'A' {
-					// Up arrow
-					if selectedIndex > 0 {
-						selectedIndex--
-						drawOption(selectedIndex+1, false)
-						drawOption(selectedIndex, true)
-					}
-					continue
-				} else if arrow == 'B' {
-					// Down arrow
-					if selectedIndex < len(options)-1 {
-						selectedIndex++
-						drawOption(selectedIndex-1, false)
-						drawOption(selectedIndex, true)
-					}
-					continue
-				}
+		// Handle arrow-key navigation
+		if key == editor.KeyArrowUp || key == editor.KeyCtrlE {
+			if selectedIndex > 0 {
+				selectedIndex--
+				drawOption(selectedIndex+1, false)
+				drawOption(selectedIndex, true)
+			}
+			continue
+		}
+		if key == editor.KeyArrowDown || key == editor.KeyCtrlX {
+			if selectedIndex < len(options)-1 {
+				selectedIndex++
+				drawOption(selectedIndex-1, false)
+				drawOption(selectedIndex, true)
 			}
 			continue
 		}
 
 		// Handle Q to quit
-		if r == 'q' || r == 'Q' {
+		if key == 'q' || key == 'Q' {
 			break
 		}
 
 		// Handle ENTER to preview
-		if r == '\r' || r == '\n' {
+		if key == editor.KeyEnter {
 			opt := options[selectedIndex]
 			templateNum, _ := strconv.Atoi(opt.ReturnValue)
 			hdrPath := filepath.Join(e.MenuSetPath, "templates", "message_headers", fmt.Sprintf("MSGHDR.%d.ans", templateNum))
 
 			// Preview with sample data
-			hdrBytes, readErr := os.ReadFile(hdrPath)
+			hdrBytes, readErr := ansi.GetAnsiFileContent(hdrPath)
 			if readErr != nil {
 				log.Printf("ERROR: Node %d: Failed to read header file MSGHDR.%d.ans: %v", nodeNumber, templateNum, readErr)
 				continue
 			}
+			hdrBytes = bytes.TrimRight(hdrBytes, "\r\n ")
 
 			sampleSubs := map[byte]string{
 				'B': "GENERAL",
@@ -1337,20 +1478,30 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				'U': currentUser.PrivateNote,
 				'M': "LOCAL",
 				'L': strconv.Itoa(currentUser.AccessLevel),
-				'R': currentUser.RealName,
 				'#': "1",
 				'N': "42",
-				'D': time.Now().Format("01/02/06"),
-				'W': time.Now().Format("3:04 pm"),
+				'C': "[1/42]",
+				'V': "1 of 42",
+				'D': config.NowIn(e.ServerCfg.Timezone).Format("01/02/06"),
+				'W': config.NowIn(e.ServerCfg.Timezone).Format("3:04 pm"),
 				'P': "None",
 				'E': "0",
 				'O': "",
 				'A': "",
+				'Z': "GENERAL > General Discussion",
+				'X': "GENERAL > General Discussion [1/42]",
+				'K': strconv.Itoa(nodeNumber),
 			}
+			sampleAutoWidths := buildAutoWidths(sampleSubs, 42, 80)
 
-			processedPreview := processTemplate(hdrBytes, sampleSubs)
+			processedPreview := processTemplate(hdrBytes, sampleSubs, sampleAutoWidths)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-			terminalio.WriteProcessedBytes(terminal, processedPreview, outputMode)
+			// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+			if outputMode == ansi.OutputModeCP437 {
+				terminal.Write(processedPreview)
+			} else {
+				terminalio.WriteProcessedBytes(terminal, processedPreview, outputMode)
+			}
 
 			// Ask "Pick this header?" - centered at row 14
 			pickPrompt := "|08P|07i|15ck |08t|07h|15is |08h|07e|15ader? "
@@ -1362,7 +1513,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 			terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[14;%dH", promptX)), outputMode)
 
-			pickYes, pickErr := e.promptYesNo(s, terminal, pickPrompt, outputMode, nodeNumber)
+			pickYes, pickErr := e.PromptYesNo(s, terminal, pickPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 			if pickErr != nil {
 				if errors.Is(pickErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF
@@ -1387,7 +1538,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 
 		// Handle SPACE to select immediately (without preview)
-		if r == ' ' {
+		if key == ' ' {
 			opt := options[selectedIndex]
 			templateNum, _ := strconv.Atoi(opt.ReturnValue)
 			currentUser.MsgHdr = templateNum
@@ -1399,15 +1550,15 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 
 		// Handle numeric hotkeys (1-9) for direct selection
-		if r >= '1' && r <= '9' {
-			digit := int(r - '0')
+		if key >= '1' && key <= '9' {
+			digit := key - '0'
 			// Find option with this template number
 			for i, opt := range options {
 				templateNum, _ := strconv.Atoi(opt.ReturnValue)
 				if templateNum == digit {
+					oldIndex := selectedIndex
 					selectedIndex = i
-					drawOption(selectedIndex, false)
-					selectedIndex = i
+					drawOption(oldIndex, false)
 					drawOption(selectedIndex, true)
 					break
 				}

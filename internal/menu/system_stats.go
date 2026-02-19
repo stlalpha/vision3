@@ -14,12 +14,13 @@ import (
 	term "golang.org/x/term"
 
 	"github.com/stlalpha/vision3/internal/ansi"
-	"github.com/stlalpha/vision3/internal/jam"
+	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
+	"github.com/stlalpha/vision3/internal/version"
 )
 
-func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	if currentUser == nil {
 		return nil, "", nil
 	}
@@ -46,11 +47,11 @@ func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		sysopName = sysopUser.Handle
 	}
 
-	now := time.Now()
+	now := config.NowIn(e.ServerCfg.Timezone)
 	tokens := map[string]string{
 		"BBSNAME":     e.ServerCfg.BoardName,
 		"SYSOP":       sysopName,
-		"VERSION":     jam.Version,
+		"VERSION":     version.Number,
 		"TOTALUSERS":  strconv.Itoa(userManager.GetUserCount()),
 		"TOTALCALLS":  strconv.FormatUint(userManager.GetTotalCalls(), 10),
 		"TOTALMSGS":   strconv.Itoa(e.MessageMgr.GetTotalMessageCount()),
@@ -111,7 +112,7 @@ func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	if pausePrompt == "" {
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
-	if err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode); err != nil {
+	if err := writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode, termWidth, termHeight); err != nil {
 		return nil, "", err
 	}
 

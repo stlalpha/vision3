@@ -1,7 +1,6 @@
 package menu
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
 	"golang.org/x/term"
@@ -28,6 +28,8 @@ func (e *MenuExecutor) RunMatrixScreen(
 	userManager *user.UserMgr,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth int,
+	termHeight int,
 ) (string, error) {
 	const menuName = "PDMATRIX"
 
@@ -57,8 +59,9 @@ func (e *MenuExecutor) RunMatrixScreen(
 	}
 
 	// Load the ANSI background (convention: PDMATRIX.ANS)
+	// Use GetAnsiFileContent to automatically strip SAUCE metadata
 	ansPath := filepath.Join(e.MenuSetPath, "ansi", menuName+".ANS")
-	ansBackground, err := os.ReadFile(ansPath)
+	ansBackground, err := ansi.GetAnsiFileContent(ansPath)
 	if err != nil {
 		log.Printf("WARN: Node %d: Failed to load %s.ANS: %v, skipping matrix", nodeNumber, menuName, err)
 		return "LOGIN", nil
@@ -81,11 +84,18 @@ func (e *MenuExecutor) RunMatrixScreen(
 		return "LOGIN", nil
 	}
 
-	// Input loop
-	bufioReader := bufio.NewReader(s)
+	// Apply the pre-login idle timeout on the shared InputHandler.
+	// nil = no authenticated user yet; sysop exemption applies post-login only.
+	getSessionIH(s).SetSessionIdleTimeout(e.idleTimeout(nil))
+
+	sessionIH := getSessionIH(s)
 	for tries < maxTries {
-		r, _, err := bufioReader.ReadRune()
+		key, err := sessionIH.ReadKey()
 		if err != nil {
+			if errors.Is(err, editor.ErrIdleTimeout) {
+				e.handleIdleTimeout(terminal, outputMode, nodeNumber, termHeight)
+				return "DISCONNECT", nil
+			}
 			if errors.Is(err, io.EOF) {
 				return "DISCONNECT", io.EOF
 			}
@@ -95,53 +105,46 @@ func (e *MenuExecutor) RunMatrixScreen(
 		newIndex := selectedIndex
 		selectionMade := false
 
-		if r < 32 && r != '\r' && r != '\n' && r != 27 {
-			continue
-		}
-
-		switch {
-		case r >= '1' && r <= '9':
-			// Direct selection by number (always enabled)
-			numIndex := int(r - '1')
-			if numIndex < len(options) {
-				selectedIndex = numIndex
-				drawMatrixOptions(terminal, options, selectedIndex, outputMode)
-				selectionMade = true
+		switch key {
+		case editor.KeyArrowUp:
+			newIndex = selectedIndex - 1
+			if newIndex < 0 {
+				newIndex = len(options) - 1 // Wrap to bottom
 			}
 
-		case r == '\r' || r == '\n':
+		case editor.KeyArrowDown:
+			newIndex = selectedIndex + 1
+			if newIndex >= len(options) {
+				newIndex = 0 // Wrap to top
+			}
+
+		case editor.KeyEnter:
 			selectionMade = true
 
-		case r == ' ':
+		case editor.KeyEsc:
+			// Bare ESC (sequences already decoded by ReadKey) — ignore
+
+		case ' ':
 			// Spacebar redraws screen (matches Pascal behavior)
 			drawMatrixScreen(terminal, ansBackground, options, selectedIndex, outputMode)
 
-		case r == 27: // ESC - check for arrow key sequence
-			time.Sleep(20 * time.Millisecond)
-			seq := make([]byte, 0, 8)
-			for bufioReader.Buffered() > 0 && len(seq) < 8 {
-				b, readErr := bufioReader.ReadByte()
-				if readErr != nil {
-					break
-				}
-				seq = append(seq, b)
+		default:
+			if key < 32 || key > 126 {
+				continue // ignore non-printable / special keys
 			}
-			if len(seq) >= 2 && seq[0] == 91 { // '['
-				switch seq[1] {
-				case 65: // Up arrow
-					newIndex = selectedIndex - 1
-					if newIndex < 0 {
-						newIndex = len(options) - 1 // Wrap to bottom
-					}
-				case 66: // Down arrow
-					newIndex = selectedIndex + 1
-					if newIndex >= len(options) {
-						newIndex = 0 // Wrap to top
-					}
+			r := rune(key)
+
+			// Direct selection by number
+			if r >= '1' && r <= '9' {
+				numIndex := int(r - '1')
+				if numIndex < len(options) {
+					selectedIndex = numIndex
+					drawMatrixOptions(terminal, options, selectedIndex, outputMode)
+					selectionMade = true
 				}
+				break
 			}
 
-		default:
 			// Check for hotkey match (explicit HotKey field from BAR file)
 			keyStr := strings.ToUpper(string(r))
 			matchedHotkey := false
@@ -175,7 +178,7 @@ func (e *MenuExecutor) RunMatrixScreen(
 			}
 			log.Printf("INFO: Node %d: Matrix selection: %s (%s)", nodeNumber, options[selectedIndex].Text, action)
 
-			result, err := e.processMatrixAction(action, s, terminal, userManager, nodeNumber, outputMode)
+			result, err := e.processMatrixAction(action, s, terminal, userManager, nodeNumber, outputMode, termWidth, termHeight)
 			if err != nil {
 				return result, err
 			}
@@ -204,18 +207,20 @@ func (e *MenuExecutor) processMatrixAction(
 	userManager *user.UserMgr,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth int,
+	termHeight int,
 ) (string, error) {
 	switch action {
 	case "LOGIN":
 		// Show PRELOGON ANSI file before login screen (matches Pascal: Printfile(PRELOGON.x) + HoldScreen)
-		e.showPrelogon(terminal, nodeNumber, outputMode)
+		e.showPrelogon(s, terminal, nodeNumber, outputMode, termWidth, termHeight)
 		return "LOGIN", nil
 
 	case "NEWUSER":
 		// Clear screen immediately when transitioning from matrix to new user flow
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 		terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode) // Show cursor
-		err := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode)
+		err := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode, termWidth, termHeight)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return "DISCONNECT", io.EOF
@@ -251,7 +256,7 @@ func (e *MenuExecutor) handleCheckAccess(
 
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MatrixCheckAccessPrompt)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		return
 	}
@@ -283,13 +288,13 @@ func (e *MenuExecutor) handleCheckAccess(
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(pausePrompt)), outputMode)
-	terminal.ReadLine()
+	_, _ = readLineFromSessionIH(s, terminal)
 }
 
 // showPrelogon displays a random PRELOGON ANSI file before the login screen.
 // Matches Pascal: Printfile(PRELOGON.x) + HoldScreen where x is random 1..NumPrelogon.
 // Looks for numbered files (PRELOGON.1, PRELOGON.2, ...) first, falls back to PRELOGON.ANS.
-func (e *MenuExecutor) showPrelogon(terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) {
+func (e *MenuExecutor) showPrelogon(s ssh.Session, terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode, termWidth, termHeight int) {
 	ansiDir := filepath.Join(e.MenuSetPath, "ansi")
 
 	// Look for numbered PRELOGON files (Pascal pattern: PRELOGON.1, PRELOGON.2, ...)
@@ -321,7 +326,8 @@ func (e *MenuExecutor) showPrelogon(terminal *term.Terminal, nodeNumber int, out
 		idx = int(time.Now().UnixNano() % int64(len(candidates)))
 	}
 
-	rawContent, err := os.ReadFile(candidates[idx])
+	// Use GetAnsiFileContent to automatically strip SAUCE metadata
+	rawContent, err := ansi.GetAnsiFileContent(candidates[idx])
 	if err != nil {
 		log.Printf("WARN: Node %d: Failed to read prelogon file %s: %v", nodeNumber, candidates[idx], err)
 		return
@@ -329,15 +335,16 @@ func (e *MenuExecutor) showPrelogon(terminal *term.Terminal, nodeNumber int, out
 
 	log.Printf("INFO: Node %d: Displaying prelogon screen: %s", nodeNumber, filepath.Base(candidates[idx]))
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	terminalio.WriteProcessedBytes(terminal, rawContent, outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(rawContent)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, rawContent, outputMode)
+	}
 
 	// HoldScreen — pause before proceeding to login
-	pausePrompt := e.LoadedStrings.PauseString
-	if pausePrompt == "" {
-		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
-	}
-	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+pausePrompt)), outputMode)
-	terminal.ReadLine()
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+	e.holdScreen(s, terminal, outputMode, termWidth, termHeight)
 }
 
 // drawMatrixScreen clears the screen, draws the ANSI background, and highlights the selected option.
@@ -350,7 +357,12 @@ func drawMatrixScreen(
 ) error {
 	// Clear screen and draw background
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	terminalio.WriteProcessedBytes(terminal, ansBackground, outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(ansBackground)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, ansBackground, outputMode)
+	}
 
 	// Draw options with highlighting
 	return drawMatrixOptions(terminal, options, selectedIndex, outputMode)

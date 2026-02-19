@@ -32,6 +32,17 @@ The SAUCE stripping is implemented in `internal/ansi/ansi.go`:
 - Removal: Searches backwards for the EOF marker (0x1A) and truncates the content before it
 - Fallback: If no EOF marker is found, removes just the 128-byte SAUCE record
 
+## Where SAUCE Stripping is Applied
+
+The following ANSI files automatically have SAUCE metadata stripped:
+
+- **Pre-login screens**: `PDMATRIX.ANS` (pre-login menu)
+- **Pre-login splash**: `PRELOGON.ANS` and numbered variants (`PRELOGON.1`, `PRELOGON.2`, etc.)
+- **Login screen**: `LOGIN.ANS` (via `ProcessAnsiAndExtractCoords`)
+- **Menu displays**: Any menu using `GetAnsiFileContent()` or `ProcessAnsiAndExtractCoords()`
+
+All ANSI files loaded through these functions will have SAUCE stripped automatically, preventing metadata from displaying as garbage characters.
+
 ## Testing
 
 Tests are located in `internal/ansi/sauce_test.go` and cover:

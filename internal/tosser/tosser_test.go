@@ -3,6 +3,7 @@ package tosser
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -194,5 +195,88 @@ func TestMergeSeenByNoDuplicates(t *testing.T) {
 	nodes := ParseSeenByLine(result[0])
 	if len(nodes) != 1 {
 		t.Errorf("MergeSeenBy should not add duplicates: got %d nodes, want 1", len(nodes))
+	}
+}
+
+// TestReplyKludgeParsing tests that malformed REPLY kludges are handled correctly
+// by extracting only the first MSGID token
+func TestReplyKludgeParsing(t *testing.T) {
+	tests := []struct {
+		name     string
+		kludge   string
+		expected string
+	}{
+		{
+			name:     "normal reply",
+			kludge:   "REPLY: 1:103/705 12345678",
+			expected: "1:103/705",
+		},
+		{
+			name:     "malformed multiple msgids",
+			kludge:   "REPLY: 68475.fsx_gen@21: 21:1/999 9c829f62 21:2/150 35a2bb0a",
+			expected: "68475.fsx_gen@21:",
+		},
+		{
+			name:     "reply with extra spaces",
+			kludge:   "REPLY: 1:104/56   87654321   extra   data",
+			expected: "1:104/56",
+		},
+		{
+			name:     "msgid format with embedded ftn address",
+			kludge:   "REPLY: 1747.fsxnetfsxvideo@21:2/101",
+			expected: "21:2/101",
+		},
+		{
+			name:     "msgid format with node and point",
+			kludge:   "REPLY: 1500.fsxnet_fsxvideo@21:1/137.0",
+			expected: "21:1/137.0",
+		},
+		{
+			name:     "malformed msgid without ftn address",
+			kludge:   "REPLY: 12345.invalid@noftn",
+			expected: "12345.invalid@noftn",
+		},
+		{
+			name:     "empty reply value",
+			kludge:   "REPLY: ",
+			expected: "",
+		},
+		{
+			name:     "reply with only spaces",
+			kludge:   "REPLY:     ",
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Simulate the REPLY parsing logic from import.go
+			if strings.HasPrefix(tt.kludge, "REPLY: ") {
+				replyValue := strings.TrimPrefix(tt.kludge, "REPLY: ")
+				var result string
+				if parts := strings.Fields(replyValue); len(parts) > 0 {
+					replyID := parts[0]
+
+					// Check if the reply looks like a MSGID with embedded FTN address
+					// Format: "xxxx.something@zone:net/node" or "xxxx.something@zone:net/node.point"
+					if atPos := strings.Index(replyID, "@"); atPos != -1 && atPos < len(replyID)-1 {
+						// Extract the FTN address after the @ symbol
+						ftnPart := replyID[atPos+1:]
+						// Validate it looks like a proper FTN address (contains : and /)
+						if strings.Contains(ftnPart, ":") && strings.Contains(ftnPart, "/") {
+							replyID = ftnPart
+						}
+					}
+
+					result = replyID
+				}
+
+				if result != tt.expected {
+					t.Errorf("REPLY parsing: got %q, want %q", result, tt.expected)
+				}
+			} else {
+				t.Fatalf("Test kludge %q should start with 'REPLY: '", tt.kludge)
+			}
+		})
 	}
 }

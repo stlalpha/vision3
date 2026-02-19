@@ -1,12 +1,11 @@
 {
   "boardName": "My BBS",
-  "boardPhoneNumber": "555-555-5555",
   "timezone": "America/Chicago",
   "sysOpLevel": 255,
   "coSysOpLevel": 250,
   "regularUserLevel": 10,
   "logonLevel": 50,
-  "anonymousLevel": 5,
+  "anonymousLevel": 60,
   "sshEnabled": true,
   "sshHost": "0.0.0.0",
   "sshPort": 2222,
@@ -19,5 +18,8 @@
   "ipAllowlistPath": "configs/allowlist.txt",
   "maxFailedLogins": 5,
   "lockoutMinutes": 30,
-  "fileListingMode": "lightbar"
+  "fileListingMode": "lightbar",
+  "legacySSHAlgorithms": true,
+  "allowNewUsers": true,
+  "sessionIdleTimeoutMinutes": 5
 }

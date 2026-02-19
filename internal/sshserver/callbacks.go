@@ -5,8 +5,12 @@ package sshserver
 #include <libssh/server.h>
 #include <libssh/callbacks.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 extern struct ssh_channel_callbacks_struct* vision3_new_channel_cb(void *userdata);
+
+// Convert a Go cgo.Handle (uintptr) to void* for use as C callback userdata.
+static inline void* handle_to_ptr(uintptr_t h) { return (void*)h; }
 */
 import "C"
 import (
@@ -63,7 +67,7 @@ func go_channel_open_cb(session C.ssh_session, userdata unsafe.Pointer) C.ssh_ch
 	cs.channel = channel
 
 	// Set channel callbacks using the same handle for userdata
-	chanCb := C.vision3_new_channel_cb(unsafe.Pointer(uintptr(cs.handle)))
+	chanCb := C.vision3_new_channel_cb(C.handle_to_ptr(C.uintptr_t(cs.handle)))
 	if chanCb == nil {
 		log.Printf("ERROR: Failed to allocate channel callbacks")
 		C.ssh_channel_free(channel)

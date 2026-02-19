@@ -15,6 +15,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
@@ -64,7 +65,12 @@ func runGetScanType(reader *bufio.Reader, e *MenuExecutor, terminal *term.Termin
 		ansPath := "menus/v3/ansi/NSCANHDR.ANS"
 		headerContent, ansErr := ansi.GetAnsiFileContent(ansPath)
 		if ansErr == nil {
-			terminalio.WriteProcessedBytes(terminal, headerContent, outputMode)
+			// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+			if outputMode == ansi.OutputModeCP437 {
+				terminal.Write(headerContent)
+			} else {
+				terminalio.WriteProcessedBytes(terminal, headerContent, outputMode)
+			}
 			// Position cursor on line 5 (after 4-row header)
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		}
@@ -248,7 +254,7 @@ func runGetScanType(reader *bufio.Reader, e *MenuExecutor, terminal *term.Termin
 func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	sessionStartTime time.Time, outputMode ansi.OutputMode,
-	currentOnly bool) (*user.User, string, error) {
+	currentOnly bool, termWidth int, termHeight int) (*user.User, string, error) {
 
 	if currentUser == nil {
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanLoginRequired)), outputMode)
@@ -256,7 +262,11 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
-	reader := bufio.NewReader(s)
+	// Use the session-scoped InputHandler so this scan loop, any editor
+	// invocations, and the lightbar menus all share a single goroutine reading
+	// from the SSH session — no keystrokes are lost when control transfers.
+	scanIH := getSessionIH(s)
+	reader := bufio.NewReader(scanIH)
 
 	// Get total message count for current area (for range display in setup)
 	currentAreaID := currentUser.CurrentMessageAreaID
@@ -305,8 +315,24 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		startMsg := determineStartMessage(e, scanCfg, currentAreaID, currentUser.Handle, totalCount)
 
+		// Get terminal dimensions: prefer passed params, then user preferences, then defaults
+		tw := termWidth
+		if tw <= 0 {
+			tw = currentUser.ScreenWidth
+		}
+		if tw <= 0 {
+			tw = 80
+		}
+		th := termHeight
+		if th <= 0 {
+			th = currentUser.ScreenHeight
+		}
+		if th <= 0 {
+			th = 24
+		}
+
 		_, action, readErr := runMessageReader(e, s, terminal, userManager, currentUser,
-			nodeNumber, sessionStartTime, outputMode, startMsg, totalCount, true)
+			nodeNumber, sessionStartTime, outputMode, startMsg, totalCount, true, tw, th)
 		if readErr != nil || action == "LOGOFF" {
 			return nil, "LOGOFF", readErr
 		}
@@ -322,6 +348,12 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		time.Sleep(2 * time.Second)
 		return nil, "", nil
 	}
+
+	// Snapshot the user's current area/conf so we can restore after the scan
+	origAreaID := currentUser.CurrentMessageAreaID
+	origAreaTag := currentUser.CurrentMessageAreaTag
+	origConfID := currentUser.CurrentMsgConferenceID
+	origConfTag := currentUser.CurrentMsgConferenceTag
 
 	// Create tagged area map for quick lookup
 	taggedMap := make(map[int]bool)
@@ -361,6 +393,22 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			continue // No messages to show for this area
 		}
 
+		// Resolve terminal dimensions once per iteration: prefer passed params, then user prefs, then defaults
+		tw := termWidth
+		if tw <= 0 {
+			tw = currentUser.ScreenWidth
+		}
+		if tw <= 0 {
+			tw = 80
+		}
+		th := termHeight
+		if th <= 0 {
+			th = currentUser.ScreenHeight
+		}
+		if th <= 0 {
+			th = 24
+		}
+
 		// Set current area
 		currentUser.CurrentMessageAreaID = area.ID
 		currentUser.CurrentMessageAreaTag = area.Tag
@@ -388,8 +436,8 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			case 'R': // Read this area
 				// Fall through to call runMessageReader below
 			case 'P': // Post
-				_, _, _ = runComposeMessage(e, s, terminal, userManager, currentUser, nodeNumber,
-					sessionStartTime, "", outputMode)
+				_, _, _ = runComposeMessageWithIH(e, s, scanIH, terminal, userManager, currentUser, nodeNumber,
+					sessionStartTime, "", outputMode, tw, th)
 				continue
 			case 'J': // Jump to message #
 				handleJump(reader, terminal, outputMode, &startMsg, totalCount, e.LoadedStrings.MsgJumpPrompt, e.LoadedStrings.MsgInvalidMsgNum)
@@ -409,7 +457,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		// Read messages in this area
 		_, action, readErr := runMessageReader(e, s, terminal, userManager, currentUser,
-			nodeNumber, sessionStartTime, outputMode, startMsg, totalCount, true)
+			nodeNumber, sessionStartTime, outputMode, startMsg, totalCount, true, tw, th)
 		if readErr != nil || action == "LOGOFF" {
 			return nil, "LOGOFF", readErr
 		}
@@ -425,11 +473,16 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 	}
 
-	// Newscan complete
+	// Newscan complete — restore original conf/area before returning
+	currentUser.CurrentMessageAreaID = origAreaID
+	currentUser.CurrentMessageAreaTag = origAreaTag
+	currentUser.CurrentMsgConferenceID = origConfID
+	currentUser.CurrentMsgConferenceTag = origConfTag
+
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanComplete)), outputMode)
 	time.Sleep(1 * time.Second)
 
-	return nil, "", nil
+	return currentUser, "", nil
 }
 
 // determineStartMessage calculates the starting message number based on scan config.
@@ -467,7 +520,7 @@ type areaListItem struct {
 // Similar to retrograde's subscription system but using Vision3 styling.
 func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
-	sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+	sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 
 	if currentUser == nil {
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanConfigLoginRequired)), outputMode)
@@ -475,7 +528,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
-	reader := bufio.NewReader(s)
+	sessionIH := getSessionIH(s)
 
 	// Get all accessible message areas
 	allAreas := e.MessageMgr.ListAreas()
@@ -553,13 +606,17 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		currentIdx++
 	}
 
-	// Get terminal dimensions (default 24x80)
-	termHeight := currentUser.ScreenHeight
-	if termHeight == 0 {
+	// Get terminal dimensions: prefer passed params, then user prefs, then defaults
+	if termHeight <= 0 {
+		termHeight = currentUser.ScreenHeight
+	}
+	if termHeight <= 0 {
 		termHeight = 24
 	}
-	termWidth := currentUser.ScreenWidth
-	if termWidth == 0 {
+	if termWidth <= 0 {
+		termWidth = currentUser.ScreenWidth
+	}
+	if termWidth <= 0 {
 		termWidth = 80
 	}
 
@@ -751,7 +808,12 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	ansPath := filepath.Join(e.MenuSetPath, "ansi", "NEWSCAN.ANS")
 	headerContent, ansErr := ansi.GetAnsiFileContent(ansPath)
 	if ansErr == nil {
-		terminalio.WriteProcessedBytes(terminal, headerContent, outputMode)
+		// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+		if outputMode == ansi.OutputModeCP437 {
+			terminal.Write(headerContent)
+		} else {
+			terminalio.WriteProcessedBytes(terminal, headerContent, outputMode)
+		}
 	} else {
 		// Fallback to text header
 		header := "|15Newscan Configuration|07\r\n" +
@@ -802,7 +864,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	terminalio.WriteProcessedBytes(terminal, []byte(footerText), outputMode)
 
 	for {
-		seq, err := readKeySequence(reader)
+		key, err := sessionIH.ReadKey()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -810,8 +872,8 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			return nil, "", err
 		}
 
-		switch seq {
-		case "\x1b[A": // Up arrow
+		switch key {
+		case editor.KeyArrowUp, editor.KeyCtrlE: // Up arrow
 			newIdx := findNextSelectable(currentIdx, -1)
 			if newIdx != currentIdx {
 				currentIdx = newIdx
@@ -819,7 +881,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				smartRedraw()
 			}
 
-		case "\x1b[B": // Down arrow
+		case editor.KeyArrowDown, editor.KeyCtrlX: // Down arrow
 			newIdx := findNextSelectable(currentIdx, 1)
 			if newIdx != currentIdx {
 				currentIdx = newIdx
@@ -827,7 +889,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				smartRedraw()
 			}
 
-		case "\x1b[5~": // Page Up
+		case editor.KeyPageUp, editor.KeyCtrlR: // Page Up
 			moved := 0
 			newIdx := currentIdx
 			for moved < availableRows && newIdx > 0 {
@@ -846,7 +908,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				previousViewportOffset = viewportOffset
 			}
 
-		case "\x1b[6~": // Page Down
+		case editor.KeyPageDown, editor.KeyCtrlC: // Page Down
 			moved := 0
 			newIdx := currentIdx
 			for moved < availableRows && newIdx < len(accessibleAreas)-1 {
@@ -865,7 +927,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				previousViewportOffset = viewportOffset
 			}
 
-		case " ", "\r", "\n": // Space or Enter - toggle
+		case ' ', editor.KeyEnter: // Space or Enter - toggle
 			if !accessibleAreas[currentIdx].isHeader {
 				area := accessibleAreas[currentIdx].area
 				if taggedMap[area.ID] {
@@ -884,7 +946,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 			}
 
-		case "A", "a": // Tag all
+		case 'A', 'a': // Tag all
 			for _, item := range accessibleAreas {
 				if !item.isHeader {
 					taggedMap[item.area.ID] = true
@@ -892,11 +954,11 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 			drawItems()
 
-		case "N", "n": // Untag all
+		case 'N', 'n': // Untag all
 			taggedMap = make(map[int]bool)
 			drawItems()
 
-		case "\x1b", "Q", "q": // ESC or Q - exit
+		case editor.KeyEsc, 'Q', 'q': // ESC or Q - exit
 			// Save tagged areas to user
 			var taggedIDs []int
 			for areaID := range taggedMap {

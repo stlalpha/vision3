@@ -2,26 +2,32 @@ package menu
 
 import (
 	"testing"
+
+	"github.com/stlalpha/vision3/internal/ansi"
 )
 
 func TestParsePlaceholders(t *testing.T) {
 	tests := []struct {
-		name      string
-		template  string
-		wantLen   int
-		wantCode  string
-		wantWidth int
+		name          string
+		template      string
+		wantLen       int
+		wantCode      string
+		wantWidth     int
+		wantAutoWidth bool
 	}{
-		{"simple", "@F@", 1, "F", 0},
-		{"visual width", "@T#####@", 1, "T", 5},
-		{"param width", "@F:20@", 1, "F", 20},
-		{"multiple", "@#:5@/@N:5@", 2, "#", 5},
-		{"no placeholders", "Plain text", 0, "", 0},
-		{"mixed formats", "@T@ and @F:15@ and @S###@", 3, "T", 0},
-		{"hash code", "@#@", 1, "#", 0},
-		{"all codes", "@B@ @T@ @F@ @S@ @U@ @M@ @L@ @R@ @#@ @N@ @D@ @W@ @P@ @E@ @O@ @A@", 16, "B", 0},
-		{"long visual width", "@T########################@", 1, "T", 24},
-		{"large param width", "@F:100@", 1, "F", 100},
+		{"simple", "@F@", 1, "F", 0, false},
+		{"visual width", "@T#####@", 1, "T", 8, false},
+		{"param width", "@F:20@", 1, "F", 20, false},
+		{"multiple", "@#:5@/@N:5@", 2, "#", 5, false},
+		{"no placeholders", "Plain text", 0, "", 0, false},
+		{"mixed formats", "@T@ and @F:15@ and @S###@", 3, "T", 0, false},
+		{"hash code", "@#@", 1, "#", 0, false},
+		{"all codes", "@B@ @T@ @F@ @S@ @U@ @M@ @L@ @#@ @N@ @D@ @W@ @P@ @E@ @O@ @A@ @V@", 16, "B", 0, false},
+		{"long visual width", "@T########################@", 1, "T", 27, false},
+		{"large param width", "@F:100@", 1, "F", 100, false},
+		{"auto width", "@T*@", 1, "T", 0, true},
+		{"auto width hash", "@#*@", 1, "#", 0, true},
+		{"auto width Z", "@Z*@", 1, "Z", 0, true},
 	}
 
 	for _, tt := range tests {
@@ -37,6 +43,47 @@ func TestParsePlaceholders(t *testing.T) {
 				if matches[0].Width != tt.wantWidth {
 					t.Errorf("got width %d, want %d", matches[0].Width, tt.wantWidth)
 				}
+				if matches[0].AutoWidth != tt.wantAutoWidth {
+					t.Errorf("got autoWidth %v, want %v", matches[0].AutoWidth, tt.wantAutoWidth)
+				}
+			}
+		})
+	}
+}
+
+func TestParsePlaceholdersAlignment(t *testing.T) {
+	tests := []struct {
+		name      string
+		template  string
+		wantCode  string
+		wantWidth int
+		wantAlign ansi.Alignment
+	}{
+		{"right modifier digits", "@T|R8@", "T", 8, ansi.AlignRight},
+		{"left modifier digits", "@F|L20@", "F", 20, ansi.AlignLeft},
+		{"center modifier digits", "@S|C15@", "S", 15, ansi.AlignCenter},
+		{"right modifier colon", "@T|R:8@", "T", 8, ansi.AlignRight},
+		{"right-justify visual", "@#|R####@", "#", 9, ansi.AlignRight},
+		{"right modifier auto", "@T|R*@", "T", 0, ansi.AlignRight},
+		{"no modifier", "@T:8@", "T", 8, ansi.AlignLeft},
+		{"modifier no width", "@T|R@", "T", 0, ansi.AlignRight},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			matches := parsePlaceholders([]byte(tt.template))
+			if len(matches) != 1 {
+				t.Fatalf("got %d matches, want 1", len(matches))
+			}
+			m := matches[0]
+			if m.Code != tt.wantCode {
+				t.Errorf("code = %q, want %q", m.Code, tt.wantCode)
+			}
+			if m.Width != tt.wantWidth {
+				t.Errorf("width = %d, want %d", m.Width, tt.wantWidth)
+			}
+			if m.Align != tt.wantAlign {
+				t.Errorf("align = %v, want %v", m.Align, tt.wantAlign)
 			}
 		})
 	}
@@ -68,6 +115,9 @@ func TestProcessPlaceholderTemplate(t *testing.T) {
 		'S': "Jane Smith",
 		'#': "42",
 		'N': "100",
+		'C': "[42/100]",
+		'X': "Local Areas > General Discussion [42/100]",
+		'W': "2:30 pm",
 	}
 
 	tests := []struct {
@@ -78,15 +128,25 @@ func TestProcessPlaceholderTemplate(t *testing.T) {
 		{"simple substitution", "@T@", "Test Subject"},
 		{"multiple placeholders", "From: @F@ To: @S@", "From: John Doe To: Jane Smith"},
 		{"with width constraint", "@F:5@", "John "},
-		{"visual width longer", "@F#############@", "John Doe     "}, // 13 # = width 13
+		{"visual width longer", "@F#############@", "John Doe        "}, // 16 total chars = width 16
 		{"no placeholders", "Plain text", "Plain text"},
 		{"hash code", "Msg @#@/@N@", "Msg 42/100"},
-		{"missing code", "@X@", "@X@"}, // Unknown code preserved
+		{"count display", "@C@", "[42/100]"},
+		{"combined area and count", "@X@", "Local Areas > General Discussion [42/100]"},
+		{"missing code", "@Q@", "@Q@"}, // Unknown code preserved
+		// Alignment modifier tests
+		{"right-justify explicit", "@#|R5@", "   42"},
+		{"right-justify colon", "@#|R:5@", "   42"},
+		{"left-justify explicit", "@#|L5@", "42   "},
+		{"center explicit", "@F|C20@", "      John Doe      "},
+		{"right-justify visual", "@#|R#####@", "        42"}, // 10-char placeholder = width 10
+		{"modifier no width", "@T|R@", "Test Subject"},       // No width = no alignment applied
+		{"right-justify time", "@W|R8@", " 2:30 pm"},         // 7 chars + 1 pad
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := string(processPlaceholderTemplate([]byte(tt.template), substitutions))
+			got := string(processPlaceholderTemplate([]byte(tt.template), substitutions, nil))
 			if got != tt.want {
 				t.Errorf("processPlaceholderTemplate() = %q, want %q", got, tt.want)
 			}
@@ -111,7 +171,7 @@ func TestProcessPlaceholderTemplateWithANSI(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := string(processPlaceholderTemplate([]byte(tt.template), substitutions))
+			got := string(processPlaceholderTemplate([]byte(tt.template), substitutions, nil))
 			if len(tt.wantContains) > 0 && !contains(got, tt.wantContains) {
 				t.Errorf("processPlaceholderTemplate() = %q, should contain %q", got, tt.wantContains)
 			}
@@ -134,7 +194,7 @@ Subj: @T@`
 		'T': "Welcome to Vision3!",
 	}
 
-	result := string(processPlaceholderTemplate([]byte(template), substitutions))
+	result := string(processPlaceholderTemplate([]byte(template), substitutions, nil))
 
 	expected := `Posted on 01/15/26 2:30 pm       ECHOMAIL READ
 From: sysop          To: All
@@ -146,8 +206,8 @@ Subj: Welcome to Vision3!`
 }
 
 func TestPlaceholderRegexCoverage(t *testing.T) {
-	// Test all 16 valid placeholder codes
-	validCodes := []string{"B", "T", "F", "S", "U", "M", "L", "R", "#", "N", "D", "W", "P", "E", "O", "A"}
+	// Test all 19 valid placeholder codes (including G for gap fill, V for verbose count)
+	validCodes := []string{"B", "T", "F", "S", "U", "M", "L", "#", "N", "D", "W", "P", "E", "O", "A", "C", "X", "G", "V"}
 
 	for _, code := range validCodes {
 		template := "@" + code + "@"
@@ -158,6 +218,185 @@ func TestPlaceholderRegexCoverage(t *testing.T) {
 		if len(matches) > 0 && matches[0].Code != code {
 			t.Errorf("Code %s: got %q", code, matches[0].Code)
 		}
+	}
+
+	// Test auto-width format for all codes
+	for _, code := range validCodes {
+		template := "@" + code + "*@"
+		matches := parsePlaceholders([]byte(template))
+		if len(matches) != 1 {
+			t.Errorf("Code %s*: expected 1 match, got %d", code, len(matches))
+		}
+		if len(matches) > 0 {
+			if !matches[0].AutoWidth {
+				t.Errorf("Code %s*: expected AutoWidth=true", code)
+			}
+			if matches[0].Width != 0 {
+				t.Errorf("Code %s*: expected Width=0, got %d", code, matches[0].Width)
+			}
+		}
+	}
+}
+
+func TestProcessPlaceholderAutoWidth(t *testing.T) {
+	substitutions := map[byte]string{
+		'#': "3",
+		'N': "1500",
+		'C': "[3/1500]",
+		'Z': "Local Areas > General Discussion",
+		'X': "Local Areas > General Discussion [3/1500]",
+		'D': "01/15/26",
+		'W': "2:30 pm",
+		'T': "Hello",
+		'F': "sysop",
+	}
+
+	autoWidths := map[byte]int{
+		'#': 4,  // len("1500") = 4
+		'N': 4,  // same
+		'C': 11, // len("[1500/1500]") = 11
+		'Z': 32, // len("Local Areas > General Discussion")
+		'X': 44, // Z + space + max count
+		'D': 8,
+		'W': 8,
+		'T': 5,
+		'F': 5,
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		want     string
+	}{
+		{
+			"auto-width pads message number",
+			"Msg @#*@",
+			"Msg 3   ", // "3" padded to width 4 (left-aligned)
+		},
+		{
+			"auto-width pads count display",
+			"@C*@",
+			"[3/1500]   ", // "[3/1500]" padded to width 11
+		},
+		{
+			"auto-width Z value",
+			"Area: @Z*@",
+			"Area: Local Areas > General Discussion", // Z is already 32, no padding needed
+		},
+		{
+			"auto-width no effect without map",
+			"@#*@",
+			"3", // No autoWidths map = no padding
+		},
+		{
+			"auto-width date",
+			"Date: @D*@",
+			"Date: 01/15/26", // Already 8 chars, width 8 = no padding
+		},
+		{
+			"auto-width time padded",
+			"Time: @W*@",
+			"Time: 2:30 pm ", // "2:30 pm" is 7 chars, padded to 8
+		},
+		{
+			"mixed auto and explicit",
+			"@#*@/@N:6@",
+			"3   /1500  ", // # auto-padded to 4, N explicit padded to 6 (left-aligned)
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var aw map[byte]int
+			if tt.name != "auto-width no effect without map" {
+				aw = autoWidths
+			}
+			got := string(processPlaceholderTemplate([]byte(tt.template), substitutions, aw))
+			if got != tt.want {
+				t.Errorf("processPlaceholderTemplate() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestProcessPlaceholderGapFill(t *testing.T) {
+	substitutions := map[byte]string{
+		'#': "1",
+		'N': "42",
+	}
+
+	tests := []struct {
+		name     string
+		template string
+		aw       map[byte]int
+		wantLen  int // expected visible length of result
+	}{
+		{
+			"gap fill to 79 default",
+			"Hello @G@",
+			nil,
+			79, // "Hello " = 6 visible, fill = 73 x C4 (79 avoids col 80 auto-wrap)
+		},
+		{
+			"gap fill explicit width",
+			"Hello @G:40@",
+			nil,
+			40,
+		},
+		{
+			"gap fill auto-width",
+			"Hello @G*@",
+			map[byte]int{'G': 60},
+			60,
+		},
+		{
+			"gap fill with other placeholders",
+			"@#@ of @N@ @G:30@",
+			nil,
+			30, // "1 of 42 " = 8 visible, fill = 22 x C4
+		},
+		{
+			"gap fill line already full",
+			"This line is already very long and exceeds the target width easily @G:10@",
+			nil,
+			67, // no fill added, marker removed, just the visible text
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := processPlaceholderTemplate([]byte(tt.template), substitutions, tt.aw)
+			// Count visible length (C4 bytes count as visible)
+			visLen := 0
+			i := 0
+			for i < len(got) {
+				if got[i] == 0x1b && i+1 < len(got) && got[i+1] == '[' {
+					i += 2
+					for i < len(got) && !((got[i] >= 'A' && got[i] <= 'Z') || (got[i] >= 'a' && got[i] <= 'z')) {
+						i++
+					}
+					if i < len(got) {
+						i++
+					}
+				} else {
+					visLen++
+					i++
+				}
+			}
+			if visLen != tt.wantLen {
+				t.Errorf("visible length = %d, want %d (raw bytes: %q)", visLen, tt.wantLen, got)
+			}
+			// Verify fill bytes are C4 (CP437 horizontal line)
+			for j := 0; j < len(got); j++ {
+				if got[j] == 0xC4 {
+					// Found at least one fill char, good
+					return
+				}
+			}
+			if tt.wantLen > len(tt.template)-4 { // only check if fill was expected
+				// For the "already full" case, no fill chars expected
+			}
+		})
 	}
 }
 

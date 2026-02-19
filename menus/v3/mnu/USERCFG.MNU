@@ -1,7 +1,7 @@
 {
   "CLR": true,
   "USEPROMPT": true,
-  "PROMPT1": "|08[|07Config|08] |15>|07 ",
+  "PROMPT1": "|08[|07User Konfig|08] |15>|07 ",
   "FALLBACK": "USERCFG",
   "ACS": "",
   "PASS": ""

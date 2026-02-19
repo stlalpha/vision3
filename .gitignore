@@ -43,6 +43,7 @@ go.work.sum
 /helper
 tmp/
 /tmp/*
+.gocache/
 
 # Config files (contain site-specific settings, FTN addresses, passwords)
 # Actual config files are ignored, but templates/ directory is tracked

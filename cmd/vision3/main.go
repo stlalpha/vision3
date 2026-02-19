@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -34,15 +35,16 @@ import (
 	"github.com/stlalpha/vision3/internal/session"
 	"github.com/stlalpha/vision3/internal/sshserver"
 	"github.com/stlalpha/vision3/internal/telnetserver"
+	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
 )
 
 var (
-	userMgr      *user.UserMgr
-	messageMgr   *message.MessageManager
-	fileMgr      *file.FileManager
-	confMgr      *conference.ConferenceManager
+	userMgr         *user.UserMgr
+	messageMgr      *message.MessageManager
+	fileMgr         *file.FileManager
+	confMgr         *conference.ConferenceManager
 	menuExecutor    *menu.MenuExecutor
 	sessionRegistry *session.SessionRegistry
 	// globalConfig *config.GlobalConfig // Still commented out
@@ -877,13 +879,45 @@ func sessionHandler(s ssh.Session) {
 		// Auto mode: Use PTY info if available
 		if isPty {
 			termType := strings.ToLower(ptyReq.Term)
-			log.Printf("Node %d: Auto mode detecting based on TERM='%s'", nodeID, termType)
-			// Heuristic: Check for known CP437-preferring TERM types
-			if termType == "sync" || termType == "syncterm" || termType == "ansi" || termType == "scoansi" || strings.HasPrefix(termType, "vt100") {
-				log.Printf("Node %d: Auto mode selecting CP437 output for TERM='%s'", nodeID, termType)
+			termCols := int(termWidth.Load())
+			log.Printf("Node %d: Auto mode detecting based on TERM='%s', cols=%d", nodeID, termType, termCols)
+
+			// Detect retro BBS terminal clients using terminal capabilities
+			isRetroTerminal := false
+
+			// NetRunner: reports "ansi-256color-rgb" directly, or "xterm" with >80 cols
+			// (the xterm heuristic is an SSH-path fallback for older NetRunner builds
+			// that self-identify as xterm; telnet clients now use TERM_TYPE negotiation
+			// and will report their actual type, so this heuristic is SSH-specific)
+			if termType == "ansi-256color-rgb" || (termType == "xterm" && termCols > 80) {
+				log.Printf("Node %d: Detected NetRunner (TERM='%s', cols=%d)", nodeID, termType, termCols)
+				isRetroTerminal = true
+			}
+
+			// SyncTerm: Reports syncterm or sync
+			if termType == "syncterm" || termType == "sync" {
+				log.Printf("Node %d: Detected SyncTerm (TERM='%s')", nodeID, termType)
+				isRetroTerminal = true
+			}
+
+			// Magiterm: Reports magiterm
+			if termType == "magiterm" {
+				log.Printf("Node %d: Detected Magiterm (TERM='%s')", nodeID, termType)
+				isRetroTerminal = true
+			}
+
+			// Other known CP437 terminal types
+			if termType == "ansi" || termType == "scoansi" || termType == "ansi-bbs" ||
+				termType == "netrunner" || strings.HasPrefix(termType, "vt100") {
+				log.Printf("Node %d: Detected CP437 terminal type (TERM='%s')", nodeID, termType)
+				isRetroTerminal = true
+			}
+
+			if isRetroTerminal {
+				log.Printf("Node %d: Auto mode selecting CP437 output for retro BBS terminal", nodeID)
 				effectiveMode = ansi.OutputModeCP437
 			} else {
-				log.Printf("Node %d: Auto mode selecting UTF-8 output for TERM='%s'", nodeID, termType)
+				log.Printf("Node %d: Auto mode selecting UTF-8 output for modern terminal (TERM='%s')", nodeID, termType)
 				effectiveMode = ansi.OutputModeUTF8
 			}
 		} else {
@@ -947,6 +981,9 @@ func sessionHandler(s ssh.Session) {
 		log.Printf("Node %d: Skipping raw mode attempt as no PTY was requested.", nodeID)
 	}
 
+	// Encoding and terminal size prompts moved to after authentication
+	// so we can check user's saved preferences and offer to save new settings
+
 	// --- Authentication and Main Loop ---
 	log.Printf("Node %d: Starting BBS logic...", nodeID)
 	sessionStartTime := time.Now()
@@ -980,23 +1017,7 @@ func sessionHandler(s ssh.Session) {
 			// Mark user as online
 			userMgr.MarkUserOnline(authenticatedUser.ID)
 
-			// Set user's terminal dimensions from detected PTY size only when not already stored.
-			tw, th := int(termWidth.Load()), int(termHeight.Load())
-			updatedScreenPrefs := false
-			if tw > 0 && authenticatedUser.ScreenWidth == 0 {
-				authenticatedUser.ScreenWidth = tw
-				updatedScreenPrefs = true
-			}
-			if th > 0 && authenticatedUser.ScreenHeight == 0 {
-				authenticatedUser.ScreenHeight = th
-				updatedScreenPrefs = true
-			}
-			if updatedScreenPrefs {
-				log.Printf("Node %d: Set user %s screen preferences to %dx%d", nodeID, sshUser.Handle, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight)
-				if saveErr := userMgr.UpdateUser(authenticatedUser); saveErr != nil {
-					log.Printf("ERROR: Node %d: Failed to save user screen preferences: %v", nodeID, saveErr)
-				}
-			}
+			// Terminal size preferences will be handled in post-auth section
 			// Set default message area if not already set
 			if authenticatedUser.CurrentMessageAreaID == 0 && messageMgr != nil {
 				for _, area := range messageMgr.ListAreas() {
@@ -1036,14 +1057,15 @@ func sessionHandler(s ssh.Session) {
 
 			currentMenuName = "MAIN" // Will be overridden by login sequence result
 		} else {
-			log.Printf("Node %d: SSH user '%s' not found in BBS database, requiring manual login", nodeID, sshUsername)
-			// User not in database, proceed with normal LOGIN flow
+			log.Printf("Node %d: SSH user '%s' not found in BBS database, sending to PDMATRIX screen", nodeID, sshUsername)
+			// User not in database, send to PDMATRIX like telnet users
+			// (sshUsername will be kept for potential use in matrix or login)
 		}
 	}
 
-	// Pre-login matrix screen for telnet users (no SSH auto-login)
-	if authenticatedUser == nil && sshUsername == "" {
-		matrixAction, matrixErr := menuExecutor.RunMatrixScreen(s, terminal, userMgr, int(nodeID), effectiveMode)
+	// Pre-login matrix screen for unauthenticated users (telnet or SSH without account)
+	if authenticatedUser == nil {
+		matrixAction, matrixErr := menuExecutor.RunMatrixScreen(s, terminal, userMgr, int(nodeID), effectiveMode, int(termWidth.Load()), int(termHeight.Load()))
 		if matrixErr != nil {
 			log.Printf("Node %d: Matrix screen error: %v", nodeID, matrixErr)
 			return
@@ -1059,7 +1081,11 @@ func sessionHandler(s ssh.Session) {
 	for authenticatedUser == nil {
 		if currentMenuName == "" || currentMenuName == "LOGOFF" {
 			log.Printf("Node %d: Login failed or aborted. Terminating session.", nodeID)
-			fmt.Fprintln(terminal, "\r\nLogin failed or aborted.")
+			msg := loadedStrings.ExecLoginCancelled
+			if msg == "" {
+				msg = "\r\n|01Login cancelled.|07\r\n"
+			}
+			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), effectiveMode)
 			return
 		}
 
@@ -1120,25 +1146,189 @@ func sessionHandler(s ssh.Session) {
 	}
 	log.Printf("Node %d: Entering main loop for authenticated user: %s", nodeID, authenticatedUser.Handle)
 
-	// Apply user's stored screen size preferences (caps terminal to user setting)
-	if authenticatedUser.ScreenHeight > 0 {
-		th := int32(authenticatedUser.ScreenHeight)
-		if th < termHeight.Load() || termHeight.Load() == 25 {
-			termHeight.Store(th)
+	// Determine effective terminal size based on user preferences and manual adjustments
+	effectiveWidth := int(termWidth.Load())
+	effectiveHeight := int(termHeight.Load())
+
+	// Capture whether user needs first-time setup BEFORE auto-saving dimensions
+	needsSetup := (authenticatedUser.ScreenWidth == 0 || authenticatedUser.ScreenHeight == 0 || authenticatedUser.PreferredEncoding == "")
+
+	if authenticatedUser.ScreenWidth > 0 && authenticatedUser.ScreenHeight > 0 {
+		detectedW := effectiveWidth
+		detectedH := effectiveHeight
+
+		if isPty && (detectedW != authenticatedUser.ScreenWidth || detectedH != authenticatedUser.ScreenHeight) {
+			// Mismatch between detected and stored terminal size — prompt user
+			log.Printf("Node %d: Terminal size mismatch — detected %dx%d, stored %dx%d",
+				nodeID, detectedW, detectedH, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight)
+			terminal.Write([]byte("\r\n"))
+
+			useNew, promptErr := menuExecutor.PromptYesNo(s, terminal,
+				fmt.Sprintf(loadedStrings.TermSizeNewDetectedPrompt,
+					detectedW, detectedH, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight),
+				effectiveMode, int(nodeID), detectedW, detectedH, false)
+			if promptErr != nil {
+				if errors.Is(promptErr, io.EOF) {
+					log.Printf("Node %d: User disconnected during terminal size prompt.", nodeID)
+					return
+				}
+			}
+
+			if useNew {
+				effectiveWidth = detectedW
+				effectiveHeight = detectedH
+				termWidth.Store(int32(detectedW))
+				termHeight.Store(int32(detectedH))
+
+				saveDefault, saveErr := menuExecutor.PromptYesNo(s, terminal,
+					loadedStrings.TermSizeUpdateDefaultsPrompt,
+					effectiveMode, int(nodeID), detectedW, detectedH, true)
+				if saveErr != nil && errors.Is(saveErr, io.EOF) {
+					log.Printf("Node %d: User disconnected during save-defaults prompt.", nodeID)
+					return
+				}
+				if saveDefault {
+					authenticatedUser.ScreenWidth = detectedW
+					authenticatedUser.ScreenHeight = detectedH
+					if err := userMgr.UpdateUser(authenticatedUser); err != nil {
+						log.Printf("WARN: Node %d: Failed to update terminal size: %v", nodeID, err)
+					} else {
+						log.Printf("Node %d: Updated default terminal size to %dx%d", nodeID, detectedW, detectedH)
+					}
+				}
+			} else {
+				// Keep saved preferences for this session
+				effectiveWidth = authenticatedUser.ScreenWidth
+				effectiveHeight = authenticatedUser.ScreenHeight
+				termWidth.Store(int32(effectiveWidth))
+				termHeight.Store(int32(effectiveHeight))
+			}
+		} else {
+			// Sizes match (or no PTY) — use saved preferences
+			log.Printf("Node %d: Using user's stored terminal size: %dx%d (PTY detected: %dx%d)",
+				nodeID, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight, detectedW, detectedH)
+			effectiveWidth = authenticatedUser.ScreenWidth
+			effectiveHeight = authenticatedUser.ScreenHeight
+			termWidth.Store(int32(effectiveWidth))
+			termHeight.Store(int32(effectiveHeight))
+		}
+	} else {
+		// No saved preferences and no manual adjustment - use PTY detected and save for next time
+		log.Printf("Node %d: No stored terminal size, using PTY detected: %dx%d",
+			nodeID, effectiveWidth, effectiveHeight)
+		authenticatedUser.ScreenWidth = effectiveWidth
+		authenticatedUser.ScreenHeight = effectiveHeight
+		if err := userMgr.UpdateUser(authenticatedUser); err != nil {
+			log.Printf("WARN: Node %d: Failed to save user's terminal size: %v", nodeID, err)
 		}
 	}
-	if authenticatedUser.ScreenWidth > 0 {
-		tw := int32(authenticatedUser.ScreenWidth)
-		if tw < termWidth.Load() || termWidth.Load() == 80 {
-			termWidth.Store(tw)
+
+	_ = terminal.SetSize(effectiveWidth, effectiveHeight)
+	log.Printf("Node %d: Effective terminal size for %s: %dx%d", nodeID, authenticatedUser.Handle, effectiveWidth, effectiveHeight)
+
+	// --- Post-Auth Terminal Setup Prompts ---
+	// If user doesn't have saved preferences, prompt for encoding and terminal size configuration
+	// needsSetup was captured above BEFORE auto-saving PTY dimensions, so it reflects the original state
+
+	if needsSetup && isPty && outputModeFlag == "auto" {
+		termType := strings.ToLower(ptyReq.Term)
+		setupChanged := false
+
+		// Encoding Selection Prompt (for ambiguous terminals like xterm)
+		if effectiveMode == ansi.OutputModeUTF8 && termType == "xterm" && authenticatedUser.PreferredEncoding == "" {
+			terminal.Write([]byte("\r\n"))
+			terminal.Write([]byte("\x1b[1;36m CHARACTER ENCODING SELECTION\x1b[0m\r\n"))
+			terminal.Write([]byte("\x1b[1;33m ----------------------------\x1b[0m\r\n"))
+			terminal.Write([]byte("\r\n"))
+			terminal.Write([]byte("Your terminal reported as '\x1b[1m" + termType + "\x1b[0m' which can support multiple encodings.\r\n"))
+			terminal.Write([]byte("\r\n"))
+			terminal.Write([]byte("\x1b[1;32m[U]\x1b[0m Continue with \x1b[1mUTF-8\x1b[0m (modern terminals, Unicode support)\r\n"))
+			terminal.Write([]byte("\x1b[1;32m[C]\x1b[0m Switch to \x1b[1mCP437\x1b[0m (retro BBS terminals: SyncTerm, NetRunner, etc.)\r\n"))
+			terminal.Write([]byte("\r\n"))
+			terminal.Write([]byte("Choice \x1b[1;33m[U/C]\x1b[0m: "))
+
+			choice, err := terminal.ReadLine()
+			if err == nil {
+				choice = strings.TrimSpace(strings.ToUpper(choice))
+				if choice == "C" || choice == "CP437" {
+					log.Printf("Node %d: User selected CP437 encoding", nodeID)
+					effectiveMode = ansi.OutputModeCP437
+					authenticatedUser.PreferredEncoding = "cp437"
+					setupChanged = true
+					terminal.Write([]byte("\r\n\x1b[1;32m[OK]\x1b[0m Switched to CP437 encoding for retro BBS experience.\r\n"))
+				} else {
+					log.Printf("Node %d: User selected UTF-8 encoding", nodeID)
+					authenticatedUser.PreferredEncoding = "utf8"
+					setupChanged = true
+					terminal.Write([]byte("\r\n\x1b[1;32m[OK]\x1b[0m Continuing with UTF-8 encoding.\r\n"))
+				}
+			}
+		}
+
+		// Terminal Height Adjustment Prompt
+		detectedHeight := int(termHeight.Load())
+		if detectedHeight > 25 && (authenticatedUser.ScreenWidth == 0 || authenticatedUser.ScreenHeight == 0) {
+			terminal.Write([]byte("\r\n"))
+			terminal.Write([]byte("Your terminal reports \x1b[1m" + fmt.Sprintf("%d", detectedHeight) + " rows\x1b[0m.\r\n"))
+			terminal.Write([]byte("If you have a status bar enabled (NetRunner, SyncTerm, etc.),\r\n"))
+			terminal.Write([]byte("some rows may not be available for display.\r\n"))
+			terminal.Write([]byte("\r\n"))
+			terminal.Write([]byte("How many rows are available for BBS display? [\x1b[1m" + fmt.Sprintf("%d", detectedHeight) + "\x1b[0m]: "))
+
+			heightChoice, heightErr := terminal.ReadLine()
+			if heightErr == nil {
+				heightChoice = strings.TrimSpace(heightChoice)
+				if heightChoice != "" {
+					if adjustedHeight, parseErr := strconv.Atoi(heightChoice); parseErr == nil && adjustedHeight >= 20 && adjustedHeight <= detectedHeight {
+						log.Printf("Node %d: User adjusted terminal height from %d to %d rows", nodeID, detectedHeight, adjustedHeight)
+						effectiveHeight = adjustedHeight
+						termHeight.Store(int32(adjustedHeight))
+						authenticatedUser.ScreenHeight = adjustedHeight
+						setupChanged = true
+						_ = terminal.SetSize(int(termWidth.Load()), adjustedHeight)
+						terminal.Write([]byte("\r\n\x1b[1;32m[OK]\x1b[0m Display height set to " + fmt.Sprintf("%d", adjustedHeight) + " rows.\r\n"))
+					}
+				}
+			}
+		}
+
+		// Ask to save as default if anything changed
+		if setupChanged {
+			terminal.Write([]byte("\r\n"))
+			terminal.Write([]byte("Save these settings as your default preference? \x1b[1;33m[Y/n]\x1b[0m: "))
+			saveChoice, saveErr := terminal.ReadLine()
+			if saveErr == nil {
+				saveChoice = strings.TrimSpace(strings.ToUpper(saveChoice))
+				if saveChoice == "" || saveChoice == "Y" || saveChoice == "YES" {
+					if err := userMgr.UpdateUser(authenticatedUser); err != nil {
+						log.Printf("WARN: Node %d: Failed to save user preferences: %v", nodeID, err)
+						terminal.Write([]byte("\r\n\x1b[1;33m[WARN]\x1b[0m Failed to save preferences.\r\n"))
+					} else {
+						log.Printf("Node %d: Saved user preferences: encoding=%s, size=%dx%d",
+							nodeID, authenticatedUser.PreferredEncoding, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight)
+						terminal.Write([]byte("\r\n\x1b[1;32m[SAVED]\x1b[0m Your preferences have been saved.\r\n"))
+					}
+				} else {
+					log.Printf("Node %d: User declined to save preferences (session-only)", nodeID)
+					terminal.Write([]byte("\r\n\x1b[1;36m[INFO]\x1b[0m Settings will be used for this session only.\r\n"))
+				}
+			}
+			terminal.Write([]byte("\r\n"))
+		}
+	} else if authenticatedUser.PreferredEncoding != "" {
+		// User has saved encoding preference - apply it
+		if authenticatedUser.PreferredEncoding == "cp437" {
+			effectiveMode = ansi.OutputModeCP437
+			log.Printf("Node %d: Using saved encoding preference: CP437", nodeID)
+		} else if authenticatedUser.PreferredEncoding == "utf8" {
+			effectiveMode = ansi.OutputModeUTF8
+			log.Printf("Node %d: Using saved encoding preference: UTF-8", nodeID)
 		}
 	}
-	_ = terminal.SetSize(int(termWidth.Load()), int(termHeight.Load()))
-	log.Printf("Node %d: Effective terminal size for %s: %dx%d", nodeID, authenticatedUser.Handle, termWidth.Load(), termHeight.Load())
 
 	// Run the configurable login sequence (login.json) directly after authentication.
 	// This replaces the old FASTLOGN menu routing — FASTLOGIN is now an optional login.json item.
-	loginNextMenu, loginErr := menuExecutor.RunLoginSequence(s, terminal, userMgr, authenticatedUser, int(nodeID), sessionStartTime, effectiveMode)
+	loginNextMenu, loginErr := menuExecutor.RunLoginSequence(s, terminal, userMgr, authenticatedUser, int(nodeID), sessionStartTime, effectiveMode, int(termWidth.Load()), int(termHeight.Load()))
 	if loginErr != nil {
 		if errors.Is(loginErr, io.EOF) {
 			log.Printf("Node %d: User disconnected during login sequence.", nodeID)
@@ -1464,9 +1654,10 @@ func main() {
 
 		var err error
 		server, err = sshserver.NewServer(sshserver.Config{
-			HostKeyPath:    hostKeyPath,
-			Port:           sshPort,
-			SessionHandler: libsshSessionHandler,
+			HostKeyPath:         hostKeyPath,
+			Port:                sshPort,
+			LegacySSHAlgorithms: serverConfig.LegacySSHAlgorithms,
+			SessionHandler:      libsshSessionHandler,
 			AuthPasswordFunc: func(username, password string) bool {
 				// If user exists in BBS database, validate password
 				u, found := userMgr.GetUser(username)

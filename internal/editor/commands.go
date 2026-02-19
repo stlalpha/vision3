@@ -9,6 +9,14 @@ import (
 	"github.com/stlalpha/vision3/internal/ansi"
 )
 
+// Footer/lightbar color constants for consistent editor UI styling.
+const (
+	footerTextColor    = "\x1b[37m"      // White for regular footer text
+	footerSpecialColor = "\x1b[1;34m"    // Bright blue for special chars/punctuation
+	lbSelected         = "\x1b[1;36;44m" // Bright cyan on blue bg (selected lightbar item)
+	lbUnselected       = "\x1b[37m"      // White (unselected lightbar item)
+)
+
 // CommandType represents a special editor command
 type CommandType int
 
@@ -78,101 +86,39 @@ func (ch *CommandHandler) SetQuoteData(data *QuoteData) {
 	ch.quoteData = data
 }
 
-// ShowSlashMenu displays the slash command menu and waits for user input
-// Returns the command type selected by the user
-func (ch *CommandHandler) ShowSlashMenu(inputHandler *InputHandler, currentLine, currentCol int) CommandType {
-	// Save cursor position
-	ch.screen.GoXY(currentCol, ch.screen.GetEditingStartY()+(currentLine-1))
-
-	// Display the slash menu - show /Q only if quoting is available
-	// |11 = bright cyan for hotkeys, |03 = cyan for text, |08 = dark gray for separators
-	var menuText string
-	hasQuotedText := ch.quoteData != nil && len(ch.quoteData.Lines) > 0
-
-	if hasQuotedText {
-		// Include Quote option when replying
-		menuText = "|11S|03ave|08/|11Q|03uote|08/|11A|03bort|08/|11H|03elp : "
-	} else {
-		// No Quote option for new messages
-		menuText = "|11S|03ave|08/|11A|03bort|08/|11H|03elp : "
-	}
-	ch.screen.WriteDirectProcessed(menuText)
-
-	// Wait for user to press a command key
-	for {
-		key, err := inputHandler.ReadKey()
-		if err != nil {
-			return CommandNone
-		}
-
-		// Convert to uppercase for comparison
-		keyUpper := key
-		if key >= 'a' && key <= 'z' {
-			keyUpper = key - 32
-		}
-
-		switch keyUpper {
-		case 'S':
-			return CommandSave
-		case 'A':
-			return CommandAbort
-		case 'Q':
-			// Only allow quote if quoted text is available
-			if hasQuotedText {
-				return CommandQuote
-			}
-			// Invalid key if no quoted text - continue waiting
-		case 'H', '?':
-			return CommandHelp
-		case 'V':
-			return CommandView
-		case KeyEsc:
-			return CommandNone
-		default:
-			// Invalid key - just return none
-			return CommandNone
-		}
-	}
-}
-
-// ClearSlashMenu clears the slash command menu from the screen
-func (ch *CommandHandler) ClearSlashMenu(lineNum int, menuLength int) {
-	// Position at the start of the menu
-	screenY := ch.screen.GetEditingStartY() + (lineNum - 1)
-	ch.screen.GoXY(1, screenY)
-	ch.screen.ClearEOL()
-}
-
-// HandleSave handles the /S (save) command
-// Returns true to signal save and exit
+// HandleSave handles the Save command (CTRL-Z).
+// Returns true to signal save and exit; on false, an error is written to PromptRow.
 func (ch *CommandHandler) HandleSave() bool {
-	// Check if message has content
 	content := ch.buffer.GetContent()
 	if strings.TrimSpace(content) == "" {
-		ch.screen.GoXY(1, ch.screen.statusLineY)
+		ch.screen.GoXY(1, ch.screen.PromptRow())
+		ch.screen.ClearEOL()
 		ch.screen.WriteDirectProcessed("|12Cannot save empty message! Press any key...")
 		return false
 	}
-
-	// Signal to save and exit
 	return true
 }
 
-// HandleAbort handles the /A (abort) command
-// Returns true to signal abort and exit
+// HandleAbort handles the Abort command (CTRL-A).
+// Displays a lightbar Yes/No confirmation in the last footer row (PromptRow).
+// Returns true to signal abort and exit; false restores the footer row and continues.
 func (ch *CommandHandler) HandleAbort(inputHandler *InputHandler) bool {
-	// Display one blank row, then the confirmation prompt.
-	if ch.screen.statusLineY > 1 {
-		ch.screen.GoXY(1, ch.screen.statusLineY-1)
+	promptRow := ch.screen.PromptRow()
+
+	// Without a footer, clear the row above the prompt as a visual separator.
+	// With a footer the row above is the first footer row — leave it intact.
+	if !ch.screen.HasFooter() && promptRow > 1 {
+		ch.screen.GoXY(1, promptRow-1)
 		ch.screen.ClearEOL()
 	}
 
-	// Display confirmation prompt
-	ch.screen.GoXY(1, ch.screen.statusLineY)
+	// Write confirmation prompt to the last footer (or status) row.
+	ch.screen.GoXY(1, promptRow)
 	ch.screen.ClearEOL()
+	ch.screen.WriteDirect(" ") // 1 col indent
 	ch.screen.WriteDirectProcessed(ch.abortText)
 
-	// Save cursor position, hide cursor, then render inline lightbar.
+	// Save cursor position for inline lightbar, hide cursor.
 	ch.screen.WriteDirect("\x1b[s")
 	ch.screen.WriteDirect("\x1b[?25l")
 	defer ch.screen.WriteDirect("\x1b[?25h")
@@ -181,13 +127,14 @@ func (ch *CommandHandler) HandleAbort(inputHandler *InputHandler) bool {
 
 	drawInline := func(sel int) {
 		ch.screen.WriteDirect("\x1b[u")
-		yesColor, noColor := ch.yesNoLo, ch.yesNoLo
+		yesColor := lbUnselected
+		noColor := lbUnselected
 		if sel == 1 {
-			yesColor = ch.yesNoHi
+			yesColor = lbSelected
 		} else {
-			noColor = ch.yesNoHi
+			noColor = lbSelected
 		}
-		ch.screen.WriteDirect(" " + yesColor + ch.yesText + " " + "\x1b[0m" + " " + noColor + ch.noText + " " + "\x1b[0m")
+		ch.screen.WriteDirect("  " + yesColor + " " + ch.yesText + " " + "\x1b[0m" + "  " + noColor + " " + ch.noText + " " + "\x1b[0m")
 	}
 
 	drawInline(selectedIndex)
@@ -195,78 +142,72 @@ func (ch *CommandHandler) HandleAbort(inputHandler *InputHandler) bool {
 	for {
 		key, err := inputHandler.ReadKey()
 		if err != nil {
+			ch.screen.DisplayFooter()
 			return false
 		}
 
 		switch key {
 		case 'Y', 'y':
-			return true
+			return true // caller exits; footer not needed
 		case 'N', 'n':
-			ch.screen.ClearEOL()
+			ch.screen.DisplayFooter() // restore footer row before continuing
 			return false
 		case ' ', KeyEnter:
 			if selectedIndex == 1 {
 				return true
 			}
-			ch.screen.ClearEOL()
+			ch.screen.DisplayFooter()
 			return false
 		case KeyArrowLeft, KeyArrowRight:
 			selectedIndex = 1 - selectedIndex
 			drawInline(selectedIndex)
-		default:
-			// Ignore other input until a selection is made.
 		}
 	}
 }
 
-// HandleQuote handles the /Q (quote) command
-// Follows Pascal flow: display message inline, prompt for lines, insert quote
+// HandleQuote handles the Quote command (CTRL-Q).
+// Follows Pascal flow: display message inline, prompt for line range, insert quote.
+// Prompts appear in PromptRow (last footer row); footer is restored by the caller's FullRedraw.
 func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, currentCol int) (int, int) {
-	// Clear the /Q command line
-	ch.buffer.SetLine(currentLine, "")
+	promptRow := ch.screen.PromptRow()
 
 	if ch.quoteData == nil || len(ch.quoteData.Lines) == 0 {
-		// No quoted text available (shouldn't happen if menu is correct)
-		ch.screen.GoXY(1, ch.screen.statusLineY)
+		ch.screen.GoXY(1, promptRow)
+		ch.screen.ClearEOL()
 		ch.screen.WriteDirectProcessed("|12You are not replying to anything! Press any key...")
 		inputHandler.ReadKey()
 		return currentLine, 1
 	}
 
-	// Display quote UI inline at current position (NO screen clear!)
-	// Position at start of current line
+	// Display quote UI inline at current position (no screen clear).
 	screenY := ch.screen.GetEditingStartY() + (currentLine - 1)
 	ch.screen.GoXY(1, screenY)
-
-	// Display "Message # to Quote" prompt (matching Pascal)
 	ch.screen.WriteDirectProcessed("|09Message # to Quote |03(|15Cr/1|03)|09: |151\r\n\r\n")
-
-	// Display quote title: "You are quoting |ST by Author"
 	ch.screen.WriteDirectProcessed("|09You are quoting |15" + ch.quoteData.Title + " |09by |15" + ch.quoteData.From + "\r\n\r\n")
 
-	// Display all message lines with line numbers (matching Pascal colors)
-	// Pascal: ^R (red/|12) for number, ^A (bright/|10) for colon, ^S (bright/|15) for text
 	maxLines := len(ch.quoteData.Lines)
 	for i := 0; i < maxLines && i < 99; i++ {
 		lineText := ch.quoteData.Lines[i]
-		// Truncate long lines for display
 		if len(lineText) > 75 {
 			lineText = lineText[:75]
 		}
-		// Match Pascal colors exactly
 		ch.screen.WriteDirectProcessed(fmt.Sprintf("|12%d|10: |15%s\r\n", i+1, lineText))
 	}
 
-	// Prompt for start line at status line (matching Pascal: "Start Quoting @ (1-X) :")
-	ch.screen.GoXY(1, ch.screen.statusLineY)
+	// Prompt for start line in the last footer row.
+	ch.screen.GoXY(1, promptRow)
 	ch.screen.ClearEOL()
-	ch.screen.WriteDirectProcessed(fmt.Sprintf("|09Start Quoting @ |03(|151|03-|15%d|03) |09: ", maxLines))
+	ch.screen.WriteDirectProcessed(fmt.Sprintf("|09Start Quoting @ |03(|151|03-|15%d|03)|09, |03Q|09=quit |09: ", maxLines))
+
+	clearPrompt := func() {
+		ch.screen.GoXY(1, promptRow)
+		ch.screen.ClearEOL()
+	}
 
 	startStr := ""
 	key, err := inputHandler.ReadKey()
 	if err != nil {
-		ch.screen.GoXY(1, ch.screen.statusLineY)
-		ch.screen.ClearEOL()
+		clearPrompt()
 		return currentLine, 1
 	}
 	for key != KeyEnter && key != KeyEsc {
@@ -277,21 +218,17 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 			startStr = startStr[:len(startStr)-1]
 			ch.screen.WriteDirect("\b \b")
 		} else if key == 'Q' || key == 'q' {
-			// Allow 'Q' to quit - return to editor
-			ch.screen.GoXY(1, ch.screen.statusLineY)
-			ch.screen.ClearEOL()
+			clearPrompt()
 			return currentLine, 1
 		}
 		key, err = inputHandler.ReadKey()
 		if err != nil {
-			ch.screen.GoXY(1, ch.screen.statusLineY)
-			ch.screen.ClearEOL()
+			clearPrompt()
 			return currentLine, 1
 		}
 	}
 	if key == KeyEsc {
-		ch.screen.GoXY(1, ch.screen.statusLineY)
-		ch.screen.ClearEOL()
+		clearPrompt()
 		return currentLine, 1
 	}
 	if startStr == "" {
@@ -303,20 +240,19 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 		startLine = n
 	}
 
-	// Prompt for end line at status line
-	maxEnd := startLine + 20 // Limit quote length (Pascal uses Cfg.MaxQuotedLines)
+	// Prompt for end line.
+	maxEnd := startLine + 20
 	if maxEnd > maxLines {
 		maxEnd = maxLines
 	}
-	ch.screen.GoXY(1, ch.screen.statusLineY)
+	ch.screen.GoXY(1, promptRow)
 	ch.screen.ClearEOL()
-	ch.screen.WriteDirectProcessed(fmt.Sprintf("|09End Quoting @ |03(|15%d|03-|15%d|03) |09: ", startLine, maxEnd))
+	ch.screen.WriteDirectProcessed(fmt.Sprintf("|09End Quoting @ |03(|15%d|03-|15%d|03)|09, |03Q|09=quit |09: ", startLine, maxEnd))
 
 	endStr := ""
 	key, err = inputHandler.ReadKey()
 	if err != nil {
-		ch.screen.GoXY(1, ch.screen.statusLineY)
-		ch.screen.ClearEOL()
+		clearPrompt()
 		return currentLine, 1
 	}
 	for key != KeyEnter && key != KeyEsc {
@@ -327,21 +263,17 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 			endStr = endStr[:len(endStr)-1]
 			ch.screen.WriteDirect("\b \b")
 		} else if key == 'Q' || key == 'q' {
-			// Allow 'Q' to quit - return to editor
-			ch.screen.GoXY(1, ch.screen.statusLineY)
-			ch.screen.ClearEOL()
+			clearPrompt()
 			return currentLine, 1
 		}
 		key, err = inputHandler.ReadKey()
 		if err != nil {
-			ch.screen.GoXY(1, ch.screen.statusLineY)
-			ch.screen.ClearEOL()
+			clearPrompt()
 			return currentLine, 1
 		}
 	}
 	if key == KeyEsc {
-		ch.screen.GoXY(1, ch.screen.statusLineY)
-		ch.screen.ClearEOL()
+		clearPrompt()
 		return currentLine, 1
 	}
 	if endStr == "" {
@@ -353,9 +285,7 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 		endLine = n
 	}
 
-	// Clear status line after getting input
-	ch.screen.GoXY(1, ch.screen.statusLineY)
-	ch.screen.ClearEOL()
+	clearPrompt()
 
 	// Format the quote with header and footer
 	insertLine := currentLine
@@ -554,33 +484,69 @@ func (ch *CommandHandler) HandleView(inputHandler *InputHandler) {
 	inputHandler.ReadKey()
 }
 
-// ClearCommandLine clears the current command line and prepares for editing
-func (ch *CommandHandler) ClearCommandLine(lineNum int) {
-	ch.buffer.SetLine(lineNum, "")
-}
+// ShowEscapeMenu displays a lightbar selection menu at PromptRow when Escape is pressed.
+// Items: Save, Abort, Edit (continue), Help, Quote.
+// Returns the selected CommandType, or CommandNone to continue editing.
+func (ch *CommandHandler) ShowEscapeMenu(inputHandler *InputHandler) CommandType {
+	type menuItem struct {
+		label   string
+		cmdType CommandType
+	}
+	items := []menuItem{
+		{"Save", CommandSave},
+		{"Abort", CommandAbort},
+		{"Edit", CommandNone},
+		{"Help", CommandHelp},
+		{"Quote", CommandQuote},
+	}
 
-// IsCommandChar returns true if the character could start a command
-func IsCommandChar(ch rune) bool {
-	return ch == '/'
-}
+	promptRow := ch.screen.PromptRow()
+	selectedIndex := 2 // Default: "Edit" (continue editing)
 
-// ParseCommandLine parses a command line to determine if it's complete
-// Returns the command type if complete, CommandNone otherwise
-func ParseCommandLine(line string) CommandType {
-	trimmed := strings.TrimSpace(strings.ToUpper(line))
+	ch.screen.WriteDirect("\x1b[?25l") // hide cursor
+	defer ch.screen.WriteDirect("\x1b[?25h")
 
-	switch trimmed {
-	case "/S":
-		return CommandSave
-	case "/A":
-		return CommandAbort
-	case "/Q":
-		return CommandQuote
-	case "/H", "/?":
-		return CommandHelp
-	case "/V":
-		return CommandView
-	default:
-		return CommandNone
+	drawMenu := func(sel int) {
+		ch.screen.GoXY(1, promptRow)
+		ch.screen.ClearEOL()
+		ch.screen.WriteDirect(" " + footerTextColor + "Select an Option" + footerSpecialColor + ":" + footerTextColor + " ")
+		for i, item := range items {
+			if i > 0 {
+				ch.screen.WriteDirect("  ") // 2 spaces between items
+			}
+			if i == sel {
+				ch.screen.WriteDirect(lbSelected + " " + item.label + " " + "\x1b[0m")
+			} else {
+				ch.screen.WriteDirect(lbUnselected + " " + item.label + " " + "\x1b[0m")
+			}
+		}
+	}
+
+	drawMenu(selectedIndex)
+
+	for {
+		key, err := inputHandler.ReadKey()
+		if err != nil {
+			ch.screen.DisplayFooter()
+			return CommandNone
+		}
+		switch key {
+		case KeyArrowLeft:
+			if selectedIndex > 0 {
+				selectedIndex--
+				drawMenu(selectedIndex)
+			}
+		case KeyArrowRight:
+			if selectedIndex < len(items)-1 {
+				selectedIndex++
+				drawMenu(selectedIndex)
+			}
+		case KeyEnter, ' ':
+			ch.screen.DisplayFooter()
+			return items[selectedIndex].cmdType
+		case KeyEsc:
+			ch.screen.DisplayFooter()
+			return CommandNone
+		}
 	}
 }

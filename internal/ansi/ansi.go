@@ -837,8 +837,9 @@ func StripAnsi(str string) string {
 
 // ProcessAnsiResult holds the results of processing an ANSI file, including field coordinates.
 type ProcessAnsiResult struct {
-	DisplayBytes []byte                        // The processed bytes with standard ANSI escapes, ready for display.
-	FieldCoords  map[string]struct{ X, Y int } // Map of |XX or ~XX codes to their calculated coordinates.
+	DisplayBytes []byte                                     // The processed bytes with standard ANSI escapes, ready for display.
+	FieldCoords  map[string]struct{ X, Y int }              // Map of |XX or ~XX codes to their calculated coordinates.
+	FieldColors  map[string]string                          // Map of |XX or ~XX codes to their ANSI color escape sequence at that position.
 }
 
 // ProcessAnsiAndExtractCoords processes raw CP437 byte content containing ViSiON/2 codes and ANSI escapes.
@@ -849,6 +850,7 @@ type ProcessAnsiResult struct {
 func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (ProcessAnsiResult, error) {
 	result := ProcessAnsiResult{
 		FieldCoords: make(map[string]struct{ X, Y int }),
+		FieldColors: make(map[string]string),
 	}
 	var displayBuf bytes.Buffer
 
@@ -857,7 +859,58 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 
 	currentX := 1
 	currentY := 1
+	// Track cumulative SGR state for accurate color reproduction
+	var sgrState struct {
+		bold       bool
+		dim        bool
+		italic     bool
+		underline  bool
+		blink      bool
+		reverse    bool
+		hidden     bool
+		foreground int // 0 = default, 30-37 = colors, 90-97 = bright colors
+		background int // 0 = default, 40-47 = colors, 100-107 = bright colors
+	}
 	content := normalizedContent // Work directly with the byte slice
+
+	// Helper to build current color sequence from SGR state
+	buildColorSequence := func() string {
+		if sgrState.foreground == 0 && sgrState.background == 0 && !sgrState.bold && !sgrState.dim && !sgrState.italic && !sgrState.underline && !sgrState.blink && !sgrState.reverse && !sgrState.hidden {
+			return "" // No attributes set
+		}
+		var attrs []string
+		if sgrState.bold {
+			attrs = append(attrs, "1")
+		}
+		if sgrState.dim {
+			attrs = append(attrs, "2")
+		}
+		if sgrState.italic {
+			attrs = append(attrs, "3")
+		}
+		if sgrState.underline {
+			attrs = append(attrs, "4")
+		}
+		if sgrState.blink {
+			attrs = append(attrs, "5")
+		}
+		if sgrState.reverse {
+			attrs = append(attrs, "7")
+		}
+		if sgrState.hidden {
+			attrs = append(attrs, "8")
+		}
+		if sgrState.foreground > 0 {
+			attrs = append(attrs, fmt.Sprintf("%d", sgrState.foreground))
+		}
+		if sgrState.background > 0 {
+			attrs = append(attrs, fmt.Sprintf("%d", sgrState.background))
+		}
+		if len(attrs) == 0 {
+			return ""
+		}
+		return fmt.Sprintf("\x1b[%sm", strings.Join(attrs, ";"))
+	}
 
 	i := 0
 	for i < len(content) {
@@ -885,6 +938,11 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 						params = append(params, currentParam)
 						currentParam = 0
 						paramStarted = false
+					} else if char == '?' || char == '=' || char == '>' || char == '<' {
+						// DEC private mode and other special CSI prefixes
+						// These appear after '[' and before parameters (e.g., ESC[?7h)
+						// Just skip them - they don't affect our coordinate tracking
+						continue
 					} else if char >= 0x40 && char <= 0x7e { // Found terminator
 						terminatorIndex = j
 						terminator = char
@@ -919,6 +977,64 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 
 					// Interpret common sequences affecting coordinates
 					switch terminator {
+					case 'm': // SGR (Select Graphic Rendition) - Color/Style
+						// Parse and update SGR state for cumulative color tracking
+						if len(params) == 0 {
+							params = []int{0} // ESC[m is equivalent to ESC[0m (reset)
+						}
+						for _, param := range params {
+							switch param {
+							case 0: // Reset all attributes
+								sgrState.bold = false
+								sgrState.dim = false
+								sgrState.italic = false
+								sgrState.underline = false
+								sgrState.blink = false
+								sgrState.reverse = false
+								sgrState.hidden = false
+								sgrState.foreground = 0
+								sgrState.background = 0
+							case 1: // Bold
+								sgrState.bold = true
+							case 2: // Dim
+								sgrState.dim = true
+							case 3: // Italic
+								sgrState.italic = true
+							case 4: // Underline
+								sgrState.underline = true
+							case 5: // Blink
+								sgrState.blink = true
+							case 7: // Reverse
+								sgrState.reverse = true
+							case 8: // Hidden
+								sgrState.hidden = true
+							case 22: // Normal intensity (not bold, not dim)
+								sgrState.bold = false
+								sgrState.dim = false
+							case 23: // Not italic
+								sgrState.italic = false
+							case 24: // Not underlined
+								sgrState.underline = false
+							case 25: // Not blinking
+								sgrState.blink = false
+							case 27: // Not reversed
+								sgrState.reverse = false
+							case 28: // Not hidden
+								sgrState.hidden = false
+							case 30, 31, 32, 33, 34, 35, 36, 37: // Foreground colors
+								sgrState.foreground = param
+							case 39: // Default foreground color
+								sgrState.foreground = 0
+							case 40, 41, 42, 43, 44, 45, 46, 47: // Background colors
+								sgrState.background = param
+							case 49: // Default background color
+								sgrState.background = 0
+							case 90, 91, 92, 93, 94, 95, 96, 97: // Bright foreground colors
+								sgrState.foreground = param
+							case 100, 101, 102, 103, 104, 105, 106, 107: // Bright background colors
+								sgrState.background = param
+							}
+						}
 					case 'A': // Cursor Up
 						currentY -= getParam(0, 1)
 						if currentY < 1 {
@@ -990,14 +1106,16 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 						// Double letter |XX
 						placeholderCode := string(content[i+1 : i+3])
 						result.FieldCoords[placeholderCode] = struct{ X, Y int }{X: currentX, Y: currentY}
-						log.Printf("DEBUG: ProcessAnsi recorded placeholder coord '%s' at (%d, %d)", placeholderCode, currentX, currentY)
+						result.FieldColors[placeholderCode] = buildColorSequence()
+						log.Printf("DEBUG: ProcessAnsi recorded placeholder coord '%s' at (%d, %d) with color '%s'", placeholderCode, currentX, currentY, buildColorSequence())
 						consumed = 3
 						pipeCodeFound = true
 					} else if i+1 < len(content) { // Check bounds for single letter
 						// Single letter |X
 						placeholderCode := string(content[i+1 : i+2])
 						result.FieldCoords[placeholderCode] = struct{ X, Y int }{X: currentX, Y: currentY}
-						log.Printf("DEBUG: ProcessAnsi recorded placeholder coord '%s' at (%d, %d)", placeholderCode, currentX, currentY)
+						result.FieldColors[placeholderCode] = buildColorSequence()
+						log.Printf("DEBUG: ProcessAnsi recorded placeholder coord '%s' at (%d, %d) with color '%s'", placeholderCode, currentX, currentY, buildColorSequence())
 						consumed = 2
 						pipeCodeFound = true
 					}
@@ -1012,12 +1130,69 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 						displayBuf.WriteString(replacement)
 						consumed = 3
 						pipeCodeFound = true
-						// Update coordinates based on known pipe codes if necessary
+						// Update SGR state so FieldColors captures correct colors after pipe codes.
+						// Parse SGR params from the replacement ANSI string (e.g. "\x1b[0;34m" -> [0,34]).
+						for ri := 0; ri < len(replacement); ri++ {
+							if replacement[ri] == 0x1b && ri+1 < len(replacement) && replacement[ri+1] == '[' {
+								ri += 2
+								var sgrParams []int
+								num := 0
+								hasNum := false
+								for ri < len(replacement) && replacement[ri] != 'm' {
+									if replacement[ri] >= '0' && replacement[ri] <= '9' {
+										num = num*10 + int(replacement[ri]-'0')
+										hasNum = true
+									} else if replacement[ri] == ';' {
+										if hasNum {
+											sgrParams = append(sgrParams, num)
+										}
+										num = 0
+										hasNum = false
+									}
+									ri++
+								}
+								if hasNum {
+									sgrParams = append(sgrParams, num)
+								}
+								if ri < len(replacement) && replacement[ri] == 'm' {
+									if len(sgrParams) == 0 {
+										sgrParams = []int{0}
+									}
+									for _, p := range sgrParams {
+										switch {
+										case p == 0:
+											sgrState.bold = false
+											sgrState.dim = false
+											sgrState.italic = false
+											sgrState.underline = false
+											sgrState.blink = false
+											sgrState.reverse = false
+											sgrState.hidden = false
+											sgrState.foreground = 0
+											sgrState.background = 0
+										case p == 1:
+											sgrState.bold = true
+										case p >= 30 && p <= 37:
+											sgrState.foreground = p
+										case p == 39:
+											sgrState.foreground = 0
+										case p >= 40 && p <= 47:
+											sgrState.background = p
+										case p == 49:
+											sgrState.background = 0
+										case p >= 90 && p <= 97:
+											sgrState.foreground = p
+										case p >= 100 && p <= 107:
+											sgrState.background = p
+										}
+									}
+								}
+							}
+						}
 						if codeStr == "|CL" {
 							currentX = 1
 							currentY = 1
 						}
-						// Note: |P and |PP are handled by standard ANSI ESC[s and ESC[u
 					} // Add other non-placeholder pipe codes if needed
 				}
 			}
@@ -1068,7 +1243,8 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 			if i+2 < len(content) && content[i+1] >= 'A' && content[i+1] <= 'Z' && content[i+2] >= 'A' && content[i+2] <= 'Z' {
 				code := string(content[i+1 : i+3])
 				result.FieldCoords[code] = struct{ X, Y int }{X: currentX, Y: currentY}
-				log.Printf("DEBUG: ProcessAnsi found coord code %s at (%d, %d)", code, currentX, currentY)
+				result.FieldColors[code] = buildColorSequence()
+				log.Printf("DEBUG: ProcessAnsi found coord code %s at (%d, %d) with color '%s'", code, currentX, currentY, buildColorSequence())
 				consumed = 3 // Consume ~XX, write nothing
 			} else {
 				// Invalid ~ sequence, write literally

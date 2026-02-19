@@ -1,7 +1,6 @@
 package menu
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -18,12 +17,45 @@ import (
 	"golang.org/x/term"
 
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/user"
 	"github.com/stlalpha/vision3/internal/ziplab"
 )
+
+// readKeySequenceIH reads one key via the session-scoped InputHandler and maps it
+// to the same ANSI string format that readKeySequence returns, preventing the
+// "double key press" race between the InputHandler goroutine and a raw bufio.Reader.
+func readKeySequenceIH(ih *editor.InputHandler) (string, error) {
+	key, err := ih.ReadKey()
+	if err != nil {
+		return "", err
+	}
+	switch key {
+	case editor.KeyArrowUp:
+		return "\x1b[A", nil
+	case editor.KeyArrowDown:
+		return "\x1b[B", nil
+	case editor.KeyArrowRight:
+		return "\x1b[C", nil
+	case editor.KeyArrowLeft:
+		return "\x1b[D", nil
+	case editor.KeyPageUp:
+		return "\x1b[5~", nil
+	case editor.KeyPageDown:
+		return "\x1b[6~", nil
+	case editor.KeyHome:
+		return "\x1b[H", nil
+	case editor.KeyEnd:
+		return "\x1b[F", nil
+	case editor.KeyEsc:
+		return "\x1b", nil
+	default:
+		return string(rune(key)), nil
+	}
+}
 
 func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time,
@@ -43,7 +75,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	selectedIndex := 0
 	topIndex := 0
 	cmdIndex := 0
-	reader := bufio.NewReader(s)
+	ih := getSessionIH(s)
 
 	// Build command bar entries from BAR file or defaults.
 	type cmdEntry struct {
@@ -431,7 +463,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			return nil, "", err
 		}
 
-		key, err := readKeySequence(reader)
+		key, err := readKeySequenceIH(ih)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -540,7 +572,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d5)), outputMode)
 
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|08Press any key to return...|07")), outputMode)
-				_, _ = readKeySequence(reader)
+				_, _ = readKeySequenceIH(ih)
 			}
 
 		case "v":
@@ -556,7 +588,8 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				if e.FileMgr.IsSupportedArchive(sel.Filename) {
 					ziplab.RunZipLabView(s, terminal, filePath, sel.Filename, outputMode)
 				} else {
-					viewFileByRecord(e, s, terminal, sel, outputMode)
+					termWidth, termHeight := getTerminalSize(s)
+					viewFileByRecord(e, s, terminal, sel, outputMode, termWidth, termHeight)
 				}
 				// Hide cursor again.
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
@@ -574,7 +607,8 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\r\n\x1b[K"), outputMode)
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 
-			proceed, promptErr := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber)
+			termWidth, termHeight := getTerminalSize(s)
+			proceed, promptErr := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 			if promptErr != nil {
 				if errors.Is(promptErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF

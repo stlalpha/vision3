@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // StringsConfig holds all the configurable strings for the BBS.
@@ -28,7 +29,6 @@ type StringsConfig struct {
 	PostOnBoardStr          string `json:"postOnBoardStr"`
 	MsgTitleStr             string `json:"msgTitleStr"`
 	MsgToStr                string `json:"msgToStr"`
-	UploadMsgStr            string `json:"uploadMsgStr"`
 	MsgAnonStr              string `json:"msgAnonStr"`
 	AnonymousName           string `json:"anonymousName"`
 	SlashStr                string `json:"slashStr"`
@@ -104,9 +104,6 @@ type StringsConfig struct {
 	YesPromptText           string `json:"yesPromptText"`
 	NoPromptText            string `json:"noPromptText"`
 	AbortMessagePrompt      string `json:"abortMessagePrompt"`
-
-	// Added field for message menu prompt
-	MessageMenuPrompt string `json:"messageMenuPrompt"`
 
 	// Added from Page 5
 	AddBBSName          string `json:"addBBSName"`
@@ -226,6 +223,7 @@ type StringsConfig struct {
 	PageNodeOffline       string `json:"pageNodeOffline"`
 
 	// Newuser strings (V3-specific)
+	NewUsersClosedStr       string `json:"newUsersClosedStr"`
 	NewUserLocationPrompt   string `json:"newUserLocationPrompt"`
 	NewUserPasswordTooShort string `json:"newUserPasswordTooShort"`
 	NewUserPasswordMismatch string `json:"newUserPasswordMismatch"`
@@ -233,6 +231,7 @@ type StringsConfig struct {
 	NewUserTooManyAttempts  string `json:"newUserTooManyAttempts"`
 	NewUserAccountCreated   string `json:"newUserAccountCreated"`
 	NewUserCreationError    string `json:"newUserCreationError"`
+	NewUserMaybeAnotherTime string `json:"newUserMaybeAnotherTime"`
 
 	// System stats strings (V3-specific)
 	StatsBBSName     string `json:"statsBBSName"`
@@ -247,63 +246,63 @@ type StringsConfig struct {
 	StatsTime        string `json:"statsTime"`
 
 	// User config strings (V3-specific)
-	CfgToggleOn           string `json:"cfgToggleOn"`
-	CfgToggleOff          string `json:"cfgToggleOff"`
-	CfgToggleFormat       string `json:"cfgToggleFormat"`
-	CfgSaveError          string `json:"cfgSaveError"`
-	CfgScreenWidthPrompt  string `json:"cfgScreenWidthPrompt"`
-	CfgScreenWidthInvalid string `json:"cfgScreenWidthInvalid"`
-	CfgScreenWidthSet     string `json:"cfgScreenWidthSet"`
-	CfgScreenHeightPrompt string `json:"cfgScreenHeightPrompt"`
+	CfgToggleOn            string `json:"cfgToggleOn"`
+	CfgToggleOff           string `json:"cfgToggleOff"`
+	CfgToggleFormat        string `json:"cfgToggleFormat"`
+	CfgSaveError           string `json:"cfgSaveError"`
+	CfgScreenWidthPrompt   string `json:"cfgScreenWidthPrompt"`
+	CfgScreenWidthInvalid  string `json:"cfgScreenWidthInvalid"`
+	CfgScreenWidthSet      string `json:"cfgScreenWidthSet"`
+	CfgScreenHeightPrompt  string `json:"cfgScreenHeightPrompt"`
 	CfgScreenHeightInvalid string `json:"cfgScreenHeightInvalid"`
-	CfgScreenHeightSet    string `json:"cfgScreenHeightSet"`
-	CfgTermTypeSet        string `json:"cfgTermTypeSet"`
-	CfgStringPrompt       string `json:"cfgStringPrompt"`
+	CfgScreenHeightSet     string `json:"cfgScreenHeightSet"`
+	CfgTermTypeSet         string `json:"cfgTermTypeSet"`
+	CfgStringPrompt        string `json:"cfgStringPrompt"`
 	CfgStringPromptCurrent string `json:"cfgStringPromptCurrent"`
-	CfgStringUpdated      string `json:"cfgStringUpdated"`
-	CfgCurrentPwPrompt    string `json:"cfgCurrentPwPrompt"`
-	CfgIncorrectPw        string `json:"cfgIncorrectPw"`
-	CfgPasswordChanged    string `json:"cfgPasswordChanged"`
-	CfgColorSelectPrompt  string `json:"cfgColorSelectPrompt"`
-	CfgColorInputPrompt   string `json:"cfgColorInputPrompt"`
-	CfgColorInvalid       string `json:"cfgColorInvalid"`
-	CfgColorSet           string `json:"cfgColorSet"`
-	CfgCustomPromptHelp   string `json:"cfgCustomPromptHelp"`
-	CfgViewScreenWidth    string `json:"cfgViewScreenWidth"`
-	CfgViewScreenHeight   string `json:"cfgViewScreenHeight"`
-	CfgViewTermType       string `json:"cfgViewTermType"`
-	CfgViewFSEditor       string `json:"cfgViewFSEditor"`
-	CfgViewHotKeys        string `json:"cfgViewHotKeys"`
-	CfgViewMorePrompts    string `json:"cfgViewMorePrompts"`
-	CfgViewMsgHeader      string `json:"cfgViewMsgHeader"`
-	CfgViewCustomPrompt   string `json:"cfgViewCustomPrompt"`
-	CfgViewPromptColor    string `json:"cfgViewPromptColor"`
-	CfgViewTextColor      string `json:"cfgViewTextColor"`
-	CfgViewText2Color     string `json:"cfgViewText2Color"`
-	CfgViewBarColor       string `json:"cfgViewBarColor"`
-	CfgViewRealName       string `json:"cfgViewRealName"`
-	CfgViewPhone          string `json:"cfgViewPhone"`
-	CfgViewNote           string `json:"cfgViewNote"`
+	CfgStringUpdated       string `json:"cfgStringUpdated"`
+	CfgCurrentPwPrompt     string `json:"cfgCurrentPwPrompt"`
+	CfgIncorrectPw         string `json:"cfgIncorrectPw"`
+	CfgPasswordChanged     string `json:"cfgPasswordChanged"`
+	CfgColorSelectPrompt   string `json:"cfgColorSelectPrompt"`
+	CfgColorInputPrompt    string `json:"cfgColorInputPrompt"`
+	CfgColorInvalid        string `json:"cfgColorInvalid"`
+	CfgColorSet            string `json:"cfgColorSet"`
+	CfgCustomPromptHelp    string `json:"cfgCustomPromptHelp"`
+	CfgViewScreenWidth     string `json:"cfgViewScreenWidth"`
+	CfgViewScreenHeight    string `json:"cfgViewScreenHeight"`
+	CfgViewTermType        string `json:"cfgViewTermType"`
+CfgViewHotKeys         string `json:"cfgViewHotKeys"`
+	CfgViewMorePrompts     string `json:"cfgViewMorePrompts"`
+	CfgViewMsgHeader       string `json:"cfgViewMsgHeader"`
+	CfgViewCustomPrompt    string `json:"cfgViewCustomPrompt"`
+	CfgViewPromptColor     string `json:"cfgViewPromptColor"`
+	CfgViewTextColor       string `json:"cfgViewTextColor"`
+	CfgViewText2Color      string `json:"cfgViewText2Color"`
+	CfgViewBarColor        string `json:"cfgViewBarColor"`
+	CfgViewRealName        string `json:"cfgViewRealName"`
+	CfgViewPhone           string `json:"cfgViewPhone"`
+	CfgViewNote            string `json:"cfgViewNote"`
 
 	// Message reader strings (V3-specific)
-	MsgEndOfMessages       string `json:"msgEndOfMessages"`
-	MsgMailReplyDeferred   string `json:"msgMailReplyDeferred"`
-	MsgListDeferred        string `json:"msgListDeferred"`
-	MsgHdrLoadError        string `json:"msgHdrLoadError"`
-	MsgBoardInfoFormat     string `json:"msgBoardInfoFormat"`
-	MsgScrollPercent       string `json:"msgScrollPercent"`
-	MsgNewScanSuffix       string `json:"msgNewScanSuffix"`
-	MsgReadingSuffix       string `json:"msgReadingSuffix"`
-	MsgThreadPrompt        string `json:"msgThreadPrompt"`
-	MsgNoThreadFound       string `json:"msgNoThreadFound"`
-	MsgJumpPrompt          string `json:"msgJumpPrompt"`
-	MsgInvalidMsgNum       string `json:"msgInvalidMsgNum"`
-	MsgReplySubjectEmpty   string `json:"msgReplySubjectEmpty"`
-	MsgLaunchingEditor     string `json:"msgLaunchingEditor"`
-	MsgReplyCancelled      string `json:"msgReplyCancelled"`
-	MsgReplyError          string `json:"msgReplyError"`
-	MsgReplySuccess        string `json:"msgReplySuccess"`
-	MsgEditorError         string `json:"msgEditorError"`
+	MsgEndOfMessages     string `json:"msgEndOfMessages"`
+	MsgFirstMessage      string `json:"msgFirstMessage"`
+	MsgMailReplyDeferred string `json:"msgMailReplyDeferred"`
+	MsgListDeferred      string `json:"msgListDeferred"`
+	MsgHdrLoadError      string `json:"msgHdrLoadError"`
+	MsgBoardInfoFormat   string `json:"msgBoardInfoFormat"`
+	MsgScrollPercent     string `json:"msgScrollPercent"`
+	MsgNewScanSuffix     string `json:"msgNewScanSuffix"`
+	MsgReadingSuffix     string `json:"msgReadingSuffix"`
+	MsgThreadPrompt      string `json:"msgThreadPrompt"`
+	MsgNoThreadFound     string `json:"msgNoThreadFound"`
+	MsgJumpPrompt        string `json:"msgJumpPrompt"`
+	MsgInvalidMsgNum     string `json:"msgInvalidMsgNum"`
+	MsgReplySubjectEmpty string `json:"msgReplySubjectEmpty"`
+	MsgLaunchingEditor   string `json:"msgLaunchingEditor"`
+	MsgReplyCancelled    string `json:"msgReplyCancelled"`
+	MsgReplyError        string `json:"msgReplyError"`
+	MsgReplySuccess      string `json:"msgReplySuccess"`
+	MsgEditorError       string `json:"msgEditorError"`
 
 	// Message scan strings (V3-specific)
 	ScanDateLine            string `json:"scanDateLine"`
@@ -362,11 +361,12 @@ type StringsConfig struct {
 	DoorInfoLoginRequired string `json:"doorInfoLoginRequired"`
 
 	// Matrix strings (V3-specific)
-	MatrixDisconnecting     string `json:"matrixDisconnecting"`
-	MatrixCheckAccessPrompt string `json:"matrixCheckAccessPrompt"`
-	MatrixUserNotFound      string `json:"matrixUserNotFound"`
-	MatrixAccountValidated  string `json:"matrixAccountValidated"`
+	MatrixDisconnecting       string `json:"matrixDisconnecting"`
+	MatrixCheckAccessPrompt   string `json:"matrixCheckAccessPrompt"`
+	MatrixUserNotFound        string `json:"matrixUserNotFound"`
+	MatrixAccountValidated    string `json:"matrixAccountValidated"`
 	MatrixAccountNotValidated string `json:"matrixAccountNotValidated"`
+	IdleTimeout               string `json:"idleTimeout"`
 
 	// Conference menu strings (V3-specific)
 	ConfLoginRequired           string `json:"confLoginRequired"`
@@ -397,6 +397,7 @@ type StringsConfig struct {
 	ExecAlreadyLoggedIn     string `json:"execAlreadyLoggedIn"`
 	ExecUsernamePrompt      string `json:"execUsernamePrompt"`
 	ExecPasswordPrompt      string `json:"execPasswordPrompt"`
+	ExecAbortLoginPrompt    string `json:"execAbortLoginPrompt"`
 	ExecLoginCancelled      string `json:"execLoginCancelled"`
 	ExecIPLockout           string `json:"execIPLockout"`
 	ExecLoginIncorrect      string `json:"execLoginIncorrect"`
@@ -418,6 +419,10 @@ type StringsConfig struct {
 	ExecRunDoorError        string `json:"execRunDoorError"`
 	ExecLoginCriticalError  string `json:"execLoginCriticalError"`
 	ExecVersionString       string `json:"execVersionString"`
+
+	// Terminal size mismatch prompts (shown post-login when detected size differs from saved)
+	TermSizeNewDetectedPrompt    string `json:"termSizeNewDetectedPrompt"`
+	TermSizeUpdateDefaultsPrompt string `json:"termSizeUpdateDefaultsPrompt"`
 
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
@@ -647,7 +652,6 @@ type FTNConfig struct {
 // ServerConfig defines server-wide settings
 type ServerConfig struct {
 	BoardName           string `json:"boardName"`
-	BoardPhoneNumber    string `json:"boardPhoneNumber"`
 	SysOpName           string `json:"sysOpName"`
 	Timezone            string `json:"timezone,omitempty"`
 	SysOpLevel          int    `json:"sysOpLevel"`
@@ -668,6 +672,12 @@ type ServerConfig struct {
 	MaxFailedLogins     int    `json:"maxFailedLogins"`
 	LockoutMinutes      int    `json:"lockoutMinutes"`
 	FileListingMode     string `json:"fileListingMode"`
+	LegacySSHAlgorithms bool   `json:"legacySSHAlgorithms"`
+	AllowNewUsers       bool   `json:"allowNewUsers"`
+
+	// Idle timeout (0 = disabled). Applied across the entire app; any input loop
+	// that calls ReadKeyWithTimeout uses this value.
+	SessionIdleTimeoutMinutes int `json:"sessionIdleTimeoutMinutes"`
 }
 
 // EventConfig defines a scheduled event configuration
@@ -700,24 +710,26 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 
 	// Default config values
 	defaultConfig := ServerConfig{
-		BoardName:           "ViSiON/3 BBS",
-		BoardPhoneNumber:    "",
-		Timezone:            "",
-		SysOpLevel:          255,
-		CoSysOpLevel:        250,
-		RegularUserLevel:    10,
-		LogonLevel:          100,
-		AnonymousLevel:      5,
-		SSHPort:             2222,
-		SSHHost:             "0.0.0.0",
-		SSHEnabled:          true,
-		TelnetPort:          2323,
-		TelnetHost:          "0.0.0.0",
-		TelnetEnabled:       false,
-		MaxNodes:            10,
-		MaxConnectionsPerIP: 3,
-		MaxFailedLogins:     5,
-		LockoutMinutes:      30,
+		BoardName:                 "ViSiON/3 BBS",
+		Timezone:                  "",
+		SysOpLevel:                255,
+		CoSysOpLevel:              250,
+		RegularUserLevel:          10,
+		LogonLevel:                100,
+		AnonymousLevel:            5,
+		SSHPort:                   2222,
+		SSHHost:                   "0.0.0.0",
+		SSHEnabled:                true,
+		TelnetPort:                2323,
+		TelnetHost:                "0.0.0.0",
+		TelnetEnabled:             false,
+		MaxNodes:                  10,
+		MaxConnectionsPerIP:       3,
+		MaxFailedLogins:           5,
+		LockoutMinutes:            30,
+		AllowNewUsers:             true,
+		SessionIdleTimeoutMinutes: 5,
+		LegacySSHAlgorithms:       true,
 	}
 
 	data, err := os.ReadFile(filePath)
@@ -784,6 +796,20 @@ func LoadFTNConfig(configPath string) (FTNConfig, error) {
 	return config, nil
 }
 
+// SaveServerConfig writes the ServerConfig back to config.json in the given configPath directory.
+func SaveServerConfig(configPath string, cfg ServerConfig) error {
+	filePath := filepath.Join(configPath, "config.json")
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal server config: %w", err)
+	}
+	if err := os.WriteFile(filePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write config file %s: %w", filePath, err)
+	}
+	log.Printf("INFO: Server configuration saved to %s", filePath)
+	return nil
+}
+
 // LoadEventsConfig loads the event scheduler configuration from events.json
 func LoadEventsConfig(configPath string) (EventsConfig, error) {
 	filePath := filepath.Join(configPath, "events.json")
@@ -826,4 +852,30 @@ func LoadEventsConfig(configPath string) (EventsConfig, error) {
 	log.Printf("INFO: Loaded event scheduler configuration: %d event(s), %d enabled", len(config.Events), enabledCount)
 
 	return config, nil
+}
+
+// LoadTimezone returns a *time.Location for the given timezone string.
+// It tries the value from config.json first, then the VISION3_TIMEZONE and TZ
+// environment variables, falling back to time.Local if none resolve.
+func LoadTimezone(configTZ string) *time.Location {
+	// Try each source in order: config value, VISION3_TIMEZONE env, TZ env
+	for _, tz := range []string{
+		strings.TrimSpace(configTZ),
+		strings.TrimSpace(os.Getenv("VISION3_TIMEZONE")),
+		strings.TrimSpace(os.Getenv("TZ")),
+	} {
+		if tz == "" {
+			continue
+		}
+		if loc, err := time.LoadLocation(tz); err == nil {
+			return loc
+		}
+		log.Printf("WARN: Invalid timezone '%s', trying next source.", tz)
+	}
+	return time.Local
+}
+
+// NowIn returns the current time in the configured timezone.
+func NowIn(configTZ string) time.Time {
+	return time.Now().In(LoadTimezone(configTZ))
 }

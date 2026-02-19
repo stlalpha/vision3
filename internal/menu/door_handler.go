@@ -33,6 +33,8 @@ type doorUserInfo struct {
 	TimesCalled   int
 	PhoneNumber   string
 	GroupLocation string
+	ScreenWidth   int
+	ScreenHeight  int
 }
 
 // DoorCtx is the actual context used throughout door_handler.go.
@@ -59,7 +61,7 @@ type DoorCtx struct {
 // buildDoorCtx creates a DoorCtx from the standard RunnableFunc parameters.
 func buildDoorCtx(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userID int, handle, realName string, accessLevel, timeLimit, timesCalled int,
-	phoneNumber, groupLocation string,
+	phoneNumber, groupLocation string, screenWidth, screenHeight int,
 	nodeNumber int, sessionStartTime time.Time, outputMode ansi.OutputMode,
 	doorConfig config.DoorConfig, doorName string) *DoorCtx {
 
@@ -99,6 +101,8 @@ func buildDoorCtx(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			TimesCalled:   timesCalled,
 			PhoneNumber:   phoneNumber,
 			GroupLocation: groupLocation,
+			ScreenWidth:   screenWidth,
+			ScreenHeight:  screenHeight,
 		},
 		NodeNumber:       nodeNumber,
 		SessionStartTime: sessionStartTime,
@@ -148,38 +152,44 @@ func generateDoorSys(ctx *DoorCtx, dir string) error {
 	b.WriteString(strconv.Itoa(timeLeftSecs) + crlf)         // 18: Seconds remaining
 	b.WriteString("255" + crlf)                              // 19: Time limit (minutes)
 	b.WriteString("GR" + crlf)                               // 20: Graphics mode
-	b.WriteString("25" + crlf)                               // 21: Screen length
-	b.WriteString("N" + crlf)                                // 22: Expert mode
-	b.WriteString(crlf)                                      // 23: Conferences registered
-	b.WriteString(crlf)                                      // 24: Conference exited to
-	b.WriteString(crlf)                                      // 25: Expiration date
-	b.WriteString(ctx.UserIDStr + crlf)                      // 26: User record number
-	b.WriteString(crlf)                                      // 27: Default protocol
-	b.WriteString("0" + crlf)                                // 28: Total uploads
-	b.WriteString("0" + crlf)                                // 29: Total downloads
-	b.WriteString("0" + crlf)                                // 30: Daily download K-bytes total
-	b.WriteString("99999" + crlf)                            // 31: Daily download K-bytes allowed
-	b.WriteString("01-01-1971" + crlf)                       // 32: Birth date
-	b.WriteString(crlf)                                      // 33: Path to callinfo/main dir
-	b.WriteString(crlf)                                      // 34: Path to GEN dir
-	b.WriteString(bbsName + crlf)                            // 35: Sysop name (BBS name used)
-	b.WriteString(ctx.User.Handle + crlf)                    // 36: User handle/alias
-	b.WriteString("none" + crlf)                             // 37: Next event time
-	b.WriteString("Y" + crlf)                                // 38: Error free connection
-	b.WriteString("N" + crlf)                                // 39: Always "N"
-	b.WriteString("Y" + crlf)                                // 40: Always "Y"
-	b.WriteString("7" + crlf)                                // 41: Default color
-	b.WriteString("0" + crlf)                                // 42: Time credits (minutes)
-	b.WriteString("01-01-1971" + crlf)                       // 43: Last new file scan date
-	b.WriteString("00:00" + crlf)                            // 44: Time of this call
-	b.WriteString("00:00" + crlf)                            // 45: Time of last call
-	b.WriteString("32768" + crlf)                            // 46: Max daily files allowed
-	b.WriteString("0" + crlf)                                // 47: Files downloaded today
-	b.WriteString("0" + crlf)                                // 48: Total K-bytes uploaded
-	b.WriteString("0" + crlf)                                // 49: Total K-bytes downloaded
-	b.WriteString("None." + crlf)                            // 50: Comment
-	b.WriteString("0" + crlf)                                // 51: Total doors opened
-	b.WriteString("0" + crlf)                                // 52: Total messages left
+
+	// Use user's saved screen height, default to 25 if not set
+	screenHeight := ctx.User.ScreenHeight
+	if screenHeight <= 0 {
+		screenHeight = 25
+	}
+	b.WriteString(strconv.Itoa(screenHeight) + crlf) // 21: Screen length
+	b.WriteString("N" + crlf)                        // 22: Expert mode
+	b.WriteString(crlf)                              // 23: Conferences registered
+	b.WriteString(crlf)                              // 24: Conference exited to
+	b.WriteString(crlf)                              // 25: Expiration date
+	b.WriteString(ctx.UserIDStr + crlf)              // 26: User record number
+	b.WriteString(crlf)                              // 27: Default protocol
+	b.WriteString("0" + crlf)                        // 28: Total uploads
+	b.WriteString("0" + crlf)                        // 29: Total downloads
+	b.WriteString("0" + crlf)                        // 30: Daily download K-bytes total
+	b.WriteString("99999" + crlf)                    // 31: Daily download K-bytes allowed
+	b.WriteString("01-01-1971" + crlf)               // 32: Birth date
+	b.WriteString(crlf)                              // 33: Path to callinfo/main dir
+	b.WriteString(crlf)                              // 34: Path to GEN dir
+	b.WriteString(bbsName + crlf)                    // 35: Sysop name (BBS name used)
+	b.WriteString(ctx.User.Handle + crlf)            // 36: User handle/alias
+	b.WriteString("none" + crlf)                     // 37: Next event time
+	b.WriteString("Y" + crlf)                        // 38: Error free connection
+	b.WriteString("N" + crlf)                        // 39: Always "N"
+	b.WriteString("Y" + crlf)                        // 40: Always "Y"
+	b.WriteString("7" + crlf)                        // 41: Default color
+	b.WriteString("0" + crlf)                        // 42: Time credits (minutes)
+	b.WriteString("01-01-1971" + crlf)               // 43: Last new file scan date
+	b.WriteString("00:00" + crlf)                    // 44: Time of this call
+	b.WriteString("00:00" + crlf)                    // 45: Time of last call
+	b.WriteString("32768" + crlf)                    // 46: Max daily files allowed
+	b.WriteString("0" + crlf)                        // 47: Files downloaded today
+	b.WriteString("0" + crlf)                        // 48: Total K-bytes uploaded
+	b.WriteString("0" + crlf)                        // 49: Total K-bytes downloaded
+	b.WriteString("None." + crlf)                    // 50: Comment
+	b.WriteString("0" + crlf)                        // 51: Total doors opened
+	b.WriteString("0" + crlf)                        // 52: Total messages left
 
 	return os.WriteFile(path, []byte(b.String()), 0600)
 }
@@ -259,16 +269,26 @@ func generateChainTxt(ctx *DoorCtx, dir string) error {
 	crlf := "\r\n"
 
 	var b strings.Builder
-	b.WriteString(ctx.UserIDStr + crlf)                      // 1: User number
-	b.WriteString(ctx.User.Handle + crlf)                    // 2: User alias
-	b.WriteString(ctx.User.RealName + crlf)                  // 3: Real name
-	b.WriteString("NONE" + crlf)                             // 4: Default protocol
-	b.WriteString("21" + crlf)                               // 5: Time on (minutes)
-	b.WriteString("M" + crlf)                                // 6: Gender
-	b.WriteString("0" + crlf)                                // 7: Pause (0=no)
-	b.WriteString("01/01/71" + crlf)                         // 8: Last call date
-	b.WriteString("80" + crlf)                               // 9: Screen width
-	b.WriteString("25" + crlf)                               // 10: Screen height
+	b.WriteString(ctx.UserIDStr + crlf)     // 1: User number
+	b.WriteString(ctx.User.Handle + crlf)   // 2: User alias
+	b.WriteString(ctx.User.RealName + crlf) // 3: Real name
+	b.WriteString("NONE" + crlf)            // 4: Default protocol
+	b.WriteString("21" + crlf)              // 5: Time on (minutes)
+	b.WriteString("M" + crlf)               // 6: Gender
+	b.WriteString("0" + crlf)               // 7: Pause (0=no)
+	b.WriteString("01/01/71" + crlf)        // 8: Last call date
+
+	// Use user's saved screen dimensions, default to 80x25 if not set
+	screenWidth := ctx.User.ScreenWidth
+	if screenWidth <= 0 {
+		screenWidth = 80
+	}
+	screenHeight := ctx.User.ScreenHeight
+	if screenHeight <= 0 {
+		screenHeight = 25
+	}
+	b.WriteString(strconv.Itoa(screenWidth) + crlf)          // 9: Screen width
+	b.WriteString(strconv.Itoa(screenHeight) + crlf)         // 10: Screen height
 	b.WriteString(strconv.Itoa(ctx.User.AccessLevel) + crlf) // 11: Security level
 	b.WriteString("0" + crlf)                                // 12: CO-sysop flag
 	b.WriteString("0" + crlf)                                // 13: File ratio flag
@@ -630,24 +650,66 @@ func executeNativeDoor(ctx *DoorCtx) error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("BBS_TIMELEFT=%s", ctx.TimeLeftStr))
 	}
 
+	// Set LINES and COLUMNS from user's saved preferences (for terminal size detection).
+	// Remove any existing LINES/COLUMNS entries first to ensure our values take precedence.
+	screenHeight := ctx.User.ScreenHeight
+	if screenHeight <= 0 {
+		screenHeight = 25
+	}
+	screenWidth := ctx.User.ScreenWidth
+	if screenWidth <= 0 {
+		screenWidth = 80
+	}
+	filteredEnv := make([]string, 0, len(cmd.Env))
+	for _, e := range cmd.Env {
+		if !strings.HasPrefix(e, "LINES=") && !strings.HasPrefix(e, "COLUMNS=") {
+			filteredEnv = append(filteredEnv, e)
+		}
+	}
+	cmd.Env = append(filteredEnv, fmt.Sprintf("LINES=%d", screenHeight), fmt.Sprintf("COLUMNS=%d", screenWidth))
+	log.Printf("DEBUG: Node %d: Set door env LINES=%d COLUMNS=%d", ctx.NodeNumber, screenHeight, screenWidth)
+
 	// Execute command
-	ptyReq, winChOrig, isPty := ctx.Session.Pty()
+	_, winChOrig, isPty := ctx.Session.Pty()
 	var cmdErr error
 
 	if doorConfig.RequiresRawTerminal && isPty {
 		log.Printf("INFO: Node %d: Starting door '%s' with PTY/Raw mode", ctx.NodeNumber, ctx.DoorName)
-		ptmx, err := pty.Start(cmd)
+
+		// Set PTY size from user's saved preferences - BEFORE starting the command
+		doorScreenHeight := uint16(25) // default
+		if ctx.User.ScreenHeight > 0 && ctx.User.ScreenHeight <= 65535 {
+			doorScreenHeight = uint16(ctx.User.ScreenHeight)
+		}
+		doorScreenWidth := uint16(80) // default
+		if ctx.User.ScreenWidth > 0 && ctx.User.ScreenWidth <= 65535 {
+			doorScreenWidth = uint16(ctx.User.ScreenWidth)
+		}
+		doorSize := &pty.Winsize{Rows: doorScreenHeight, Cols: doorScreenWidth}
+		log.Printf("DEBUG: Node %d: Starting door with PTY size %dx%d (from user preferences)", ctx.NodeNumber, doorScreenWidth, doorScreenHeight)
+
+		ptmx, err := pty.StartWithSize(cmd, doorSize)
 		if err != nil {
 			cmdErr = fmt.Errorf("failed to start pty for door '%s': %w", ctx.DoorName, err)
 		} else {
 			ctx.Session.Signals(nil)
 			ctx.Session.Break(nil)
+
+			// Drain window resize events but don't apply them - respect user's saved preferences.
+			// resizeStop is closed after cmd.Wait() to prevent this goroutine from leaking.
+			resizeStop := make(chan struct{})
 			go func() {
-				if ptyReq.Window.Width > 0 || ptyReq.Window.Height > 0 {
-					pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(ptyReq.Window.Height), Cols: uint16(ptyReq.Window.Width)})
-				}
-				for win := range winChOrig {
-					pty.Setsize(ptmx, &pty.Winsize{Rows: uint16(win.Height), Cols: uint16(win.Width)})
+				for {
+					select {
+					case win, ok := <-winChOrig:
+						if !ok {
+							return
+						}
+						log.Printf("DEBUG: Node %d: Ignoring SSH resize event %dx%d (keeping user preference %dx%d)",
+							ctx.NodeNumber, win.Width, win.Height, doorScreenWidth, doorScreenHeight)
+					case <-resizeStop:
+						return
+					}
 				}
 			}()
 
@@ -702,6 +764,7 @@ func executeNativeDoor(ctx *DoorCtx) error {
 
 			// Wait for door to exit, then cleanly shut down I/O goroutines
 			cmdErr = cmd.Wait()
+			close(resizeStop)
 			log.Printf("DEBUG: Node %d: Door '%s' process exited", ctx.NodeNumber, ctx.DoorName)
 
 			// Interrupt the input goroutine's blocked Read() so it exits without
@@ -764,7 +827,7 @@ func doorErrorMessage(ctx *DoorCtx, msg string) {
 // --- Door Menu Runnables ---
 
 // runListDoors displays a list of all configured doors.
-func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running LISTDOORS", nodeNumber)
 
 	if currentUser == nil {
@@ -790,7 +853,13 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	// Display header
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(topBytes), outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	processedTop := ansi.ReplacePipeCodes(topBytes)
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(processedTop)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, processedTop, outputMode)
+	}
 
 	// Get door registry atomically
 	e.configMu.RLock()
@@ -829,13 +898,18 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	// Display footer
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(botBytes), outputMode)
+	processedBot := ansi.ReplacePipeCodes(botBytes)
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(processedBot)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, processedBot, outputMode)
+	}
 
 	return currentUser, "", nil
 }
 
 // runOpenDoor prompts the user for a door name and launches it.
-func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running OPENDOOR", nodeNumber)
 
 	if currentUser == nil {
@@ -847,7 +921,7 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	// Prompt for door name
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt)), outputMode)
 
-	inputName, err := terminal.ReadLine()
+	inputName, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -866,7 +940,7 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 
 	if upperInput == "?" {
 		// Show door list inline then return to menu (which will redraw and prompt again)
-		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode)
+		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
 		return currentUser, "", nil
 	}
 
@@ -880,14 +954,20 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	// Build context and execute
+	// Use passed termWidth/termHeight (from user preferences) instead of reading from User struct
 	ctx := buildDoorCtx(e, s, terminal,
 		currentUser.ID, currentUser.Handle, currentUser.RealName,
 		currentUser.AccessLevel, currentUser.TimeLimit, currentUser.TimesCalled,
 		currentUser.PhoneNumber, currentUser.GroupLocation,
+		termWidth, termHeight,
 		nodeNumber, sessionStartTime, outputMode,
 		doorConfig, upperInput)
 
+	// Doors read directly from ssh.Session; reset shared InputHandler first
+	// so it does not race and steal door/menu keystrokes.
+	resetSessionIH(s)
 	cmdErr := executeDoor(ctx)
+	_ = getSessionIH(s)
 
 	if cmdErr != nil {
 		log.Printf("ERROR: Node %d: Door execution failed for user %s, door %s: %v", nodeNumber, currentUser.Handle, upperInput, cmdErr)
@@ -900,7 +980,7 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 }
 
 // runDoorInfo displays information about a specific door.
-func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running DOORINFO", nodeNumber)
 
 	if currentUser == nil {
@@ -912,7 +992,7 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	// Prompt for door name
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt)), outputMode)
 
-	inputName, err := terminal.ReadLine()
+	inputName, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -930,7 +1010,7 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	if upperInput == "?" {
-		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode)
+		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
 		return currentUser, "", nil
 	}
 

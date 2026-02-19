@@ -177,12 +177,25 @@ func ClearScreen() string
 func MoveCursor(row, col int) string
 func StripAnsi(str string) string
 
+// ProcessAnsiResult contains the result of ANSI processing:
+type ProcessAnsiResult struct {
+    DisplayBytes []byte                        // Processed ANSI content ready for display
+    FieldCoords  map[string]struct{ X, Y int } // Field codes (|P, |O, etc.) mapped to coordinates
+    FieldColors  map[string]string             // Field codes mapped to cumulative ANSI color sequences
+}
+
 // Output modes:
 const (
     OutputModeAuto  OutputMode = iota
     OutputModeUTF8
     OutputModeCP437
 )
+
+// FieldColors captures cumulative SGR state (Select Graphic Rendition):
+// - Bold, dim, italic, underline, blink, reverse, hidden attributes
+// - Foreground colors (30-37 normal, 90-97 bright)
+// - Background colors (40-47 normal, 100-107 bright)
+// Example: ESC[1m ESC[35m ESC[44m → FieldColors["P"] = "ESC[1;35;44m" (bold magenta on blue)
 ```
 
 ### config

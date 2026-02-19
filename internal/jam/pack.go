@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 // PackResult contains statistics from a Pack operation.
@@ -80,6 +81,16 @@ func (b *Base) ResetLastRead(username string) error {
 // to new files, then atomically replacing the originals. The .jlr file
 // is preserved as-is.
 func (b *Base) Pack() (PackResult, error) {
+	return b.packWithReplyIDCleanup(false)
+}
+
+// PackWithReplyIDCleanup performs a pack operation while cleaning malformed ReplyIDs.
+func (b *Base) PackWithReplyIDCleanup() (PackResult, error) {
+	return b.packWithReplyIDCleanup(true)
+}
+
+// packWithReplyIDCleanup is the internal pack implementation that optionally cleans ReplyIDs.
+func (b *Base) packWithReplyIDCleanup(cleanReplyIDs bool) (PackResult, error) {
 	var result PackResult
 
 	release, err := b.acquireFileLock()
@@ -208,6 +219,29 @@ func (b *Base) Pack() (PackResult, error) {
 		hdr.ReplyTo = 0
 		hdr.Reply1st = 0
 		hdr.ReplyNext = 0
+
+		// Clean ReplyID if requested
+		if cleanReplyIDs {
+			for i := range hdr.Subfields {
+				if hdr.Subfields[i].LoID == SfldReplyID {
+					replyID := string(hdr.Subfields[i].Buffer)
+					if parts := strings.Fields(replyID); len(parts) > 1 {
+						// Clean the ReplyID by taking only the first token
+						cleanedReplyID := parts[0]
+						hdr.Subfields[i].Buffer = []byte(cleanedReplyID)
+						hdr.Subfields[i].DatLen = uint32(len(cleanedReplyID))
+						hdr.REPLYcrc = CRC32String(cleanedReplyID)
+
+						// Recalculate total subfield length
+						hdr.SubfieldLen = 0
+						for _, sf := range hdr.Subfields {
+							hdr.SubfieldLen += SubfieldHdrSize + sf.DatLen
+						}
+					}
+					break
+				}
+			}
+		}
 
 		// Write header to new .jhr
 		hdrPos, err := jhrOut.Seek(0, io.SeekEnd)

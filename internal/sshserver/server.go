@@ -7,6 +7,7 @@ package sshserver
 #include <libssh/callbacks.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 // Forward declarations of Go callback functions (defined in callbacks.go via //export)
 extern int go_auth_password_cb(ssh_session session, const char *user, const char *password, void *userdata);
@@ -52,6 +53,19 @@ struct ssh_channel_callbacks_struct* vision3_new_channel_cb(void *userdata) {
 	ssh_callbacks_init(cb);
 	return cb;
 }
+
+// Convert a Go cgo.Handle (uintptr) to void* for use as C callback userdata.
+// This avoids the unsafe.Pointer(uintptr(...)) pattern that go vet flags.
+static inline void* handle_to_ptr(uintptr_t h) { return (void*)h; }
+
+// Expose SSH_BIND_OPTIONS enum values via macros for CGO access.
+// These are needed for legacy algorithm configuration.
+#define VISION3_SSH_BIND_OPTIONS_HOSTKEY_ALGORITHMS SSH_BIND_OPTIONS_HOSTKEY_ALGORITHMS
+#define VISION3_SSH_BIND_OPTIONS_KEY_EXCHANGE SSH_BIND_OPTIONS_KEY_EXCHANGE
+#define VISION3_SSH_BIND_OPTIONS_CIPHERS_C_S SSH_BIND_OPTIONS_CIPHERS_C_S
+#define VISION3_SSH_BIND_OPTIONS_CIPHERS_S_C SSH_BIND_OPTIONS_CIPHERS_S_C
+#define VISION3_SSH_BIND_OPTIONS_HMAC_C_S SSH_BIND_OPTIONS_HMAC_C_S
+#define VISION3_SSH_BIND_OPTIONS_HMAC_S_C SSH_BIND_OPTIONS_HMAC_S_C
 */
 import "C"
 import (
@@ -124,7 +138,7 @@ type Session struct {
 	readCh        chan []byte
 	readBuf       []byte
 	readInterrupt <-chan struct{} // when closed, Read() returns ErrReadInterrupted
-	riMu          sync.Mutex     // protects readInterrupt
+	riMu          sync.Mutex      // protects readInterrupt
 	writeCh       chan []byte
 	WinCh         chan Window
 	closer        *closeSignal
@@ -164,10 +178,11 @@ type Server struct {
 
 // Config holds server configuration
 type Config struct {
-	HostKeyPath      string
-	Port             int
-	SessionHandler   SessionHandler
-	AuthPasswordFunc AuthPasswordFunc
+	HostKeyPath         string
+	Port                int
+	SessionHandler      SessionHandler
+	AuthPasswordFunc    AuthPasswordFunc
+	LegacySSHAlgorithms bool
 }
 
 // NewServer creates a new SSH server instance
@@ -208,6 +223,65 @@ func NewServer(config Config) (*Server, error) {
 	if C.ssh_bind_options_set(bind, C.SSH_BIND_OPTIONS_BINDPORT, unsafe.Pointer(&cPort)) != C.SSH_OK {
 		C.ssh_bind_free(bind)
 		return nil, fmt.Errorf("failed to set port")
+	}
+
+	// Set host key algorithms. When LegacySSHAlgorithms is enabled, include ssh-rsa
+	// for older SSH clients (e.g., NetRunner, SyncTerm). When disabled, only offer
+	// modern rsa-sha2 variants (ssh-rsa uses SHA-1 which is cryptographically weak).
+	hostKeyAlgos := "rsa-sha2-512,rsa-sha2-256"
+	if config.LegacySSHAlgorithms {
+		hostKeyAlgos = "rsa-sha2-512,rsa-sha2-256,ssh-rsa"
+	}
+	cHostKeyAlgos := C.CString(hostKeyAlgos)
+	defer C.free(unsafe.Pointer(cHostKeyAlgos))
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_HOSTKEY_ALGORITHMS, unsafe.Pointer(cHostKeyAlgos)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set host key algorithms")
+	}
+
+	// Configure key exchange algorithms, ciphers, and MACs.
+	// When legacySSHAlgorithms is enabled, include older algorithms (diffie-hellman-group1-sha1,
+	// 3des-cbc, hmac-sha1) needed by retro BBS terminal software.
+	// When disabled, only modern secure algorithms are offered.
+	var kexAlgos, ciphers, macs string
+	if config.LegacySSHAlgorithms {
+		log.Printf("INFO: SSH legacy algorithms enabled for retro BBS client compatibility")
+		kexAlgos = "curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha256,diffie-hellman-group14-sha1,diffie-hellman-group1-sha1"
+		ciphers = "chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,aes256-cbc,aes192-cbc,aes128-cbc,3des-cbc"
+		macs = "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-512,hmac-sha1"
+	} else {
+		kexAlgos = "curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group18-sha512,diffie-hellman-group16-sha512,diffie-hellman-group-exchange-sha256,diffie-hellman-group14-sha256"
+		ciphers = "chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
+		macs = "hmac-sha2-256-etm@openssh.com,hmac-sha2-512-etm@openssh.com,hmac-sha2-256,hmac-sha2-512"
+	}
+
+	cKexAlgos := C.CString(kexAlgos)
+	defer C.free(unsafe.Pointer(cKexAlgos))
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_KEY_EXCHANGE, unsafe.Pointer(cKexAlgos)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set key exchange algorithms")
+	}
+
+	cCiphers := C.CString(ciphers)
+	defer C.free(unsafe.Pointer(cCiphers))
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_CIPHERS_C_S, unsafe.Pointer(cCiphers)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set client-to-server ciphers")
+	}
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_CIPHERS_S_C, unsafe.Pointer(cCiphers)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set server-to-client ciphers")
+	}
+
+	cMACs := C.CString(macs)
+	defer C.free(unsafe.Pointer(cMACs))
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_HMAC_C_S, unsafe.Pointer(cMACs)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set client-to-server MACs")
+	}
+	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_HMAC_S_C, unsafe.Pointer(cMACs)) != C.SSH_OK {
+		C.ssh_bind_free(bind)
+		return nil, fmt.Errorf("failed to set server-to-client MACs")
 	}
 
 	return server, nil
@@ -307,7 +381,7 @@ func (s *Server) handleConnection(sshSession C.ssh_session) {
 
 	// Register server callbacks BEFORE key exchange
 	// Auth callbacks must be in place before the protocol proceeds
-	serverCb := C.vision3_new_server_cb(unsafe.Pointer(uintptr(cs.handle)))
+	serverCb := C.vision3_new_server_cb(C.handle_to_ptr(C.uintptr_t(cs.handle)))
 	if serverCb == nil {
 		log.Printf("ERROR: Failed to allocate server callbacks")
 		return

@@ -92,8 +92,12 @@ On connection, the server sends the following telnet option negotiations:
 | `IAC DO SGA`        | Client should suppress go-ahead         |
 | `IAC DONT LINEMODE` | Disable line mode (character-at-a-time) |
 | `IAC DO NAWS`       | Request window size from client         |
+| `IAC DO TERM_TYPE`  | Request terminal type from client       |
 
-After sending negotiations, the server waits 500ms to drain client responses before proceeding.
+Negotiation runs in two phases:
+
+1. **Phase 1** — the six sequences above are sent together; the server drains responses for 500ms. If the client responds `WILL TERM_TYPE`, the `willTermType` flag is set.
+2. **Phase 2** — if `willTermType` is set, the server sends `IAC SB TERM_TYPE SEND IAC SE` and drains for another 500ms to collect the `IS <string>` subnegotiation response.
 
 #### IAC State Machine
 
@@ -135,6 +139,20 @@ IAC SB NAWS [width_high] [width_low] [height_high] [height_low] IAC SE
 - Dimensions are validated (must be 1-255) and capped to 80x25 for BBS compatibility
 - Updates are forwarded to the session adapter via a buffered channel (non-blocking)
 - Clients may send NAWS updates at any time during the session (e.g., on terminal resize)
+
+#### TERM_TYPE (Terminal Type, RFC 1091)
+
+When the client accepts the `DO TERM_TYPE` request (responds `WILL TERM_TYPE`), the server follows up with a `SEND` subnegotiation and the client replies with its terminal type string:
+
+```text
+Server → IAC SB TERM_TYPE SEND IAC SE
+Client → IAC SB TERM_TYPE IS <string> IAC SE
+```
+
+- The type string is lowercased and trimmed before storage
+- Common values: `syncterm`, `netrunner`, `ansi-256color-rgb`, `ansi`, `xterm`, `xterm-256color`
+- If the client does not support TERM_TYPE, the default `"ansi"` is used
+- The detected type is exposed via `Pty().Term` and flows into the session handler's auto output-mode detection (CP437 vs UTF-8)
 
 ### Terminal Size Detection
 
@@ -184,7 +202,7 @@ The `TelnetSessionAdapter` implements every method of `gliderlabs/ssh.Session`:
 | ---------------------------------------- | ----------------------------------------------------------------- |
 | `Read()` / `Write()`                     | Delegates to `TelnetConn` (IAC-filtered/escaped)                  |
 | `Close()`                                | Cancels context, closes TCP connection                            |
-| `Pty()`                                  | Returns `Term="ansi"`, NAWS/CPR dimensions, window change channel |
+| `Pty()`                                  | Returns `Term=<negotiated type or "ansi">`, NAWS/CPR dimensions, window change channel |
 | `User()`                                 | Returns `""` (forces manual login flow)                           |
 | `RemoteAddr()` / `LocalAddr()`           | From underlying TCP connection                                    |
 | `Context()`                              | Returns `TelnetSessionContext`                                    |
@@ -235,12 +253,13 @@ nc localhost 2323
 
 ## Supported Telnet Options
 
-| Option   | Code | Direction     | Purpose                              |
-| -------- | ---- | ------------- | ------------------------------------ |
-| ECHO     | 1    | `WILL`        | Server echoes input (character mode) |
-| SGA      | 3    | `WILL` + `DO` | Suppress go-ahead (full-duplex)      |
-| LINEMODE | 34   | `DONT`        | Disable line buffering               |
-| NAWS     | 31   | `DO`          | Request terminal dimensions          |
+| Option    | Code | Direction     | Purpose                              |
+| --------- | ---- | ------------- | ------------------------------------ |
+| ECHO      | 1    | `WILL`        | Server echoes input (character mode) |
+| SGA       | 3    | `WILL` + `DO` | Suppress go-ahead (full-duplex)      |
+| TERM_TYPE | 24   | `DO`          | Request terminal type string         |
+| NAWS      | 31   | `DO`          | Request terminal dimensions          |
+| LINEMODE  | 34   | `DONT`        | Disable line buffering               |
 
 ## Terminal Compatibility
 
@@ -255,7 +274,7 @@ nc localhost 2323
 
 ### Telnet Server Package (`internal/telnetserver/`)
 
-- `telnet.go` — TelnetConn, IAC state machine, NAWS, CPR terminal detection
+- `telnet.go` — TelnetConn, IAC state machine, NAWS, TERM_TYPE negotiation, CPR terminal detection
 - `adapter.go` — TelnetSessionAdapter + TelnetSessionContext (ssh.Session interface)
 - `server.go` — Server lifecycle, TCP listener, connection handling
 
@@ -269,12 +288,12 @@ nc localhost 2323
 2. **No Rate Limiting**: Should add connection rate limiting
 3. **No IP Filtering**: Should add IP whitelist/blacklist support
 4. **80x25 Cap**: Terminal dimensions are capped to 80x25 for BBS compatibility
-5. **No TTYPE**: Terminal type negotiation (RFC 1091) is not implemented — always reports "ansi"
 
 ## References
 
 - Telnet Protocol: RFC 854 (Telnet Protocol Specification)
 - NAWS: RFC 1073 (Telnet Window Size Option)
+- TERM_TYPE: RFC 1091 (Telnet Terminal-Type Option)
 - Linemode: RFC 1184 (Telnet Linemode Option)
 - SyncTerm: <https://syncterm.bbsdev.net/>
 - gliderlabs/ssh: <https://github.com/gliderlabs/ssh>

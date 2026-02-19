@@ -34,6 +34,7 @@ type FSEditor struct {
 	// Metadata
 	subject     string
 	recipient   string
+	fromName    string // sender display name: handle, real name, or anonymous string
 	isAnon      bool
 	menuSetPath string
 
@@ -42,13 +43,20 @@ type FSEditor struct {
 	outputMode ansi.OutputMode
 }
 
-// NewFSEditor creates a new full-screen editor instance
+// NewFSEditor creates a new full-screen editor instance.
+// ih is an optional pre-created InputHandler to reuse (pass nil to create a new one).
+// Passing a shared InputHandler prevents the editor's background goroutine from
+// racing with the caller's reader for bytes after the editor exits.
 func NewFSEditor(session ssh.Session, terminal io.Writer, outputMode ansi.OutputMode,
-	termWidth, termHeight int, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText string) *FSEditor {
+	termWidth, termHeight int, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText string,
+	ih *InputHandler) *FSEditor {
 
 	buffer := NewMessageBuffer()
 	screen := NewScreen(terminal, outputMode, termWidth, termHeight)
-	input := NewInputHandler(session)
+	if ih == nil {
+		ih = NewInputHandler(session)
+	}
+	input := ih
 	wordWrapper := NewWordWrapper(buffer)
 	commandHandler := NewCommandHandler(screen, buffer, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
 
@@ -73,11 +81,30 @@ func NewFSEditor(session ssh.Session, terminal io.Writer, outputMode ansi.Output
 	}
 }
 
-// SetMetadata sets the message metadata (subject, recipient, etc.)
-func (e *FSEditor) SetMetadata(subject, recipient string, isAnon bool) {
+// SetMetadata sets the message metadata (subject, recipient, sender, etc.)
+func (e *FSEditor) SetMetadata(subject, recipient, fromName string, isAnon bool) {
 	e.subject = subject
 	e.recipient = recipient
+	e.fromName = fromName
 	e.isAnon = isAnon
+}
+
+// SetTimezone configures the timezone used for date/time display in the editor header.
+func (e *FSEditor) SetTimezone(configTZ string) {
+	e.screen.configTimezone = configTZ
+}
+
+// SetBoardName sets the BBS board name substituted into the footer @B@ placeholder.
+func (e *FSEditor) SetBoardName(name string) {
+	e.screen.boardName = name
+}
+
+// SetEditorContext sets optional context fields displayed in the editor header
+// (node number, next message number, conference > area name).
+func (e *FSEditor) SetEditorContext(ctx EditorContext) {
+	e.screen.nodeNumber = ctx.NodeNumber
+	e.screen.nextMsgNum = ctx.NextMsgNum
+	e.screen.confArea = ctx.ConfArea
 }
 
 // SetQuoteData sets message data to be used for the /Q quote command
@@ -100,10 +127,14 @@ func (e *FSEditor) LoadContent(content string) {
 // Run starts the editor main loop
 func (e *FSEditor) Run() (string, bool, error) {
 	// Load and display header
-	err := e.screen.LoadHeaderTemplate(e.menuSetPath, e.subject, e.recipient, e.isAnon)
+	err := e.screen.LoadHeaderTemplate(e.menuSetPath, e.subject, e.recipient, e.fromName, e.isAnon)
 	if err != nil {
 		// Non-fatal - continue with minimal header
 	}
+
+	// Load footer template — adjusts statusLineY to reserve the bottom 2 rows.
+	// Must be called after LoadHeaderTemplate so editingStartY is already set from |#N.
+	_ = e.screen.LoadFooterTemplate(e.menuSetPath)
 
 	// Initial screen draw
 	e.screen.FullRedraw(e.buffer, e.topLine, e.currentLine, e.currentCol, e.insertMode)
@@ -143,22 +174,6 @@ func (e *FSEditor) Run() (string, bool, error) {
 
 // handleKey processes a single key press
 func (e *FSEditor) handleKey(key int) {
-	// Check if user typed "/" to trigger slash command menu
-	if key == '/' && e.currentCol == 1 {
-		// Show slash command menu and get user selection
-		cmdType := e.commands.ShowSlashMenu(e.input, e.currentLine, e.currentCol)
-		if cmdType != CommandNone {
-			// Clear the menu from screen
-			e.commands.ClearSlashMenu(e.currentLine, 40)
-			// Handle the selected command
-			e.handleCommand(cmdType)
-			return
-		}
-		// User cancelled (ESC) - just clear the menu and return
-		e.commands.ClearSlashMenu(e.currentLine, 40)
-		return
-	}
-
 	// Handle key based on type
 	switch key {
 	case KeyEnter:
@@ -167,6 +182,21 @@ func (e *FSEditor) handleKey(key int) {
 		e.handleBackspace()
 	case KeyTab:
 		e.handleTab()
+
+	// Escape: show option lightbar menu (Save / Abort / Edit / Help / Quote)
+	case KeyEsc:
+		cmdType := e.commands.ShowEscapeMenu(e.input)
+		if cmdType != CommandNone {
+			e.handleCommand(cmdType)
+		}
+
+	// Editor commands (shown in footer: CTRL (A)Abort (Z)Save (Q)Quote)
+	case KeyCtrlA: // Abort
+		e.handleCommand(CommandAbort)
+	case KeyCtrlZ: // Save
+		e.handleCommand(CommandSave)
+	case KeyCtrlQ: // Quote
+		e.handleCommand(CommandQuote)
 
 	// Navigation
 	case KeyCtrlE: // Up
@@ -185,8 +215,6 @@ func (e *FSEditor) handleKey(key int) {
 		e.pageUp()
 	case KeyCtrlC: // Page Down (note: normally quit in terminals, but remapped here)
 		e.pageDown()
-	case KeyCtrlA: // Word Left
-		e.moveCursorWordLeft()
 	case KeyCtrlF: // Word Right
 		e.moveCursorWordRight()
 
@@ -216,16 +244,21 @@ func (e *FSEditor) handleKey(key int) {
 	}
 }
 
-// handleCommand processes slash commands
+// handleCommand processes editor commands (CTRL-A/Z/Q and help/view)
 func (e *FSEditor) handleCommand(cmdType CommandType) {
 	switch cmdType {
 	case CommandSave:
 		if e.commands.HandleSave() {
+			// Show "Saving..." in the prompt row before exiting
+			e.screen.GoXY(1, e.screen.PromptRow())
+			e.screen.ClearEOL()
+			e.screen.WriteDirectProcessed("|15Saving...")
 			e.saved = true
 			e.quit = true
 		} else {
-			// Redraw status after error message
-			e.input.ReadKey() // Wait for key press
+			// Error message already written; wait for key then restore footer
+			e.input.ReadKey()
+			e.screen.DisplayFooter()
 			e.screen.RefreshScreen(e.buffer, e.topLine, e.currentLine, e.currentCol, e.insertMode, true)
 		}
 

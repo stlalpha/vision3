@@ -94,14 +94,57 @@ func PadVisible(s string, width int, padChar rune) string {
 	return s + padding
 }
 
-// ApplyWidthConstraint truncates and/or pads a string to exact width.
+// Alignment specifies how a value is positioned within its field width.
+type Alignment int
+
+const (
+	AlignLeft   Alignment = iota // Pad right (default)
+	AlignRight                   // Pad left
+	AlignCenter                  // Pad both sides
+)
+
+// ParseAlignment returns the Alignment for a single-character modifier string.
+// Recognized values: "L" (left), "R" (right), "C" (center).
+// Returns AlignLeft for any unrecognized value.
+func ParseAlignment(modifier string) Alignment {
+	switch modifier {
+	case "R":
+		return AlignRight
+	case "C":
+		return AlignCenter
+	default:
+		return AlignLeft
+	}
+}
+
+// ApplyWidthConstraint truncates and/or pads a string to exact width (left-aligned).
 // ANSI escape sequences are preserved during truncation.
 func ApplyWidthConstraint(s string, width int) string {
+	return ApplyWidthConstraintAligned(s, width, AlignLeft)
+}
+
+// ApplyWidthConstraintAligned truncates and/or pads a string to exact width
+// with the specified alignment. ANSI escape sequences are preserved during truncation.
+func ApplyWidthConstraintAligned(s string, width int, align Alignment) string {
 	if width <= 0 {
 		return s
 	}
 
 	s = TruncateVisible(s, width)
-	s = PadVisible(s, width, ' ')
-	return s
+	visLen := VisibleLength(s)
+	if visLen >= width {
+		return s
+	}
+
+	padding := width - visLen
+	switch align {
+	case AlignRight:
+		return strings.Repeat(" ", padding) + s
+	case AlignCenter:
+		left := padding / 2
+		right := padding - left
+		return strings.Repeat(" ", left) + s + strings.Repeat(" ", right)
+	default: // AlignLeft
+		return s + strings.Repeat(" ", padding)
+	}
 }

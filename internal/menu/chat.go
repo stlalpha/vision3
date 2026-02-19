@@ -17,16 +17,18 @@ import (
 	"github.com/stlalpha/vision3/internal/user"
 )
 
-func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	if currentUser == nil {
 		return nil, "", nil
 	}
 
 	handle := currentUser.Handle
 
-	// Get terminal height from session
+	// Get terminal height: prefer passed parameter, then session registry, then default
 	height := 24 // default
-	if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+	if termHeight > 0 {
+		height = termHeight
+	} else if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
 		sess.Mutex.RLock()
 		if sess.Height > 0 {
 			height = sess.Height
@@ -106,7 +108,7 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 
 	// Main input loop
 	for {
-		input, err := terminal.ReadLine()
+		input, err := readLineFromSessionIH(s, terminal)
 		if err != nil {
 			if err == io.EOF {
 				e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserLeft, handle))

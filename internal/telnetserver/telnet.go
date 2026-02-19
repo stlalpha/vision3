@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"regexp"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,8 +28,12 @@ const (
 
 	OptEcho     byte = 1  // Echo option
 	OptSGA      byte = 3  // Suppress Go Ahead
+	OptTermType byte = 24 // Terminal Type (RFC 1091)
 	OptNAWS     byte = 31 // Negotiate About Window Size
 	OptLinemode byte = 34 // Linemode
+
+	TermTypeIs   byte = 0 // IS sub-command: client sends its terminal type
+	TermTypeSend byte = 1 // SEND sub-command: server requests terminal type
 )
 
 // telnetState tracks the IAC state machine
@@ -66,6 +71,11 @@ type TelnetConn struct {
 
 	closed int32 // atomic flag
 
+	// TERM_TYPE negotiation (RFC 1091)
+	termType     string
+	termTypeMu   sync.RWMutex
+	willTermType bool // true after client responds WILL TERM_TYPE
+
 	// Read interrupt: when the channel is closed, a goroutine sets a
 	// short read deadline on the conn to unblock any pending Read().
 	readInterrupt <-chan struct{}
@@ -84,7 +94,10 @@ func NewTelnetConn(conn net.Conn) *TelnetConn {
 	}
 }
 
-// Negotiate sends telnet option negotiations and waits briefly for NAWS response.
+// Negotiate sends telnet option negotiations and waits for client responses.
+// Phase 1: sends DO NAWS + DO TERM_TYPE, drains responses (500ms).
+// Phase 2: if client responded WILL TERM_TYPE, sends SB TERM_TYPE SEND and
+// drains again (500ms) to collect the IS <string> subnegotiation.
 func (tc *TelnetConn) Negotiate() error {
 	// Send telnet option negotiations:
 	// IAC WILL ECHO       - server will echo input
@@ -92,12 +105,14 @@ func (tc *TelnetConn) Negotiate() error {
 	// IAC DO SGA          - client should suppress go-ahead
 	// IAC DONT LINEMODE   - disable line mode
 	// IAC DO NAWS         - request window size
+	// IAC DO TERM_TYPE    - request terminal type
 	negotiations := []byte{
 		IAC, WILL, OptEcho,
 		IAC, WILL, OptSGA,
 		IAC, DO, OptSGA,
 		IAC, DONT, OptLinemode,
 		IAC, DO, OptNAWS,
+		IAC, DO, OptTermType,
 	}
 
 	tc.writeMu.Lock()
@@ -107,10 +122,26 @@ func (tc *TelnetConn) Negotiate() error {
 		return fmt.Errorf("failed to send telnet negotiations: %w", err)
 	}
 
-	// Wait briefly for the client to respond with NAWS data
+	// Phase 1: wait for NAWS and WILL TERM_TYPE responses
 	tc.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
 	tc.drainNegotiations()
-	tc.conn.SetReadDeadline(time.Time{}) // Reset deadline
+	tc.conn.SetReadDeadline(time.Time{})
+
+	// Phase 2: if client agreed to send terminal type, request it
+	if tc.willTermType {
+		termRequest := []byte{IAC, SB, OptTermType, TermTypeSend, IAC, SE}
+		tc.writeMu.Lock()
+		_, err = tc.conn.Write(termRequest)
+		tc.writeMu.Unlock()
+		if err != nil {
+			return fmt.Errorf("failed to send TERM_TYPE request: %w", err)
+		}
+
+		// Wait for the IS <string> subnegotiation response
+		tc.conn.SetReadDeadline(time.Now().Add(500 * time.Millisecond))
+		tc.drainNegotiations()
+		tc.conn.SetReadDeadline(time.Time{})
+	}
 
 	return nil
 }
@@ -167,6 +198,9 @@ func (tc *TelnetConn) processNegotiationBytes(data []byte) {
 		case stateWill, stateWont, stateDo, stateDont:
 			// Consume the option byte
 			log.Printf("DEBUG: Telnet negotiation: cmd=%d option=%d", tc.state, b)
+			if tc.state == stateWill && b == OptTermType {
+				tc.willTermType = true
+			}
 			tc.state = stateData
 
 		case stateSB:
@@ -201,7 +235,11 @@ func (tc *TelnetConn) processNegotiationBytes(data []byte) {
 
 // handleSubnegotiation processes a completed subnegotiation.
 func (tc *TelnetConn) handleSubnegotiation() {
-	if tc.sbOption == OptNAWS && len(tc.sbData) >= 4 {
+	switch tc.sbOption {
+	case OptNAWS:
+		if len(tc.sbData) < 4 {
+			return
+		}
 		width := int(tc.sbData[0])<<8 | int(tc.sbData[1])
 		height := int(tc.sbData[2])<<8 | int(tc.sbData[3])
 
@@ -230,7 +268,31 @@ func (tc *TelnetConn) handleSubnegotiation() {
 		case tc.winCh <- ssh.Window{Width: width, Height: height}:
 		default:
 		}
+
+	case OptTermType:
+		// sbData[0] is TermTypeIs (0); terminal type string follows
+		if len(tc.sbData) >= 1 && tc.sbData[0] == TermTypeIs {
+			t := strings.ToLower(strings.TrimSpace(string(tc.sbData[1:])))
+			if t != "" {
+				tc.termTypeMu.Lock()
+				tc.termType = t
+				tc.termTypeMu.Unlock()
+				log.Printf("INFO: Telnet TERM_TYPE: %s", t)
+			}
+		}
 	}
+}
+
+// TermType returns the terminal type string reported by the client via TERM_TYPE
+// negotiation (RFC 1091). Returns "ansi" if no type was negotiated.
+func (tc *TelnetConn) TermType() string {
+	tc.termTypeMu.RLock()
+	t := tc.termType
+	tc.termTypeMu.RUnlock()
+	if t == "" {
+		return "ansi"
+	}
+	return t
 }
 
 // SetReadInterrupt sets a channel that, when closed, causes any blocked Read()

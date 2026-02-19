@@ -2,7 +2,7 @@
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
-**Goal:** Overhaul the website to feel like an actual BBS — message base styled content sections, V2/V3 menu-style navigation, ANSI art section headers, and menu-item styled features.
+**Goal:** Overhaul the website to feel like an actual BBS — message-base-styled content sections, V2/V3 menu-style navigation, ANSI art section headers, and menu-item-styled features.
 
 **Architecture:** Modify existing docs/index.html, docs/style.css, docs/main.js. All changes are CSS/HTML/JS only. No build step.
 
@@ -147,7 +147,7 @@ git commit -m "Add ANSI art section headers"
 
 ---
 
-## Task 3: Style content sections as message base posts
+## Task 3: Style content sections as message-base posts
 
 **Files:**
 - Modify: `docs/index.html`
@@ -243,7 +243,7 @@ Note: Get Started is Msg# 3, Get Involved is Msg# 4. Features sits between them 
 
 ```bash
 git add docs/index.html docs/style.css
-git commit -m "Style content sections as BBS message base posts"
+git commit -m "Style content sections as BBS message-base posts"
 ```
 
 ---

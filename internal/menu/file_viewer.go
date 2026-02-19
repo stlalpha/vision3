@@ -33,7 +33,6 @@ func findFileInArea(fm *file.FileManager, areaID int, filename string) (*file.Fi
 	return nil, fmt.Errorf("file not found: %s", filename)
 }
 
-
 // promptAndResolveFile handles the shared logic for file viewing commands:
 // validates the user/area, prompts for filename, looks up the record, and resolves the path.
 func promptAndResolveFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, nodeNumber int, promptVerb string, outputMode ansi.OutputMode) (*file.FileRecord, string, *user.User, string, error) {
@@ -51,7 +50,7 @@ func promptAndResolveFile(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	prompt := fmt.Sprintf(e.LoadedStrings.FilePromptFormat, promptVerb)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	input, err := terminal.ReadLine()
+	input, err := readLineFromSessionIH(s, terminal)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "", nil, "LOGOFF", io.EOF
@@ -85,7 +84,7 @@ func promptAndResolveFile(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 // runViewFile prompts for a filename and displays it intelligently:
 // archives show their contents listing, text files are displayed with paging.
-func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running VIEW_FILE", nodeNumber)
 
 	record, filePath, retUser, retAction, retErr := promptAndResolveFile(e, s, terminal, currentUser, nodeNumber, "view", outputMode)
@@ -96,7 +95,9 @@ func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
 		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
-		_, termHeight := getTerminalSize(s)
+		if termHeight <= 0 {
+			_, termHeight = getTerminalSize(s)
+		}
 		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight,
 			e.LoadedStrings.FileViewingHeader, e.LoadedStrings.FileEndOfFile,
 			e.LoadedStrings.FileMorePrompt, e.LoadedStrings.FilePausePrompt,
@@ -107,7 +108,7 @@ func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 }
 
 // runTypeTextFile prompts for a filename and displays it as raw text with paging.
-func runTypeTextFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
+func runTypeTextFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running TYPE_TEXT_FILE", nodeNumber)
 
 	record, filePath, retUser, retAction, retErr := promptAndResolveFile(e, s, terminal, currentUser, nodeNumber, "type", outputMode)
@@ -115,7 +116,9 @@ func runTypeTextFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return retUser, retAction, retErr
 	}
 
-	_, termHeight := getTerminalSize(s)
+	if termHeight <= 0 {
+		_, termHeight = getTerminalSize(s)
+	}
 	displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight,
 		e.LoadedStrings.FileViewingHeader, e.LoadedStrings.FileEndOfFile,
 		e.LoadedStrings.FileMorePrompt, e.LoadedStrings.FilePausePrompt,
@@ -125,7 +128,7 @@ func runTypeTextFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 }
 
 // viewFileByRecord displays a file given its record, used from the lightbar file list.
-func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, record *file.FileRecord, outputMode ansi.OutputMode) {
+func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, record *file.FileRecord, outputMode ansi.OutputMode, termWidth int, termHeight int) {
 	filePath, err := e.FileMgr.GetFilePath(record.ID)
 	if err != nil {
 		log.Printf("ERROR: Failed to get path for file %s: %v", record.ID, err)
@@ -137,7 +140,9 @@ func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, r
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
 		ziplab.RunZipLabView(s, terminal, filePath, record.Filename, outputMode)
 	} else {
-		_, termHeight := getTerminalSize(s)
+		if termHeight <= 0 {
+			_, termHeight = getTerminalSize(s)
+		}
 		displayTextWithPaging(s, terminal, filePath, record.Filename, outputMode, termHeight,
 			e.LoadedStrings.FileViewingHeader, e.LoadedStrings.FileEndOfFile,
 			e.LoadedStrings.FileMorePrompt, e.LoadedStrings.FilePausePrompt,
@@ -194,17 +199,17 @@ func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath stri
 func pauseMore(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, prompt string) bool {
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	bufioReader := bufio.NewReader(s)
+	ih := getSessionIH(s)
 	for {
-		r, _, err := bufioReader.ReadRune()
+		key, err := ih.ReadKey()
 		if err != nil {
 			return false
 		}
-		if r == 'q' || r == 'Q' {
+		if key == int('q') || key == int('Q') {
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 			return false
 		}
-		if r == '\r' || r == '\n' || r == ' ' {
+		if key == int('\r') || key == int('\n') || key == int(' ') {
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[K"), outputMode)
 			return true
 		}
@@ -215,13 +220,13 @@ func pauseMore(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMod
 func pauseEnter(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, prompt string) {
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	bufioReader := bufio.NewReader(s)
+	ih := getSessionIH(s)
 	for {
-		r, _, err := bufioReader.ReadRune()
+		key, err := ih.ReadKey()
 		if err != nil {
 			return
 		}
-		if r == '\r' || r == '\n' {
+		if key == int('\r') || key == int('\n') {
 			return
 		}
 	}

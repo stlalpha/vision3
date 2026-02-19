@@ -32,6 +32,7 @@ type DisplayMessage struct {
 	Body       string // Decoded message body for display
 	MsgID      string // FTN MSGID (for reply linking)
 	ReplyID    string // FTN REPLYID (message this replies to)
+	ReplyToNum int    // JAM ReplyTo: message number of parent (0 = none)
 	OrigAddr   string // FTN origin address
 	DestAddr   string // FTN destination address
 	Attributes uint32 // JAM message attribute flags

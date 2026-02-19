@@ -1,26 +1,17 @@
 package menu
 
-import (
-	"bytes"
-)
-
 // processTemplate detects the placeholder format and routes to the appropriate processor.
 // Supports two formats:
-//   - New format: @CODE@, @CODE:20@, @CODE###@ (Retrograde-style)
+//   - New format: @CODE@, @CODE:20@, @CODE###@, @CODE*@ (Retrograde-style)
 //   - Legacy format: |X (Vision/2 Pascal-style)
 //
 // Format detection is based on presence of @-delimited codes (@T@, @F@, @S@).
-func processTemplate(fileBytes []byte, substitutions map[byte]string) []byte {
-	// Check for new @CODE@ format
-	// Simple heuristic: Look for common placeholder patterns
-	if bytes.Contains(fileBytes, []byte("@T@")) ||
-		bytes.Contains(fileBytes, []byte("@F@")) ||
-		bytes.Contains(fileBytes, []byte("@S@")) ||
-		bytes.Contains(fileBytes, []byte("@T:")) ||
-		bytes.Contains(fileBytes, []byte("@T#")) ||
-		bytes.Contains(fileBytes, []byte("@F:")) ||
-		bytes.Contains(fileBytes, []byte("@F#")) {
-		return processPlaceholderTemplate(fileBytes, substitutions)
+// autoWidths is optional (nil = no auto-width support for @CODE*@ placeholders).
+func processTemplate(fileBytes []byte, substitutions map[byte]string, autoWidths map[byte]int) []byte {
+	// Check for new @CODE@ format using the shared regex.
+	// This catches all forms: @T@, @T:20@, @T###@, @T*@, @T|R8@, @G@, etc.
+	if placeholderRegex.Match(fileBytes) {
+		return processPlaceholderTemplate(fileBytes, substitutions, autoWidths)
 	}
 
 	// Fall back to legacy |X format
@@ -35,9 +26,8 @@ func processTemplate(fileBytes []byte, substitutions map[byte]string) []byte {
 //
 //	|B = Board/Area name    |T = Title/Subject    |F = From
 //	|S = To (+ Read flag)   |U = Status           |L = Level
-//	|R = Real name          |# = Current msg num  |N = Total msgs
-//	|D = Date               |W = Time             |P = Reply number
-//	|E = Replies count
+//	|# = Current msg num    |N = Total msgs       |D = Date
+//	|W = Time               |P = Reply number     |E = Replies count
 //
 // DEPRECATED: This function is maintained for backward compatibility with legacy |X templates.
 // New templates should use @CODE@ format and will be processed via processPlaceholderTemplate().

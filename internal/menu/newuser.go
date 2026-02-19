@@ -26,6 +26,46 @@ const (
 	newUserLocationMaxLen = 30
 )
 
+// confirmCannotBeEmpty shows "Cannot be empty. Retry? Yes|No" lightbar.
+// Returns true if the user wants to retry.
+// Returns false after showing the goodbye message and a 1-second pause (caller should return io.EOF).
+func (e *MenuExecutor) confirmCannotBeEmpty(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber, termWidth, termHeight int) (bool, error) {
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+	retry, err := e.PromptYesNo(s, terminal, "|01Cannot be empty. |07Retry? @", outputMode, nodeNumber, termWidth, termHeight, false)
+	if err != nil {
+		return false, err
+	}
+	if !retry {
+		msg := e.LoadedStrings.NewUserMaybeAnotherTime
+		if msg == "" {
+			msg = "\r\n|07Maybe another time?|07\r\n"
+		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+	}
+	return retry, nil
+}
+
+// confirmExitNewUser shows "Exit New User Signup? Yes|No" lightbar.
+// Returns true if the user confirmed exit (and prints "Maybe another time?" + sleeps 1s).
+// Returns false if the user chose to stay, or an error on disconnect.
+func (e *MenuExecutor) confirmExitNewUser(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber, termWidth, termHeight int) (bool, error) {
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+	exit, err := e.PromptYesNo(s, terminal, "|07Exit New User Signup? @", outputMode, nodeNumber, termWidth, termHeight, false)
+	if err != nil {
+		return false, err
+	}
+	if exit {
+		msg := e.LoadedStrings.NewUserMaybeAnotherTime
+		if msg == "" {
+			msg = "\r\n|07Maybe another time?|07\r\n"
+		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+	}
+	return exit, nil
+}
+
 // handleNewUserApplication runs the new user signup form.
 // Flow matches the original ViSiON/2 Pascal NewUser() in GETLOGIN.PAS.
 func (e *MenuExecutor) handleNewUserApplication(
@@ -34,15 +74,35 @@ func (e *MenuExecutor) handleNewUserApplication(
 	userManager *user.UserMgr,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth int,
+	termHeight int,
 ) error {
 	log.Printf("INFO: Node %d: Starting new user application", nodeNumber)
+
+	// Check if new user registration is allowed
+	serverCfg := e.GetServerConfig()
+	if !serverCfg.AllowNewUsers {
+		log.Printf("INFO: Node %d: New user registration is disabled", nodeNumber)
+		closedMsg := e.LoadedStrings.NewUsersClosedStr
+		if closedMsg == "" {
+			closedMsg = "\r\n|12This BBS is not accepting new users at this time.|07\r\n"
+		}
+		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(closedMsg)), outputMode)
+		pausePrompt := e.LoadedStrings.PauseString
+		if pausePrompt == "" {
+			pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
+		}
+		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(pausePrompt)), outputMode)
+		_, _ = readLineFromSessionIH(s, terminal)
+		return nil
+	}
 
 	// 1. "Apply for access?" prompt (before showing the ANS screen, matching Pascal flow)
 	applyPrompt := e.LoadedStrings.ApplyAsNewStr
 	if applyPrompt == "" {
 		applyPrompt = "|08A|07p|15ply |08F|07o|15r |08A|07c|15cess? @"
 	}
-	applyYes, err := e.promptYesNo(s, terminal, applyPrompt, outputMode, nodeNumber)
+	applyYes, err := e.PromptYesNo(s, terminal, applyPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return io.EOF
@@ -64,16 +124,12 @@ func (e *MenuExecutor) handleNewUserApplication(
 		// Continue without the screen - not fatal
 	} else {
 		// Pause after displaying the ANS screen (matching Pascal HoldScreen)
-		pausePrompt := e.LoadedStrings.PauseString
-		if pausePrompt == "" {
-			pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
-		}
-		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n\r\n"+pausePrompt)), outputMode)
-		terminal.ReadLine()
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\n\r\n"), outputMode)
+		e.holdScreen(s, terminal, outputMode, termWidth, termHeight)
 	}
 
 	// 3. Handle/Alias entry
-	handle, err := e.promptForHandle(s, terminal, userManager, nodeNumber, outputMode)
+	handle, err := e.promptForHandle(s, terminal, userManager, nodeNumber, outputMode, termWidth, termHeight)
 	if err != nil {
 		return err
 	}
@@ -100,7 +156,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(userNumStr)), outputMode)
 
 	// 5. Password creation with confirmation
-	password, err := e.promptForPassword(s, terminal, nodeNumber, outputMode)
+	password, err := e.promptForPassword(s, terminal, nodeNumber, outputMode, termWidth, termHeight)
 	if err != nil {
 		return err
 	}
@@ -109,7 +165,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 	}
 
 	// 6. Real name
-	realName, err := e.promptForRealName(s, terminal, nodeNumber, outputMode)
+	realName, err := e.promptForRealName(s, terminal, nodeNumber, outputMode, termWidth, termHeight)
 	if err != nil {
 		return err
 	}
@@ -118,13 +174,13 @@ func (e *MenuExecutor) handleNewUserApplication(
 	}
 
 	// 7. User Note (optional)
-	userNote, err := e.promptForUserNote(s, terminal, nodeNumber, outputMode)
+	userNote, err := e.promptForUserNote(s, terminal, nodeNumber, outputMode, termWidth, termHeight)
 	if err != nil {
 		return err
 	}
 
 	// 8. Location
-	location, err := e.promptForLocation(s, terminal, nodeNumber, outputMode)
+	location, err := e.promptForLocation(s, terminal, nodeNumber, outputMode, termWidth, termHeight)
 	if err != nil {
 		return err
 	}
@@ -165,7 +221,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
 	}
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+pausePrompt)), outputMode)
-	terminal.ReadLine()
+	_, _ = readLineFromSessionIH(s, terminal)
 
 	return nil
 }
@@ -183,7 +239,13 @@ func (e *MenuExecutor) displayNewUserScreen(terminal *term.Terminal, outputMode 
 	}
 
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	terminalio.WriteProcessedBytes(terminal, rawContent, outputMode)
+	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	// (some CP437 byte pairs accidentally form valid UTF-8)
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(rawContent)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, rawContent, outputMode)
+	}
 	return nil
 }
 
@@ -194,6 +256,7 @@ func (e *MenuExecutor) promptForHandle(
 	userManager *user.UserMgr,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth, termHeight int,
 ) (string, error) {
 	prompt := e.LoadedStrings.NewUserNameStr
 	if prompt == "" {
@@ -225,12 +288,29 @@ func (e *MenuExecutor) promptForHandle(
 			if errors.Is(err, io.EOF) {
 				return "", io.EOF
 			}
+			if errors.Is(err, errInputAborted) {
+				exit, confirmErr := e.confirmExitNewUser(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					return "", confirmErr
+				}
+				if exit {
+					return "", io.EOF
+				}
+				continue
+			}
 			return "", fmt.Errorf("failed reading handle: %w", err)
 		}
 
 		handle := strings.TrimSpace(input)
 		if handle == "" {
-			return "", nil // User cancelled with empty input
+			retry, confirmErr := e.confirmCannotBeEmpty(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+			if confirmErr != nil {
+				return "", confirmErr
+			}
+			if !retry {
+				return "", io.EOF
+			}
+			continue
 		}
 
 		// Validate handle format
@@ -274,6 +354,7 @@ func (e *MenuExecutor) promptForPassword(
 	terminal *term.Terminal,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth, termHeight int,
 ) (string, error) {
 	createPrompt := e.LoadedStrings.CreateAPassword
 	if createPrompt == "" {
@@ -294,10 +375,28 @@ func (e *MenuExecutor) promptForPassword(
 			if errors.Is(err, io.EOF) {
 				return "", io.EOF
 			}
-			if err.Error() == "password entry interrupted" {
-				return "", nil
+			if errors.Is(err, errInputAborted) {
+				exit, confirmErr := e.confirmExitNewUser(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					return "", confirmErr
+				}
+				if exit {
+					return "", io.EOF
+				}
+				continue
 			}
 			return "", fmt.Errorf("failed reading password: %w", err)
+		}
+
+		if len(password) == 0 {
+			retry, confirmErr := e.confirmCannotBeEmpty(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+			if confirmErr != nil {
+				return "", confirmErr
+			}
+			if !retry {
+				return "", io.EOF
+			}
+			continue
 		}
 
 		if len(password) < 3 {
@@ -314,8 +413,15 @@ func (e *MenuExecutor) promptForPassword(
 			if errors.Is(err, io.EOF) {
 				return "", io.EOF
 			}
-			if err.Error() == "password entry interrupted" {
-				return "", nil
+			if errors.Is(err, errInputAborted) {
+				exit, confirmErr := e.confirmExitNewUser(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					return "", confirmErr
+				}
+				if exit {
+					return "", io.EOF
+				}
+				continue
 			}
 			return "", fmt.Errorf("failed reading password confirmation: %w", err)
 		}
@@ -343,6 +449,7 @@ func (e *MenuExecutor) promptForRealName(
 	terminal *term.Terminal,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth, termHeight int,
 ) (string, error) {
 	prompt := e.LoadedStrings.EnterRealName
 	if prompt == "" {
@@ -358,12 +465,29 @@ func (e *MenuExecutor) promptForRealName(
 			if errors.Is(err, io.EOF) {
 				return "", io.EOF
 			}
+				if errors.Is(err, errInputAborted) {
+				exit, confirmErr := e.confirmExitNewUser(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					return "", confirmErr
+				}
+				if exit {
+					return "", io.EOF
+				}
+				continue
+			}
 			return "", fmt.Errorf("failed reading real name: %w", err)
 		}
 
 		name := strings.TrimSpace(input)
 		if name == "" {
-			return "", nil // User cancelled
+			retry, confirmErr := e.confirmCannotBeEmpty(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+			if confirmErr != nil {
+				return "", confirmErr
+			}
+			if !retry {
+				return "", io.EOF
+			}
+			continue
 		}
 
 		if !validateRealName(name) {
@@ -389,22 +513,36 @@ func (e *MenuExecutor) promptForLocation(
 	terminal *term.Terminal,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth, termHeight int,
 ) (string, error) {
 	prompt := e.LoadedStrings.NewUserLocationPrompt
 	if prompt == "" {
 		prompt = "|08E|07n|15ter |08L|07o|15cation |09: "
 	}
-	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+prompt)), outputMode)
 
-	input, err := styledInput(terminal, s, outputMode, newUserLocationMaxLen, "")
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return "", io.EOF
+	for {
+		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+prompt)), outputMode)
+
+		input, err := styledInput(terminal, s, outputMode, newUserLocationMaxLen, "")
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return "", io.EOF
+			}
+			if errors.Is(err, errInputAborted) {
+				exit, confirmErr := e.confirmExitNewUser(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					return "", confirmErr
+				}
+				if exit {
+					return "", io.EOF
+				}
+				continue
+			}
+			return "", fmt.Errorf("failed reading location: %w", err)
 		}
-		return "", fmt.Errorf("failed reading location: %w", err)
-	}
 
-	return strings.TrimSpace(input), nil
+		return strings.TrimSpace(input), nil
+	}
 }
 
 // promptForUserNote prompts for an optional user note.
@@ -413,23 +551,36 @@ func (e *MenuExecutor) promptForUserNote(
 	terminal *term.Terminal,
 	nodeNumber int,
 	outputMode ansi.OutputMode,
+	termWidth, termHeight int,
 ) (string, error) {
 	prompt := e.LoadedStrings.EnterUserNote
 	if prompt == "" {
 		prompt = "|08D|07e|15sired |08U|07s|15er |08N|07o|15te |09: "
 	}
 
-	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+prompt)), outputMode)
+	for {
+		terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+prompt)), outputMode)
 
-	input, err := styledInput(terminal, s, outputMode, newUserNoteMaxLen, "")
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return "", io.EOF
+		input, err := styledInput(terminal, s, outputMode, newUserNoteMaxLen, "")
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return "", io.EOF
+			}
+			if errors.Is(err, errInputAborted) {
+				exit, confirmErr := e.confirmExitNewUser(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					return "", confirmErr
+				}
+				if exit {
+					return "", io.EOF
+				}
+				continue
+			}
+			return "", fmt.Errorf("failed reading user note: %w", err)
 		}
-		return "", fmt.Errorf("failed reading user note: %w", err)
-	}
 
-	return strings.TrimSpace(input), nil
+		return strings.TrimSpace(input), nil
+	}
 }
 
 // validateHandle checks a handle against rules from Pascal ValidUserName().
@@ -478,8 +629,8 @@ func validateRealName(name string) bool {
 }
 
 // runNewUser is the RUN:NEWUSER handler for menu system integration.
-func runNewUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode) (*user.User, string, error) {
-	err := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode)
+func runNewUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	err := e.handleNewUserApplication(s, terminal, userManager, nodeNumber, outputMode, termWidth, termHeight)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF

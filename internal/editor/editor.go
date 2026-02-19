@@ -11,6 +11,15 @@ import (
 	"github.com/stlalpha/vision3/internal/config"
 )
 
+// EditorContext carries optional display-only metadata for the editor header.
+// Pass this to RunEditorWithMetadata to populate @K@ (node), @#@ (msg num),
+// and @Z@ (conference > area) placeholders in FSEDITOR.ANS.
+type EditorContext struct {
+	NodeNumber int    // Current node number (@K@)
+	NextMsgNum int    // Next message number in the area (@#@)
+	ConfArea   string // "Conference > Area" combined string (@Z@)
+}
+
 func resolveEditorPaths() (menuSetPath, rootConfigPath string) {
 	menuSetPath = os.Getenv("VISION3_MENU_PATH")
 	rootConfigPath = os.Getenv("VISION3_CONFIG_PATH")
@@ -81,7 +90,7 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, outputM
 	stringsCfg, stringsErr := config.LoadStrings(rootConfigPath)
 	yesText := "Yes"
 	noText := "No"
-	abortText := "|14Abort message?"
+	abortText := "|07Abort Message & Quit, Are You Sure|09?"
 	if stringsErr == nil {
 		if v := strings.TrimSpace(stringsCfg.YesPromptText); v != "" {
 			yesText = v
@@ -97,7 +106,14 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, outputM
 	// Create the full-screen editor — pass raw output writer; WriteProcessedBytes
 	// handles CP437/UTF-8 conversion so wrapping with SelectiveCP437Writer would
 	// double-encode and corrupt CP437 box-drawing characters.
-	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
+	// nil InputHandler: RunEditor always creates its own (no shared reader needed here).
+	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText, nil)
+
+	// Load server config: timezone and board name (for footer @B@ placeholder)
+	if serverCfg, cfgErr := config.LoadServerConfig(rootConfigPath); cfgErr == nil {
+		editor.SetTimezone(serverCfg.Timezone)
+		editor.SetBoardName(serverCfg.BoardName)
+	}
 
 	// Load initial content
 	if initialContent != "" {
@@ -131,9 +147,16 @@ func RunEditor(initialContent string, input io.Reader, output io.Writer, outputM
 	return finalContent, wasSaved, editorErr
 }
 
-// RunEditorWithMetadata is an extended version that accepts message metadata
+// RunEditorWithMetadata is an extended version that accepts message metadata.
+// fromName is the sender display name shown in the @F@ header field: the user's
+// handle by default, their real name when the area requires it, or the configured
+// anonymous string when the user chose to post anonymously.
+//
+// ih is an optional pre-created *InputHandler to share with the caller's reader.
+// Pass nil to create a new one internally. Passing a shared InputHandler prevents
+// the editor's goroutine from consuming bytes after the editor exits.
 func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Writer, outputMode ansi.OutputMode,
-	subject, recipient string, isAnon bool, quoteFrom, quoteTitle, quoteDate, quoteTime string, quoteIsAnon bool, quoteLines []string) (content string, saved bool, err error) {
+	subject, recipient, fromName string, isAnon bool, quoteFrom, quoteTitle, quoteDate, quoteTime string, quoteIsAnon bool, quoteLines []string, ih *InputHandler, ctx ...EditorContext) (content string, saved bool, err error) {
 
 	// Get session from input (must be ssh.Session)
 	session, ok := input.(ssh.Session)
@@ -171,7 +194,7 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 	stringsCfg, stringsErr := config.LoadStrings(rootConfigPath)
 	yesText := "Yes"
 	noText := "No"
-	abortText := "|14Abort message?"
+	abortText := "|07Abort Message & Quit, Are You Sure|09?"
 	if stringsErr == nil {
 		if v := strings.TrimSpace(stringsCfg.YesPromptText); v != "" {
 			yesText = v
@@ -187,10 +210,22 @@ func RunEditorWithMetadata(initialContent string, input io.Reader, output io.Wri
 	// Create the full-screen editor — pass raw output writer; WriteProcessedBytes
 	// handles CP437/UTF-8 conversion so wrapping with SelectiveCP437Writer would
 	// double-encode and corrupt CP437 box-drawing characters.
-	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText)
+	// Pass ih (may be nil) so a shared InputHandler is reused when available.
+	editor := NewFSEditor(session, output, outputMode, termWidth, termHeight, menuSetPath, yesNoHi, yesNoLo, yesText, noText, abortText, ih)
+
+	// Load server config: timezone and board name (for footer @B@ placeholder)
+	if serverCfg, cfgErr := config.LoadServerConfig(rootConfigPath); cfgErr == nil {
+		editor.SetTimezone(serverCfg.Timezone)
+		editor.SetBoardName(serverCfg.BoardName)
+	}
 
 	// Set metadata
-	editor.SetMetadata(subject, recipient, isAnon)
+	editor.SetMetadata(subject, recipient, fromName, isAnon)
+
+	// Apply optional editor context (node number, message number, conference > area)
+	if len(ctx) > 0 {
+		editor.SetEditorContext(ctx[0])
+	}
 
 	// Set quote data for /Q command
 	if len(quoteLines) > 0 {

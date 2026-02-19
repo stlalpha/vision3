@@ -1,11 +1,18 @@
 package editor
 
 import (
-	"bufio"
+	"errors"
 	"io"
-	"net"
+	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// ErrIdleTimeout is returned by ReadKeyWithTimeout when no input arrives before
+// the caller-supplied deadline. It is distinct from the internal inter-byte
+// escape-sequence timeout so that callers can handle user-visible idle
+// disconnects without false-positive matches on sequence parsing.
+var ErrIdleTimeout = errors.New("idle timeout")
 
 // Special key codes for editor commands (using WordStar-style control characters)
 const (
@@ -19,8 +26,12 @@ const (
 	KeyCtrlR = 0x12 // Page Up
 	KeyCtrlC = 0x03 // Page Down
 
+	// Command shortcuts (shown in footer: CTRL (A)Abort (Z)Save (Q)Quote)
+	KeyCtrlA = 0x01 // Abort (formerly Word Left)
+	KeyCtrlZ = 0x1A // Save
+	KeyCtrlQ = 0x11 // Quote
+
 	// Word navigation
-	KeyCtrlA = 0x01 // Word Left
 	KeyCtrlF = 0x06 // Word Right
 
 	// Edit commands
@@ -53,147 +64,280 @@ const (
 	KeyDeleteKey  = 0x109 // Internal code for delete key
 )
 
-// InputHandler handles keyboard input and escape sequence parsing
+// InputHandler handles keyboard input and escape sequence parsing.
+// A background goroutine continuously reads raw bytes from the underlying
+// reader into a buffered channel. This makes select-based timeouts reliable
+// regardless of whether the reader supports SetReadDeadline (e.g. ssh.Session).
 type InputHandler struct {
-	reader         *bufio.Reader
-	readDeadlineIO interface{ SetReadDeadline(time.Time) error }
-	debug          bool
+	incoming  chan byte // raw bytes from background reader goroutine
+	unreadBuf []byte   // bytes pushed back for re-reading
+	debug     bool
+
+	// idleNs is the session-level idle timeout in nanoseconds (0 = disabled).
+	// Stored as int64 for lock-free atomic access. Any call to readByte()
+	// that blocks longer than this fires ErrIdleTimeout. Set via
+	// SetSessionIdleTimeout; read on every key-wait.
+	idleNs int64 // atomic
+
+	// Optional read interrupt integration for sessions that support it.
+	readInterrupt    chan struct{}
+	setReadInterrupt func(<-chan struct{})
+	closeOnce        sync.Once
 }
 
-// NewInputHandler creates a new input handler
+// SetSessionIdleTimeout sets the session-level idle timeout applied to every
+// ReadKey call. Pass 0 to disable. Thread-safe.
+func (ih *InputHandler) SetSessionIdleTimeout(d time.Duration) {
+	atomic.StoreInt64(&ih.idleNs, d.Nanoseconds())
+}
+
+func (ih *InputHandler) sessionIdleTimeout() time.Duration {
+	ns := atomic.LoadInt64(&ih.idleNs)
+	if ns <= 0 {
+		return 0
+	}
+	return time.Duration(ns)
+}
+
+// NewInputHandler creates a new input handler.
+// A goroutine is started to read from input; it exits when input returns an error.
 func NewInputHandler(input io.Reader) *InputHandler {
-	var deadlineIO interface{ SetReadDeadline(time.Time) error }
-	if conn, ok := input.(interface{ SetReadDeadline(time.Time) error }); ok {
-		deadlineIO = conn
+	ih := &InputHandler{
+		incoming: make(chan byte, 256),
 	}
 
-	return &InputHandler{
-		reader:         bufio.NewReader(input),
-		readDeadlineIO: deadlineIO,
-		debug:          false,
+	// If the reader supports read interruption (ssh/telnet adapters do),
+	// wire one in so Close() can stop the background goroutine cleanly.
+	if ri, ok := input.(interface{ SetReadInterrupt(<-chan struct{}) }); ok {
+		ih.readInterrupt = make(chan struct{})
+		ih.setReadInterrupt = ri.SetReadInterrupt
+		ih.setReadInterrupt(ih.readInterrupt)
 	}
+
+	go func() {
+		defer close(ih.incoming)
+		if ih.setReadInterrupt != nil {
+			defer ih.setReadInterrupt(nil)
+		}
+
+		buf := [1]byte{}
+		for {
+			n, err := input.Read(buf[:])
+			if n > 0 {
+				ih.incoming <- buf[0]
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return ih
 }
 
-// readByteWithTimeout reads a single byte with an optional timeout.
-//
-// NOTE: Known limitation - timeout may not work when data is buffered.
-// If data exists in bufio.Reader, ReadByte() returns immediately regardless
-// of deadline. Deadline only affects underlying Read() when buffer is empty.
-// This is an acceptable trade-off for buffered I/O performance.
-func (ih *InputHandler) readByteWithTimeout(timeout time.Duration) (byte, error) {
-	if ih.readDeadlineIO != nil {
-		if err := ih.readDeadlineIO.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+// Close stops the background read loop for handlers backed by sessions that
+// support SetReadInterrupt. It is safe to call multiple times.
+func (ih *InputHandler) Close() {
+	ih.closeOnce.Do(func() {
+		if ih.readInterrupt != nil {
+			close(ih.readInterrupt)
+		}
+	})
+}
+
+// Read implements io.Reader. It reads exactly one byte from the incoming channel,
+// blocking until a byte is available or the channel is closed (EOF). This allows
+// InputHandler to be wrapped by bufio.NewReader and shared between callers (e.g.
+// menu loops and the full-screen editor) so that the background goroutine's bytes
+// are not lost when the editor returns.
+func (ih *InputHandler) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if len(ih.unreadBuf) > 0 {
+		p[0] = ih.unreadBuf[0]
+		ih.unreadBuf = ih.unreadBuf[1:]
+		return 1, nil
+	}
+	b, ok := <-ih.incoming
+	if !ok {
+		return 0, io.EOF
+	}
+	p[0] = b
+	return 1, nil
+}
+
+// readByte reads a single byte, blocking until one is available.
+// If a session idle timeout is set (via SetSessionIdleTimeout) and no byte
+// arrives within that window, ErrIdleTimeout is returned.
+func (ih *InputHandler) readByte() (byte, error) {
+	if len(ih.unreadBuf) > 0 {
+		b := ih.unreadBuf[0]
+		ih.unreadBuf = ih.unreadBuf[1:]
+		return b, nil
+	}
+	if t := ih.sessionIdleTimeout(); t > 0 {
+		b, err := ih.readByteWithTimeout(t)
+		if err != nil {
+			if isTimeoutError(err) {
+				return 0, ErrIdleTimeout
+			}
 			return 0, err
 		}
-		defer ih.readDeadlineIO.SetReadDeadline(time.Time{})
+		return b, nil
 	}
-
-	return ih.reader.ReadByte()
+	b, ok := <-ih.incoming
+	if !ok {
+		return 0, io.EOF
+	}
+	return b, nil
 }
+
+// unreadByte pushes b back so it is returned by the next readByte call.
+func (ih *InputHandler) unreadByte(b byte) {
+	ih.unreadBuf = append([]byte{b}, ih.unreadBuf...)
+}
+
+// readByteWithTimeout reads a single byte, returning errTimeout if none
+// arrives within the given duration.
+func (ih *InputHandler) readByteWithTimeout(timeout time.Duration) (byte, error) {
+	if len(ih.unreadBuf) > 0 {
+		b := ih.unreadBuf[0]
+		ih.unreadBuf = ih.unreadBuf[1:]
+		return b, nil
+	}
+	select {
+	case b, ok := <-ih.incoming:
+		if !ok {
+			return 0, io.EOF
+		}
+		return b, nil
+	case <-time.After(timeout):
+		return 0, errTimeout
+	}
+}
+
+// errTimeout is the sentinel returned when readByteWithTimeout expires.
+var errTimeout = &inputTimeoutError{}
+
+type inputTimeoutError struct{}
+
+func (e *inputTimeoutError) Error() string   { return "i/o timeout" }
+func (e *inputTimeoutError) Timeout() bool   { return true }
+func (e *inputTimeoutError) Temporary() bool { return true }
 
 func isTimeoutError(err error) bool {
 	if err == nil {
 		return false
 	}
-	if netErr, ok := err.(net.Error); ok {
-		return netErr.Timeout()
+	if te, ok := err.(interface{ Timeout() bool }); ok {
+		return te.Timeout()
 	}
 	return false
 }
 
-// ReadKey reads a single key, handling escape sequences
-// Returns an integer code (may be > 255 for special keys)
+// ReadKey reads a single key, handling escape sequences.
+// Returns an integer code (may be > 255 for special keys).
 func (ih *InputHandler) ReadKey() (int, error) {
-	// Read first byte
-	b, err := ih.reader.ReadByte()
+	b, err := ih.readByte()
 	if err != nil {
 		return 0, err
 	}
 
-	// Check for escape sequence
+	// Check for escape sequence.
+	// A 50 ms timeout distinguishes a lone ESC keypress from sequences like
+	// arrow keys (ESC [ A). Because reads go through a channel, this timeout
+	// works reliably even if the reader does not support SetReadDeadline.
 	if b == KeyEsc {
-		// Peek ahead to see if this is an escape sequence
-		peek, err := ih.reader.Peek(1)
-		if err != nil || len(peek) == 0 {
-			// Timeout or no data - treat as plain ESC
+		next, err := ih.readByteWithTimeout(50 * time.Millisecond)
+		if err != nil {
+			// Timeout — no following byte, so this is a plain ESC.
 			return int(KeyEsc), nil
 		}
-
-		// Check for escape sequence start
-		if peek[0] == '[' {
-			// CSI sequence (ESC[)
+		switch next {
+		case '[':
+			// CSI sequence (ESC [) — '[' already consumed.
 			return ih.parseCSISequence()
-		} else if peek[0] == 'O' {
-			// SS3 sequence (ESC O) - used by some terminals for function keys
+		case 'O':
+			// SS3 sequence (ESC O) — 'O' already consumed.
 			return ih.parseSS3Sequence()
+		default:
+			// Unexpected byte after ESC; push it back and return plain ESC.
+			ih.unreadByte(next)
+			return int(KeyEsc), nil
 		}
-
-		// Plain ESC
-		return int(KeyEsc), nil
 	}
 
-	// Check for DEL character (0x7F) - map to delete
+	// DEL (0x7F) → backspace
 	if b == 0x7F {
-		return int(KeyBackspace), nil // Treat DEL as backspace
+		return int(KeyBackspace), nil
 	}
 
-	// Normal character
+	// CR (0x0D) → normalize CR+LF to plain CR.
+	// SSH clients often send CR+LF for the Enter key. Discard the LF so that
+	// callers (lightbars, menus) don't see a phantom keypress after Enter.
+	if b == KeyEnter {
+		if next, err := ih.readByteWithTimeout(10 * time.Millisecond); err == nil && next != 0x0A {
+			ih.unreadByte(next)
+		}
+		return int(KeyEnter), nil
+	}
+
 	return int(b), nil
 }
 
-// parseCSISequence parses ANSI CSI escape sequences (ESC[...)
-func (ih *InputHandler) parseCSISequence() (int, error) {
-	// Read the '[' character
-	_, err := ih.reader.ReadByte()
+// ReadKeyWithTimeout is identical to ReadKey but waits at most idleTimeout for
+// the very first byte. If no input arrives within that window it returns
+// (0, ErrIdleTimeout). Inter-byte timeouts for escape-sequence parsing are
+// unaffected. This is the extensible primitive for idle-disconnect logic.
+func (ih *InputHandler) ReadKeyWithTimeout(idleTimeout time.Duration) (int, error) {
+	// Wait for the first byte with the caller's deadline.
+	first, err := ih.readByteWithTimeout(idleTimeout)
 	if err != nil {
-		return int(KeyEsc), err
+		if isTimeoutError(err) {
+			return 0, ErrIdleTimeout
+		}
+		return 0, err
 	}
+	// Push it back so ReadKey sees a normal byte and handles escape sequences.
+	ih.unreadByte(first)
+	return ih.ReadKey()
+}
 
-	// Read sequence bytes. CSI sequences arrive in a burst from the terminal,
-	// so use a short inter-byte timeout where possible.
+// parseCSISequence parses ANSI CSI escape sequences (ESC [ ...).
+// '[' has already been consumed by ReadKey before this is called.
+func (ih *InputHandler) parseCSISequence() (int, error) {
+	// CSI sequences arrive in a burst; use a short inter-byte timeout.
 	sequence := make([]byte, 0, 10)
-
 	for {
 		b, err := ih.readByteWithTimeout(100 * time.Millisecond)
 		if err != nil {
-			if isTimeoutError(err) {
-				break
-			}
 			break
 		}
-
 		sequence = append(sequence, b)
-
-		// Check if this is the final byte (a letter)
 		if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || b == '~' {
 			break
 		}
 	}
 
-	// Parse the sequence
 	if len(sequence) == 0 {
 		return int(KeyEsc), nil
 	}
 
-	// Get the final character
 	final := sequence[len(sequence)-1]
-
-	// Handle common sequences
 	switch final {
-	case 'A': // Up arrow
+	case 'A':
 		return KeyArrowUp, nil
-	case 'B': // Down arrow
+	case 'B':
 		return KeyArrowDown, nil
-	case 'C': // Right arrow
+	case 'C':
 		return KeyArrowRight, nil
-	case 'D': // Left arrow
+	case 'D':
 		return KeyArrowLeft, nil
-	case 'H': // Home
+	case 'H':
 		return KeyHome, nil
-	case 'F': // End
+	case 'F':
 		return KeyEnd, nil
 	case '~':
-		// Sequences ending with ~ (like 5~ for Page Up)
 		if len(sequence) >= 2 {
 			switch sequence[0] {
 			case '1':
@@ -212,41 +356,30 @@ func (ih *InputHandler) parseCSISequence() (int, error) {
 		}
 	}
 
-	// Unknown sequence - return ESC
 	return int(KeyEsc), nil
 }
 
-// parseSS3Sequence parses ANSI SS3 escape sequences (ESC O...)
+// parseSS3Sequence parses ANSI SS3 escape sequences (ESC O ...).
+// 'O' has already been consumed by ReadKey before this is called.
 func (ih *InputHandler) parseSS3Sequence() (int, error) {
-	// Read the 'O' character
-	_, err := ih.reader.ReadByte()
+	b, err := ih.readByte()
 	if err != nil {
 		return int(KeyEsc), err
 	}
-
-	// Read the next byte
-	b, err := ih.reader.ReadByte()
-	if err != nil {
-		return int(KeyEsc), err
-	}
-
-	// Map SS3 sequences (used by some terminals for arrow keys)
 	switch b {
-	case 'A': // Up arrow
+	case 'A':
 		return KeyArrowUp, nil
-	case 'B': // Down arrow
+	case 'B':
 		return KeyArrowDown, nil
-	case 'C': // Right arrow
+	case 'C':
 		return KeyArrowRight, nil
-	case 'D': // Left arrow
+	case 'D':
 		return KeyArrowLeft, nil
-	case 'H': // Home
+	case 'H':
 		return KeyHome, nil
-	case 'F': // End
+	case 'F':
 		return KeyEnd, nil
 	}
-
-	// Unknown sequence
 	return int(KeyEsc), nil
 }
 
@@ -317,7 +450,11 @@ func KeyName(key int) string {
 	case KeyCtrlC:
 		return "Ctrl+C (Page Down)"
 	case KeyCtrlA:
-		return "Ctrl+A (Word Left)"
+		return "Ctrl+A (Abort)"
+	case KeyCtrlZ:
+		return "Ctrl+Z (Save)"
+	case KeyCtrlQ:
+		return "Ctrl+Q (Quote)"
 	case KeyCtrlF:
 		return "Ctrl+F (Word Right)"
 	case KeyCtrlV:

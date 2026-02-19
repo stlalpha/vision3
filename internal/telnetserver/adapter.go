@@ -120,7 +120,7 @@ func NewTelnetSessionAdapter(tc *TelnetConn) *TelnetSessionAdapter {
 		ctx:        sessCtx,
 		winCh:      make(chan ssh.Window, 1),
 		pty: ssh.Pty{
-			Term:   "ansi",
+			Term:   tc.TermType(),
 			Window: ssh.Window{Width: w, Height: h},
 		},
 	}

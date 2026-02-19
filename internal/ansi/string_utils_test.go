@@ -141,3 +141,57 @@ func hasANSI(s string) bool {
 	}
 	return false
 }
+
+func TestApplyWidthConstraintAligned(t *testing.T) {
+	tests := []struct {
+		name       string
+		input      string
+		width      int
+		align      Alignment
+		want       string
+		wantVisLen int
+	}{
+		{"left-align short", "Hi", 8, AlignLeft, "Hi      ", 8},
+		{"right-align short", "Hi", 8, AlignRight, "      Hi", 8},
+		{"center short", "Hi", 8, AlignCenter, "   Hi   ", 8},
+		{"center odd", "Hi", 7, AlignCenter, "  Hi   ", 7},
+		{"left exact", "Hello", 5, AlignLeft, "Hello", 5},
+		{"right exact", "Hello", 5, AlignRight, "Hello", 5},
+		{"center exact", "Hello", 5, AlignCenter, "Hello", 5},
+		{"right truncated", "Hello World", 5, AlignRight, "Hello", 5},
+		{"right with ANSI", "\x1b[31mHi\x1b[0m", 8, AlignRight, "      \x1b[31mHi\x1b[0m", 8},
+		{"center with ANSI", "\x1b[32mOK\x1b[0m", 8, AlignCenter, "   \x1b[32mOK\x1b[0m   ", 8},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ApplyWidthConstraintAligned(tt.input, tt.width, tt.align)
+			if got != tt.want {
+				t.Errorf("ApplyWidthConstraintAligned(%q, %d, %v) = %q, want %q", tt.input, tt.width, tt.align, got, tt.want)
+			}
+			gotVis := VisibleLength(got)
+			if gotVis != tt.wantVisLen {
+				t.Errorf("ApplyWidthConstraintAligned(%q, %d, %v) visible length = %d, want %d", tt.input, tt.width, tt.align, gotVis, tt.wantVisLen)
+			}
+		})
+	}
+}
+
+func TestParseAlignment(t *testing.T) {
+	tests := []struct {
+		input string
+		want  Alignment
+	}{
+		{"L", AlignLeft},
+		{"R", AlignRight},
+		{"C", AlignCenter},
+		{"X", AlignLeft},
+		{"", AlignLeft},
+	}
+	for _, tt := range tests {
+		got := ParseAlignment(tt.input)
+		if got != tt.want {
+			t.Errorf("ParseAlignment(%q) = %v, want %v", tt.input, got, tt.want)
+		}
+	}
+}

@@ -56,15 +56,15 @@ type User struct {
 	TaggedMessageAreaIDs []int `json:"tagged_message_area_ids,omitempty"` // List of message area IDs tagged for newscan
 
 	// Terminal Preferences
-	ScreenWidth  int `json:"screenWidth,omitempty"`  // Detected/preferred terminal width (default 80)
-	ScreenHeight int `json:"screenHeight,omitempty"` // Detected/preferred terminal height (default 25)
-	MsgHdr       int `json:"msgHdr,omitempty"`       // Selected message header style (1-14, 0=unset)
+	ScreenWidth       int    `json:"screenWidth,omitempty"`       // Detected/preferred terminal width (default 80)
+	ScreenHeight      int    `json:"screenHeight,omitempty"`      // Detected/preferred terminal height (default 25)
+	PreferredEncoding string `json:"preferredEncoding,omitempty"` // User's encoding preference: "utf8", "cp437", or "" (not set)
+	MsgHdr            int    `json:"msgHdr,omitempty"`            // Selected message header style (1-14, 0=unset)
 
 	// User Configuration Preferences
 	HotKeys          bool   `json:"hotKeys,omitempty"`
 	MorePrompts      bool   `json:"morePrompts,omitempty"`
-	FullScreenEditor bool   `json:"fullScreenEditor,omitempty"`
-	CustomPrompt     string `json:"customPrompt,omitempty"`
+CustomPrompt     string `json:"customPrompt,omitempty"`
 	OutputMode       string `json:"outputMode,omitempty"`
 	Colors           [7]int `json:"colors,omitempty"`
 
