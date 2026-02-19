@@ -4,6 +4,17 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 ## Recent Completions
 
+*   **[DONE] Telnet TERM_TYPE Negotiation (2026-02-19):**
+    *   **Goal:** Detect the connecting client's terminal type over telnet via RFC 1091 TERM_TYPE negotiation, so that SyncTerm, NetRunner, and other BBS clients are correctly identified and receive the right output mode (CP437 vs UTF-8) instead of always falling through to the "ansi" default.
+    *   **Implementation:**
+        *   Added two-phase `Negotiate()` in `TelnetConn`: phase 1 sends `DO TERM_TYPE` alongside existing options; phase 2 sends `SB TERM_TYPE SEND` if the client responded `WILL TERM_TYPE`, then drains the `IS <string>` response.
+        *   Added state machine detection for `WILL TERM_TYPE` and subnegotiation handler for `OptTermType IS <string>`.
+        *   Added `TermType()` getter on `TelnetConn` (defaults to `"ansi"` if client did not negotiate).
+        *   `NewTelnetSessionAdapter` now uses `tc.TermType()` instead of hardcoded `"ansi"`, exposing the real terminal identifier via `Pty().Term` to the session handler's auto output-mode detection.
+        *   Documented that the `xterm && cols > 80` NetRunner heuristic in `main.go` is SSH-specific; telnet clients now use TERM_TYPE directly.
+    *   **Files:** `internal/telnetserver/telnet.go`, `internal/telnetserver/adapter.go`, `cmd/vision3/main.go`, `documentation/telnet-server.md`
+    *   **Status:** COMPLETE.
+
 *   **[DONE] Retrograde-Style One Liners (2026-02-13):**
     *   **Goal:** Replace legacy one-liner flow with Retrograde-style template UX while preserving anonymous posting and sysop traceability.
     *   **Implementation:**

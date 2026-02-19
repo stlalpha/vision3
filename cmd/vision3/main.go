@@ -885,7 +885,10 @@ func sessionHandler(s ssh.Session) {
 			// Detect retro BBS terminal clients using terminal capabilities
 			isRetroTerminal := false
 
-			// NetRunner: Reports ANSI-256COLOR-RGB or has wider terminal (>80 cols)
+			// NetRunner: reports "ansi-256color-rgb" directly, or "xterm" with >80 cols
+			// (the xterm heuristic is an SSH-path fallback for older NetRunner builds
+			// that self-identify as xterm; telnet clients now use TERM_TYPE negotiation
+			// and will report their actual type, so this heuristic is SSH-specific)
 			if termType == "ansi-256color-rgb" || (termType == "xterm" && termCols > 80) {
 				log.Printf("Node %d: Detected NetRunner (TERM='%s', cols=%d)", nodeID, termType, termCols)
 				isRetroTerminal = true
