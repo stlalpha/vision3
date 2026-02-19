@@ -117,6 +117,39 @@ func readLineFromSessionIH(s ssh.Session, terminal *term.Terminal) (string, erro
 	}
 }
 
+// readLineFromSessionIHAllowAbort reads a simple command line like
+// readLineFromSessionIH, but returns errInputAborted when ESC is pressed.
+func readLineFromSessionIHAllowAbort(s ssh.Session, terminal *term.Terminal) (string, error) {
+	ih := getSessionIH(s)
+	line := make([]byte, 0, 64)
+
+	for {
+		key, err := ih.ReadKey()
+		if err != nil {
+			return "", err
+		}
+
+		switch key {
+		case editor.KeyEnter:
+			_, _ = terminal.Write([]byte("\r\n"))
+			return string(line), nil
+		case editor.KeyBackspace:
+			if len(line) > 0 {
+				line = line[:len(line)-1]
+				_, _ = terminal.Write([]byte("\b \b"))
+			}
+		case editor.KeyEsc:
+			_, _ = terminal.Write([]byte("\r\n"))
+			return "", errInputAborted
+		default:
+			if key >= 32 && key < 127 {
+				line = append(line, byte(key))
+				_, _ = terminal.Write([]byte{byte(key)})
+			}
+		}
+	}
+}
+
 // IPLockoutChecker defines the interface for IP-based authentication lockout.
 // This allows the menu system to check and record failed login attempts without
 // depending on the specific implementation in main.
@@ -1267,12 +1300,22 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		log.Printf("ERROR: Node %d: Failed writing username prompt: %v", nodeNumber, wErr)
 		// Continue anyway?
 	}
-	usernameInput, err := readLineFromSessionIH(s, terminal)
+	usernameInput, err := readLineFromSessionIHAllowAbort(s, terminal)
 	if err != nil {
 		if err == io.EOF {
 			log.Printf("INFO: Node %d: User disconnected during username input.", nodeNumber)
 			// Return an error that signals disconnection to the main loop
 			return nil, "LOGOFF", io.EOF // Signal logoff
+		}
+		if errors.Is(err, errInputAborted) {
+			abort, confirmErr := e.confirmAbortLogin(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+			if confirmErr != nil {
+				return nil, "", confirmErr
+			}
+			if abort {
+				return nil, "LOGOFF", io.EOF
+			}
+			return nil, "", nil
 		}
 		log.Printf("ERROR: Node %d: Failed to read username input: %v", nodeNumber, err)
 		return nil, "", fmt.Errorf("failed reading username: %w", err) // Critical error
@@ -1309,16 +1352,15 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 			return nil, "LOGOFF", io.EOF // Signal logoff
 		}
 		if errors.Is(err, errInputAborted) {
-			log.Printf("INFO: Node %d: User interrupted password entry.", nodeNumber)
-			// Treat interrupt like a failed attempt?
-			terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-			msg := e.LoadedStrings.ExecLoginCancelled
-			wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-			if wErr != nil {
-				log.Printf("ERROR: Node %d: Failed writing login cancelled message: %v", nodeNumber, wErr)
+			log.Printf("INFO: Node %d: User pressed ESC during password entry.", nodeNumber)
+			abort, confirmErr := e.confirmAbortLogin(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+			if confirmErr != nil {
+				return nil, "", confirmErr
 			}
-			time.Sleep(500 * time.Millisecond)
-			return nil, "", nil // No user change, no critical error
+			if abort {
+				return nil, "LOGOFF", io.EOF
+			}
+			return nil, "", nil
 		}
 		log.Printf("ERROR: Node %d: Failed to read password securely: %v", nodeNumber, err)
 		return nil, "", fmt.Errorf("failed reading password: %w", err) // Critical error
@@ -2167,12 +2209,22 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 	if userColor, ok := colors["P"]; ok && userColor != "" {
 		terminalio.WriteProcessedBytes(terminal, []byte(userColor), outputMode)
 	}
-	usernameInput, err := readLineFromSessionIH(s, terminal)
+	usernameInput, err := readLineFromSessionIHAllowAbort(s, terminal)
 	// Reset color attributes after input (required for bright colors)
 	terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0m"), outputMode)
 	if err != nil {
 		if err == io.EOF {
 			return nil, io.EOF // Signal disconnection
+		}
+		if errors.Is(err, errInputAborted) {
+			abort, confirmErr := e.confirmAbortLogin(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+			if confirmErr != nil {
+				return nil, confirmErr
+			}
+			if abort {
+				return nil, io.EOF
+			}
+			return nil, nil
 		}
 		log.Printf("ERROR: Node %d: Failed to read username input: %v", nodeNumber, err)
 		return nil, fmt.Errorf("failed reading username: %w", err)
@@ -2209,14 +2261,16 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		if errors.Is(err, io.EOF) {
 			return nil, io.EOF // Signal disconnection
 		}
-		if errors.Is(err, errInputAborted) { // Check for Ctrl+C
-			log.Printf("INFO: Node %d: User interrupted password entry.", nodeNumber)
-			terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode)
-			if wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ExecLoginCancelled)), outputMode); wErr != nil {
-				log.Printf("ERROR: Failed writing login cancelled message: %v", wErr)
+		if errors.Is(err, errInputAborted) { // ESC/Ctrl+C
+			log.Printf("INFO: Node %d: User pressed ESC during password entry.", nodeNumber)
+			abort, confirmErr := e.confirmAbortLogin(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+			if confirmErr != nil {
+				return nil, confirmErr
 			}
-			time.Sleep(500 * time.Millisecond)
-			return nil, nil // Signal retry LOGIN
+			if abort {
+				return nil, io.EOF
+			}
+			return nil, nil
 		}
 		log.Printf("ERROR: Node %d: Failed to read password securely: %v", nodeNumber, err)
 		return nil, fmt.Errorf("failed reading password: %w", err)
@@ -3008,26 +3062,26 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		"|NODE":     strconv.Itoa(nodeNumber), // Node Number
 		"|DATE":     now.Format("01/02/06"),
 		"|TIME":     now.Format("3:04 pm"),
-		"|MN":       currentMenuName, // Menu Name
-		"|PV":       "0",             // Pending validations
-		"|UH":       "Guest",         // User Handle
-		"|NEWUSERS": newUsersStatus,  // Allow new users (YES/NO)
-		"|ALIAS":    "Guest",         // Default
-		"|HANDLE":   "Guest",         // Default
-		"|LEVEL":    "0",             // Default
-		"|NAME":     "Guest User",    // Default
-		"|PHONE":    "",              // Default
-		"|GL":       "",              // Group/Location default
-		"|UN":       "",              // User note (privateNote) default
-		"|UPLDS":    "0",             // Default
-		"|DNLDS":    "0",             // Default
-		"|POSTS":    "0",             // Default
-		"|CALLS":    "0",             // Default
-		"|LCALL":    "Never",         // Default
-		"|TL":       "N/A",           // Default
-		"|CA":       currentAreaTag,  // Current area tag
+		"|MN":       currentMenuName,        // Menu Name
+		"|PV":       "0",                    // Pending validations
+		"|UH":       "Guest",                // User Handle
+		"|NEWUSERS": newUsersStatus,         // Allow new users (YES/NO)
+		"|ALIAS":    "Guest",                // Default
+		"|HANDLE":   "Guest",                // Default
+		"|LEVEL":    "0",                    // Default
+		"|NAME":     "Guest User",           // Default
+		"|PHONE":    "",                     // Default
+		"|GL":       "",                     // Group/Location default
+		"|UN":       "",                     // User note (privateNote) default
+		"|UPLDS":    "0",                    // Default
+		"|DNLDS":    "0",                    // Default
+		"|POSTS":    "0",                    // Default
+		"|CALLS":    "0",                    // Default
+		"|LCALL":    "Never",                // Default
+		"|TL":       "N/A",                  // Default
+		"|CA":       currentAreaTag,         // Current area tag
 		"|CAN":      currentAreaDisplayName, // Current area display name
-		"|CC":       "None",          // Current conference default
+		"|CC":       "None",                 // Current conference default
 	}
 
 	// Populate user-specific placeholders if logged in
@@ -9068,6 +9122,23 @@ func runSelectMessageArea(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 // errInputAborted is returned by styledInput when the user presses ESC to cancel entry.
 var errInputAborted = errors.New("input aborted")
+
+// confirmAbortLogin shows "Abort Login? Yes|No" and returns true if confirmed.
+func (e *MenuExecutor) confirmAbortLogin(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber, termWidth, termHeight int) (bool, error) {
+	abort, err := e.promptYesNo(s, terminal, "|07Abort Login? @", outputMode, nodeNumber, termWidth, termHeight)
+	if err != nil {
+		return false, err
+	}
+	if abort {
+		msg := e.LoadedStrings.ExecLoginCancelled
+		if msg == "" {
+			msg = "\r\n|01Login cancelled.|07\r\n"
+		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(500 * time.Millisecond)
+	}
+	return abort, nil
+}
 
 // confirmAbortPost shows "Abort Post? Yes|No" lightbar.
 // Returns true (and prints "Post aborted.") if user confirmed, false to retry.
