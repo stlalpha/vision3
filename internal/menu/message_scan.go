@@ -15,6 +15,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
@@ -516,7 +517,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
-	reader := bufio.NewReader(s)
+	sessionIH := getSessionIH(s)
 
 	// Get all accessible message areas
 	allAreas := e.MessageMgr.ListAreas()
@@ -852,7 +853,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	terminalio.WriteProcessedBytes(terminal, []byte(footerText), outputMode)
 
 	for {
-		seq, err := readKeySequence(reader)
+		key, err := sessionIH.ReadKey()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -860,8 +861,8 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			return nil, "", err
 		}
 
-		switch seq {
-		case "\x1b[A": // Up arrow
+		switch key {
+		case editor.KeyArrowUp, editor.KeyCtrlE: // Up arrow
 			newIdx := findNextSelectable(currentIdx, -1)
 			if newIdx != currentIdx {
 				currentIdx = newIdx
@@ -869,7 +870,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				smartRedraw()
 			}
 
-		case "\x1b[B": // Down arrow
+		case editor.KeyArrowDown, editor.KeyCtrlX: // Down arrow
 			newIdx := findNextSelectable(currentIdx, 1)
 			if newIdx != currentIdx {
 				currentIdx = newIdx
@@ -877,7 +878,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				smartRedraw()
 			}
 
-		case "\x1b[5~": // Page Up
+		case editor.KeyPageUp, editor.KeyCtrlR: // Page Up
 			moved := 0
 			newIdx := currentIdx
 			for moved < availableRows && newIdx > 0 {
@@ -896,7 +897,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				previousViewportOffset = viewportOffset
 			}
 
-		case "\x1b[6~": // Page Down
+		case editor.KeyPageDown, editor.KeyCtrlC: // Page Down
 			moved := 0
 			newIdx := currentIdx
 			for moved < availableRows && newIdx < len(accessibleAreas)-1 {
@@ -915,7 +916,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				previousViewportOffset = viewportOffset
 			}
 
-		case " ", "\r", "\n": // Space or Enter - toggle
+		case ' ', editor.KeyEnter: // Space or Enter - toggle
 			if !accessibleAreas[currentIdx].isHeader {
 				area := accessibleAreas[currentIdx].area
 				if taggedMap[area.ID] {
@@ -934,7 +935,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 			}
 
-		case "A", "a": // Tag all
+		case 'A', 'a': // Tag all
 			for _, item := range accessibleAreas {
 				if !item.isHeader {
 					taggedMap[item.area.ID] = true
@@ -942,11 +943,11 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 			drawItems()
 
-		case "N", "n": // Untag all
+		case 'N', 'n': // Untag all
 			taggedMap = make(map[int]bool)
 			drawItems()
 
-		case "\x1b", "Q", "q": // ESC or Q - exit
+		case editor.KeyEsc, 'Q', 'q': // ESC or Q - exit
 			// Save tagged areas to user
 			var taggedIDs []int
 			for areaID := range taggedMap {
