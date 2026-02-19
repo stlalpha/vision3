@@ -68,7 +68,7 @@ Common Last Callers tokens:
 - `@ND@` - Node number
 - `@CA@` - Caller number
 - `@TO@` - Minutes online
-- `@USERCT@` - Total registered users
+- `@UC@` - Total registered users (also `@USERCT@`)
 
 Width formatting is supported with `:n` (example: `@UN:20@`, `@NOTE:14@`).
 
