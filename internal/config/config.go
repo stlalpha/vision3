@@ -710,25 +710,26 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 
 	// Default config values
 	defaultConfig := ServerConfig{
-		BoardName:                "ViSiON/3 BBS",
-		Timezone:                 "",
-		SysOpLevel:               255,
-		CoSysOpLevel:             250,
-		RegularUserLevel:         10,
-		LogonLevel:               100,
-		AnonymousLevel:           5,
-		SSHPort:                  2222,
-		SSHHost:                  "0.0.0.0",
-		SSHEnabled:               true,
-		TelnetPort:               2323,
-		TelnetHost:               "0.0.0.0",
-		TelnetEnabled:            false,
-		MaxNodes:                 10,
-		MaxConnectionsPerIP:      3,
-		MaxFailedLogins:          5,
-		LockoutMinutes:           30,
-		AllowNewUsers:            true,
+		BoardName:                 "ViSiON/3 BBS",
+		Timezone:                  "",
+		SysOpLevel:                255,
+		CoSysOpLevel:              250,
+		RegularUserLevel:          10,
+		LogonLevel:                100,
+		AnonymousLevel:            5,
+		SSHPort:                   2222,
+		SSHHost:                   "0.0.0.0",
+		SSHEnabled:                true,
+		TelnetPort:                2323,
+		TelnetHost:                "0.0.0.0",
+		TelnetEnabled:             false,
+		MaxNodes:                  10,
+		MaxConnectionsPerIP:       3,
+		MaxFailedLogins:           5,
+		LockoutMinutes:            30,
+		AllowNewUsers:             true,
 		SessionIdleTimeoutMinutes: 5,
+		LegacySSHAlgorithms:       true,
 	}
 
 	data, err := os.ReadFile(filePath)
@@ -857,18 +858,19 @@ func LoadEventsConfig(configPath string) (EventsConfig, error) {
 // It tries the value from config.json first, then the VISION3_TIMEZONE and TZ
 // environment variables, falling back to time.Local if none resolve.
 func LoadTimezone(configTZ string) *time.Location {
-	tz := strings.TrimSpace(configTZ)
-	if tz == "" {
-		tz = strings.TrimSpace(os.Getenv("VISION3_TIMEZONE"))
-	}
-	if tz == "" {
-		tz = strings.TrimSpace(os.Getenv("TZ"))
-	}
-	if tz != "" {
+	// Try each source in order: config value, VISION3_TIMEZONE env, TZ env
+	for _, tz := range []string{
+		strings.TrimSpace(configTZ),
+		strings.TrimSpace(os.Getenv("VISION3_TIMEZONE")),
+		strings.TrimSpace(os.Getenv("TZ")),
+	} {
+		if tz == "" {
+			continue
+		}
 		if loc, err := time.LoadLocation(tz); err == nil {
 			return loc
 		}
-		log.Printf("WARN: Invalid timezone '%s'. Falling back to server local timezone.", tz)
+		log.Printf("WARN: Invalid timezone '%s', trying next source.", tz)
 	}
 	return time.Local
 }

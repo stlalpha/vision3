@@ -1150,6 +1150,9 @@ func sessionHandler(s ssh.Session) {
 	effectiveWidth := int(termWidth.Load())
 	effectiveHeight := int(termHeight.Load())
 
+	// Capture whether user needs first-time setup BEFORE auto-saving dimensions
+	needsSetup := (authenticatedUser.ScreenWidth == 0 || authenticatedUser.ScreenHeight == 0 || authenticatedUser.PreferredEncoding == "")
+
 	if authenticatedUser.ScreenWidth > 0 && authenticatedUser.ScreenHeight > 0 {
 		detectedW := effectiveWidth
 		detectedH := effectiveHeight
@@ -1225,7 +1228,7 @@ func sessionHandler(s ssh.Session) {
 
 	// --- Post-Auth Terminal Setup Prompts ---
 	// If user doesn't have saved preferences, prompt for encoding and terminal size configuration
-	needsSetup := (authenticatedUser.ScreenWidth == 0 || authenticatedUser.ScreenHeight == 0 || authenticatedUser.PreferredEncoding == "")
+	// needsSetup was captured above BEFORE auto-saving PTY dimensions, so it reflects the original state
 
 	if needsSetup && isPty && outputModeFlag == "auto" {
 		termType := strings.ToLower(ptyReq.Term)

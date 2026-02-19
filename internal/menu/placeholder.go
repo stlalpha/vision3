@@ -64,7 +64,8 @@ func parsePlaceholders(template []byte) []PlaceholderMatch {
 			widthStr := string(template[match[8]:match[9]])
 			width, _ = strconv.Atoi(widthStr)
 		} else if match[10] != -1 && match[10] < match[11] {
-			// Visual width - use total placeholder length including @, code, #'s, and @
+			// Visual width - total placeholder length (including @, code, #'s, and @)
+			// so the substituted value occupies the same visual space as the template token
 			width = match[1] - match[0]
 		} else if match[12] != -1 {
 			// Auto-width: width determined at render time from context

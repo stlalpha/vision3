@@ -1556,9 +1556,9 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			for i, opt := range options {
 				templateNum, _ := strconv.Atoi(opt.ReturnValue)
 				if templateNum == digit {
+					oldIndex := selectedIndex
 					selectedIndex = i
-					drawOption(selectedIndex, false)
-					selectedIndex = i
+					drawOption(oldIndex, false)
 					drawOption(selectedIndex, true)
 					break
 				}

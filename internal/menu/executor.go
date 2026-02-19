@@ -3265,11 +3265,11 @@ func (e *MenuExecutor) processFileIncludes(prompt string, depth int) (string, er
 
 // runNewMailScan checks for new private mail and displays a count to the user.
 func runNewMailScan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Running NMAILSCAN for user %s", nodeNumber, currentUser.Handle)
-
 	if currentUser == nil {
 		return nil, "", nil
 	}
+
+	log.Printf("DEBUG: Node %d: Running NMAILSCAN for user %s", nodeNumber, currentUser.Handle)
 
 	if e.MessageMgr == nil {
 		log.Printf("WARN: Node %d: MessageMgr not available for NMAILSCAN", nodeNumber)

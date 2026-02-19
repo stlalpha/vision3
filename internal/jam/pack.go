@@ -230,6 +230,7 @@ func (b *Base) packWithReplyIDCleanup(cleanReplyIDs bool) (PackResult, error) {
 						cleanedReplyID := parts[0]
 						hdr.Subfields[i].Buffer = []byte(cleanedReplyID)
 						hdr.Subfields[i].DatLen = uint32(len(cleanedReplyID))
+						hdr.REPLYcrc = CRC32String(cleanedReplyID)
 
 						// Recalculate total subfield length
 						hdr.SubfieldLen = 0

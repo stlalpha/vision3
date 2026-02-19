@@ -393,6 +393,22 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			continue // No messages to show for this area
 		}
 
+		// Resolve terminal dimensions once per iteration: prefer passed params, then user prefs, then defaults
+		tw := termWidth
+		if tw <= 0 {
+			tw = currentUser.ScreenWidth
+		}
+		if tw <= 0 {
+			tw = 80
+		}
+		th := termHeight
+		if th <= 0 {
+			th = currentUser.ScreenHeight
+		}
+		if th <= 0 {
+			th = 24
+		}
+
 		// Set current area
 		currentUser.CurrentMessageAreaID = area.ID
 		currentUser.CurrentMessageAreaTag = area.Tag
@@ -421,7 +437,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				// Fall through to call runMessageReader below
 			case 'P': // Post
 				_, _, _ = runComposeMessageWithIH(e, s, scanIH, terminal, userManager, currentUser, nodeNumber,
-					sessionStartTime, "", outputMode, termWidth, termHeight)
+					sessionStartTime, "", outputMode, tw, th)
 				continue
 			case 'J': // Jump to message #
 				handleJump(reader, terminal, outputMode, &startMsg, totalCount, e.LoadedStrings.MsgJumpPrompt, e.LoadedStrings.MsgInvalidMsgNum)
@@ -437,22 +453,6 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		if quitNewScan {
 			break
-		}
-
-		// Get terminal dimensions: prefer passed params, then user preferences, then defaults
-		tw := termWidth
-		if tw <= 0 {
-			tw = currentUser.ScreenWidth
-		}
-		if tw <= 0 {
-			tw = 80
-		}
-		th := termHeight
-		if th <= 0 {
-			th = currentUser.ScreenHeight
-		}
-		if th <= 0 {
-			th = 24
 		}
 
 		// Read messages in this area

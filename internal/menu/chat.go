@@ -24,9 +24,11 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 
 	handle := currentUser.Handle
 
-	// Get terminal height from session
+	// Get terminal height: prefer passed parameter, then session registry, then default
 	height := 24 // default
-	if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+	if termHeight > 0 {
+		height = termHeight
+	} else if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
 		sess.Mutex.RLock()
 		if sess.Height > 0 {
 			height = sess.Height

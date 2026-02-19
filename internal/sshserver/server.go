@@ -225,11 +225,14 @@ func NewServer(config Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to set port")
 	}
 
-	// Enable legacy host key algorithms for older SSH clients (e.g., NetRunner, SyncTerm).
-	// Modern clients will still prefer rsa-sha2-512/256, but legacy clients can fall back to ssh-rsa.
-	// Security note: ssh-rsa uses SHA-1 which is cryptographically weak, but is necessary
-	// for compatibility with retro BBS terminal software.
-	cHostKeyAlgos := C.CString("rsa-sha2-512,rsa-sha2-256,ssh-rsa")
+	// Set host key algorithms. When LegacySSHAlgorithms is enabled, include ssh-rsa
+	// for older SSH clients (e.g., NetRunner, SyncTerm). When disabled, only offer
+	// modern rsa-sha2 variants (ssh-rsa uses SHA-1 which is cryptographically weak).
+	hostKeyAlgos := "rsa-sha2-512,rsa-sha2-256"
+	if config.LegacySSHAlgorithms {
+		hostKeyAlgos = "rsa-sha2-512,rsa-sha2-256,ssh-rsa"
+	}
+	cHostKeyAlgos := C.CString(hostKeyAlgos)
 	defer C.free(unsafe.Pointer(cHostKeyAlgos))
 	if C.ssh_bind_options_set(bind, C.VISION3_SSH_BIND_OPTIONS_HOSTKEY_ALGORITHMS, unsafe.Pointer(cHostKeyAlgos)) != C.SSH_OK {
 		C.ssh_bind_free(bind)

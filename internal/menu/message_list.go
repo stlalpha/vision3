@@ -134,8 +134,6 @@ func buildMessageList(msgMgr *message.MessageManager, areaID int, username strin
 
 // drawMessageListScreen renders the complete message list display
 func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, areaName string, confName string, outputMode ansi.OutputMode) error {
-	log.Printf("DEBUG: drawMessageListScreen outputMode = %v", outputMode)
-
 	// Reset attributes directly (bypass WriteProcessedBytes to avoid UTF-8 decode issues)
 	if _, err := terminal.Write([]byte("\x1b[0m")); err != nil {
 		return err
@@ -248,8 +246,12 @@ func drawMessageListScreen(terminal *term.Terminal, state *MessageListState, are
 		return err
 	}
 
-	// Help/command line (centered, bright magenta text, with CP437 arrows: \x18=↑, \x19=↓)
-	helpText := "\x18/\x19: Navigate  Enter: Read  Q: Quit"
+	// Help/command line (centered, bright magenta text, with arrow characters)
+	upArrow, downArrow := "\x18", "\x19" // CP437 arrows
+	if outputMode == ansi.OutputModeUTF8 {
+		upArrow, downArrow = "\u2191", "\u2193" // Unicode arrows
+	}
+	helpText := upArrow + "/" + downArrow + ": Navigate  Enter: Read  Q: Quit"
 	helpTextLen := len(helpText)
 	leftPad = (77 - helpTextLen) / 2
 	rightPad = 77 - helpTextLen - leftPad

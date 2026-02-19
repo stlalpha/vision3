@@ -650,7 +650,8 @@ func executeNativeDoor(ctx *DoorCtx) error {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("BBS_TIMELEFT=%s", ctx.TimeLeftStr))
 	}
 
-	// Set LINES and COLUMNS from user's saved preferences (for terminal size detection)
+	// Set LINES and COLUMNS from user's saved preferences (for terminal size detection).
+	// Remove any existing LINES/COLUMNS entries first to ensure our values take precedence.
 	screenHeight := ctx.User.ScreenHeight
 	if screenHeight <= 0 {
 		screenHeight = 25
@@ -659,8 +660,13 @@ func executeNativeDoor(ctx *DoorCtx) error {
 	if screenWidth <= 0 {
 		screenWidth = 80
 	}
-	cmd.Env = append(cmd.Env, fmt.Sprintf("LINES=%d", screenHeight))
-	cmd.Env = append(cmd.Env, fmt.Sprintf("COLUMNS=%d", screenWidth))
+	filteredEnv := make([]string, 0, len(cmd.Env))
+	for _, e := range cmd.Env {
+		if !strings.HasPrefix(e, "LINES=") && !strings.HasPrefix(e, "COLUMNS=") {
+			filteredEnv = append(filteredEnv, e)
+		}
+	}
+	cmd.Env = append(filteredEnv, fmt.Sprintf("LINES=%d", screenHeight), fmt.Sprintf("COLUMNS=%d", screenWidth))
 	log.Printf("DEBUG: Node %d: Set door env LINES=%d COLUMNS=%d", ctx.NodeNumber, screenHeight, screenWidth)
 
 	// Execute command
@@ -689,11 +695,21 @@ func executeNativeDoor(ctx *DoorCtx) error {
 			ctx.Session.Signals(nil)
 			ctx.Session.Break(nil)
 
-			// Drain window resize events but don't apply them - respect user's saved preferences
+			// Drain window resize events but don't apply them - respect user's saved preferences.
+			// resizeStop is closed after cmd.Wait() to prevent this goroutine from leaking.
+			resizeStop := make(chan struct{})
 			go func() {
-				for win := range winChOrig {
-					log.Printf("DEBUG: Node %d: Ignoring SSH resize event %dx%d (keeping user preference %dx%d)",
-						ctx.NodeNumber, win.Width, win.Height, doorScreenWidth, doorScreenHeight)
+				for {
+					select {
+					case win, ok := <-winChOrig:
+						if !ok {
+							return
+						}
+						log.Printf("DEBUG: Node %d: Ignoring SSH resize event %dx%d (keeping user preference %dx%d)",
+							ctx.NodeNumber, win.Width, win.Height, doorScreenWidth, doorScreenHeight)
+					case <-resizeStop:
+						return
+					}
 				}
 			}()
 
@@ -748,6 +764,7 @@ func executeNativeDoor(ctx *DoorCtx) error {
 
 			// Wait for door to exit, then cleanly shut down I/O goroutines
 			cmdErr = cmd.Wait()
+			close(resizeStop)
 			log.Printf("DEBUG: Node %d: Door '%s' process exited", ctx.NodeNumber, ctx.DoorName)
 
 			// Interrupt the input goroutine's blocked Read() so it exits without

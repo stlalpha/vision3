@@ -1,9 +1,5 @@
 package menu
 
-import (
-	"bytes"
-)
-
 // processTemplate detects the placeholder format and routes to the appropriate processor.
 // Supports two formats:
 //   - New format: @CODE@, @CODE:20@, @CODE###@, @CODE*@ (Retrograde-style)
@@ -12,20 +8,9 @@ import (
 // Format detection is based on presence of @-delimited codes (@T@, @F@, @S@).
 // autoWidths is optional (nil = no auto-width support for @CODE*@ placeholders).
 func processTemplate(fileBytes []byte, substitutions map[byte]string, autoWidths map[byte]int) []byte {
-	// Check for new @CODE@ format
-	// Simple heuristic: Look for common placeholder patterns
-	if bytes.Contains(fileBytes, []byte("@T@")) ||
-		bytes.Contains(fileBytes, []byte("@F@")) ||
-		bytes.Contains(fileBytes, []byte("@S@")) ||
-		bytes.Contains(fileBytes, []byte("@T:")) ||
-		bytes.Contains(fileBytes, []byte("@T#")) ||
-		bytes.Contains(fileBytes, []byte("@F:")) ||
-		bytes.Contains(fileBytes, []byte("@F#")) ||
-		bytes.Contains(fileBytes, []byte("@T*")) ||
-		bytes.Contains(fileBytes, []byte("@F*")) ||
-		bytes.Contains(fileBytes, []byte("@#*")) ||
-		bytes.Contains(fileBytes, []byte("@Z*")) ||
-		bytes.Contains(fileBytes, []byte("@X*")) {
+	// Check for new @CODE@ format using the shared regex.
+	// This catches all forms: @T@, @T:20@, @T###@, @T*@, @T|R8@, @G@, etc.
+	if placeholderRegex.Match(fileBytes) {
 		return processPlaceholderTemplate(fileBytes, substitutions, autoWidths)
 	}
 

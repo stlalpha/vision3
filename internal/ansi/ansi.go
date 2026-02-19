@@ -1130,12 +1130,69 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 						displayBuf.WriteString(replacement)
 						consumed = 3
 						pipeCodeFound = true
-						// Update coordinates based on known pipe codes if necessary
+						// Update SGR state so FieldColors captures correct colors after pipe codes.
+						// Parse SGR params from the replacement ANSI string (e.g. "\x1b[0;34m" -> [0,34]).
+						for ri := 0; ri < len(replacement); ri++ {
+							if replacement[ri] == 0x1b && ri+1 < len(replacement) && replacement[ri+1] == '[' {
+								ri += 2
+								var sgrParams []int
+								num := 0
+								hasNum := false
+								for ri < len(replacement) && replacement[ri] != 'm' {
+									if replacement[ri] >= '0' && replacement[ri] <= '9' {
+										num = num*10 + int(replacement[ri]-'0')
+										hasNum = true
+									} else if replacement[ri] == ';' {
+										if hasNum {
+											sgrParams = append(sgrParams, num)
+										}
+										num = 0
+										hasNum = false
+									}
+									ri++
+								}
+								if hasNum {
+									sgrParams = append(sgrParams, num)
+								}
+								if ri < len(replacement) && replacement[ri] == 'm' {
+									if len(sgrParams) == 0 {
+										sgrParams = []int{0}
+									}
+									for _, p := range sgrParams {
+										switch {
+										case p == 0:
+											sgrState.bold = false
+											sgrState.dim = false
+											sgrState.italic = false
+											sgrState.underline = false
+											sgrState.blink = false
+											sgrState.reverse = false
+											sgrState.hidden = false
+											sgrState.foreground = 0
+											sgrState.background = 0
+										case p == 1:
+											sgrState.bold = true
+										case p >= 30 && p <= 37:
+											sgrState.foreground = p
+										case p == 39:
+											sgrState.foreground = 0
+										case p >= 40 && p <= 47:
+											sgrState.background = p
+										case p == 49:
+											sgrState.background = 0
+										case p >= 90 && p <= 97:
+											sgrState.foreground = p
+										case p >= 100 && p <= 107:
+											sgrState.background = p
+										}
+									}
+								}
+							}
+						}
 						if codeStr == "|CL" {
 							currentX = 1
 							currentY = 1
 						}
-						// Note: |P and |PP are handled by standard ANSI ESC[s and ESC[u
 					} // Add other non-placeholder pipe codes if needed
 				}
 			}

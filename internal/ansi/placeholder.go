@@ -165,6 +165,9 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int, colorEs
 			case 'A': // cursor up
 				n2 := parseSingleParam(template[paramStart:i-1], 1)
 				row -= n2
+				if row < 1 {
+					row = 1
+				}
 			case 'B': // cursor down
 				n2 := parseSingleParam(template[paramStart:i-1], 1)
 				row += n2
@@ -174,6 +177,9 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int, colorEs
 			case 'D': // cursor back (left)
 				n2 := parseSingleParam(template[paramStart:i-1], 1)
 				col -= n2
+				if col < 1 {
+					col = 1
+				}
 			case 'm': // SGR — color/attribute change
 				sgr.applyParams(string(template[paramStart : i-1]))
 				// All other sequences (J, K, s, u, etc.) don't move the cursor
