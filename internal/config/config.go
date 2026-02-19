@@ -229,9 +229,9 @@ type StringsConfig struct {
 	NewUserPasswordMismatch string `json:"newUserPasswordMismatch"`
 	NewUserInvalidRealName  string `json:"newUserInvalidRealName"`
 	NewUserTooManyAttempts  string `json:"newUserTooManyAttempts"`
-	NewUserAccountCreated    string `json:"newUserAccountCreated"`
-	NewUserCreationError     string `json:"newUserCreationError"`
-	NewUserMaybeAnotherTime  string `json:"newUserMaybeAnotherTime"`
+	NewUserAccountCreated   string `json:"newUserAccountCreated"`
+	NewUserCreationError    string `json:"newUserCreationError"`
+	NewUserMaybeAnotherTime string `json:"newUserMaybeAnotherTime"`
 
 	// System stats strings (V3-specific)
 	StatsBBSName     string `json:"statsBBSName"`
@@ -367,6 +367,7 @@ type StringsConfig struct {
 	MatrixUserNotFound        string `json:"matrixUserNotFound"`
 	MatrixAccountValidated    string `json:"matrixAccountValidated"`
 	MatrixAccountNotValidated string `json:"matrixAccountNotValidated"`
+	MatrixIdleTimeout         string `json:"matrixIdleTimeout"`
 
 	// Conference menu strings (V3-specific)
 	ConfLoginRequired           string `json:"confLoginRequired"`
@@ -397,6 +398,7 @@ type StringsConfig struct {
 	ExecAlreadyLoggedIn     string `json:"execAlreadyLoggedIn"`
 	ExecUsernamePrompt      string `json:"execUsernamePrompt"`
 	ExecPasswordPrompt      string `json:"execPasswordPrompt"`
+	ExecAbortLoginPrompt    string `json:"execAbortLoginPrompt"`
 	ExecLoginCancelled      string `json:"execLoginCancelled"`
 	ExecIPLockout           string `json:"execIPLockout"`
 	ExecLoginIncorrect      string `json:"execLoginIncorrect"`
@@ -669,6 +671,12 @@ type ServerConfig struct {
 	FileListingMode     string `json:"fileListingMode"`
 	LegacySSHAlgorithms bool   `json:"legacySSHAlgorithms"`
 	AllowNewUsers       bool   `json:"allowNewUsers"`
+
+	// Idle timeout settings (0 = disabled)
+	// MatrixIdleTimeoutMinutes disconnects pre-login users who sit idle at the matrix.
+	// SessionIdleTimeoutMinutes is reserved for future whole-session idle enforcement.
+	MatrixIdleTimeoutMinutes  int `json:"matrixIdleTimeoutMinutes"`
+	SessionIdleTimeoutMinutes int `json:"sessionIdleTimeoutMinutes"`
 }
 
 // EventConfig defines a scheduled event configuration
@@ -701,24 +709,25 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 
 	// Default config values
 	defaultConfig := ServerConfig{
-		BoardName:           "ViSiON/3 BBS",
-		Timezone:            "",
-		SysOpLevel:          255,
-		CoSysOpLevel:        250,
-		RegularUserLevel:    10,
-		LogonLevel:          100,
-		AnonymousLevel:      5,
-		SSHPort:             2222,
-		SSHHost:             "0.0.0.0",
-		SSHEnabled:          true,
-		TelnetPort:          2323,
-		TelnetHost:          "0.0.0.0",
-		TelnetEnabled:       false,
-		MaxNodes:            10,
-		MaxConnectionsPerIP: 3,
-		MaxFailedLogins:     5,
-		LockoutMinutes:      30,
-		AllowNewUsers:       true,
+		BoardName:                "ViSiON/3 BBS",
+		Timezone:                 "",
+		SysOpLevel:               255,
+		CoSysOpLevel:             250,
+		RegularUserLevel:         10,
+		LogonLevel:               100,
+		AnonymousLevel:           5,
+		SSHPort:                  2222,
+		SSHHost:                  "0.0.0.0",
+		SSHEnabled:               true,
+		TelnetPort:               2323,
+		TelnetHost:               "0.0.0.0",
+		TelnetEnabled:            false,
+		MaxNodes:                 10,
+		MaxConnectionsPerIP:      3,
+		MaxFailedLogins:          5,
+		LockoutMinutes:           30,
+		AllowNewUsers:            true,
+		MatrixIdleTimeoutMinutes: 5,
 	}
 
 	data, err := os.ReadFile(filePath)

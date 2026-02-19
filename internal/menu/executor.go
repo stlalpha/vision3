@@ -9133,17 +9133,13 @@ func (e *MenuExecutor) confirmAbortLogin(s ssh.Session, terminal *term.Terminal,
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 	}
 
-	abort, err := e.promptYesNo(s, terminal, "|07Abort Login? @", outputMode, nodeNumber, termWidth, termHeight)
+	prompt := e.LoadedStrings.ExecAbortLoginPrompt
+	if prompt == "" {
+		prompt = "|07Abort Login? @"
+	}
+	abort, err := e.promptYesNo(s, terminal, prompt, outputMode, nodeNumber, termWidth, termHeight)
 	if err != nil {
 		return false, err
-	}
-	if abort {
-		msg := e.LoadedStrings.ExecLoginCancelled
-		if msg == "" {
-			msg = "\r\n|01Login cancelled.|07\r\n"
-		}
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		time.Sleep(500 * time.Millisecond)
 	}
 	return abort, nil
 }
