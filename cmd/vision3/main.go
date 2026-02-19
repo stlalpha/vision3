@@ -1161,7 +1161,7 @@ func sessionHandler(s ssh.Session) {
 			terminal.Write([]byte("\r\n"))
 
 			useNew, promptErr := menuExecutor.PromptYesNo(s, terminal,
-				fmt.Sprintf("New terminal size detected: %dx%d (saved: %dx%d). Use it?",
+				fmt.Sprintf(loadedStrings.TermSizeNewDetectedPrompt,
 					detectedW, detectedH, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight),
 				effectiveMode, int(nodeID), detectedW, detectedH, false)
 			if promptErr != nil {
@@ -1178,7 +1178,7 @@ func sessionHandler(s ssh.Session) {
 				termHeight.Store(int32(detectedH))
 
 				saveDefault, saveErr := menuExecutor.PromptYesNo(s, terminal,
-					"Update your defaults to this size?",
+					loadedStrings.TermSizeUpdateDefaultsPrompt,
 					effectiveMode, int(nodeID), detectedW, detectedH, true)
 				if saveErr != nil && errors.Is(saveErr, io.EOF) {
 					log.Printf("Node %d: User disconnected during save-defaults prompt.", nodeID)

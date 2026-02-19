@@ -374,5 +374,7 @@
   "execRunCommandNotFound": "\r\n|01Internal command '%s' not found.|07\r\n",
   "execRunDoorError": "\r\n|01Error running door '%s': %v|07\r\n",
   "execLoginCriticalError": "\r\n|01CRITICAL ERROR: Login screen configuration invalid (Missing P/O).|07\r\n",
-  "execVersionString": "|15ViSiON/3 Go Edition - v%s (Pre-Alpha)|07"
+  "execVersionString": "|15ViSiON/3 Go Edition - v%s (Pre-Alpha)|07",
+  "termSizeNewDetectedPrompt": " |03New terminal size detected: |15%dx%d|07 (saved: |08%dx%d|07)\r\n |11Use it?|07",
+  "termSizeUpdateDefaultsPrompt": " |03Update your defaults to this size?|07"
 }

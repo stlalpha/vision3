@@ -421,6 +421,10 @@ type StringsConfig struct {
 	ExecLoginCriticalError  string `json:"execLoginCriticalError"`
 	ExecVersionString       string `json:"execVersionString"`
 
+	// Terminal size mismatch prompts (shown post-login when detected size differs from saved)
+	TermSizeNewDetectedPrompt    string `json:"termSizeNewDetectedPrompt"`
+	TermSizeUpdateDefaultsPrompt string `json:"termSizeUpdateDefaultsPrompt"`
+
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
 	DefColor2 uint8 `json:"defColor2"`

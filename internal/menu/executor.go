@@ -4334,10 +4334,14 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 			}
 
 			if selectionMade {
-				// Restore to option position, clear to end of line, then move to next line
-				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()+"\x1b[K\r\n"), outputMode)
+				// Restore to option position, print the chosen label, then move to next line
+				selectedLabel := noLabel
+				if result {
+					selectedLabel = yesLabel
+				}
+				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()+"\x1b[K"+selectedLabel+"\r\n"), outputMode)
 				if wErr != nil {
-					log.Printf("WARN: Failed clearing options on selection: %v", wErr)
+					log.Printf("WARN: Failed writing selection result: %v", wErr)
 				}
 				return result, nil
 			}
