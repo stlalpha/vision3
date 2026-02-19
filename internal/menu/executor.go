@@ -9125,6 +9125,14 @@ var errInputAborted = errors.New("input aborted")
 
 // confirmAbortLogin shows "Abort Login? Yes|No" and returns true if confirmed.
 func (e *MenuExecutor) confirmAbortLogin(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber, termWidth, termHeight int) (bool, error) {
+	// Keep login abort confirmation below the ANSI menu art instead of inline
+	// at the username/password field position.
+	if termHeight > 0 {
+		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight, 1)), outputMode)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+	}
+
 	abort, err := e.promptYesNo(s, terminal, "|07Abort Login? @", outputMode, nodeNumber, termWidth, termHeight)
 	if err != nil {
 		return false, err
