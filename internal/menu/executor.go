@@ -1533,6 +1533,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			// Replace longer token first to avoid partial replacement conflicts with |CA.
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CAN"), []byte(currentAreaDisplayName))
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CA"), []byte(currentAreaTag))
+			rawAnsiContent = replaceMenuATCode(rawAnsiContent, "UC", strconv.Itoa(userManager.GetUserCount()))
+			rawAnsiContent = replaceMenuATCode(rawAnsiContent, "U", strconv.Itoa(e.SessionRegistry.ActiveCount()))
 		}
 		var ansiProcessResult ansi.ProcessAnsiResult
 		var processErr error
@@ -2606,6 +2608,9 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 
 	processedTopTemplate = renderLastCallerGlobalATTokens(processedTopTemplate, totalUsers)
 	processedBotTemplate = renderLastCallerGlobalATTokens(processedBotTemplate, totalUsers)
+	usersOnline := strconv.Itoa(e.SessionRegistry.ActiveCount())
+	processedTopTemplate = strings.ReplaceAll(processedTopTemplate, "@U@", usersOnline)
+	processedBotTemplate = strings.ReplaceAll(processedBotTemplate, "@U@", usersOnline)
 
 	// 3. Build the output string using processed templates and processed data
 	var outputBuffer bytes.Buffer
@@ -2738,7 +2743,7 @@ func renderLastCallerGlobalATTokens(template string, totalUsers int) string {
 		}
 
 		code := strings.ToUpper(parts[1])
-		if code != "USERCT" {
+		if code != "UC" && code != "USERCT" {
 			return match
 		}
 
@@ -2849,7 +2854,7 @@ func stripSauceMetadata(input []byte) []byte {
 
 func lastCallerATTokenValue(code string, record user.CallRecord, totalUsers int, userNote string, timeLoc *time.Location) (string, bool) {
 	switch code {
-	case "USERCT":
+	case "UC", "USERCT":
 		return strconv.Itoa(totalUsers), true
 	case "NOTE", "NT":
 		return userNote, true
@@ -2908,6 +2913,30 @@ func isLastCallerATCenterAligned(code string) bool {
 	default:
 		return false
 	}
+}
+
+// replaceMenuATCode replaces @CODE@, @CODE:N@, and @CODE##…@  patterns in raw
+// ANSI content with the supplied value, applying width/padding when specified.
+// The visual-hash form (@CODE##@) pads to the full placeholder length so the
+// substituted value occupies the same columns as the original token.
+func replaceMenuATCode(content []byte, code string, value string) []byte {
+	pat := regexp.MustCompile(`@` + regexp.QuoteMeta(code) + `(?::(\d+)|(#+))?@`)
+	return pat.ReplaceAllFunc(content, func(match []byte) []byte {
+		parts := pat.FindSubmatch(match)
+		width := 0
+		if len(parts) > 1 && len(parts[1]) > 0 {
+			// :N explicit width
+			width, _ = strconv.Atoi(string(parts[1]))
+		} else if len(parts) > 2 && len(parts[2]) > 0 {
+			// ## visual width — total placeholder length
+			width = len(match)
+		}
+		result := value
+		if width > 0 {
+			result = formatLastCallerATWidth(value, width, false)
+		}
+		return []byte(result)
+	})
 }
 
 func formatLastCallerATWidth(value string, width int, alignRight bool) string {
@@ -3186,6 +3215,11 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		replacementPairs = append(replacementPairs, key, placeholders[key])
 	}
 	substitutedPrompt := strings.NewReplacer(replacementPairs...).Replace(promptString)
+
+	// Replace @CODE@ AT-codes with width support (@UC@, @UC:5@, @UC##@, @U@, etc.)
+	promptBytes := replaceMenuATCode([]byte(substitutedPrompt), "UC", strconv.Itoa(userManager.GetUserCount()))
+	promptBytes = replaceMenuATCode(promptBytes, "U", strconv.Itoa(e.SessionRegistry.ActiveCount()))
+	substitutedPrompt = string(promptBytes)
 
 	processedPrompt, err := e.processFileIncludes(substitutedPrompt, 0) // Pass 'e'
 	if err != nil {

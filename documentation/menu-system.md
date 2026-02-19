@@ -182,6 +182,20 @@ Dynamic content placeholders in prompts and ANSI files:
 - `|CC` - Current message conference
 - `|NEWUSERS` - New user registration status (`YES` or `NO`)
 
+### AT-Code Placeholders
+
+Dynamic `@CODE@` placeholders available in prompts and ANSI files:
+
+- `@U@` - Number of users currently online
+- `@UC@` - Total registered users
+
+Width formatting is supported:
+
+- `@UC:5@` - Explicit width (pad/truncate to 5 characters)
+- `@UC##@` - Visual width (value fills the same columns as the placeholder)
+
+These codes also work in Last Caller templates (LASTCALL.TOP/MID/BOT).
+
 ### Coordinate Codes
 
 For interactive positioning (like login screens):
@@ -517,7 +531,13 @@ Supported row tokens in `LASTCALL.MID` (`@CODE@` / `@CODE:width@`):
 
 Global token (header/footer/rows):
 
-- `@USERCT@` - Total registered users
+- `@UC@` - Total registered users (also `@USERCT@`)
+- `@U@` - Number of users currently online
+
+Width formatting is supported for all tokens:
+
+- `@CODE:N@` - Explicit width (pad/truncate to N characters)
+- `@CODE##@` - Visual width (value fills the same columns as the placeholder)
 
 Legacy caret placeholders (`^UN`, `^ND`, etc.) remain supported for compatibility.
 
