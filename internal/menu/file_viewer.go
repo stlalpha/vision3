@@ -199,17 +199,17 @@ func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath stri
 func pauseMore(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, prompt string) bool {
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	bufioReader := bufio.NewReader(s)
+	ih := getSessionIH(s)
 	for {
-		r, _, err := bufioReader.ReadRune()
+		key, err := ih.ReadKey()
 		if err != nil {
 			return false
 		}
-		if r == 'q' || r == 'Q' {
+		if key == int('q') || key == int('Q') {
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 			return false
 		}
-		if r == '\r' || r == '\n' || r == ' ' {
+		if key == int('\r') || key == int('\n') || key == int(' ') {
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[K"), outputMode)
 			return true
 		}
@@ -220,13 +220,13 @@ func pauseMore(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMod
 func pauseEnter(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, prompt string) {
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
-	bufioReader := bufio.NewReader(s)
+	ih := getSessionIH(s)
 	for {
-		r, _, err := bufioReader.ReadRune()
+		key, err := ih.ReadKey()
 		if err != nil {
 			return
 		}
-		if r == '\r' || r == '\n' {
+		if key == int('\r') || key == int('\n') {
 			return
 		}
 	}

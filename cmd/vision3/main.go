@@ -1148,13 +1148,64 @@ func sessionHandler(s ssh.Session) {
 	effectiveHeight := int(termHeight.Load())
 
 	if authenticatedUser.ScreenWidth > 0 && authenticatedUser.ScreenHeight > 0 {
-		// User has saved preferences and didn't manually adjust - use saved preferences
-		log.Printf("Node %d: Using user's stored terminal size: %dx%d (PTY detected: %dx%d)",
-			nodeID, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight, effectiveWidth, effectiveHeight)
-		effectiveWidth = authenticatedUser.ScreenWidth
-		effectiveHeight = authenticatedUser.ScreenHeight
-		termWidth.Store(int32(effectiveWidth))
-		termHeight.Store(int32(effectiveHeight))
+		detectedW := effectiveWidth
+		detectedH := effectiveHeight
+
+		if isPty && (detectedW != authenticatedUser.ScreenWidth || detectedH != authenticatedUser.ScreenHeight) {
+			// Mismatch between detected and stored terminal size — prompt user
+			log.Printf("Node %d: Terminal size mismatch — detected %dx%d, stored %dx%d",
+				nodeID, detectedW, detectedH, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight)
+			terminal.Write([]byte("\r\n"))
+
+			useNew, promptErr := menuExecutor.PromptYesNo(s, terminal,
+				fmt.Sprintf("New terminal size detected: %dx%d (saved: %dx%d). Use it?",
+					detectedW, detectedH, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight),
+				effectiveMode, int(nodeID), detectedW, detectedH, false)
+			if promptErr != nil {
+				if errors.Is(promptErr, io.EOF) {
+					log.Printf("Node %d: User disconnected during terminal size prompt.", nodeID)
+					return
+				}
+			}
+
+			if useNew {
+				effectiveWidth = detectedW
+				effectiveHeight = detectedH
+				termWidth.Store(int32(detectedW))
+				termHeight.Store(int32(detectedH))
+
+				saveDefault, saveErr := menuExecutor.PromptYesNo(s, terminal,
+					"Update your defaults to this size?",
+					effectiveMode, int(nodeID), detectedW, detectedH, true)
+				if saveErr != nil && errors.Is(saveErr, io.EOF) {
+					log.Printf("Node %d: User disconnected during save-defaults prompt.", nodeID)
+					return
+				}
+				if saveDefault {
+					authenticatedUser.ScreenWidth = detectedW
+					authenticatedUser.ScreenHeight = detectedH
+					if err := userMgr.UpdateUser(authenticatedUser); err != nil {
+						log.Printf("WARN: Node %d: Failed to update terminal size: %v", nodeID, err)
+					} else {
+						log.Printf("Node %d: Updated default terminal size to %dx%d", nodeID, detectedW, detectedH)
+					}
+				}
+			} else {
+				// Keep saved preferences for this session
+				effectiveWidth = authenticatedUser.ScreenWidth
+				effectiveHeight = authenticatedUser.ScreenHeight
+				termWidth.Store(int32(effectiveWidth))
+				termHeight.Store(int32(effectiveHeight))
+			}
+		} else {
+			// Sizes match (or no PTY) — use saved preferences
+			log.Printf("Node %d: Using user's stored terminal size: %dx%d (PTY detected: %dx%d)",
+				nodeID, authenticatedUser.ScreenWidth, authenticatedUser.ScreenHeight, detectedW, detectedH)
+			effectiveWidth = authenticatedUser.ScreenWidth
+			effectiveHeight = authenticatedUser.ScreenHeight
+			termWidth.Store(int32(effectiveWidth))
+			termHeight.Store(int32(effectiveHeight))
+		}
 	} else {
 		// No saved preferences and no manual adjustment - use PTY detected and save for next time
 		log.Printf("Node %d: No stored terminal size, using PTY detected: %dx%d",

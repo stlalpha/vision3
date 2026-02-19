@@ -1464,7 +1464,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 			terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[14;%dH", promptX)), outputMode)
 
-			pickYes, pickErr := e.promptYesNo(s, terminal, pickPrompt, outputMode, nodeNumber, termWidth, termHeight)
+			pickYes, pickErr := e.PromptYesNo(s, terminal, pickPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 			if pickErr != nil {
 				if errors.Is(pickErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF

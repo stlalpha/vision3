@@ -521,7 +521,7 @@ func runMainLogoffCommand(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		prompt = "\r\n|07Log off now? @"
 	}
 
-	confirm, err := e.promptYesNo(s, terminal, prompt, outputMode, nodeNumber, termWidth, termHeight)
+	confirm, err := e.PromptYesNo(s, terminal, prompt, outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -1132,7 +1132,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	log.Printf("DEBUG: Node %d: Calling promptYesNo for ONELINER add prompt", nodeNumber)
-	addYes, err := e.promptYesNo(s, terminal, askPrompt, outputMode, nodeNumber, termWidth, termHeight)
+	addYes, err := e.PromptYesNo(s, terminal, askPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			log.Printf("INFO: Node %d: User disconnected during ONELINER add prompt.", nodeNumber)
@@ -1155,7 +1155,7 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			if wErr != nil {
 				log.Printf("WARN: Node %d: Failed to clear line before ONELINER anonymous prompt: %v", nodeNumber, wErr)
 			}
-			anonYes, anonErr := e.promptYesNo(s, terminal, anonPrompt, outputMode, nodeNumber, termWidth, termHeight)
+			anonYes, anonErr := e.PromptYesNo(s, terminal, anonPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 			if anonErr != nil {
 				if errors.Is(anonErr, io.EOF) {
 					log.Printf("INFO: Node %d: User disconnected during ONELINER anonymous prompt.", nodeNumber)
@@ -3489,7 +3489,9 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		return nil, "", nil, false
 	}
 
-	bufioReader := bufio.NewReader(s)
+	// Use session-scoped InputHandler so we share the single goroutine reading
+	// from the SSH session (prevents "double key press" race with other menus).
+	ih := getSessionIH(s)
 
 	if isLightbar {
 		log.Printf("DEBUG: Node %d: FASTLOGIN using lightbar mode (%d options)", nodeNumber, len(lightbarOptions))
@@ -3497,44 +3499,34 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		_ = drawLightbarMenu(terminal, nil, lightbarOptions, selectedIndex, outputMode, false)
 
 		for {
-			r, _, readErr := bufioReader.ReadRune()
+			key, readErr := ih.ReadKey()
 			if readErr != nil {
 				if errors.Is(readErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF
 				}
+				if errors.Is(readErr, editor.ErrIdleTimeout) {
+					e.handleIdleTimeout(terminal, outputMode, nodeNumber, termHeight)
+					return currentUser, "LOGOFF", nil
+				}
 				return currentUser, "", readErr
 			}
 
-			switch r {
-			case 27: // ESC — check for arrow keys
-				time.Sleep(20 * time.Millisecond)
-				seq := make([]byte, 0, 8)
-				for bufioReader.Buffered() > 0 && len(seq) < 8 {
-					b, bErr := bufioReader.ReadByte()
-					if bErr != nil {
-						break
-					}
-					seq = append(seq, b)
+			switch key {
+			case editor.KeyArrowUp:
+				if selectedIndex > 0 {
+					prev := selectedIndex
+					selectedIndex--
+					_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
+					_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
 				}
-				if len(seq) >= 2 && seq[0] == '[' {
-					switch seq[1] {
-					case 'A': // Up
-						if selectedIndex > 0 {
-							prev := selectedIndex
-							selectedIndex--
-							_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
-							_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
-						}
-					case 'B': // Down
-						if selectedIndex < len(lightbarOptions)-1 {
-							prev := selectedIndex
-							selectedIndex++
-							_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
-							_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
-						}
-					}
+			case editor.KeyArrowDown:
+				if selectedIndex < len(lightbarOptions)-1 {
+					prev := selectedIndex
+					selectedIndex++
+					_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
+					_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
 				}
-			case '\r', '\n': // Enter — select current
+			case int('\r'), int('\n'): // Enter — select current
 				if selectedIndex >= 0 && selectedIndex < len(lightbarOptions) {
 					keyStr := lightbarOptions[selectedIndex].HotKey
 					if u, action, err, matched := dispatchCommand(keyStr); matched {
@@ -3542,26 +3534,28 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 					}
 				}
 				return currentUser, "", nil
+			case editor.KeyEsc:
+				// Bare ESC (InputHandler consumed any ANSI sequence) — ignore
 			default:
-				// Direct number or hotkey
-				keyStr := strings.ToUpper(string(r))
-				// Check lightbar hotkeys
-				for i, opt := range lightbarOptions {
-					if keyStr == opt.HotKey {
-						prev := selectedIndex
-						selectedIndex = i
-						if prev != selectedIndex {
-							_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
-							_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
-						}
-						if u, action, err, matched := dispatchCommand(keyStr); matched {
-							return u, action, err
+				if key >= 32 && key < 127 {
+					keyStr := strings.ToUpper(string(rune(key)))
+					for i, opt := range lightbarOptions {
+						if keyStr == opt.HotKey {
+							prev := selectedIndex
+							selectedIndex = i
+							if prev != selectedIndex {
+								_ = drawLightbarOption(terminal, lightbarOptions[prev], false, outputMode)
+								_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+							}
+							if u, action, err, matched := dispatchCommand(keyStr); matched {
+								return u, action, err
+							}
 						}
 					}
-				}
-				// Also check non-lightbar commands (like G, /G)
-				if u, action, err, matched := dispatchCommand(keyStr); matched {
-					return u, action, err
+					// Also check non-lightbar commands (like G, /G)
+					if u, action, err, matched := dispatchCommand(keyStr); matched {
+						return u, action, err
+					}
 				}
 			}
 		}
@@ -3569,43 +3563,33 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 
 	// Fallback: standard keystroke input (no lightbar).
 	for {
-		r, _, readErr := bufioReader.ReadRune()
+		key, readErr := ih.ReadKey()
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				return nil, "LOGOFF", io.EOF
 			}
+			if errors.Is(readErr, editor.ErrIdleTimeout) {
+				e.handleIdleTimeout(terminal, outputMode, nodeNumber, termHeight)
+				return currentUser, "LOGOFF", nil
+			}
 			return currentUser, "", readErr
 		}
 
-		if r == 27 {
-			for bufioReader.Buffered() > 0 {
-				_, _ = bufioReader.ReadByte()
-			}
+		if key == editor.KeyEsc || key < 32 || key == 127 {
 			continue
 		}
 
-		if r < 32 || r == 127 {
-			continue
-		}
-
-		keyStr := strings.ToUpper(string(r))
-		if r == '/' {
-			time.Sleep(25 * time.Millisecond)
-			if bufioReader.Buffered() > 0 {
-				nextRune, _, nextErr := bufioReader.ReadRune()
-				if nextErr == nil {
-					keyStr = "/" + strings.ToUpper(string(nextRune))
-				}
+		keyStr := strings.ToUpper(string(rune(key)))
+		if key == int('/') {
+			// Read second key for two-character commands like /G
+			nextKey, nextErr := ih.ReadKey()
+			if nextErr == nil && nextKey >= 32 && nextKey < 127 {
+				keyStr = "/" + strings.ToUpper(string(rune(nextKey)))
 			}
 		}
 
 		if u, action, err, matched := dispatchCommand(keyStr); matched {
 			return u, action, err
-		}
-
-		// If Enter was pressed with no match, continue sequence
-		if r == '\r' || r == '\n' {
-			return currentUser, "", nil
 		}
 
 		e.showUndefinedMenuInput(terminal, outputMode, nodeNumber)
@@ -4176,15 +4160,17 @@ func requestCursorPosition(s ssh.Session, terminal *term.Terminal) (int, int, er
 	}
 }
 
-// promptYesNo is the canonical Yes/No prompt entrypoint for menu flows.
+// PromptYesNo is the canonical Yes/No prompt entrypoint for menu flows.
+// defaultYes controls which option is pre-selected (true = Yes, false = No).
 // Keep all call sites routed here so prompt behavior can be changed in one place.
-func (e *MenuExecutor) promptYesNo(s ssh.Session, terminal *term.Terminal, promptText string, outputMode ansi.OutputMode, nodeNumber int, termWidth int, termHeight int) (bool, error) {
-	return e.promptYesNoLightbar(s, terminal, promptText, outputMode, nodeNumber, termWidth, termHeight)
+func (e *MenuExecutor) PromptYesNo(s ssh.Session, terminal *term.Terminal, promptText string, outputMode ansi.OutputMode, nodeNumber int, termWidth int, termHeight int, defaultYes bool) (bool, error) {
+	return e.promptYesNoLightbar(s, terminal, promptText, outputMode, nodeNumber, termWidth, termHeight, defaultYes)
 }
 
 // promptYesNoLightbar displays a Yes/No prompt with lightbar selection.
 // Returns true for Yes, false for No, and error on issues like disconnect.
-func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Terminal, promptText string, outputMode ansi.OutputMode, nodeNumber int, termWidth int, termHeight int) (bool, error) {
+// defaultYes controls the initial selection: true = Yes highlighted, false = No highlighted.
+func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Terminal, promptText string, outputMode ansi.OutputMode, nodeNumber int, termWidth int, termHeight int, defaultYes bool) (bool, error) {
 	// Strip trailing ' @' — ViSiON/2 convention for Yes/No prompt terminator.
 	// The '@' signals WriteStr to render an interactive Yes/No lightbar.
 	promptText = strings.TrimSuffix(promptText, " @")
@@ -4245,8 +4231,11 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 			log.Printf("WARN: Failed saving cursor for options: %v", wErr)
 		}
 
-		// Track current selection
-		selectedIndex := 0 // Default to 'No' (index 0)
+		// Track current selection: 0 = No, 1 = Yes
+		selectedIndex := 0
+		if defaultYes {
+			selectedIndex = 1
+		}
 
 		// Function to draw the inline options (only the options, not the prompt)
 		drawInlineOptions := func(currentSelection int) {
@@ -4365,7 +4354,11 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 		log.Printf("DEBUG: Terminal height unknown, using text fallback for Yes/No prompt.")
 
 		// Construct the simple text prompt
-		fullPrompt := promptText + " [Y/N]? "
+		yesNoHint := "[y/N]"
+		if defaultYes {
+			yesNoHint = "[Y/n]"
+		}
+		fullPrompt := promptText + " " + yesNoHint + "? "
 
 		// Write the prompt after one blank row: newline + blank line, then prompt.
 		wErr := terminalio.WriteProcessedBytes(terminal, []byte("\r\n\r\n"), outputMode)
@@ -4397,10 +4390,10 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 
 		// Process input
 		trimmedInput := strings.ToUpper(strings.TrimSpace(input))
-		if len(trimmedInput) > 0 && trimmedInput[0] == 'Y' {
-			return true, nil
+		if len(trimmedInput) == 0 {
+			return defaultYes, nil // empty = accept default
 		}
-		return false, nil // Default to No if not 'Y'
+		return trimmedInput[0] == 'Y', nil
 	}
 }
 
@@ -4595,7 +4588,7 @@ func adminUserLightbarBrowser(s ssh.Session, terminal *term.Terminal, users []*u
 	selectedIndex := 0
 	topIndex := 0
 	pageSize := 10
-	reader := bufio.NewReader(s)
+	ih := getSessionIH(s)
 
 	render := func() error {
 		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode); err != nil {
@@ -4672,7 +4665,7 @@ func adminUserLightbarBrowser(s ssh.Session, terminal *term.Terminal, users []*u
 			return nil, false, err
 		}
 
-		r, _, err := reader.ReadRune()
+		key, err := ih.ReadKey()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, false, io.EOF
@@ -4680,37 +4673,23 @@ func adminUserLightbarBrowser(s ssh.Session, terminal *term.Terminal, users []*u
 			return nil, false, err
 		}
 
-		switch r {
-		case 'k', 'K', 'w', 'W':
+		switch key {
+		case int('k'), int('K'), int('w'), int('W'):
 			moveUp()
-		case 'j', 'J', 's', 'S':
+		case int('j'), int('J'), int('s'), int('S'):
 			moveDown()
-		case 'q', 'Q':
+		case int('q'), int('Q'):
 			return nil, false, nil
-		case '\r', '\n':
+		case int('\r'), int('\n'):
 			if selectOnEnter {
 				return users[selectedIndex], true, nil
 			}
-		case 27:
-			time.Sleep(20 * time.Millisecond)
-			seq := make([]byte, 0, 8)
-			for reader.Buffered() > 0 && len(seq) < 8 {
-				b, readErr := reader.ReadByte()
-				if readErr != nil {
-					break
-				}
-				seq = append(seq, b)
-			}
-			if len(seq) >= 2 && seq[0] == 91 {
-				switch seq[1] {
-				case 65:
-					moveUp()
-				case 66:
-					moveDown()
-				}
-			} else {
-				return nil, false, nil
-			}
+		case editor.KeyArrowUp:
+			moveUp()
+		case editor.KeyArrowDown:
+			moveDown()
+		case editor.KeyEsc:
+			return nil, false, nil
 		}
 	}
 }
@@ -4743,7 +4722,7 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		return nil, "", nil
 	}
 
-	reader := bufio.NewReader(s)
+	ih := getSessionIH(s)
 	selectedIndex := 0
 	topIndex := 0
 	if termHeight <= 0 {
@@ -5035,17 +5014,17 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		cursorIdx := len(input)
 
 		for {
-			r, _, readErr := reader.ReadRune()
+			key, readErr := ih.ReadKey()
 			if readErr != nil {
 				return "", readErr
 			}
 
-			switch r {
-			case '\r', '\n':
+			switch key {
+			case int('\r'), int('\n'):
 				return string(input), nil
-			case 27: // ESC
+			case editor.KeyEsc:
 				return "", fmt.Errorf("cancelled")
-			case 127, 8: // Backspace
+			case editor.KeyBackspace, editor.KeyDelete: // Backspace / DEL
 				if cursorIdx > 0 {
 					input = append(input[:cursorIdx-1], input[cursorIdx:]...)
 					cursorIdx--
@@ -5058,7 +5037,8 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 					}
 				}
 			default:
-				if r >= 32 && r < 127 && len(input) < maxLen {
+				if key >= 32 && key < 127 && len(input) < maxLen {
+					r := rune(key)
 					input = append(input[:cursorIdx], append([]rune{r}, input[cursorIdx:]...)...)
 					cursorIdx++
 					if err := writeAt(statusRow, 1, prompt+string(input)); err != nil {
@@ -5104,7 +5084,7 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	}
 
 	for {
-		r, _, err := reader.ReadRune()
+		key, err := ih.ReadKey()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -5115,7 +5095,7 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		refresh := false
 		statusMessage := ""
 
-		switch r {
+		switch key {
 		case 'k', 'K', 'w', 'W':
 			if len(pendingChanges) == 0 {
 				moveUp()
@@ -5510,28 +5490,14 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 			refresh = true
 		case '\r', '\n':
 			// Enter/Return pressed - do nothing (removed help text display)
-		case 27:
-			time.Sleep(20 * time.Millisecond)
-			seq := make([]byte, 0, 8)
-			for reader.Buffered() > 0 && len(seq) < 8 {
-				b, readErr := reader.ReadByte()
-				if readErr != nil {
-					break
-				}
-				seq = append(seq, b)
-			}
-			if len(seq) >= 2 && seq[0] == 91 {
-				switch seq[1] {
-				case 65:
-					moveUp()
-					refresh = true
-				case 66:
-					moveDown()
-					refresh = true
-				}
-			} else {
-				return nil, "", nil
-			}
+		case editor.KeyArrowUp:
+			moveUp()
+			refresh = true
+		case editor.KeyArrowDown:
+			moveDown()
+			refresh = true
+		case editor.KeyEsc:
+			return nil, "", nil
 		}
 
 		if refresh {
@@ -5647,7 +5613,7 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return nil, "", nil
 	}
 
-	reader := bufio.NewReader(s)
+	ih := getSessionIH(s)
 	selectedIndex := 0
 	topIndex := 0
 	if termHeight <= 0 {
@@ -5937,17 +5903,17 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		cursorIdx := len(input)
 
 		for {
-			r, _, readErr := reader.ReadRune()
+			key, readErr := ih.ReadKey()
 			if readErr != nil {
 				return "", readErr
 			}
 
-			switch r {
-			case '\r', '\n':
+			switch key {
+			case int('\r'), int('\n'):
 				return string(input), nil
-			case 27: // ESC
+			case editor.KeyEsc:
 				return "", fmt.Errorf("cancelled")
-			case 127, 8: // Backspace
+			case editor.KeyBackspace, editor.KeyDelete: // Backspace / DEL
 				if cursorIdx > 0 {
 					input = append(input[:cursorIdx-1], input[cursorIdx:]...)
 					cursorIdx--
@@ -5960,7 +5926,8 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 					}
 				}
 			default:
-				if r >= 32 && r < 127 && len(input) < maxLen {
+				if key >= 32 && key < 127 && len(input) < maxLen {
+					r := rune(key)
 					input = append(input[:cursorIdx], append([]rune{r}, input[cursorIdx:]...)...)
 					cursorIdx++
 					if err := writeAt(statusRow, 1, prompt+string(input)); err != nil {
@@ -6006,7 +5973,7 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 	}
 
 	for {
-		r, _, err := reader.ReadRune()
+		key, err := ih.ReadKey()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -6017,7 +5984,7 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		refresh := false
 		statusMessage := ""
 
-		switch r {
+		switch key {
 		case 'k', 'K', 'w', 'W':
 			if len(pendingChanges) == 0 {
 				moveUp()
@@ -6439,35 +6406,21 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 				}
 			}
 			refresh = true
-		case 27:
-			time.Sleep(20 * time.Millisecond)
-			seq := make([]byte, 0, 8)
-			for reader.Buffered() > 0 && len(seq) < 8 {
-				b, readErr := reader.ReadByte()
-				if readErr != nil {
-					break
-				}
-				seq = append(seq, b)
+		case editor.KeyArrowUp:
+			if len(pendingChanges) == 0 {
+				moveUp()
+				refresh = true
 			}
-			if len(seq) >= 2 && seq[0] == 91 { // '['
-				switch seq[1] {
-				case 65: // Up
-					if len(pendingChanges) == 0 {
-						moveUp()
-						refresh = true
-					}
-				case 66: // Down
-					if len(pendingChanges) == 0 {
-						moveDown()
-						refresh = true
-					}
-				}
+		case editor.KeyArrowDown:
+			if len(pendingChanges) == 0 {
+				moveDown()
+				refresh = true
+			}
+		case editor.KeyEsc:
+			if len(pendingChanges) > 0 {
+				statusMessage = "|11Unsaved changes! Press [S] to save or [X] to abort.|07"
 			} else {
-				if len(pendingChanges) > 0 {
-					statusMessage = "|11Unsaved changes! Press [S] to save or [X] to abort.|07"
-				} else {
-					return nil, "", nil
-				}
+				return nil, "", nil
 			}
 		}
 
@@ -6524,7 +6477,7 @@ func runNewUserValidation(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(promptText)), outputMode)
 
 	// Use canonical Y/N prompt
-	answer, err := e.promptYesNo(s, terminal, "", outputMode, nodeNumber, termWidth, termHeight)
+	answer, err := e.PromptYesNo(s, terminal, "", outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -6592,7 +6545,7 @@ func runUnvalidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	}
 
 	confirmPrompt := fmt.Sprintf("\r\n\r\n|07Set |15%s|07 to unvalidated? @", targetUser.Handle)
-	confirm, confirmErr := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight)
+	confirm, confirmErr := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 	if confirmErr != nil {
 		if errors.Is(confirmErr, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -6702,7 +6655,7 @@ func runBanUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMan
 	}
 
 	confirmPrompt := fmt.Sprintf("\r\n\r\n|07Ban |15%s|07 (set level 0 + unvalidated)? @", targetUser.Handle)
-	confirm, confirmErr := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight)
+	confirm, confirmErr := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 	if confirmErr != nil {
 		if errors.Is(confirmErr, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -6813,7 +6766,7 @@ func runDeleteUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, user
 	}
 
 	confirmPrompt := fmt.Sprintf("\r\n\r\n|07Delete |15%s|07 (soft delete - data preserved)? @", targetUser.Handle)
-	confirm, confirmErr := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight)
+	confirm, confirmErr := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 	if confirmErr != nil {
 		if errors.Is(confirmErr, io.EOF) {
 			return nil, "LOGOFF", io.EOF
@@ -7027,16 +6980,16 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *term.Terminal
 	}
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(pausePrompt)), outputMode)
 
-	bufioReader := bufio.NewReader(s)
+	ih := getSessionIH(s)
 	for {
-		r, _, err := bufioReader.ReadRune()
+		key, err := ih.ReadKey()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, "LOGOFF", io.EOF
 			}
 			return nil, "", err
 		}
-		if r == '\r' || r == '\n' {
+		if key == int('\r') || key == int('\n') {
 			break
 		}
 	}
@@ -7244,7 +7197,7 @@ func runComposeMessageWithIH(e *MenuExecutor, s ssh.Session, ih *editor.InputHan
 		if anonPrompt == "" {
 			anonPrompt = "|07Anonymous? @"
 		}
-		isAnon, err := e.promptYesNo(s, terminal, anonPrompt, outputMode, nodeNumber, termWidth, termHeight)
+		isAnon, err := e.PromptYesNo(s, terminal, anonPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				log.Printf("INFO: Node %d: User disconnected during anonymous input.", nodeNumber)
@@ -8497,7 +8450,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.SaveCursor()), outputMode)
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n\x1b[K"), outputMode) // Newline, clear line
 
-			proceed, err := e.promptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight)
+			proceed, err := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()), outputMode) // Restore cursor after prompt
 
 			if err != nil {
@@ -9187,7 +9140,7 @@ func (e *MenuExecutor) confirmAbortLogin(s ssh.Session, terminal *term.Terminal,
 	if prompt == "" {
 		prompt = "|07Abort Login? @"
 	}
-	abort, err := e.promptYesNo(s, terminal, prompt, outputMode, nodeNumber, termWidth, termHeight)
+	abort, err := e.PromptYesNo(s, terminal, prompt, outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil {
 		return false, err
 	}
@@ -9197,7 +9150,7 @@ func (e *MenuExecutor) confirmAbortLogin(s ssh.Session, terminal *term.Terminal,
 // confirmAbortPost shows "Abort Post? Yes|No" lightbar.
 // Returns true (and prints "Post aborted.") if user confirmed, false to retry.
 func (e *MenuExecutor) confirmAbortPost(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber, termWidth, termHeight int) (bool, error) {
-	abort, err := e.promptYesNo(s, terminal, "|07Abort Post? @", outputMode, nodeNumber, termWidth, termHeight)
+	abort, err := e.PromptYesNo(s, terminal, "|07Abort Post? @", outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil {
 		return false, err
 	}

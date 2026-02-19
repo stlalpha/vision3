@@ -31,7 +31,7 @@ const (
 // Returns false after showing the goodbye message and a 1-second pause (caller should return io.EOF).
 func (e *MenuExecutor) confirmCannotBeEmpty(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber, termWidth, termHeight int) (bool, error) {
 	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-	retry, err := e.promptYesNo(s, terminal, "|01Cannot be empty. |07Retry? @", outputMode, nodeNumber, termWidth, termHeight)
+	retry, err := e.PromptYesNo(s, terminal, "|01Cannot be empty. |07Retry? @", outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil {
 		return false, err
 	}
@@ -51,7 +51,7 @@ func (e *MenuExecutor) confirmCannotBeEmpty(s ssh.Session, terminal *term.Termin
 // Returns false if the user chose to stay, or an error on disconnect.
 func (e *MenuExecutor) confirmExitNewUser(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber, termWidth, termHeight int) (bool, error) {
 	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-	exit, err := e.promptYesNo(s, terminal, "|07Exit New User Signup? @", outputMode, nodeNumber, termWidth, termHeight)
+	exit, err := e.PromptYesNo(s, terminal, "|07Exit New User Signup? @", outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil {
 		return false, err
 	}
@@ -102,7 +102,7 @@ func (e *MenuExecutor) handleNewUserApplication(
 	if applyPrompt == "" {
 		applyPrompt = "|08A|07p|15ply |08F|07o|15r |08A|07c|15cess? @"
 	}
-	applyYes, err := e.promptYesNo(s, terminal, applyPrompt, outputMode, nodeNumber, termWidth, termHeight)
+	applyYes, err := e.PromptYesNo(s, terminal, applyPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return io.EOF
