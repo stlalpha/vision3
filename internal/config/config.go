@@ -271,8 +271,7 @@ type StringsConfig struct {
 	CfgViewScreenWidth     string `json:"cfgViewScreenWidth"`
 	CfgViewScreenHeight    string `json:"cfgViewScreenHeight"`
 	CfgViewTermType        string `json:"cfgViewTermType"`
-	CfgViewFSEditor        string `json:"cfgViewFSEditor"`
-	CfgViewHotKeys         string `json:"cfgViewHotKeys"`
+CfgViewHotKeys         string `json:"cfgViewHotKeys"`
 	CfgViewMorePrompts     string `json:"cfgViewMorePrompts"`
 	CfgViewMsgHeader       string `json:"cfgViewMsgHeader"`
 	CfgViewCustomPrompt    string `json:"cfgViewCustomPrompt"`

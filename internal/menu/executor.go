@@ -495,8 +495,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["WHOISONLINE"] = runWhoIsOnline                         // Who's online display
 	registry["CFG_HOTKEYS"] = runCfgHotKeys
 	registry["CFG_MOREPROMPTS"] = runCfgMorePrompts
-	registry["CFG_FSEDITOR"] = runCfgFSEditor
-	registry["CFG_SCREENWIDTH"] = runCfgScreenWidth
+registry["CFG_SCREENWIDTH"] = runCfgScreenWidth
 	registry["CFG_SCREENHEIGHT"] = runCfgScreenHeight
 	registry["CFG_TERMTYPE"] = runCfgTermType
 	registry["CFG_REALNAME"] = runCfgRealName

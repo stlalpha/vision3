@@ -64,8 +64,7 @@ type User struct {
 	// User Configuration Preferences
 	HotKeys          bool   `json:"hotKeys,omitempty"`
 	MorePrompts      bool   `json:"morePrompts,omitempty"`
-	FullScreenEditor bool   `json:"fullScreenEditor,omitempty"`
-	CustomPrompt     string `json:"customPrompt,omitempty"`
+CustomPrompt     string `json:"customPrompt,omitempty"`
 	OutputMode       string `json:"outputMode,omitempty"`
 	Colors           [7]int `json:"colors,omitempty"`
 

@@ -241,7 +241,7 @@
   "cfgViewScreenWidth": " |07Screen Width:       |15%d",
   "cfgViewScreenHeight": " |07Screen Height:      |15%d",
   "cfgViewTermType": " |07Terminal Type:       |15%s",
-  "cfgViewFSEditor": " |07Full-Screen Editor:  %s",
+
   "cfgViewHotKeys": " |07Hot Keys:            %s",
   "cfgViewMorePrompts": " |07More Prompts:        %s",
   "cfgViewMsgHeader": " |07Message Header:      |15%d",

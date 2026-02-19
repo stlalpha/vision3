@@ -75,13 +75,6 @@ func runCfgMorePrompts(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	)
 }
 
-func runCfgFSEditor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
-	return runCfgToggle(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode,
-		"Full-Screen Editor",
-		func(u *user.User) bool { return u.FullScreenEditor },
-		func(u *user.User, v bool) { u.FullScreenEditor = v },
-	)
-}
 
 func runCfgScreenWidth(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	if currentUser == nil {
@@ -443,8 +436,7 @@ func runCfgViewConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, u
 		fmt.Sprintf(e.LoadedStrings.CfgViewScreenWidth, width),
 		fmt.Sprintf(e.LoadedStrings.CfgViewScreenHeight, height),
 		fmt.Sprintf(e.LoadedStrings.CfgViewTermType, strings.ToUpper(outMode)),
-		fmt.Sprintf(e.LoadedStrings.CfgViewFSEditor, boolStr(currentUser.FullScreenEditor)),
-		fmt.Sprintf(e.LoadedStrings.CfgViewHotKeys, boolStr(currentUser.HotKeys)),
+fmt.Sprintf(e.LoadedStrings.CfgViewHotKeys, boolStr(currentUser.HotKeys)),
 		fmt.Sprintf(e.LoadedStrings.CfgViewMorePrompts, boolStr(currentUser.MorePrompts)),
 		fmt.Sprintf(e.LoadedStrings.CfgViewMsgHeader, currentUser.MsgHdr),
 		fmt.Sprintf(e.LoadedStrings.CfgViewCustomPrompt, currentUser.CustomPrompt),
