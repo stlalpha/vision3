@@ -5,7 +5,7 @@
   "coSysOpLevel": 250,
   "regularUserLevel": 10,
   "logonLevel": 50,
-  "anonymousLevel": 5,
+  "anonymousLevel": 60,
   "sshEnabled": true,
   "sshHost": "0.0.0.0",
   "sshPort": 2222,
@@ -20,5 +20,6 @@
   "lockoutMinutes": 30,
   "fileListingMode": "lightbar",
   "legacySSHAlgorithms": true,
-  "allowNewUsers": true
+  "allowNewUsers": true,
+  "sessionIdleTimeoutMinutes": 5
 }

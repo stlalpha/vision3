@@ -367,7 +367,7 @@ type StringsConfig struct {
 	MatrixUserNotFound        string `json:"matrixUserNotFound"`
 	MatrixAccountValidated    string `json:"matrixAccountValidated"`
 	MatrixAccountNotValidated string `json:"matrixAccountNotValidated"`
-	MatrixIdleTimeout         string `json:"matrixIdleTimeout"`
+	IdleTimeout               string `json:"idleTimeout"`
 
 	// Conference menu strings (V3-specific)
 	ConfLoginRequired           string `json:"confLoginRequired"`
@@ -672,10 +672,8 @@ type ServerConfig struct {
 	LegacySSHAlgorithms bool   `json:"legacySSHAlgorithms"`
 	AllowNewUsers       bool   `json:"allowNewUsers"`
 
-	// Idle timeout settings (0 = disabled)
-	// MatrixIdleTimeoutMinutes disconnects pre-login users who sit idle at the matrix.
-	// SessionIdleTimeoutMinutes is reserved for future whole-session idle enforcement.
-	MatrixIdleTimeoutMinutes  int `json:"matrixIdleTimeoutMinutes"`
+	// Idle timeout (0 = disabled). Applied across the entire app; any input loop
+	// that calls ReadKeyWithTimeout uses this value.
 	SessionIdleTimeoutMinutes int `json:"sessionIdleTimeoutMinutes"`
 }
 
@@ -727,7 +725,7 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		MaxFailedLogins:          5,
 		LockoutMinutes:           30,
 		AllowNewUsers:            true,
-		MatrixIdleTimeoutMinutes: 5,
+		SessionIdleTimeoutMinutes: 5,
 	}
 
 	data, err := os.ReadFile(filePath)

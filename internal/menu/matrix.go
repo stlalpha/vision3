@@ -84,14 +84,18 @@ func (e *MenuExecutor) RunMatrixScreen(
 		return "LOGIN", nil
 	}
 
-	// Input loop — use ReadKey() on the session-scoped InputHandler so the
-	// matrix shares the single goroutine reading from the SSH session with any
-	// sub-flows (new user form, styledInput, etc.) and escape sequences are
-	// fully decoded before the matrix loop sees them.
+	// Apply the pre-login idle timeout on the shared InputHandler.
+	// nil = no authenticated user yet; sysop exemption applies post-login only.
+	getSessionIH(s).SetSessionIdleTimeout(e.idleTimeout(nil))
+
 	sessionIH := getSessionIH(s)
 	for tries < maxTries {
 		key, err := sessionIH.ReadKey()
 		if err != nil {
+			if errors.Is(err, editor.ErrIdleTimeout) {
+				e.handleIdleTimeout(terminal, outputMode, nodeNumber, termHeight)
+				return "DISCONNECT", nil
+			}
 			if errors.Is(err, io.EOF) {
 				return "DISCONNECT", io.EOF
 			}

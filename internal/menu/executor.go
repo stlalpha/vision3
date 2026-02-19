@@ -292,6 +292,38 @@ func (e *MenuExecutor) GetServerConfig() config.ServerConfig {
 	return e.ServerCfg
 }
 
+// idleTimeout returns the effective idle timeout duration for the given user.
+// Sysops and co-sysops are exempt and receive 0 (disabled).
+// Pass nil for pre-login contexts (e.g. matrix screen) where there is no
+// authenticated user — the configured timeout applies to everyone at that stage.
+func (e *MenuExecutor) idleTimeout(u *user.User) time.Duration {
+	cfg := e.GetServerConfig()
+	if cfg.SessionIdleTimeoutMinutes <= 0 {
+		return 0
+	}
+	if u != nil && u.AccessLevel >= cfg.CoSysOpLevel {
+		return 0
+	}
+	return time.Duration(cfg.SessionIdleTimeoutMinutes) * time.Minute
+}
+
+// handleIdleTimeout writes the idle timeout message at the bottom of the
+// terminal and logs the disconnection. Call this before returning LOGOFF/DISCONNECT
+// whenever ErrIdleTimeout is received from any input loop.
+func (e *MenuExecutor) handleIdleTimeout(terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber int, termHeight int) {
+	msg := e.LoadedStrings.IdleTimeout
+	if msg == "" {
+		msg = "\r\n|09You've been idle too long... Come back when you are there!|07\r\n"
+	}
+	row := termHeight - 1
+	if row < 1 {
+		row = 1
+	}
+	terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[%d;1H", row)), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+	log.Printf("INFO: Node %d: Idle timeout after %d minutes, disconnecting", nodeNumber, e.GetServerConfig().SessionIdleTimeoutMinutes)
+}
+
 // remoteIPFromSession extracts the IP address from an SSH session's remote address,
 // correctly handling both IPv4 and IPv6 addresses with ports.
 func remoteIPFromSession(s ssh.Session) string {
@@ -1466,6 +1498,12 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		log.Printf("DEBUG: Running menu for potentially unauthenticated user (login phase)")
 	}
 
+	// Apply the session-level idle timeout to the shared InputHandler.
+	// Sysops/co-sysops are exempt (idleTimeout returns 0 for them).
+	// This covers every ReadKey call in the entire session — menus, prompts,
+	// message reader, etc. — without requiring per-call changes.
+	getSessionIH(s).SetSessionIdleTimeout(e.idleTimeout(currentUser))
+
 	for {
 		log.Printf("INFO: Running menu: %s (Previous: %s) for Node %d", currentMenuName, previousMenuName, nodeNumber)
 
@@ -1951,9 +1989,13 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 					for inputLoop {
 						key, err := sessionIH.ReadKey()
 						if err != nil {
-							if err == io.EOF {
+							if errors.Is(err, io.EOF) {
 								log.Printf("INFO: User disconnected during lightbar input for %s", currentMenuName)
-								return "LOGOFF", nil, nil // Signal logoff
+								return "LOGOFF", nil, nil
+							}
+							if errors.Is(err, editor.ErrIdleTimeout) {
+								e.handleIdleTimeout(terminal, outputMode, nodeNumber, termHeight)
+								return "LOGOFF", nil, nil
 							}
 							log.Printf("ERROR: Failed to read lightbar input for menu %s: %v", currentMenuName, err)
 							return "", nil, fmt.Errorf("failed reading lightbar input: %w", err)
@@ -2065,9 +2107,13 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			// Read User Input Line via shared InputHandler to avoid reader races.
 			input, err := readLineFromSessionIH(s, terminal)
 			if err != nil {
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					log.Printf("INFO: User disconnected during menu input for %s", currentMenuName)
-					return "LOGOFF", nil, nil // Signal logoff
+					return "LOGOFF", nil, nil
+				}
+				if errors.Is(err, editor.ErrIdleTimeout) {
+					e.handleIdleTimeout(terminal, outputMode, nodeNumber, termHeight)
+					return "LOGOFF", nil, nil
 				}
 				log.Printf("ERROR: Failed to read input for menu %s: %v", currentMenuName, err)
 				return "", nil, fmt.Errorf("failed reading input: %w", err)
@@ -2416,6 +2462,10 @@ func (e *MenuExecutor) executeCommandAction(action string, s ssh.Session, termin
 			if runErr != nil {
 				if errors.Is(runErr, io.EOF) {
 					log.Printf("INFO: Node %d: User disconnected during RUN:%s execution.", nodeNumber, runTarget)
+					return "LOGOFF", "", nil, nil
+				}
+				if errors.Is(runErr, editor.ErrIdleTimeout) {
+					e.handleIdleTimeout(terminal, outputMode, nodeNumber, termHeight)
 					return "LOGOFF", "", nil, nil
 				}
 				log.Printf("ERROR: RUN:%s function failed: %v", runTarget, runErr)

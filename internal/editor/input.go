@@ -1,10 +1,18 @@
 package editor
 
 import (
+	"errors"
 	"io"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// ErrIdleTimeout is returned by ReadKeyWithTimeout when no input arrives before
+// the caller-supplied deadline. It is distinct from the internal inter-byte
+// escape-sequence timeout so that callers can handle user-visible idle
+// disconnects without false-positive matches on sequence parsing.
+var ErrIdleTimeout = errors.New("idle timeout")
 
 // Special key codes for editor commands (using WordStar-style control characters)
 const (
@@ -65,10 +73,30 @@ type InputHandler struct {
 	unreadBuf []byte   // bytes pushed back for re-reading
 	debug     bool
 
+	// idleNs is the session-level idle timeout in nanoseconds (0 = disabled).
+	// Stored as int64 for lock-free atomic access. Any call to readByte()
+	// that blocks longer than this fires ErrIdleTimeout. Set via
+	// SetSessionIdleTimeout; read on every key-wait.
+	idleNs int64 // atomic
+
 	// Optional read interrupt integration for sessions that support it.
 	readInterrupt    chan struct{}
 	setReadInterrupt func(<-chan struct{})
 	closeOnce        sync.Once
+}
+
+// SetSessionIdleTimeout sets the session-level idle timeout applied to every
+// ReadKey call. Pass 0 to disable. Thread-safe.
+func (ih *InputHandler) SetSessionIdleTimeout(d time.Duration) {
+	atomic.StoreInt64(&ih.idleNs, d.Nanoseconds())
+}
+
+func (ih *InputHandler) sessionIdleTimeout() time.Duration {
+	ns := atomic.LoadInt64(&ih.idleNs)
+	if ns <= 0 {
+		return 0
+	}
+	return time.Duration(ns)
 }
 
 // NewInputHandler creates a new input handler.
@@ -139,10 +167,22 @@ func (ih *InputHandler) Read(p []byte) (int, error) {
 }
 
 // readByte reads a single byte, blocking until one is available.
+// If a session idle timeout is set (via SetSessionIdleTimeout) and no byte
+// arrives within that window, ErrIdleTimeout is returned.
 func (ih *InputHandler) readByte() (byte, error) {
 	if len(ih.unreadBuf) > 0 {
 		b := ih.unreadBuf[0]
 		ih.unreadBuf = ih.unreadBuf[1:]
+		return b, nil
+	}
+	if t := ih.sessionIdleTimeout(); t > 0 {
+		b, err := ih.readByteWithTimeout(t)
+		if err != nil {
+			if isTimeoutError(err) {
+				return 0, ErrIdleTimeout
+			}
+			return 0, err
+		}
 		return b, nil
 	}
 	b, ok := <-ih.incoming
@@ -243,6 +283,24 @@ func (ih *InputHandler) ReadKey() (int, error) {
 	}
 
 	return int(b), nil
+}
+
+// ReadKeyWithTimeout is identical to ReadKey but waits at most idleTimeout for
+// the very first byte. If no input arrives within that window it returns
+// (0, ErrIdleTimeout). Inter-byte timeouts for escape-sequence parsing are
+// unaffected. This is the extensible primitive for idle-disconnect logic.
+func (ih *InputHandler) ReadKeyWithTimeout(idleTimeout time.Duration) (int, error) {
+	// Wait for the first byte with the caller's deadline.
+	first, err := ih.readByteWithTimeout(idleTimeout)
+	if err != nil {
+		if isTimeoutError(err) {
+			return 0, ErrIdleTimeout
+		}
+		return 0, err
+	}
+	// Push it back so ReadKey sees a normal byte and handles escape sequences.
+	ih.unreadByte(first)
+	return ih.ReadKey()
 }
 
 // parseCSISequence parses ANSI CSI escape sequences (ESC [ ...).
