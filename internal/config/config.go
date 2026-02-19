@@ -229,8 +229,9 @@ type StringsConfig struct {
 	NewUserPasswordMismatch string `json:"newUserPasswordMismatch"`
 	NewUserInvalidRealName  string `json:"newUserInvalidRealName"`
 	NewUserTooManyAttempts  string `json:"newUserTooManyAttempts"`
-	NewUserAccountCreated   string `json:"newUserAccountCreated"`
-	NewUserCreationError    string `json:"newUserCreationError"`
+	NewUserAccountCreated    string `json:"newUserAccountCreated"`
+	NewUserCreationError     string `json:"newUserCreationError"`
+	NewUserMaybeAnotherTime  string `json:"newUserMaybeAnotherTime"`
 
 	// System stats strings (V3-specific)
 	StatsBBSName     string `json:"statsBBSName"`
@@ -285,6 +286,7 @@ type StringsConfig struct {
 
 	// Message reader strings (V3-specific)
 	MsgEndOfMessages     string `json:"msgEndOfMessages"`
+	MsgFirstMessage      string `json:"msgFirstMessage"`
 	MsgMailReplyDeferred string `json:"msgMailReplyDeferred"`
 	MsgListDeferred      string `json:"msgListDeferred"`
 	MsgHdrLoadError      string `json:"msgHdrLoadError"`

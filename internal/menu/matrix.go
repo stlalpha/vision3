@@ -1,7 +1,6 @@
 package menu
 
 import (
-	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
 	"golang.org/x/term"
@@ -84,10 +84,13 @@ func (e *MenuExecutor) RunMatrixScreen(
 		return "LOGIN", nil
 	}
 
-	// Input loop
-	bufioReader := bufio.NewReader(s)
+	// Input loop — use ReadKey() on the session-scoped InputHandler so the
+	// matrix shares the single goroutine reading from the SSH session with any
+	// sub-flows (new user form, styledInput, etc.) and escape sequences are
+	// fully decoded before the matrix loop sees them.
+	sessionIH := getSessionIH(s)
 	for tries < maxTries {
-		r, _, err := bufioReader.ReadRune()
+		key, err := sessionIH.ReadKey()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return "DISCONNECT", io.EOF
@@ -98,53 +101,46 @@ func (e *MenuExecutor) RunMatrixScreen(
 		newIndex := selectedIndex
 		selectionMade := false
 
-		if r < 32 && r != '\r' && r != '\n' && r != 27 {
-			continue
-		}
-
-		switch {
-		case r >= '1' && r <= '9':
-			// Direct selection by number (always enabled)
-			numIndex := int(r - '1')
-			if numIndex < len(options) {
-				selectedIndex = numIndex
-				drawMatrixOptions(terminal, options, selectedIndex, outputMode)
-				selectionMade = true
+		switch key {
+		case editor.KeyArrowUp:
+			newIndex = selectedIndex - 1
+			if newIndex < 0 {
+				newIndex = len(options) - 1 // Wrap to bottom
 			}
 
-		case r == '\r' || r == '\n':
+		case editor.KeyArrowDown:
+			newIndex = selectedIndex + 1
+			if newIndex >= len(options) {
+				newIndex = 0 // Wrap to top
+			}
+
+		case editor.KeyEnter:
 			selectionMade = true
 
-		case r == ' ':
+		case editor.KeyEsc:
+			// Bare ESC (sequences already decoded by ReadKey) — ignore
+
+		case ' ':
 			// Spacebar redraws screen (matches Pascal behavior)
 			drawMatrixScreen(terminal, ansBackground, options, selectedIndex, outputMode)
 
-		case r == 27: // ESC - check for arrow key sequence
-			time.Sleep(20 * time.Millisecond)
-			seq := make([]byte, 0, 8)
-			for bufioReader.Buffered() > 0 && len(seq) < 8 {
-				b, readErr := bufioReader.ReadByte()
-				if readErr != nil {
-					break
-				}
-				seq = append(seq, b)
+		default:
+			if key < 32 || key > 126 {
+				continue // ignore non-printable / special keys
 			}
-			if len(seq) >= 2 && seq[0] == 91 { // '['
-				switch seq[1] {
-				case 65: // Up arrow
-					newIndex = selectedIndex - 1
-					if newIndex < 0 {
-						newIndex = len(options) - 1 // Wrap to bottom
-					}
-				case 66: // Down arrow
-					newIndex = selectedIndex + 1
-					if newIndex >= len(options) {
-						newIndex = 0 // Wrap to top
-					}
+			r := rune(key)
+
+			// Direct selection by number
+			if r >= '1' && r <= '9' {
+				numIndex := int(r - '1')
+				if numIndex < len(options) {
+					selectedIndex = numIndex
+					drawMatrixOptions(terminal, options, selectedIndex, outputMode)
+					selectionMade = true
 				}
+				break
 			}
 
-		default:
 			// Check for hotkey match (explicit HotKey field from BAR file)
 			keyStr := strings.ToUpper(string(r))
 			matchedHotkey := false
@@ -213,7 +209,7 @@ func (e *MenuExecutor) processMatrixAction(
 	switch action {
 	case "LOGIN":
 		// Show PRELOGON ANSI file before login screen (matches Pascal: Printfile(PRELOGON.x) + HoldScreen)
-		e.showPrelogon(s, terminal, nodeNumber, outputMode)
+		e.showPrelogon(s, terminal, nodeNumber, outputMode, termWidth, termHeight)
 		return "LOGIN", nil
 
 	case "NEWUSER":
@@ -294,7 +290,7 @@ func (e *MenuExecutor) handleCheckAccess(
 // showPrelogon displays a random PRELOGON ANSI file before the login screen.
 // Matches Pascal: Printfile(PRELOGON.x) + HoldScreen where x is random 1..NumPrelogon.
 // Looks for numbered files (PRELOGON.1, PRELOGON.2, ...) first, falls back to PRELOGON.ANS.
-func (e *MenuExecutor) showPrelogon(s ssh.Session, terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode) {
+func (e *MenuExecutor) showPrelogon(s ssh.Session, terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode, termWidth, termHeight int) {
 	ansiDir := filepath.Join(e.MenuSetPath, "ansi")
 
 	// Look for numbered PRELOGON files (Pascal pattern: PRELOGON.1, PRELOGON.2, ...)
@@ -343,12 +339,8 @@ func (e *MenuExecutor) showPrelogon(s ssh.Session, terminal *term.Terminal, node
 	}
 
 	// HoldScreen — pause before proceeding to login
-	pausePrompt := e.LoadedStrings.PauseString
-	if pausePrompt == "" {
-		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
-	}
-	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+pausePrompt)), outputMode)
-	_, _ = readLineFromSessionIH(s, terminal)
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+	e.holdScreen(s, terminal, outputMode, termWidth, termHeight)
 }
 
 // drawMatrixScreen clears the screen, draws the ANSI background, and highlights the selected option.

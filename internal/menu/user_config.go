@@ -299,7 +299,7 @@ func runCfgPassword(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	}
 
 	// Prompt for new password using existing helper
-	newPw, err := e.promptForPassword(s, terminal, nodeNumber, outputMode)
+	newPw, err := e.promptForPassword(s, terminal, nodeNumber, outputMode, termWidth, termHeight)
 	if err != nil {
 		if errors.Is(err, io.EOF) {
 			return nil, "LOGOFF", io.EOF

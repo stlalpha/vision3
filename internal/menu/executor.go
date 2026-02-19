@@ -77,6 +77,16 @@ func resetSessionIH(s ssh.Session) {
 	}
 }
 
+// holdScreen displays the configured PauseString (centered) and waits for the
+// user to press Enter before continuing. Matches Pascal HoldScreen behaviour.
+func (e *MenuExecutor) holdScreen(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, termWidth, termHeight int) {
+	pausePrompt := e.LoadedStrings.PauseString
+	if pausePrompt == "" {
+		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
+	}
+	_ = writeCenteredPausePrompt(s, terminal, pausePrompt, outputMode, termWidth, termHeight)
+}
+
 // readLineFromSessionIH reads a simple command line from the shared session
 // InputHandler so menu input never races with other session readers.
 func readLineFromSessionIH(s ssh.Session, terminal *term.Terminal) (string, error) {
@@ -1298,7 +1308,7 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 			log.Printf("INFO: Node %d: User disconnected during password input.", nodeNumber)
 			return nil, "LOGOFF", io.EOF // Signal logoff
 		}
-		if err.Error() == "password entry interrupted" { // Check for Ctrl+C
+		if errors.Is(err, errInputAborted) {
 			log.Printf("INFO: Node %d: User interrupted password entry.", nodeNumber)
 			// Treat interrupt like a failed attempt?
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
@@ -1720,7 +1730,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						log.Printf("INFO: User disconnected during menu password entry for '%s'", currentMenuName)
 						return "LOGOFF", nil, nil // Signal logoff
 					}
-					if err.Error() == "password entry interrupted" { // Check for specific error
+					if errors.Is(err, errInputAborted) { // Check for specific error
 						log.Printf("INFO: User interrupted password entry for menu '%s'", currentMenuName)
 						return "LOGOFF", nil, nil // Signal logoff
 					}
@@ -2199,7 +2209,7 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		if errors.Is(err, io.EOF) {
 			return nil, io.EOF // Signal disconnection
 		}
-		if err.Error() == "password entry interrupted" { // Check for Ctrl+C
+		if errors.Is(err, errInputAborted) { // Check for Ctrl+C
 			log.Printf("INFO: Node %d: User interrupted password entry.", nodeNumber)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode)
 			if wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ExecLoginCancelled)), outputMode); wErr != nil {
@@ -2282,45 +2292,45 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 	return authUser, nil // Success!
 }
 
-// readPasswordSecurely reads a password from the terminal without echoing characters,
-// Reverted s parameter back to ssh.Session
+// readPasswordSecurely reads a password from the terminal without echoing characters.
+// Uses the session-scoped InputHandler to avoid racing with other menu input readers.
+// Returns errInputAborted on ESC or Ctrl+C, io.EOF on disconnect.
 func readPasswordSecurely(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode) (string, error) {
 	var password []rune
-	var byteBuf [1]byte               // Buffer for writing '*'
-	bufioReader := bufio.NewReader(s) // Wrap ssh.Session
+	var byteBuf [1]byte
+	ih := getSessionIH(s)
 
 	for {
-		r, _, err := bufioReader.ReadRune()
+		key, err := ih.ReadKey()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				log.Println("DEBUG: EOF received during secure password read.")
 			}
-			return "", err // Propagate errors
+			return "", err
 		}
 
-		switch r {
-		case '\r': // Enter key (Carriage Return)
+		switch key {
+		case editor.KeyEnter:
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 			return string(password), nil
-		case '\n': // Newline - often follows \r, ignore it if so.
-			continue
-		case 127, 8: // Backspace (DEL or BS)
+		case editor.KeyBackspace:
 			if len(password) > 0 {
 				password = password[:len(password)-1]
-				err := terminalio.WriteProcessedBytes(terminal, []byte("\b \b"), outputMode)
-				if err != nil {
+				if err := terminalio.WriteProcessedBytes(terminal, []byte("\b \b"), outputMode); err != nil {
 					log.Printf("WARN: Failed to write backspace sequence: %v", err)
 				}
 			}
-		case 3: // Ctrl+C (ETX)
+		case 3: // Ctrl+C
 			terminalio.WriteProcessedBytes(terminal, []byte("^C\r\n"), outputMode)
-			return "", fmt.Errorf("password entry interrupted")
+			return "", errInputAborted
+		case editor.KeyEsc:
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			return "", errInputAborted
 		default:
-			if r >= 32 { // Basic check for printable ASCII
-				password = append(password, r)
+			if key >= 32 && key <= 126 {
+				password = append(password, rune(key))
 				byteBuf[0] = '*'
-				err := terminalio.WriteProcessedBytes(terminal, byteBuf[:], outputMode)
-				if err != nil {
+				if err := terminalio.WriteProcessedBytes(terminal, byteBuf[:], outputMode); err != nil {
 					log.Printf("WARN: Failed to write asterisk: %v", err)
 				}
 			}
@@ -7031,6 +7041,24 @@ func runComposeMessageWithIH(e *MenuExecutor, s ssh.Session, ih *editor.InputHan
 				log.Printf("INFO: Node %d: User disconnected during title input.", nodeNumber)
 				return nil, "LOGOFF", io.EOF
 			}
+			if errors.Is(err, errInputAborted) {
+				abort, confirmErr := e.confirmAbortPost(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					if errors.Is(confirmErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					return nil, "", nil
+				}
+				if abort {
+					return nil, "", nil
+				}
+				// No — re-show prompt and retry
+				wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(titlePrompt)), outputMode)
+				if wErr != nil {
+					log.Printf("WARN: Node %d: Failed to rewrite title prompt: %v", nodeNumber, wErr)
+				}
+				continue
+			}
 			log.Printf("ERROR: Node %d: Failed reading title input: %v", nodeNumber, err)
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading title.\r\n"), outputMode)
 			time.Sleep(1 * time.Second)
@@ -7052,21 +7080,37 @@ func runComposeMessageWithIH(e *MenuExecutor, s ssh.Session, ih *editor.InputHan
 	if toPrompt == "" {
 		toPrompt = "|07To: |15"
 	}
-	wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(toPrompt)), outputMode)
-	if wErr != nil {
-		log.Printf("WARN: Node %d: Failed to write 'to' prompt: %v", nodeNumber, wErr)
-	}
-
-	toUser, err := styledInput(terminal, s, outputMode, 24, "All")
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			log.Printf("INFO: Node %d: User disconnected during 'to' input.", nodeNumber)
-			return nil, "LOGOFF", io.EOF
+	var toUser string
+	for {
+		wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(toPrompt)), outputMode)
+		if wErr != nil {
+			log.Printf("WARN: Node %d: Failed to write 'to' prompt: %v", nodeNumber, wErr)
 		}
-		log.Printf("ERROR: Node %d: Failed reading 'to' input: %v", nodeNumber, err)
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading recipient.\r\n"), outputMode)
-		time.Sleep(1 * time.Second)
-		return nil, "", nil // Return to menu
+		toUser, err = styledInput(terminal, s, outputMode, 24, "All")
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				log.Printf("INFO: Node %d: User disconnected during 'to' input.", nodeNumber)
+				return nil, "LOGOFF", io.EOF
+			}
+			if errors.Is(err, errInputAborted) {
+				abort, confirmErr := e.confirmAbortPost(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					if errors.Is(confirmErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					return nil, "", nil
+				}
+				if abort {
+					return nil, "", nil
+				}
+				continue // No — re-show prompt and retry
+			}
+			log.Printf("ERROR: Node %d: Failed reading 'to' input: %v", nodeNumber, err)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading recipient.\r\n"), outputMode)
+			time.Sleep(1 * time.Second)
+			return nil, "", nil
+		}
+		break
 	}
 	toUser = strings.TrimSpace(toUser)
 	if toUser == "" {
@@ -9022,6 +9066,23 @@ func runSelectMessageArea(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	return currentUser, "", nil
 }
 
+// errInputAborted is returned by styledInput when the user presses ESC to cancel entry.
+var errInputAborted = errors.New("input aborted")
+
+// confirmAbortPost shows "Abort Post? Yes|No" lightbar.
+// Returns true (and prints "Post aborted.") if user confirmed, false to retry.
+func (e *MenuExecutor) confirmAbortPost(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber, termWidth, termHeight int) (bool, error) {
+	abort, err := e.promptYesNo(s, terminal, "|07Abort Post? @", outputMode, nodeNumber, termWidth, termHeight)
+	if err != nil {
+		return false, err
+	}
+	if abort {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Post aborted.|07\r\n")), outputMode)
+		time.Sleep(500 * time.Millisecond)
+	}
+	return abort, nil
+}
+
 // styledInput reads input with character-by-character display styling.
 // Mimics Pascal NoCRInput with a shaded cursor cell, solid blue typed area,
 // and a bright blue background fill for remaining space.
@@ -9120,11 +9181,9 @@ func styledInput(terminal *term.Terminal, session ssh.Session, outputMode ansi.O
 				renderBox(true)
 			}
 
-		case 27: // ESC - clear input
-			if len(input) > 0 {
-				input = input[:0]
-				renderBox(true)
-			}
+		case 27: // ESC - abort input
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			return "", errInputAborted
 
 		case 3: // Ctrl+C - abort
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
@@ -9165,21 +9224,38 @@ func runSendPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Prompt for recipient username
 	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 	recipientPrompt := "|07Send private mail to: |15"
-	wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(recipientPrompt)), outputMode)
-	if wErr != nil {
-		log.Printf("WARN: Node %d: Failed to write recipient prompt: %v", nodeNumber, wErr)
-	}
-
-	recipient, err := styledInput(terminal, s, outputMode, 24, "")
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			log.Printf("INFO: Node %d: User disconnected during recipient input.", nodeNumber)
-			return nil, "LOGOFF", io.EOF
+	var recipient string
+	for {
+		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(recipientPrompt)), outputMode)
+		if wErr != nil {
+			log.Printf("WARN: Node %d: Failed to write recipient prompt: %v", nodeNumber, wErr)
 		}
-		log.Printf("ERROR: Node %d: Failed reading recipient input: %v", nodeNumber, err)
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading recipient.\r\n"), outputMode)
-		time.Sleep(1 * time.Second)
-		return nil, "", nil
+		var inputErr error
+		recipient, inputErr = styledInput(terminal, s, outputMode, 24, "")
+		if inputErr != nil {
+			if errors.Is(inputErr, io.EOF) {
+				log.Printf("INFO: Node %d: User disconnected during recipient input.", nodeNumber)
+				return nil, "LOGOFF", io.EOF
+			}
+			if errors.Is(inputErr, errInputAborted) {
+				abort, confirmErr := e.confirmAbortPost(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					if errors.Is(confirmErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					return nil, "", nil
+				}
+				if abort {
+					return nil, "", nil
+				}
+				continue // No — re-show prompt and retry
+			}
+			log.Printf("ERROR: Node %d: Failed reading recipient input: %v", nodeNumber, inputErr)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading recipient.\r\n"), outputMode)
+			time.Sleep(1 * time.Second)
+			return nil, "", nil
+		}
+		break
 	}
 	recipient = strings.TrimSpace(recipient)
 	if recipient == "" {
@@ -9200,20 +9276,32 @@ func runSendPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Prompt for subject
 	titlePrompt := "|07Subject: |15"
-	wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(titlePrompt)), outputMode)
-	if wErr != nil {
-		log.Printf("WARN: Node %d: Failed to write subject prompt: %v", nodeNumber, wErr)
-	}
-
 	var subject string
 	for {
-		subject, err = styledInput(terminal, s, outputMode, 30, "")
-		if err != nil {
-			if errors.Is(err, io.EOF) {
+		if wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(titlePrompt)), outputMode); wErr != nil {
+			log.Printf("WARN: Node %d: Failed to write subject prompt: %v", nodeNumber, wErr)
+		}
+		var inputErr error
+		subject, inputErr = styledInput(terminal, s, outputMode, 30, "")
+		if inputErr != nil {
+			if errors.Is(inputErr, io.EOF) {
 				log.Printf("INFO: Node %d: User disconnected during subject input.", nodeNumber)
 				return nil, "LOGOFF", io.EOF
 			}
-			log.Printf("ERROR: Node %d: Failed reading subject input: %v", nodeNumber, err)
+			if errors.Is(inputErr, errInputAborted) {
+				abort, confirmErr := e.confirmAbortPost(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
+				if confirmErr != nil {
+					if errors.Is(confirmErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					return nil, "", nil
+				}
+				if abort {
+					return nil, "", nil
+				}
+				continue // No — re-show prompt and retry
+			}
+			log.Printf("ERROR: Node %d: Failed reading subject input: %v", nodeNumber, inputErr)
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\nError reading subject.\r\n"), outputMode)
 			time.Sleep(1 * time.Second)
 			return nil, "", nil
@@ -9223,10 +9311,6 @@ func runSendPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			break
 		}
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Subject is required.|07\r\n")), outputMode)
-		wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(titlePrompt)), outputMode)
-		if wErr != nil {
-			log.Printf("WARN: Node %d: Failed to rewrite subject prompt: %v", nodeNumber, wErr)
-		}
 	}
 
 	// Launch editor

@@ -349,6 +349,12 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
+	// Snapshot the user's current area/conf so we can restore after the scan
+	origAreaID := currentUser.CurrentMessageAreaID
+	origAreaTag := currentUser.CurrentMessageAreaTag
+	origConfID := currentUser.CurrentMsgConferenceID
+	origConfTag := currentUser.CurrentMsgConferenceTag
+
 	// Create tagged area map for quick lookup
 	taggedMap := make(map[int]bool)
 	if scanCfg.WhichAreas == 1 && currentUser.TaggedMessageAreaIDs != nil {
@@ -467,11 +473,16 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 	}
 
-	// Newscan complete
+	// Newscan complete — restore original conf/area before returning
+	currentUser.CurrentMessageAreaID = origAreaID
+	currentUser.CurrentMessageAreaTag = origAreaTag
+	currentUser.CurrentMsgConferenceID = origConfID
+	currentUser.CurrentMsgConferenceTag = origConfTag
+
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanComplete)), outputMode)
 	time.Sleep(1 * time.Second)
 
-	return nil, "", nil
+	return currentUser, "", nil
 }
 
 // determineStartMessage calculates the starting message number based on scan config.

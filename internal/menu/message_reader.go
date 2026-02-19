@@ -34,7 +34,7 @@ var msgReaderOptions = []MsgLightbarOption{
 	{Label: " Next ", HotKey: 'N'},
 	{Label: " Reply ", HotKey: 'R'},
 	{Label: " Again ", HotKey: 'A'},
-	{Label: " Skip ", HotKey: 'S'},
+	{Label: " Prev ", HotKey: 'S'},
 	{Label: " Thread ", HotKey: 'T'},
 	{Label: " Post ", HotKey: 'P'},
 	{Label: " Jump ", HotKey: 'J'},
@@ -469,8 +469,16 @@ readerLoop:
 				needsRedraw = true
 				continue
 
-			case 'S': // Skip - exit current area, return to caller
-				break readerLoop
+			case 'S': // Prev - go back one message
+				if currentMsgNum > 1 {
+					currentMsgNum--
+					break scrollLoop
+				} else {
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgFirstMessage)), outputMode)
+					time.Sleep(500 * time.Millisecond)
+					needsRedraw = true
+					continue
+				}
 
 			case 'T': // Thread
 				handleThread(reader, e, terminal, outputMode, currentAreaID,
@@ -489,9 +497,15 @@ readerLoop:
 				needsRedraw = true
 				continue
 
-			case 'L': // List titles (deferred)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.MsgListDeferred)), outputMode)
-				time.Sleep(1 * time.Second)
+			case 'L': // List messages in current area
+				updatedUser, nextAction, listErr := runListMsgs(e, s, terminal, userManager, currentUser,
+					nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
+				if updatedUser != nil {
+					currentUser = updatedUser
+				}
+				if listErr != nil || nextAction == "LOGOFF" {
+					return currentUser, "LOGOFF", listErr
+				}
 				needsRedraw = true
 				continue
 
