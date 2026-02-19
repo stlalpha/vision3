@@ -1268,8 +1268,9 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Ensure cursor is restored on exit
 	defer terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 
-	// Use session-scoped input so escape/key handling matches other lightbars.
-	reader := bufio.NewReader(getSessionIH(s))
+	// Use direct key decoding from the session-scoped input handler so arrow/home/end
+	// behavior is consistent with other lightbars.
+	sessionIH := getSessionIH(s)
 
 	const maxVisibleItems = 15 // Maximum items visible in lightbar (Y=6 to Y=20)
 	selectedIndex := 0         // Currently highlighted option
@@ -1360,7 +1361,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Main selection loop
 	for {
-		keySeq, readErr := readKeySequence(reader)
+		key, readErr := sessionIH.ReadKey()
 		if readErr != nil {
 			if errors.Is(readErr, io.EOF) {
 				return nil, "LOGOFF", io.EOF
@@ -1369,7 +1370,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 
 		// Handle arrow-key navigation
-		if keySeq == "\x1b[A" {
+		if key == editor.KeyArrowUp || key == editor.KeyCtrlE {
 			if selectedIndex > 0 {
 				selectedIndex--
 				drawOption(selectedIndex+1, false)
@@ -1377,7 +1378,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 			continue
 		}
-		if keySeq == "\x1b[B" {
+		if key == editor.KeyArrowDown || key == editor.KeyCtrlX {
 			if selectedIndex < len(options)-1 {
 				selectedIndex++
 				drawOption(selectedIndex-1, false)
@@ -1387,12 +1388,12 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 
 		// Handle Q to quit
-		if keySeq == "q" || keySeq == "Q" {
+		if key == 'q' || key == 'Q' {
 			break
 		}
 
 		// Handle ENTER to preview
-		if keySeq == "\r" || keySeq == "\n" {
+		if key == editor.KeyEnter {
 			opt := options[selectedIndex]
 			templateNum, _ := strconv.Atoi(opt.ReturnValue)
 			hdrPath := filepath.Join(e.MenuSetPath, "templates", "message_headers", fmt.Sprintf("MSGHDR.%d.ans", templateNum))
@@ -1473,7 +1474,7 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 
 		// Handle SPACE to select immediately (without preview)
-		if keySeq == " " {
+		if key == ' ' {
 			opt := options[selectedIndex]
 			templateNum, _ := strconv.Atoi(opt.ReturnValue)
 			currentUser.MsgHdr = templateNum
@@ -1485,8 +1486,8 @@ func runGetHeaderType(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 
 		// Handle numeric hotkeys (1-9) for direct selection
-		if len(keySeq) == 1 && keySeq[0] >= '1' && keySeq[0] <= '9' {
-			digit := int(keySeq[0] - '0')
+		if key >= '1' && key <= '9' {
+			digit := key - '0'
 			// Find option with this template number
 			for i, opt := range options {
 				templateNum, _ := strconv.Atoi(opt.ReturnValue)
