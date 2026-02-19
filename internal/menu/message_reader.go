@@ -276,8 +276,9 @@ readerLoop:
 				needsBodyRedraw = false
 			}
 
-			// Read key sequence (handles escape sequences for arrow keys, page up/down)
-			keySeq, keyErr := readKeySequence(reader)
+			// Read key directly from the shared session input handler so arrow/page
+			// keys are decoded consistently across reader/list/header lightbars.
+			key, keyErr := sessionIH.ReadKey()
 			if keyErr != nil {
 				if errors.Is(keyErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF
@@ -286,26 +287,26 @@ readerLoop:
 			}
 
 			// Handle scrolling keys first
-			switch keySeq {
-			case "\x1b": // ESC key - quit reader
+			switch key {
+			case editor.KeyEsc: // ESC key - quit reader
 				quitNewscan = true
 				break readerLoop
 
-			case "\x1b[A": // Up arrow - scroll up one line
+			case editor.KeyArrowUp, editor.KeyCtrlE: // Up arrow - scroll up one line
 				if scrollOffset > 0 {
 					scrollOffset--
 					needsBodyRedraw = true
 				}
 				continue
 
-			case "\x1b[B": // Down arrow - scroll down one line
+			case editor.KeyArrowDown, editor.KeyCtrlX: // Down arrow - scroll down one line
 				if totalBodyLines > bodyAvailHeight && scrollOffset < totalBodyLines-bodyAvailHeight {
 					scrollOffset++
 					needsBodyRedraw = true
 				}
 				continue
 
-			case "\x1b[5~": // Page Up
+			case editor.KeyPageUp, editor.KeyCtrlR: // Page Up
 				pageSize := bodyAvailHeight - 2
 				if pageSize < 5 {
 					pageSize = 5
@@ -317,7 +318,7 @@ readerLoop:
 				needsBodyRedraw = true
 				continue
 
-			case "\x1b[6~": // Page Down
+			case editor.KeyPageDown, editor.KeyCtrlC: // Page Down
 				pageSize := bodyAvailHeight - 2
 				if pageSize < 5 {
 					pageSize = 5
@@ -333,7 +334,7 @@ readerLoop:
 				needsBodyRedraw = true
 				continue
 
-			case "\x1b[D", "\x1b[C": // Left or Right arrow - activate interactive lightbar
+			case editor.KeyArrowLeft, editor.KeyArrowRight, editor.KeyCtrlS, editor.KeyCtrlD: // Left/Right arrow - activate interactive lightbar
 				var suffixText string
 				if isNewScan {
 					suffixText = e.LoadedStrings.MsgNewScanSuffix
@@ -345,9 +346,9 @@ readerLoop:
 
 				// Determine initial direction based on which arrow was pressed
 				initialDir := 0
-				if keySeq == "\x1b[D" {
+				if key == editor.KeyArrowLeft || key == editor.KeyCtrlS {
 					initialDir = -1 // Left arrow
-				} else if keySeq == "\x1b[C" {
+				} else if key == editor.KeyArrowRight || key == editor.KeyCtrlD {
 					initialDir = 1 // Right arrow
 				}
 
@@ -366,16 +367,12 @@ readerLoop:
 			if selectedKey == 0 {
 				// If not a scrolling key, show the lightbar for command selection
 				// First handle simple single-key commands that bypass the lightbar
-				if len(keySeq) == 1 {
-					singleKey := rune(keySeq[0])
+				if key >= 32 && key <= 126 {
+					singleKey := rune(key)
 					// Check if it's a direct command key
 					switch unicode.ToUpper(singleKey) {
 					case 'N', 'R', 'A', 'S', 'T', 'P', 'J', 'M', 'L', 'Q', '?':
 						selectedKey = unicode.ToUpper(singleKey)
-					case '\r', '\n':
-						selectedKey = 'N' // Enter = Next
-					case '\x1b': // ESC = Quit
-						selectedKey = 'Q'
 					default:
 						// Not a recognized command, show lightbar
 						var suffixText string
@@ -398,6 +395,10 @@ readerLoop:
 						}
 						selectedKey = rune(selKey)
 					}
+				} else if key == editor.KeyEnter {
+					selectedKey = 'N' // Enter = Next
+				} else if key == editor.KeyEsc {
+					selectedKey = 'Q' // ESC = Quit
 				} else {
 					// Multi-byte sequence that wasn't handled as scrolling - show lightbar
 					var suffixText string
