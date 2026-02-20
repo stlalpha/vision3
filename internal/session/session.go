@@ -35,6 +35,7 @@ type BbsSession struct {
 	StartTime    time.Time            // Tracks the session start time
 	LastActivity time.Time            // Tracks last user input for idle calculation
 	PendingPages []string             // Queued page messages for delivery at next prompt
+	Invisible    bool                 // True if user logged in invisibly (SysOp/CoSysOp only)
 }
 
 // AddPage queues a page message for delivery at the user's next menu prompt.

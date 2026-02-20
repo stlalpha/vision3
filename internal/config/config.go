@@ -424,6 +424,9 @@ CfgViewHotKeys         string `json:"cfgViewHotKeys"`
 	TermSizeNewDetectedPrompt    string `json:"termSizeNewDetectedPrompt"`
 	TermSizeUpdateDefaultsPrompt string `json:"termSizeUpdateDefaultsPrompt"`
 
+	// Invisible login prompt (shown to SysOp/CoSysOp after authentication)
+	InvisibleLogonPrompt string `json:"invisibleLogonPrompt"`
+
 	// Default Colors (|C1 - |C7 map to these)
 	DefColor1 uint8 `json:"defColor1"`
 	DefColor2 uint8 `json:"defColor2"`

@@ -4,6 +4,20 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 ## Recent Completions
 
+*   **[DONE] Invisible Login for SysOp/CoSysOp (2026-02-20):**
+    *   **Goal:** Allow SysOp/CoSysOp users to log in invisibly — hidden from Last Callers, Who's Online, and Chat/Page for regular users. Other SysOp/CoSysOp users can still see and page them.
+    *   **Implementation:**
+        *   Added `BbsSession.Invisible` flag; prompt shown after authentication for users at `CoSysOpLevel` or above.
+        *   Added `CallRecord.Invisible` field persisted to `callhistory.json` so the call is logged but flagged.
+        *   **Last Callers:** invisible records filtered out for non-CoSysOp viewers.
+        *   **Who's Online:** invisible sessions hidden from listing and excluded from the `NODECT` token count.
+        *   **Chat:** join/leave broadcast announcements suppressed for invisible users.
+        *   **Page:** invisible sessions excluded from the node list and treated as offline for non-CoSysOp users attempting to page.
+        *   Added `invisibleLogonPrompt` string to `strings.json` / `StringsConfig`.
+        *   Added `isCoSysOpOrAbove()` helper on `MenuExecutor` for consistent privilege checks.
+    *   **Files:** `cmd/vision3/main.go`, `internal/session/session.go`, `internal/user/user.go`, `internal/config/config.go`, `internal/menu/executor.go`, `internal/menu/chat.go`, `internal/menu/page.go`, `configs/strings.json`
+    *   **Status:** COMPLETE.
+
 *   **[DONE] Telnet TERM_TYPE Negotiation (2026-02-19):**
     *   **Goal:** Detect the connecting client's terminal type over telnet via RFC 1091 TERM_TYPE negotiation, so that SyncTerm, NetRunner, and other BBS clients are correctly identified and receive the right output mode (CP437 vs UTF-8) instead of always falling through to the "ansi" default.
     *   **Implementation:**
