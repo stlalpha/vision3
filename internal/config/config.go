@@ -681,6 +681,10 @@ type ServerConfig struct {
 	// Idle timeout (0 = disabled). Applied across the entire app; any input loop
 	// that calls ReadKeyWithTimeout uses this value.
 	SessionIdleTimeoutMinutes int `json:"sessionIdleTimeoutMinutes"`
+
+	// Number of days to retain soft-deleted user accounts before they are eligible
+	// for permanent purge. 0 = purge immediately; -1 = never purge automatically.
+	DeletedUserRetentionDays int `json:"deletedUserRetentionDays"`
 }
 
 // EventConfig defines a scheduled event configuration
@@ -733,6 +737,7 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		AllowNewUsers:             true,
 		SessionIdleTimeoutMinutes: 5,
 		LegacySSHAlgorithms:       true,
+		DeletedUserRetentionDays:  30,
 	}
 
 	data, err := os.ReadFile(filePath)

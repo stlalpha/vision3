@@ -137,6 +137,17 @@
       "enabled": false
     },
     {
+      "id": "example_purge_deleted_users",
+      "name": "Example: Nightly Deleted User Purge",
+      "schedule": "0 3 * * *",
+      "comment": "Permanently remove soft-deleted user accounts that have exceeded deletedUserRetentionDays (set in config.json, default 30 days). Runs at 3:00 AM. Safe to run daily — accounts not yet past the retention period are left untouched.",
+      "command": "{BBS_ROOT}/helper",
+      "args": ["users", "purge"],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 60,
+      "enabled": false
+    },
+    {
       "id": "example_nightly_msgbase_fix",
       "name": "Example: Nightly Message Base Integrity Check",
       "schedule": "0 2 * * *",
