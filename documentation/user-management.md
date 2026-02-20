@@ -347,6 +347,49 @@ The system tracks user calls in `data/users/callhistory.json`:
 
 The system maintains the last 20 call records.
 
+### Invisible Login
+
+Call records include an `invisible` field (boolean, omitted when false) that flags calls where the user logged in invisibly:
+
+```json
+{
+  "userID": 1,
+  "handle": "Felonius",
+  "callNumber": 48,
+  "invisible": true,
+  ...
+}
+```
+
+See [Invisible Login](#invisible-login-sysopco-sysop) below for details.
+
+## Invisible Login (SysOp/Co-SysOp)
+
+Users at or above the configured `coSysOpLevel` (default 50) are prompted at login:
+
+```
+Invisible Logon? Y/n
+```
+
+If they choose **Yes**, the session is flagged invisible for its duration. Invisible sessions are:
+
+- **Hidden from Last Callers** — non-CoSysOp users do not see the call in `RUN:LASTCALLERS`. The call is still logged to `callhistory.json` with `"invisible": true`.
+- **Hidden from Who's Online** — invisible sessions are excluded from `RUN:WHOONLINE` listings and the `NODECT` token count for non-CoSysOp viewers.
+- **Hidden from Page** — invisible nodes do not appear in the page node list and are treated as offline for non-CoSysOp users attempting to page them.
+- **Silent in Chat** — join and leave announcements are suppressed in `RUN:CHAT` for invisible users (they can still chat normally).
+
+**CoSysOp/SysOp users can always see invisible sessions** across all of the above views.
+
+### Configuration
+
+The login prompt text is configurable in `configs/strings.json`:
+
+```json
+"invisibleLogonPrompt": " |03Invisible Logon?|07"
+```
+
+The access level threshold is driven by `coSysOpLevel` in `configs/config.json` (the same value that controls other CoSysOp privileges).
+
 ## Security Considerations
 
 ### Password Storage
