@@ -39,7 +39,7 @@ if ! go build -o jamutil ./cmd/jamutil; then
     echo "Build failed!"
     exit 1
 fi
-if ! go build -o bin/strings ./cmd/strings; then
+if ! go build -o strings ./cmd/strings; then
     echo "Build failed (strings editor)!"
     exit 1
 fi

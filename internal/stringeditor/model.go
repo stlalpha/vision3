@@ -168,7 +168,7 @@ func (m Model) updateNavigate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.mode = modeAbortConfirm
 		m.abortYes = false
 		return m, nil
-	case tea.KeyF2:
+	case tea.KeyF1:
 		// Edit with pre-filled value
 		entry := m.entries[m.cursor]
 		return m.startEdit(m.getValue(entry.Key))

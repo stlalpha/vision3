@@ -16,20 +16,27 @@ import (
 //	ChoiceColor  = 15 (White)
 //	DataColor    = 9  (Light Blue)
 var (
-	// Status bar: blue background, white text (matches Pascal's row 1 header)
-	statusBarStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("15")).
-			Background(lipgloss.Color("4")).
-			Bold(true)
+	// Status bar styles matching Pascal's SetColor() attributes:
+	//   SetColor(16) = bg=blue, fg=black  (fill + separators)
+	//   SetColor(25) = bg=blue, fg=light blue (labels)
+	//   SetColor(31) = bg=blue, fg=white (values)
+	//   SetColor(27) = bg=blue, fg=light cyan (page label)
+	statusBarFillStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("0")).
+				Background(lipgloss.Color("4"))
 
 	statusBarLabelStyle = lipgloss.NewStyle().
-				Foreground(lipgloss.Color("14")).
+				Foreground(lipgloss.Color("12")).
 				Background(lipgloss.Color("4"))
 
 	statusBarValueStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("15")).
 				Background(lipgloss.Color("4")).
 				Bold(true)
+
+	statusBarPageLabelStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color("14")).
+				Background(lipgloss.Color("4"))
 
 	// Item label in bracket: dark gray
 	bracketStyle = lipgloss.NewStyle().
@@ -39,15 +46,15 @@ var (
 	labelNormalStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("7"))
 
-	// Highlighted item: white on blue bar (matches Pascal BarColor=95)
+	// Highlighted item: white on magenta bar (Pascal BarColor=95 → bg=5, fg=15)
 	labelHighlightStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("15")).
-				Background(lipgloss.Color("4")).
+				Background(lipgloss.Color("5")).
 				Bold(true)
 
 	bracketHighlightStyle = lipgloss.NewStyle().
 				Foreground(lipgloss.Color("14")).
-				Background(lipgloss.Color("4"))
+				Background(lipgloss.Color("5"))
 
 	// Description bar (row 24): magenta text, centered
 	descriptionStyle = lipgloss.NewStyle().
@@ -147,53 +154,48 @@ func (m Model) View() string {
 }
 
 // renderStatusBar creates the top status bar matching the Pascal original.
-// Pascal: " Current Topic Number: N │ ViSiON/2 BBS String Configuration │ Current Page: P"
+// Pascal gotopage procedure row 1 layout:
+//
+//	SetColor(16); ClrEOL;  (fill entire row blue)
+//	SetColor(25); Write(' Current Topic Number:');
+//	SetColor(31); Write(' '+strr(top));
+//	SetColor(16); Write('│');
+//	SetColor(25); Write(' ViSiON/2 BBS String Configuration');
+//	SetColor(16); Write(' │');
+//	SetColor(27); Write(' Current Page:');
+//	SetColor(31); Write(' '+strr(page));
 func (m Model) renderStatusBar() string {
-	itemNum := m.cursor + 1
+	// First item on current page (1-based, matching Pascal's top variable)
+	topItem := m.page*itemsPerPage + 1
 	pageNum := m.page + 1
 
-	left := fmt.Sprintf(" Current Item: %s%d",
-		statusBarLabelStyle.Render(""),
-		itemNum,
-	)
-	center := "ViSiON/3 BBS String Configuration"
-	right := fmt.Sprintf("Page: %d/%d ", pageNum, m.numPages)
+	// Build segments exactly matching Pascal's SetColor/Write sequence
+	seg1 := statusBarLabelStyle.Render(" Current Topic Number:")
+	seg2 := statusBarValueStyle.Render(fmt.Sprintf(" %d", topItem))
+	sep1 := statusBarFillStyle.Render(" │")
+	seg3 := statusBarLabelStyle.Render(" ViSiON/3 BBS String Configuration")
+	sep2 := statusBarFillStyle.Render(" │")
+	seg4 := statusBarPageLabelStyle.Render(" Current Page:")
+	seg5 := statusBarValueStyle.Render(fmt.Sprintf(" %d", pageNum))
 
-	if m.dirty {
-		right = dirtyStyle.Render("*MODIFIED* ") + right
-	}
+	content := seg1 + seg2 + sep1 + seg3 + sep2 + seg4 + seg5
 
-	// Build the full status bar
-	leftPart := statusBarLabelStyle.Render(" Item: ") + statusBarValueStyle.Render(fmt.Sprintf("%d", itemNum))
-	sep1 := statusBarStyle.Render(" │ ")
-	centerPart := statusBarValueStyle.Render(center)
-	sep2 := statusBarStyle.Render(" │ ")
-	rightPart := statusBarLabelStyle.Render("Page: ") + statusBarValueStyle.Render(fmt.Sprintf("%d/%d", pageNum, m.numPages))
-	if m.dirty {
-		rightPart = statusBarValueStyle.Render("*") + rightPart
-	}
-
-	content := leftPart + sep1 + centerPart + sep2 + rightPart
-
-	// Calculate visible length and pad to fill width
-	// We need to approximate since styled strings have hidden ANSI codes
-	visLen := len(fmt.Sprintf(" Item: %d │ %s │ Page: %d/%d", itemNum, center, pageNum, m.numPages))
-	if m.dirty {
-		visLen++
-	}
-	_ = left // suppress unused
+	// Calculate visible length (display columns, not bytes) to pad the rest with blue background.
+	// Use a plain ASCII format string so len() == display width.
+	plainText := fmt.Sprintf(" Current Topic Number: %d | ViSiON/3 BBS String Configuration | Current Page: %d", topItem, pageNum)
+	visLen := len(plainText)
 
 	padding := m.width - visLen
 	if padding < 0 {
 		padding = 0
 	}
 
-	return content + statusBarStyle.Render(strings.Repeat(" ", padding))
+	return content + statusBarFillStyle.Render(strings.Repeat(" ", padding))
 }
 
 // renderColumnHeader creates a subtle column header line.
 func (m Model) renderColumnHeader() string {
-	header := bracketStyle.Render("  #  ") +
+	header := bracketStyle.Render("  # ") +
 		bracketStyle.Render("Name") +
 		bracketStyle.Render(strings.Repeat(" ", labelCol-9)) +
 		bracketStyle.Render("Value")
@@ -287,10 +289,22 @@ func (m Model) renderDescriptionBar() string {
 
 // renderHelpBar renders the bottom help bar.
 func (m Model) renderHelpBar() string {
-	help := " ↑↓ Navigate │ PgUp/PgDn Pages │ Enter Edit │ F2 Edit(Prefill) │ F10 Save │ Esc Quit │ / Search"
+	help := " ↑↓ Navigate │ PgUp/PgDn Pages │ Enter Edit │ F1 Edit(Prefill) │ F10 Save │ Esc Quit │ / Search"
+	visLen := 0
+	for _, r := range help {
+		_ = r
+		visLen++
+	}
+	pad := m.width - visLen
+	if pad < 0 {
+		pad = 0
+	}
+	padded := help + strings.Repeat(" ", pad)
 	style := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("8"))
-	return style.Render(help)
+		Foreground(lipgloss.Color("11")).
+		Background(lipgloss.Color("4")).
+		Bold(true)
+	return style.Render(padded)
 }
 
 // overlayDialog renders the abort confirmation dialog centered over the content.
