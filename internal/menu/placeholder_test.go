@@ -386,15 +386,19 @@ func TestProcessPlaceholderGapFill(t *testing.T) {
 			if visLen != tt.wantLen {
 				t.Errorf("visible length = %d, want %d (raw bytes: %q)", visLen, tt.wantLen, got)
 			}
-			// Verify fill bytes are C4 (CP437 horizontal line)
-			for j := 0; j < len(got); j++ {
-				if got[j] == 0xC4 {
-					// Found at least one fill char, good
-					return
+			// Verify fill bytes: when fill is expected (result longer than template),
+			// at least one CP437 horizontal line byte (0xC4) must be present.
+			if tt.wantLen > len(tt.template) {
+				hasFill := false
+				for j := 0; j < len(got); j++ {
+					if got[j] == 0xC4 {
+						hasFill = true
+						break
+					}
 				}
-			}
-			if tt.wantLen > len(tt.template)-4 { // only check if fill was expected
-				// For the "already full" case, no fill chars expected
+				if !hasFill {
+					t.Errorf("expected gap fill (0xC4) bytes in output, none found (raw: %q)", got)
+				}
 			}
 		})
 	}

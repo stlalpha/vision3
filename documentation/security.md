@@ -551,7 +551,7 @@ The system protects against SSH brute force attempts through:
 1. Be allowed to connect (SSH auth succeeds)
 2. Reach the BBS login prompt
 3. Fail BBS authentication multiple times
-4. Trigger IP-based lockout (default: 5 attempts = 30 minute lockout)
+4. Trigger IP-based lockout (default: 5 attempts = 30-minute lockout)
 5. Be unable to make further login attempts from that IP
 
 #### Configuration Example

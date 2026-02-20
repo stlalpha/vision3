@@ -125,6 +125,11 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int, colorEs
 		if template[i] == 0x1b && i+1 < n && template[i+1] == '[' {
 			seqStart := i
 			i += 2
+			// Skip DEC private-mode prefix bytes (?, =, >, <) so sequences like
+			// ESC[?25l (hide cursor) are fully consumed without corrupting tracking.
+			for i < n && (template[i] == '?' || template[i] == '=' || template[i] == '>' || template[i] == '<') {
+				i++
+			}
 			// Collect parameter bytes (digits, semicolons, spaces)
 			paramStart := i
 			for i < n && (template[i] >= '0' && template[i] <= '9' || template[i] == ';' || template[i] == ' ') {
@@ -339,6 +344,10 @@ func FindEditorColorAtPos(template []byte, targetRow, targetCol int) string {
 		// advancing the visible column counter.
 		if template[i] == 0x1b && i+1 < n && template[i+1] == '[' {
 			i += 2
+			// Skip DEC private-mode prefix bytes so ESC[?25l etc. are fully consumed.
+			for i < n && (template[i] == '?' || template[i] == '=' || template[i] == '>' || template[i] == '<') {
+				i++
+			}
 			paramStart := i
 			for i < n && (template[i] >= '0' && template[i] <= '9' || template[i] == ';' || template[i] == ' ') {
 				i++
@@ -375,12 +384,18 @@ func FindEditorColorAtPos(template []byte, targetRow, targetCol int) string {
 				row, col = r, c
 			case 'A':
 				row -= parseSingleParam(template[paramStart:i-1], 1)
+				if row < 1 {
+					row = 1
+				}
 			case 'B':
 				row += parseSingleParam(template[paramStart:i-1], 1)
 			case 'C':
 				col += parseSingleParam(template[paramStart:i-1], 1)
 			case 'D':
 				col -= parseSingleParam(template[paramStart:i-1], 1)
+				if col < 1 {
+					col = 1
+				}
 			case 'm':
 				sgr.applyParams(string(template[paramStart : i-1]))
 			}
