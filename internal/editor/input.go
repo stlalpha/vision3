@@ -244,11 +244,12 @@ func (ih *InputHandler) ReadKey() (int, error) {
 	}
 
 	// Check for escape sequence.
-	// A 50 ms timeout distinguishes a lone ESC keypress from sequences like
-	// arrow keys (ESC [ A). Because reads go through a channel, this timeout
-	// works reliably even if the reader does not support SetReadDeadline.
+	// A 100 ms timeout distinguishes a lone ESC keypress from sequences like
+	// arrow keys (ESC [ A). 100 ms accommodates higher-latency links (e.g.
+	// telnet over mobile networks) where 50 ms was too tight and caused
+	// arrow-key bytes to be misinterpreted as separate keypresses.
 	if b == KeyEsc {
-		next, err := ih.readByteWithTimeout(50 * time.Millisecond)
+		next, err := ih.readByteWithTimeout(100 * time.Millisecond)
 		if err != nil {
 			// Timeout — no following byte, so this is a plain ESC.
 			return int(KeyEsc), nil

@@ -128,6 +128,16 @@ Displays `FASTLOGN.ANS` and loads options from `menus/v3/cfg/FASTLOGN.CFG`. The 
 
 If the user selects a jump option (e.g., skip to MAIN), the remaining login items are skipped and the user goes directly to the chosen menu. Placing FASTLOGIN as the first item lets users skip the entire sequence upfront. Placing it at the end lets users jump to a submenu instead of MAIN after seeing everything.
 
+### WHOISONLINE
+
+Prompts the user with a YES/NO lightbar: "View users on other nodes?" If the user selects YES, the Who's Online display is shown using the `WHOONLN.TOP`, `WHOONLN.MID`, and `WHOONLN.BOT` templates. If the user selects NO, this item is skipped silently.
+
+```json
+{"command": "WHOISONLINE"}
+```
+
+The display shows all active nodes with their username, current activity, time online, and idle time. Invisible sessions are hidden from non-CoSysOp users.
+
 ## Security Level Gating
 
 Each item can require a minimum security level. If the user's access level is below the threshold, the item is silently skipped.
@@ -250,6 +260,7 @@ All login sequence commands are also registered as menu runnables and can be use
 | DISPLAYFILE | `RUN:DISPLAYFILE <filename>` |
 | RUNDOOR     | `RUN:RUNDOOR <script_path>`  |
 | FASTLOGIN   | `RUN:FASTLOGIN`              |
+| WHOISONLINE | `RUN:WHOISONLINE` (existing) |
 
 ## File Locations
 
@@ -262,3 +273,4 @@ All login sequence commands are also registered as menu runnables and can be use
 | `menus/v3/ansi/YOURSTAT.ANS`    | User statistics ANSI art               |
 | `menus/v3/templates/LASTCALL.*` | Last callers display templates         |
 | `menus/v3/templates/ONELINER.*` | Oneliners display templates            |
+| `menus/v3/templates/WHOONLN.*`  | Who's online display templates         |

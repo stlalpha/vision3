@@ -466,6 +466,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["UNVALIDATEUSER"] = runUnvalidateUser                   // Remove validation from user accounts
 	registry["BANUSER"] = runBanUser                                 // Quick-ban user accounts
 	registry["DELETEUSER"] = runDeleteUser                           // Soft-delete user accounts (data preserved)
+	registry["PURGEUSERS"] = runPurgeUsers                           // Permanently purge soft-deleted users past retention period
 	registry["ADMINLISTUSERS"] = runAdminListUsers                   // Admin detailed user browser
 	registry["TOGGLEALLOWNEWUSERS"] = runAdminToggleAllowNewUsers    // Toggle allowNewUsers config flag
 	registry["LISTMSGAR"] = runListMessageAreas                      // <-- ADDED: Register message area list runnable
@@ -1796,6 +1797,21 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			commands = []CommandRecord{} // Use empty slice
 		}
 
+		// Determine default node activity for this menu from autorun entries
+		menuDefaultActivity := currentMenuName
+		for _, cmd := range commands {
+			if (cmd.Keys == "//" || cmd.Keys == "~~") && cmd.NodeActivity != "" {
+				menuDefaultActivity = cmd.NodeActivity
+				break
+			}
+		}
+		// Set default activity on session for Who's Online display
+		if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+			sess.Mutex.Lock()
+			sess.Activity = menuDefaultActivity
+			sess.Mutex.Unlock()
+		}
+
 		// Check Menu Password if required
 		menuPassword := menuRec.Password
 		if menuPassword != "" {
@@ -2147,6 +2163,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		// 6. Process Input / Find Command Match (userInput determined by menu type)
 		matched := false
 		nextAction := "" // Store the action determined by the matched command
+		matchedNodeActivity := "" // Store matched command's node activity
 
 		// Global hangup shortcut: /G
 		if userInput == "/G" {
@@ -2175,6 +2192,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 					// Handle empty userInput from lightbar mode if non-mapped key was pressed
 					if key != "" && userInput != "" && userInput == key {
 						nextAction = cmdRec.Command // Store the action string
+						matchedNodeActivity = cmdRec.NodeActivity
 						log.Printf("DEBUG: Matched key '%s' to command action: '%s'", key, nextAction)
 						matched = true
 						break // Found match, break inner key loop
@@ -2188,6 +2206,15 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 		// 7. Handle Action or No Match
 		if matched {
+			// Update session activity before executing command
+			if matchedNodeActivity != "" {
+				if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+					sess.Mutex.Lock()
+					sess.Activity = matchedNodeActivity
+					sess.Mutex.Unlock()
+				}
+			}
+
 			// Execute the determined action here
 			nextActionType, nextMenuName, userResult, err := e.executeCommandAction(nextAction, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, outputMode, termWidth, termHeight)
 			if err != nil {
@@ -2200,6 +2227,12 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			} else if nextActionType == "LOGOFF" {
 				return "LOGOFF", userResult, nil // Return specific logoff action
 			} else if nextActionType == "CONTINUE" {
+				// Reset activity to menu default after command completes
+				if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+					sess.Mutex.Lock()
+					sess.Activity = menuDefaultActivity
+					sess.Mutex.Unlock()
+				}
 				if userResult != nil {
 					currentUser = userResult
 				}
@@ -3681,14 +3714,15 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	type loginHandler func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error)
 
 	handlers := map[string]loginHandler{
-		"LASTCALLS":   runLastCallers,
-		"ONELINERS":   runOneliners,
-		"USERSTATS":   runShowStats,
-		"NMAILSCAN":   runNewMailScan,
-		"DISPLAYFILE": runLoginDisplayFile,
-		"RUNDOOR":     runLoginDoor,
-		"FASTLOGIN":   runFastLogin,
-		"NEWUSERVAL":  runNewUserValidation,
+		"LASTCALLS":    runLastCallers,
+		"ONELINERS":    runOneliners,
+		"USERSTATS":    runShowStats,
+		"NMAILSCAN":    runNewMailScan,
+		"DISPLAYFILE":  runLoginDisplayFile,
+		"RUNDOOR":      runLoginDoor,
+		"FASTLOGIN":    runFastLogin,
+		"NEWUSERVAL":   runNewUserValidation,
+		"WHOISONLINE":  runLoginWhosOnline,
 	}
 
 	for i, item := range loginSequence {
@@ -4229,17 +4263,9 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 		// --- Inline Lightbar Logic (prints at current cursor position) ---
 		log.Printf("DEBUG: Terminal height known (%d) from user preferences, using inline lightbar prompt.", termHeight)
 
-		// Hide cursor during selection
-		wErr := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
-		if wErr != nil {
-			log.Printf("WARN: Node %d: Failed hiding cursor for Yes/No prompt: %v", nodeNumber, wErr)
-		}
-		defer func() {
-			restoreErr := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
-			if restoreErr != nil {
-				log.Printf("WARN: Node %d: Failed restoring cursor for Yes/No prompt: %v", nodeNumber, restoreErr)
-			}
-		}()
+		// NOTE: We intentionally do NOT hide the cursor (\x1b[?25l) here.
+		// On iOS, MuffinTerm ties the software keyboard to cursor visibility —
+		// hiding the cursor can dismiss the keyboard and block all input.
 
 		yesLabel := strings.TrimSpace(e.LoadedStrings.YesPromptText)
 		if yesLabel == "" {
@@ -4268,16 +4294,14 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 
 		// Add spacing before options
 		spacingBytes := []byte(strings.Repeat(" ", yesNoSpacing))
-		wErr = terminalio.WriteProcessedBytes(terminal, spacingBytes, outputMode)
+		wErr := terminalio.WriteProcessedBytes(terminal, spacingBytes, outputMode)
 		if wErr != nil {
 			log.Printf("WARN: Failed writing spacing: %v", wErr)
 		}
 
-		// Save cursor position - this is where options will be drawn
-		wErr = terminalio.WriteProcessedBytes(terminal, []byte(ansi.SaveCursor()), outputMode)
-		if wErr != nil {
-			log.Printf("WARN: Failed saving cursor for options: %v", wErr)
-		}
+		// Total visible width of the options area (used for cursor-backward repositioning).
+		// This avoids cursor save/restore which is unreliable across terminals.
+		optionsWidth := len(noOptionText) + optionSpacing + len(yesOptionText)
 
 		// Track current selection: 0 = No, 1 = Yes
 		selectedIndex := 0
@@ -4285,16 +4309,22 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 			selectedIndex = 1
 		}
 
-		// Function to draw the inline options (only the options, not the prompt)
+		firstDraw := true
+
+		// Function to draw the inline options (only the options, not the prompt).
+		// Uses CUB (cursor backward) to reposition instead of save/restore.
 		drawInlineOptions := func(currentSelection int) {
-			// Restore cursor to where options start
-			wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()), outputMode)
-			if wErr != nil {
-				log.Printf("WARN: Failed restoring cursor for options: %v", wErr)
+			if !firstDraw {
+				// Move cursor back to the start of the options area
+				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.CursorBackward(optionsWidth)), outputMode)
+				if wErr != nil {
+					log.Printf("WARN: Failed moving cursor backward: %v", wErr)
+				}
 			}
+			firstDraw = false
 
 			// Clear from cursor to end of line to remove old options
-			wErr = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[K"), outputMode)
+			wErr := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[K"), outputMode)
 			if wErr != nil {
 				log.Printf("WARN: Failed clearing old options: %v", wErr)
 			}
@@ -4382,12 +4412,12 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 			}
 
 			if selectionMade {
-				// Restore to option position, print the chosen label, then move to next line
+				// Move back to option start, clear, print the chosen label, then newline
 				selectedLabel := noLabel
 				if result {
 					selectedLabel = yesLabel
 				}
-				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()+"\x1b[K"+selectedLabel+"\r\n"), outputMode)
+				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.CursorBackward(optionsWidth)+"\x1b[K"+selectedLabel+"\r\n"), outputMode)
 				if wErr != nil {
 					log.Printf("WARN: Failed writing selection result: %v", wErr)
 				}
@@ -6863,6 +6893,140 @@ func runDeleteUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, user
 		return nil, "", pauseErr
 	}
 
+	return nil, "", nil
+}
+
+// runPurgeUsers permanently removes soft-deleted users that have exceeded the
+// configured retention period (deletedUserRetentionDays in config.json).
+func runPurgeUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running PURGEUSERS", nodeNumber)
+
+	if currentUser == nil {
+		msg := "\r\n|01Error: You must be logged in to purge users.|07\r\n"
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	sysOpACS := fmt.Sprintf("S%d", e.ServerCfg.SysOpLevel)
+	if !checkACS(sysOpACS, currentUser, s, terminal, sessionStartTime) {
+		msg := "\r\n|01Access denied.|07\r\n"
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	retentionDays := e.ServerCfg.DeletedUserRetentionDays
+	if retentionDays < 0 {
+		msg := "\r\n|14User purge is disabled (deletedUserRetentionDays = -1).|07\r\n"
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode, termWidth, termHeight); pauseErr != nil {
+			if errors.Is(pauseErr, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			return nil, "", pauseErr
+		}
+		return nil, "", nil
+	}
+
+	// Count eligible users before committing
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+	allUsers := userManager.GetAllUsers()
+	var eligible []*user.User
+	for _, u := range allUsers {
+		if !u.DeletedUser {
+			continue
+		}
+		if u.DeletedAt == nil || u.DeletedAt.Before(cutoff) {
+			eligible = append(eligible, u)
+		}
+	}
+
+	_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+
+	if len(eligible) == 0 {
+		msg := fmt.Sprintf("\r\n|10No users eligible for purge.|07 (retention: |15%d|07 days)\r\n", retentionDays)
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode, termWidth, termHeight); pauseErr != nil {
+			if errors.Is(pauseErr, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			return nil, "", pauseErr
+		}
+		return nil, "", nil
+	}
+
+	// Show eligible users
+	header := fmt.Sprintf("\r\n|11Purge Deleted Users|07 (retention: |15%d|07 days, cutoff: |15%s|07)\r\n\r\n",
+		retentionDays, cutoff.Format("2006-01-02"))
+	_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode)
+
+	for _, u := range eligible {
+		deletedOn := "(no timestamp)"
+		if u.DeletedAt != nil {
+			deletedOn = u.DeletedAt.Format("2006-01-02")
+		}
+		line := fmt.Sprintf("  |15#%-4d|07  %-20s  %-20s  deleted |14%s|07\r\n",
+			u.ID, u.Username, u.Handle, deletedOn)
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
+	}
+
+	confirmPrompt := fmt.Sprintf("\r\n|07Permanently delete |01%d|07 account(s)? This cannot be undone. @", len(eligible))
+	confirm, confirmErr := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
+	if confirmErr != nil {
+		if errors.Is(confirmErr, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return nil, "", confirmErr
+	}
+
+	if !confirm {
+		msg := "\r\n|07Cancelled.|07\r\n"
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode, termWidth, termHeight); pauseErr != nil {
+			if errors.Is(pauseErr, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			return nil, "", pauseErr
+		}
+		return nil, "", nil
+	}
+
+	purged, err := userManager.PurgeDeletedUsers(retentionDays)
+	if err != nil {
+		msg := fmt.Sprintf("\r\n\r\n|01Purge failed: %v|07\r\n", err)
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode, termWidth, termHeight); pauseErr != nil {
+			if errors.Is(pauseErr, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			return nil, "", pauseErr
+		}
+		return nil, "", err
+	}
+
+	// Log each purged account to admin activity log
+	for _, p := range purged {
+		logEntry := user.AdminActivityLog{
+			AdminUsername: currentUser.Username,
+			AdminID:       currentUser.ID,
+			TargetUserID:  p.ID,
+			TargetHandle:  p.Handle,
+			Action:        "PURGE_USER",
+			Notes:         fmt.Sprintf("Permanently purged after %d-day retention period", retentionDays),
+		}
+		_ = userManager.LogAdminActivity(logEntry)
+	}
+
+	result := fmt.Sprintf("\r\n\r\n|10Purged %d user account(s).|07\r\n", len(purged))
+	_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(result)), outputMode)
+
+	if pauseErr := e.loginPausePrompt(s, terminal, nodeNumber, outputMode, termWidth, termHeight); pauseErr != nil {
+		if errors.Is(pauseErr, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return nil, "", pauseErr
+	}
 	return nil, "", nil
 }
 
@@ -9686,11 +9850,38 @@ func replaceWhoOnlineToken(line, token, value string) string {
 		}
 		if len(parts) > 2 && parts[2] != "" {
 			if width, err := strconv.Atoi(parts[2]); err == nil {
-				return formatLastCallerATWidth(value, width, true)
+				return formatLastCallerATWidth(value, width, false)
 			}
 		}
 		return value
 	})
+}
+
+// runLoginWhosOnline prompts the user with a YES/NO lightbar asking if they want
+// to view users on other nodes. If YES, it displays the Who's Online screen.
+func runLoginWhosOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running WHOISONLINE from login sequence", nodeNumber)
+
+	// Prompt the user with a YES/NO lightbar
+	result, err := e.PromptYesNo(s, terminal, "|07View users on other nodes?", outputMode, nodeNumber, termWidth, termHeight, false)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		log.Printf("ERROR: Node %d: Failed during WHOISONLINE YES/NO prompt: %v", nodeNumber, err)
+		return currentUser, "", nil // Non-fatal, skip
+	}
+
+	if !result {
+		log.Printf("DEBUG: Node %d: User declined to view who's online", nodeNumber)
+		// Write a newline to move past the prompt
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		return currentUser, "", nil
+	}
+
+	// User said YES - show the who's online display
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+	return runWhoIsOnline(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode, termWidth, termHeight)
 }
 
 func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
@@ -9755,14 +9946,28 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		// Read session fields under RLock to avoid racing with main loop writes
 		sess.Mutex.RLock()
 		userName := "Logging In..."
+		userLevel := 0
+		groupLocation := ""
 		if sess.User != nil {
 			userName = sess.User.Handle
+			userLevel = sess.User.AccessLevel
+			groupLocation = sess.User.GroupLocation
 		}
-		activity := sess.CurrentMenu
+		activity := sess.Activity
+		if activity == "" {
+			activity = sess.CurrentMenu
+		}
 		lastActivity := sess.LastActivity
 		sess.Mutex.RUnlock()
 
 		line = replaceWhoOnlineToken(line, "UN", userName)
+
+		// Level and Group/Location tokens
+		line = replaceWhoOnlineToken(line, "LV", strconv.Itoa(userLevel))
+		if groupLocation == "" {
+			groupLocation = "---"
+		}
+		line = replaceWhoOnlineToken(line, "GL", groupLocation)
 
 		if activity == "" {
 			activity = "---"

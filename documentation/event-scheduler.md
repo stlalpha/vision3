@@ -329,6 +329,25 @@ Purge limits (`max_msg_age`, `max_msgs`) are configured per area in `message_are
 }
 ```
 
+### Nightly User Purge
+
+Permanently remove soft-deleted user accounts that have exceeded the retention period configured in `configs/config.json` (`deletedUserRetentionDays`, default 30 days). Safe to run daily — accounts not yet past the retention window are left untouched.
+
+```json
+{
+  "id": "purge_deleted_users",
+  "name": "Nightly Deleted User Purge",
+  "schedule": "0 3 * * *",
+  "command": "{BBS_ROOT}/helper",
+  "args": ["users", "purge"],
+  "working_directory": "{BBS_ROOT}",
+  "timeout_seconds": 60,
+  "enabled": true
+}
+```
+
+See [Purging Deleted Users](user-management.md#purging-deleted-users) for full details including CLI usage and the `--dry-run` preview flag.
+
 ### Nightly Maintenance
 
 Run maintenance script at 3 AM:

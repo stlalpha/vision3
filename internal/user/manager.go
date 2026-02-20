@@ -620,3 +620,63 @@ func (um *UserMgr) IsUserOnline(userID int) bool {
 	return um.activeUserIDs[int32(userID)]
 }
 
+// PurgeResult holds information about a permanently purged user for reporting.
+type PurgeResult struct {
+	ID        int
+	Username  string
+	Handle    string
+	DeletedAt time.Time
+}
+
+// PurgeDeletedUsers permanently removes soft-deleted users whose DeletedAt timestamp
+// is older than retentionDays days. Pass retentionDays=-1 to skip (no-op).
+// Returns a slice of PurgeResult describing the removed accounts.
+// The caller is responsible for logging admin activity if desired.
+func (um *UserMgr) PurgeDeletedUsers(retentionDays int) ([]PurgeResult, error) {
+	if retentionDays < 0 {
+		return nil, nil
+	}
+
+	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+
+	um.mu.Lock()
+	defer um.mu.Unlock()
+
+	var purged []PurgeResult
+	for key, u := range um.users {
+		if !u.DeletedUser {
+			continue
+		}
+		if u.DeletedAt == nil {
+			// Deleted but no timestamp: treat as immediately eligible
+			purged = append(purged, PurgeResult{
+				ID:       u.ID,
+				Username: u.Username,
+				Handle:   u.Handle,
+			})
+			delete(um.users, key)
+			continue
+		}
+		if u.DeletedAt.Before(cutoff) {
+			purged = append(purged, PurgeResult{
+				ID:        u.ID,
+				Username:  u.Username,
+				Handle:    u.Handle,
+				DeletedAt: *u.DeletedAt,
+			})
+			delete(um.users, key)
+		}
+	}
+
+	if len(purged) == 0 {
+		return nil, nil
+	}
+
+	if err := um.saveUsersLocked(); err != nil {
+		return nil, fmt.Errorf("purge: failed to save users: %w", err)
+	}
+
+	log.Printf("INFO: Purged %d soft-deleted user account(s)", len(purged))
+	return purged, nil
+}
+

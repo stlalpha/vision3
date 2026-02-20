@@ -7,7 +7,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
+
+	"github.com/stlalpha/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/user"
 )
 
 // --- NA file types ---
@@ -77,6 +82,8 @@ func main() {
 	switch cmd {
 	case "ftnsetup":
 		cmdFTNSetup(os.Args[2:])
+	case "users":
+		cmdUsers(os.Args[2:])
 	case "help", "--help", "-h":
 		printUsage()
 	default:
@@ -91,9 +98,227 @@ func printUsage() {
 
 Commands:
   ftnsetup    Import FTN echo areas from a FIDONET.NA file
+  users       Manage user accounts (purge, list)
 
 Run 'helper <command> --help' for command-specific options.
 `)
+}
+
+// --- users command group ---
+
+func cmdUsers(args []string) {
+	if len(args) < 1 {
+		fmt.Fprintf(os.Stderr, `Usage: helper users <subcommand> [options]
+
+Subcommands:
+  purge    Permanently remove soft-deleted users past the retention period
+  list     List users (optionally filtered to deleted accounts)
+
+Run 'helper users <subcommand> --help' for subcommand-specific options.
+`)
+		os.Exit(1)
+	}
+
+	sub := args[0]
+	switch sub {
+	case "purge":
+		cmdUsersPurge(args[1:])
+	case "list":
+		cmdUsersList(args[1:])
+	case "help", "--help", "-h":
+		fmt.Fprintf(os.Stderr, `Usage: helper users <subcommand> [options]
+
+Subcommands:
+  purge    Permanently remove soft-deleted users past the retention period
+  list     List users (optionally filtered to deleted accounts)
+`)
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown users subcommand: %s\n\n", sub)
+		os.Exit(1)
+	}
+}
+
+func cmdUsersPurge(args []string) {
+	fs := flag.NewFlagSet("users purge", flag.ExitOnError)
+	configDir := fs.String("config", "configs", "Config directory")
+	dataDir := fs.String("data", "data/users", "User data directory")
+	days := fs.Int("days", -1, "Retention days override (default: read from config.json)")
+	dryRun := fs.Bool("dry-run", false, "Show what would be purged without making changes")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: helper users purge [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Permanently remove soft-deleted user accounts past the retention period.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  helper users purge\n")
+		fmt.Fprintf(os.Stderr, "  helper users purge --days 90 --dry-run\n")
+	}
+	fs.Parse(args)
+
+	// Load config to get retention days if not overridden
+	retentionDays := *days
+	if retentionDays < 0 {
+		cfg, err := config.LoadServerConfig(*configDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading config: %v\n", err)
+			os.Exit(1)
+		}
+		retentionDays = cfg.DeletedUserRetentionDays
+	}
+
+	if retentionDays < 0 {
+		fmt.Println("Retention days is -1 (never purge). Nothing to do.")
+		return
+	}
+
+	// Load user manager
+	um, err := user.NewUserManager(*dataDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading users: %v\n", err)
+		os.Exit(1)
+	}
+
+	if *dryRun {
+		// Show eligible users without purging
+		cutoff := time.Now().AddDate(0, 0, -retentionDays)
+		eligible := eligibleForPurge(um.GetAllUsers(), cutoff)
+		if len(eligible) == 0 {
+			fmt.Printf("Dry run: no users eligible for purge (retention: %d days).\n", retentionDays)
+			return
+		}
+		fmt.Printf("Dry run: %d user(s) would be purged (retention: %d days, cutoff: %s):\n\n",
+			len(eligible), retentionDays, cutoff.Format("2006-01-02"))
+		printPurgeCandidates(eligible, retentionDays)
+		return
+	}
+
+	purged, err := um.PurgeDeletedUsers(retentionDays)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error purging users: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(purged) == 0 {
+		fmt.Printf("No users eligible for purge (retention: %d days).\n", retentionDays)
+		return
+	}
+
+	fmt.Printf("Purged %d user account(s) (retention: %d days):\n\n", len(purged), retentionDays)
+	for _, p := range purged {
+		if p.DeletedAt.IsZero() {
+			fmt.Printf("  #%-4d  %-20s  %s  (no deletion timestamp)\n", p.ID, p.Username, p.Handle)
+		} else {
+			fmt.Printf("  #%-4d  %-20s  %-20s  deleted %s\n",
+				p.ID, p.Username, p.Handle, p.DeletedAt.Format("2006-01-02"))
+		}
+	}
+}
+
+func cmdUsersList(args []string) {
+	fs := flag.NewFlagSet("users list", flag.ExitOnError)
+	dataDir := fs.String("data", "data/users", "User data directory")
+	configDir := fs.String("config", "configs", "Config directory")
+	deletedOnly := fs.Bool("deleted", false, "Show only soft-deleted accounts")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: helper users list [options]\n\n")
+		fmt.Fprintf(os.Stderr, "List user accounts.\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fs.PrintDefaults()
+	}
+	fs.Parse(args)
+
+	um, err := user.NewUserManager(*dataDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading users: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Load retention days for the "days remaining" column
+	retentionDays := -1
+	if cfg, cfgErr := config.LoadServerConfig(*configDir); cfgErr == nil {
+		retentionDays = cfg.DeletedUserRetentionDays
+	}
+
+	all := um.GetAllUsers()
+	sort.Slice(all, func(i, j int) bool { return all[i].ID < all[j].ID })
+
+	if *deletedOnly {
+		var deleted []*user.User
+		for _, u := range all {
+			if u.DeletedUser {
+				deleted = append(deleted, u)
+			}
+		}
+		if len(deleted) == 0 {
+			fmt.Println("No soft-deleted users found.")
+			return
+		}
+		fmt.Printf("%-6s  %-20s  %-20s  %-12s  %s\n", "ID", "Username", "Handle", "Deleted On", "Days Until Purge")
+		fmt.Println(strings.Repeat("-", 78))
+		for _, u := range deleted {
+			deletedOn := "(no timestamp)"
+			daysLeft := "n/a"
+			if u.DeletedAt != nil {
+				deletedOn = u.DeletedAt.Format("2006-01-02")
+				if retentionDays >= 0 {
+					purgeDate := u.DeletedAt.AddDate(0, 0, retentionDays)
+					remaining := int(time.Until(purgeDate).Hours() / 24)
+					if remaining <= 0 {
+						daysLeft = "eligible now"
+					} else {
+						daysLeft = fmt.Sprintf("%d days", remaining)
+					}
+				}
+			}
+			fmt.Printf("%-6d  %-20s  %-20s  %-12s  %s\n", u.ID, u.Username, u.Handle, deletedOn, daysLeft)
+		}
+		return
+	}
+
+	fmt.Printf("%-6s  %-20s  %-20s  %-10s  %s\n", "ID", "Username", "Handle", "Level", "Status")
+	fmt.Println(strings.Repeat("-", 72))
+	for _, u := range all {
+		status := "active"
+		if u.DeletedUser {
+			status = "DELETED"
+			if u.DeletedAt != nil {
+				status = fmt.Sprintf("DELETED %s", u.DeletedAt.Format("2006-01-02"))
+			}
+		} else if !u.Validated {
+			status = "unvalidated"
+		}
+		fmt.Printf("%-6d  %-20s  %-20s  %-10d  %s\n", u.ID, u.Username, u.Handle, u.AccessLevel, status)
+	}
+	fmt.Printf("\nTotal: %d user(s)\n", len(all))
+}
+
+// eligibleForPurge returns users that are soft-deleted and past the cutoff time.
+func eligibleForPurge(users []*user.User, cutoff time.Time) []*user.User {
+	var result []*user.User
+	for _, u := range users {
+		if !u.DeletedUser {
+			continue
+		}
+		if u.DeletedAt == nil || u.DeletedAt.Before(cutoff) {
+			result = append(result, u)
+		}
+	}
+	return result
+}
+
+// printPurgeCandidates prints a table of users eligible for purge.
+func printPurgeCandidates(users []*user.User, retentionDays int) {
+	fmt.Printf("  %-6s  %-20s  %-20s  %s\n", "ID", "Username", "Handle", "Deleted On")
+	fmt.Println("  " + strings.Repeat("-", 64))
+	for _, u := range users {
+		deletedOn := "(no timestamp)"
+		if u.DeletedAt != nil {
+			deletedOn = u.DeletedAt.Format("2006-01-02")
+		}
+		fmt.Printf("  %-6d  %-20s  %-20s  %s\n", u.ID, u.Username, u.Handle, deletedOn)
+	}
 }
 
 // --- ftnsetup command ---
