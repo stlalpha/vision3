@@ -145,9 +145,14 @@ func (m Model) View() string {
 	// === Row 25: Help Bar ===
 	b.WriteString(m.renderHelpBar())
 
-	// === Overlay: Abort Confirm Dialog ===
-	if m.mode == modeAbortConfirm {
-		return m.overlayDialog(b.String())
+	// === Overlay: Confirm Dialog ===
+	switch m.mode {
+	case modeAbortConfirm:
+		return m.overlayDialog(b.String(), "Abort Without Saving?")
+	case modeRevertConfirm:
+		return m.overlayDialog(b.String(), "Revert to Last Saved?")
+	case modeDefaultConfirm:
+		return m.overlayDialog(b.String(), "Restore ViSiON/3 Default?")
 	}
 
 	return b.String()
@@ -289,7 +294,7 @@ func (m Model) renderDescriptionBar() string {
 
 // renderHelpBar renders the bottom help bar.
 func (m Model) renderHelpBar() string {
-	help := " ↑↓ Navigate │ PgUp/PgDn Pages │ Enter Edit │ F1 Edit(Prefill) │ F10 Save │ Esc Quit │ / Search"
+	help := " Enter Edit  F1 Prefill  F3 Revert  F4 Default  F10 Save  Esc Quit  / Search"
 	visLen := 0
 	for _, r := range help {
 		_ = r
@@ -307,8 +312,8 @@ func (m Model) renderHelpBar() string {
 	return style.Render(padded)
 }
 
-// overlayDialog renders the abort confirmation dialog centered over the content.
-func (m Model) overlayDialog(background string) string {
+// overlayDialog renders a confirmation dialog centered over the content.
+func (m Model) overlayDialog(background string, title string) string {
 	lines := strings.Split(background, "\n")
 
 	// Dialog dimensions
@@ -330,7 +335,6 @@ func (m Model) overlayDialog(background string) string {
 	borderBot := dialogBorderStyle.Render("╚" + strings.Repeat("═", dialogW-2) + "╝")
 	borderSide := dialogBorderStyle.Render("║")
 
-	title := "Abort Without Saving?"
 	titlePad := (dialogW - 2 - len(title)) / 2
 	titleLine := borderSide +
 		dialogTextStyle.Render(strings.Repeat(" ", titlePad)+title+strings.Repeat(" ", dialogW-2-titlePad-len(title))) +
@@ -342,18 +346,18 @@ func (m Model) overlayDialog(background string) string {
 
 	// Buttons
 	var yesBtn, noBtn string
-	if m.abortYes {
+	if m.confirmYes {
 		yesBtn = dialogButtonActiveStyle.Render(" Yes ")
-		noBtn = dialogButtonStyle.Render(" No  ")
+		noBtn = dialogButtonStyle.Render(" No ")
 	} else {
 		yesBtn = dialogButtonStyle.Render(" Yes ")
-		noBtn = dialogButtonActiveStyle.Render(" No  ")
+		noBtn = dialogButtonActiveStyle.Render(" No ")
 	}
-	btnPad := (dialogW - 2 - 12) / 2 // 5+2+5 = 12 visible chars
+	btnPad := (dialogW - 2 - 11) / 2 // 5+2+4 = 11 visible chars
 	buttonLine := borderSide +
 		dialogTextStyle.Render(strings.Repeat(" ", btnPad)) +
 		yesBtn + dialogTextStyle.Render("  ") + noBtn +
-		dialogTextStyle.Render(strings.Repeat(" ", max(0, dialogW-2-btnPad-12))) +
+		dialogTextStyle.Render(strings.Repeat(" ", max(0, dialogW-2-btnPad-11))) +
 		borderSide
 
 	dialogLines := []string{border, titleLine, emptyLine, buttonLine, borderBot}

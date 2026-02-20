@@ -22,16 +22,20 @@ const (
 	modeNavigate editorMode = iota
 	modeEdit
 	modeAbortConfirm
+	modeRevertConfirm
+	modeDefaultConfirm
 	modeSearch
 )
 
 // Model is the BubbleTea model for the string editor TUI.
 type Model struct {
 	// Data
-	entries  []StringEntry     // Ordered metadata entries
-	values   map[string]string // Current string values (key -> value)
-	filePath string            // Path to strings.json
-	dirty    bool              // Whether values have been modified
+	entries         []StringEntry     // Ordered metadata entries
+	values          map[string]string // Current string values (key -> value)
+	origValues      map[string]string // Values as loaded from disk (for revert)
+	shippedDefaults map[string]string // Factory defaults (for F4 restore)
+	filePath        string            // Path to strings.json
+	dirty           bool              // Whether values have been modified
 
 	// Navigation
 	cursor   int // Current item index (0-based, across all pages)
@@ -47,8 +51,8 @@ type Model struct {
 	textInput textinput.Model
 	editKey   string // The key being edited
 
-	// Abort confirm dialog
-	abortYes bool // true = Yes selected in abort dialog
+	// Confirm dialog
+	confirmYes bool // true = Yes selected in confirm dialog
 
 	// Search
 	searchInput textinput.Model
@@ -59,7 +63,8 @@ type Model struct {
 }
 
 // New creates a new string editor model.
-func New(filePath string) (Model, error) {
+// shippedDefaults, if non-nil, provides factory default values for F4 restore.
+func New(filePath string, shippedDefaults map[string]string) (Model, error) {
 	entries := StringEntries()
 	values, err := LoadStrings(filePath)
 	if err != nil {
@@ -77,19 +82,27 @@ func New(filePath string) (Model, error) {
 
 	numPages := (len(entries) + itemsPerPage - 1) / itemsPerPage
 
+	// Snapshot original values for revert support
+	origValues := make(map[string]string, len(values))
+	for k, v := range values {
+		origValues[k] = v
+	}
+
 	return Model{
-		entries:     entries,
-		values:      values,
-		filePath:    filePath,
-		cursor:      0,
-		page:        0,
-		numPages:    numPages,
-		mode:        modeNavigate,
-		width:       minWidth,
-		height:      minHeight,
-		textInput:   ti,
-		searchInput: si,
-		abortYes:    false,
+		entries:         entries,
+		values:          values,
+		origValues:      origValues,
+		shippedDefaults: shippedDefaults,
+		filePath:        filePath,
+		cursor:          0,
+		page:            0,
+		numPages:        numPages,
+		mode:            modeNavigate,
+		width:           minWidth,
+		height:          minHeight,
+		textInput:       ti,
+		searchInput:     si,
+		confirmYes:      false,
 	}, nil
 }
 
@@ -119,8 +132,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateNavigate(msg)
 		case modeEdit:
 			return m.updateEdit(msg)
-		case modeAbortConfirm:
-			return m.updateAbortConfirm(msg)
+		case modeAbortConfirm, modeRevertConfirm, modeDefaultConfirm:
+			return m.updateConfirm(msg)
 		case modeSearch:
 			return m.updateSearch(msg)
 		}
@@ -166,12 +179,44 @@ func (m Model) updateNavigate(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.startEdit("")
 	case tea.KeyEscape:
 		m.mode = modeAbortConfirm
-		m.abortYes = false
+		m.confirmYes = false
 		return m, nil
 	case tea.KeyF1:
 		// Edit with pre-filled value
 		entry := m.entries[m.cursor]
 		return m.startEdit(m.getValue(entry.Key))
+	case tea.KeyF3:
+		// Revert current item to original (on-disk) value
+		entry := m.entries[m.cursor]
+		if entry.Key[0] == '_' {
+			m.message = "This field is reserved"
+			return m, nil
+		}
+		if _, ok := m.origValues[entry.Key]; !ok {
+			m.message = "No original value to revert to"
+			return m, nil
+		}
+		m.mode = modeRevertConfirm
+		m.confirmYes = false
+		return m, nil
+	case tea.KeyF4:
+		// Restore current item to ViSiON/3 default
+		entry := m.entries[m.cursor]
+		if entry.Key[0] == '_' {
+			m.message = "This field is reserved"
+			return m, nil
+		}
+		if m.shippedDefaults == nil {
+			m.message = "No shipped defaults available"
+			return m, nil
+		}
+		if _, ok := m.shippedDefaults[entry.Key]; !ok {
+			m.message = "No ViSiON/3 default for this string"
+			return m, nil
+		}
+		m.mode = modeDefaultConfirm
+		m.confirmYes = false
+		return m, nil
 	case tea.KeyF10:
 		// Save and exit
 		if err := SaveStrings(m.filePath, m.values); err != nil {
@@ -240,14 +285,14 @@ func (m Model) updateEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 }
 
-// updateAbortConfirm handles keys in the abort confirmation dialog.
-func (m Model) updateAbortConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// updateConfirm handles keys in any confirmation dialog (abort, revert, default).
+func (m Model) updateConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.Type {
 	case tea.KeyLeft, tea.KeyRight:
-		m.abortYes = !m.abortYes
+		m.confirmYes = !m.confirmYes
 	case tea.KeyEnter:
-		if m.abortYes {
-			return m, tea.Quit
+		if m.confirmYes {
+			return m.executeConfirm()
 		}
 		m.mode = modeNavigate
 	case tea.KeyEscape:
@@ -255,11 +300,55 @@ func (m Model) updateAbortConfirm(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		switch msg.String() {
 		case "y", "Y":
-			return m, tea.Quit
+			m.confirmYes = true
+			return m.executeConfirm()
 		case "n", "N":
 			m.mode = modeNavigate
 		}
 	}
+	return m, nil
+}
+
+// executeConfirm performs the confirmed action based on the current mode.
+func (m Model) executeConfirm() (tea.Model, tea.Cmd) {
+	switch m.mode {
+	case modeAbortConfirm:
+		return m, tea.Quit
+
+	case modeRevertConfirm:
+		entry := m.entries[m.cursor]
+		if orig, ok := m.origValues[entry.Key]; ok {
+			m.values[entry.Key] = orig
+			m.message = fmt.Sprintf("Reverted: %s", entry.Label)
+			m.dirty = false
+			for k, v := range m.values {
+				if ov, ok := m.origValues[k]; !ok || v != ov {
+					m.dirty = true
+					break
+				}
+			}
+		}
+		m.mode = modeNavigate
+		return m, nil
+
+	case modeDefaultConfirm:
+		entry := m.entries[m.cursor]
+		if def, ok := m.shippedDefaults[entry.Key]; ok {
+			m.values[entry.Key] = def
+			m.message = fmt.Sprintf("Restored default: %s", entry.Label)
+			m.dirty = false
+			for k, v := range m.values {
+				if ov, ok := m.origValues[k]; !ok || v != ov {
+					m.dirty = true
+					break
+				}
+			}
+		}
+		m.mode = modeNavigate
+		return m, nil
+	}
+
+	m.mode = modeNavigate
 	return m, nil
 }
 

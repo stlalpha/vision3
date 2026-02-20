@@ -11,6 +11,7 @@
 package main
 
 import (
+"encoding/json"
 "flag"
 "fmt"
 "os"
@@ -21,6 +22,27 @@ tea "github.com/charmbracelet/bubbletea"
 "github.com/stlalpha/vision3/internal/stringeditor"
 )
 
+// loadShippedDefaults reads the factory default strings from the templates directory.
+func loadShippedDefaults() map[string]string {
+candidates := []string{
+"templates/configs/strings.json",
+}
+if exe, err := os.Executable(); err == nil {
+candidates = append(candidates, filepath.Join(filepath.Dir(exe), "templates", "configs", "strings.json"))
+}
+for _, path := range candidates {
+data, err := os.ReadFile(path)
+if err != nil {
+continue
+}
+var defaults map[string]string
+if err := json.Unmarshal(data, &defaults); err == nil {
+return defaults
+}
+}
+return nil
+}
+
 func main() {
 configPath := flag.String("config", "", "Path to strings.json (default: configs/strings.json)")
 flag.Parse()
@@ -28,7 +50,6 @@ flag.Parse()
 // Resolve config path
 path := *configPath
 if path == "" {
-// Default: configs/strings.json relative to CWD
 cwd, err := os.Getwd()
 if err != nil {
 fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -44,8 +65,11 @@ fmt.Fprintf(os.Stderr, "Error: config directory does not exist: %s\n", dir)
 os.Exit(1)
 }
 
+// Load factory defaults from templates/
+shippedDefaults := loadShippedDefaults()
+
 // Create the editor model
-model, err := stringeditor.New(path)
+model, err := stringeditor.New(path, shippedDefaults)
 if err != nil {
 fmt.Fprintf(os.Stderr, "Error initializing editor: %v\n", err)
 os.Exit(1)
