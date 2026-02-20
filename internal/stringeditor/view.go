@@ -349,11 +349,11 @@ func (m Model) overlayDialog(background string) string {
 		yesBtn = dialogButtonStyle.Render(" Yes ")
 		noBtn = dialogButtonActiveStyle.Render(" No  ")
 	}
-	btnPad := (dialogW - 2 - 11) / 2 // 5+2+5 = ~12 visible chars
+	btnPad := (dialogW - 2 - 12) / 2 // 5+2+5 = 12 visible chars
 	buttonLine := borderSide +
 		dialogTextStyle.Render(strings.Repeat(" ", btnPad)) +
 		yesBtn + dialogTextStyle.Render("  ") + noBtn +
-		dialogTextStyle.Render(strings.Repeat(" ", max(0, dialogW-2-btnPad-11))) +
+		dialogTextStyle.Render(strings.Repeat(" ", max(0, dialogW-2-btnPad-12))) +
 		borderSide
 
 	dialogLines := []string{border, titleLine, emptyLine, buttonLine, borderBot}
