@@ -80,11 +80,19 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 		writeChatLine(formatChatMessage(msg, e.LoadedStrings.ChatSystemPrefix, e.LoadedStrings.ChatMessageFormat))
 	}
 
+	// Check if user is invisible (suppress join/leave announcements)
+	invisible := false
+	if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+		invisible = sess.Invisible
+	}
+
 	// Subscribe to room
 	msgCh := e.ChatRoom.Subscribe(nodeNumber, handle)
 
-	// Announce join
-	e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserEntered, handle))
+	// Announce join (suppress for invisible users)
+	if !invisible {
+		e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserEntered, handle))
+	}
 	writeChatLine(fmt.Sprintf(e.LoadedStrings.ChatUserEntered, handle))
 
 	// Draw input line separator and position cursor
@@ -111,7 +119,9 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 		input, err := readLineFromSessionIH(s, terminal)
 		if err != nil {
 			if err == io.EOF {
-				e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserLeft, handle))
+				if !invisible {
+					e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserLeft, handle))
+				}
 				e.ChatRoom.Unsubscribe(nodeNumber)
 				<-done
 				rawWrite([]byte("\x1B[r")) // reset scroll region
@@ -146,7 +156,9 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	}
 
 	// Announce departure and clean up
-	e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserLeft, handle))
+	if !invisible {
+		e.ChatRoom.BroadcastSystem(fmt.Sprintf(e.LoadedStrings.ChatUserLeft, handle))
+	}
 	e.ChatRoom.Unsubscribe(nodeNumber) // closes msgCh, which ends the receiver goroutine
 	<-done                              // wait for receiver goroutine to finish
 

@@ -87,6 +87,7 @@ type CallRecord struct {
 	Actions        string        `json:"actions"`              // Placeholder for now (e.g., "D,U,M")
 	BaudRate       string        `json:"baudRate"`             // Static value for now
 	CallNumber     uint64        `json:"callNumber,omitempty"` // Overall call number
+	Invisible      bool          `json:"invisible,omitempty"`  // True if user was logged in invisibly
 }
 
 /* // Moving UserManager and its methods to manager.go

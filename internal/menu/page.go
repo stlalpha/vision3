@@ -38,6 +38,10 @@ func runPage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 		if sessNodeID == nodeNumber {
 			continue // Skip self
 		}
+		// Skip invisible sessions for non-CoSysOp viewers
+		if sess.Invisible && !e.isCoSysOpOrAbove(currentUser) {
+			continue
+		}
 		line := fmt.Sprintf(e.LoadedStrings.PageNodeListEntry, sessNodeID, sessHandle)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 	}
@@ -70,7 +74,7 @@ func runPage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	}
 
 	targetSession := e.SessionRegistry.Get(targetNodeID)
-	if targetSession == nil {
+	if targetSession == nil || (targetSession.Invisible && !e.isCoSysOpOrAbove(currentUser)) {
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageNodeOffline)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return nil, "", nil

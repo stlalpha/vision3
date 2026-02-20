@@ -794,7 +794,8 @@ func sessionHandler(s ssh.Session) {
 
 	// Capture start time and declare authenticatedUser *before* the defer
 	capturedStartTime := time.Now()        // Capture start time close to session start
-	var authenticatedUser *user.User = nil // Declare here so the closure can capture it
+	var authenticatedUser *user.User = nil       // Declare here so the closure can capture it
+	var bbsSession *session.BbsSession = nil // Declare here so the deferred disconnect can read Invisible flag
 
 	// Defer removal from active sessions map and logging disconnection
 	// The deferred function now uses a closure to access authenticatedUser
@@ -828,6 +829,11 @@ func sessionHandler(s ssh.Session) {
 				DownloadedMB:   0.0,
 				Actions:        "",
 				BaudRate:       "38400",
+			}
+			if bbsSession != nil {
+				bbsSession.Mutex.RLock()
+				callRec.Invisible = bbsSession.Invisible
+				bbsSession.Mutex.RUnlock()
 			}
 			userMgr.AddCallRecord(callRec)
 		} else {
@@ -988,7 +994,7 @@ func sessionHandler(s ssh.Session) {
 	log.Printf("Node %d: Starting BBS logic...", nodeID)
 	sessionStartTime := time.Now()
 
-	bbsSession := &session.BbsSession{
+	bbsSession = &session.BbsSession{
 		NodeID:       int(nodeID),
 		StartTime:    sessionStartTime,
 		LastActivity: sessionStartTime,
@@ -1145,6 +1151,29 @@ func sessionHandler(s ssh.Session) {
 		return
 	}
 	log.Printf("Node %d: Entering main loop for authenticated user: %s", nodeID, authenticatedUser.Handle)
+
+	// --- Invisible Login Prompt (SysOp/CoSysOp only) ---
+	if authenticatedUser.AccessLevel >= menuExecutor.GetServerConfig().CoSysOpLevel {
+		invisPrompt := loadedStrings.InvisibleLogonPrompt
+		if invisPrompt == "" {
+			invisPrompt = " |03Invisible Logon?|07"
+		}
+		invisChoice, invisErr := menuExecutor.PromptYesNo(s, terminal,
+			invisPrompt, effectiveMode, int(nodeID),
+			int(termWidth.Load()), int(termHeight.Load()), false)
+		if invisErr != nil {
+			if errors.Is(invisErr, io.EOF) {
+				log.Printf("Node %d: User disconnected during invisible logon prompt.", nodeID)
+				return
+			}
+		}
+		if invisChoice {
+			bbsSession.Mutex.Lock()
+			bbsSession.Invisible = true
+			bbsSession.Mutex.Unlock()
+			log.Printf("Node %d: User %s logged in as INVISIBLE", nodeID, authenticatedUser.Handle)
+		}
+	}
 
 	// Determine effective terminal size based on user preferences and manual adjustments
 	effectiveWidth := int(termWidth.Load())

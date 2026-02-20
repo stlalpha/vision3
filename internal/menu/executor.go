@@ -307,6 +307,11 @@ func (e *MenuExecutor) idleTimeout(u *user.User) time.Duration {
 	return time.Duration(cfg.SessionIdleTimeoutMinutes) * time.Minute
 }
 
+// isCoSysOpOrAbove returns true if the user has CoSysOp or SysOp access level.
+func (e *MenuExecutor) isCoSysOpOrAbove(u *user.User) bool {
+	return u != nil && u.AccessLevel >= e.ServerCfg.CoSysOpLevel
+}
+
 // handleIdleTimeout writes the idle timeout message at the bottom of the
 // terminal and logs the disconnection. Call this before returning LOGOFF/DISCONNECT
 // whenever ErrIdleTimeout is received from any input loop.
@@ -2592,6 +2597,16 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 
 	// 2. Get last callers data from UserManager
 	lastCallers := userManager.GetLastCallers()
+	// Filter out invisible call records for non-CoSysOp viewers
+	if !e.isCoSysOpOrAbove(currentUser) {
+		filtered := make([]user.CallRecord, 0, len(lastCallers))
+		for _, rec := range lastCallers {
+			if !rec.Invisible {
+				filtered = append(filtered, rec)
+			}
+		}
+		lastCallers = filtered
+	}
 	users := userManager.GetAllUsers()
 	totalUsers := len(users)
 	userNotesByID := make(map[int]string, len(users))
@@ -9725,7 +9740,13 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	}
 
 	now := time.Now()
+	visibleCount := 0
 	for _, sess := range sessions {
+		// Skip invisible sessions for non-CoSysOp viewers
+		if sess.Invisible && !e.isCoSysOpOrAbove(currentUser) {
+			continue
+		}
+		visibleCount++
 		line := processedMid
 
 		nodeStr := strconv.Itoa(sess.NodeID)
@@ -9774,7 +9795,7 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		}
 	}
 
-	processedBot = replaceWhoOnlineToken(processedBot, "NODECT", strconv.Itoa(len(sessions)))
+	processedBot = replaceWhoOnlineToken(processedBot, "NODECT", strconv.Itoa(visibleCount))
 	buf.WriteString(processedBot)
 	if !strings.HasSuffix(processedBot, "\r\n") && !strings.HasSuffix(processedBot, "\n") {
 		buf.WriteString("\r\n")
