@@ -781,26 +781,31 @@ func cleanReplyIDsInBase(b *jam.Base, quiet bool) int {
 		return 0
 	}
 
-	needsCleaning := false
+	type repairEntry struct{ orig, fixed string }
+	var repairs []repairEntry
 	for _, msg := range messages {
 		if msg.ReplyID != "" {
 			if parts := strings.Fields(msg.ReplyID); len(parts) > 1 {
-				needsCleaning = true
-				cleanedCount++
-				if !quiet {
-					fmt.Printf("  REPAIR: Cleaned ReplyID %q -> %q\n", msg.ReplyID, parts[0])
-				}
+				repairs = append(repairs, repairEntry{orig: msg.ReplyID, fixed: parts[0]})
 			}
 		}
 	}
 
-	if needsCleaning {
-		// Create a custom pack implementation that cleans ReplyIDs
+	if len(repairs) > 0 {
+		// Attempt the pack before printing repair messages so we only report
+		// success when the rebuild actually succeeds.
 		if err := cleanReplyIDsPack(b); err != nil {
 			if !quiet {
 				fmt.Printf("  ERROR: Failed to rebuild message base: %v\n", err)
 			}
 			return 0
+		}
+		// Pack succeeded — now report what was cleaned.
+		cleanedCount = len(repairs)
+		if !quiet {
+			for _, r := range repairs {
+				fmt.Printf("  REPAIR: Cleaned ReplyID %q -> %q\n", r.orig, r.fixed)
+			}
 		}
 	}
 
