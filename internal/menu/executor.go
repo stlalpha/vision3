@@ -1797,6 +1797,21 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			commands = []CommandRecord{} // Use empty slice
 		}
 
+		// Determine default node activity for this menu from autorun entries
+		menuDefaultActivity := currentMenuName
+		for _, cmd := range commands {
+			if (cmd.Keys == "//" || cmd.Keys == "~~") && cmd.NodeActivity != "" {
+				menuDefaultActivity = cmd.NodeActivity
+				break
+			}
+		}
+		// Set default activity on session for Who's Online display
+		if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+			sess.Mutex.Lock()
+			sess.Activity = menuDefaultActivity
+			sess.Mutex.Unlock()
+		}
+
 		// Check Menu Password if required
 		menuPassword := menuRec.Password
 		if menuPassword != "" {
@@ -2148,6 +2163,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		// 6. Process Input / Find Command Match (userInput determined by menu type)
 		matched := false
 		nextAction := "" // Store the action determined by the matched command
+		matchedNodeActivity := "" // Store matched command's node activity
 
 		// Global hangup shortcut: /G
 		if userInput == "/G" {
@@ -2176,6 +2192,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 					// Handle empty userInput from lightbar mode if non-mapped key was pressed
 					if key != "" && userInput != "" && userInput == key {
 						nextAction = cmdRec.Command // Store the action string
+						matchedNodeActivity = cmdRec.NodeActivity
 						log.Printf("DEBUG: Matched key '%s' to command action: '%s'", key, nextAction)
 						matched = true
 						break // Found match, break inner key loop
@@ -2189,6 +2206,15 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 		// 7. Handle Action or No Match
 		if matched {
+			// Update session activity before executing command
+			if matchedNodeActivity != "" {
+				if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+					sess.Mutex.Lock()
+					sess.Activity = matchedNodeActivity
+					sess.Mutex.Unlock()
+				}
+			}
+
 			// Execute the determined action here
 			nextActionType, nextMenuName, userResult, err := e.executeCommandAction(nextAction, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, outputMode, termWidth, termHeight)
 			if err != nil {
@@ -2201,6 +2227,12 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			} else if nextActionType == "LOGOFF" {
 				return "LOGOFF", userResult, nil // Return specific logoff action
 			} else if nextActionType == "CONTINUE" {
+				// Reset activity to menu default after command completes
+				if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+					sess.Mutex.Lock()
+					sess.Activity = menuDefaultActivity
+					sess.Mutex.Unlock()
+				}
 				if userResult != nil {
 					currentUser = userResult
 				}
@@ -3682,14 +3714,15 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	type loginHandler func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error)
 
 	handlers := map[string]loginHandler{
-		"LASTCALLS":   runLastCallers,
-		"ONELINERS":   runOneliners,
-		"USERSTATS":   runShowStats,
-		"NMAILSCAN":   runNewMailScan,
-		"DISPLAYFILE": runLoginDisplayFile,
-		"RUNDOOR":     runLoginDoor,
-		"FASTLOGIN":   runFastLogin,
-		"NEWUSERVAL":  runNewUserValidation,
+		"LASTCALLS":    runLastCallers,
+		"ONELINERS":    runOneliners,
+		"USERSTATS":    runShowStats,
+		"NMAILSCAN":    runNewMailScan,
+		"DISPLAYFILE":  runLoginDisplayFile,
+		"RUNDOOR":      runLoginDoor,
+		"FASTLOGIN":    runFastLogin,
+		"NEWUSERVAL":   runNewUserValidation,
+		"WHOISONLINE":  runLoginWhosOnline,
 	}
 
 	for i, item := range loginSequence {
@@ -9817,11 +9850,38 @@ func replaceWhoOnlineToken(line, token, value string) string {
 		}
 		if len(parts) > 2 && parts[2] != "" {
 			if width, err := strconv.Atoi(parts[2]); err == nil {
-				return formatLastCallerATWidth(value, width, true)
+				return formatLastCallerATWidth(value, width, false)
 			}
 		}
 		return value
 	})
+}
+
+// runLoginWhosOnline prompts the user with a YES/NO lightbar asking if they want
+// to view users on other nodes. If YES, it displays the Who's Online screen.
+func runLoginWhosOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	log.Printf("DEBUG: Node %d: Running WHOISONLINE from login sequence", nodeNumber)
+
+	// Prompt the user with a YES/NO lightbar
+	result, err := e.PromptYesNo(s, terminal, "|07View users on other nodes?", outputMode, nodeNumber, termWidth, termHeight, false)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		log.Printf("ERROR: Node %d: Failed during WHOISONLINE YES/NO prompt: %v", nodeNumber, err)
+		return currentUser, "", nil // Non-fatal, skip
+	}
+
+	if !result {
+		log.Printf("DEBUG: Node %d: User declined to view who's online", nodeNumber)
+		// Write a newline to move past the prompt
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		return currentUser, "", nil
+	}
+
+	// User said YES - show the who's online display
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+	return runWhoIsOnline(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, args, outputMode, termWidth, termHeight)
 }
 
 func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
@@ -9886,14 +9946,28 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		// Read session fields under RLock to avoid racing with main loop writes
 		sess.Mutex.RLock()
 		userName := "Logging In..."
+		userLevel := 0
+		groupLocation := ""
 		if sess.User != nil {
 			userName = sess.User.Handle
+			userLevel = sess.User.AccessLevel
+			groupLocation = sess.User.GroupLocation
 		}
-		activity := sess.CurrentMenu
+		activity := sess.Activity
+		if activity == "" {
+			activity = sess.CurrentMenu
+		}
 		lastActivity := sess.LastActivity
 		sess.Mutex.RUnlock()
 
 		line = replaceWhoOnlineToken(line, "UN", userName)
+
+		// Level and Group/Location tokens
+		line = replaceWhoOnlineToken(line, "LV", strconv.Itoa(userLevel))
+		if groupLocation == "" {
+			groupLocation = "---"
+		}
+		line = replaceWhoOnlineToken(line, "GL", groupLocation)
 
 		if activity == "" {
 			activity = "---"

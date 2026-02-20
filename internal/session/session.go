@@ -26,6 +26,7 @@ type BbsSession struct {
 	Height      int
 	RemoteAddr  net.Addr
 	CurrentMenu string               // Tracks the current ViSiON/2 menu the user is in
+	Activity    string               // Descriptive activity text for Who's Online (e.g., "Reading Messages")
 	NodeID      int                  // Node ID for the session
 	AssetsPath  string               // Store required path directly
 	Mutex       sync.RWMutex         // For thread-safe access to session state if needed later

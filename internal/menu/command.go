@@ -6,7 +6,8 @@ type CommandRecord struct {
 	Command string `json:"CMD"`               // Command string (e.g., GOTO:MENU, RUN:PROG, LOGOFF)
 	ACS     string `json:"ACS"`               // Access Control String
 	Hidden  bool   `json:"HIDDEN"`            // Whether the command is hidden (H flag)
-	AutoRun string `json:"AUTORUN,omitempty"` // Type of auto-run (e.g., "ONCE_PER_SESSION")
+	AutoRun      string `json:"AUTORUN,omitempty"`        // Type of auto-run (e.g., "ONCE_PER_SESSION")
+	NodeActivity string `json:"NODE_ACTIVITY,omitempty"` // Descriptive activity text for Who's Online
 }
 
 // GetHidden is a helper method to safely access the Hidden field.
