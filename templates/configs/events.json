@@ -135,6 +135,55 @@
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 1800,
       "enabled": false
+    },
+    {
+      "id": "example_nightly_msgbase_fix",
+      "name": "Example: Nightly Message Base Integrity Check",
+      "schedule": "0 2 * * *",
+      "comment": "Check and repair JAM message base integrity across all areas at 2 AM. Part of a 3-step nightly maintenance sequence: fix → purge → pack.",
+      "command": "/usr/bin/go",
+      "args": [
+        "run",
+        "{BBS_ROOT}/cmd/jamutil",
+        "fix",
+        "--repair",
+        "--all"
+      ],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 3600,
+      "enabled": false
+    },
+    {
+      "id": "example_nightly_msgbase_purge",
+      "name": "Example: Nightly Message Base Purge",
+      "schedule": "15 2 * * *",
+      "comment": "Purge messages exceeding per-area age/count limits (max_msg_age, max_msgs) configured in message_areas.json. Runs at 2:15 AM between fix and pack. No flags needed — limits are read from config.",
+      "command": "/usr/bin/go",
+      "args": [
+        "run",
+        "{BBS_ROOT}/cmd/jamutil",
+        "purge",
+        "--all"
+      ],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 3600,
+      "enabled": false
+    },
+    {
+      "id": "example_nightly_msgbase_pack",
+      "name": "Example: Nightly Message Base Pack",
+      "schedule": "30 2 * * *",
+      "comment": "Defragment and compact all JAM message bases at 2:30 AM, reclaiming space from purged/deleted messages. Runs last in the nightly sequence.",
+      "command": "/usr/bin/go",
+      "args": [
+        "run",
+        "{BBS_ROOT}/cmd/jamutil",
+        "pack",
+        "--all"
+      ],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 3600,
+      "enabled": false
     }
   ]
 }

@@ -279,6 +279,56 @@ This creates a workflow:
 - **:05, :35** - Toss received mail into message bases
 - **:10, :40** - Pack outbound mail for next poll
 
+### Nightly Message Base Maintenance
+
+ViSiON/3 uses `jamutil` for JAM message base maintenance. The recommended nightly sequence runs in three stages:
+
+| Time | Stage | Purpose |
+|------|-------|---------|
+| 2:00 AM | `fix --repair --all` | Check integrity and repair malformed headers |
+| 2:15 AM | `purge --all` | Remove messages exceeding per-area age/count limits |
+| 2:30 AM | `pack --all` | Defragment bases and reclaim space from deleted messages |
+
+Purge limits (`max_msg_age`, `max_msgs`) are configured per area in `message_areas.json`. See [Message Purge Configuration](message-areas.md#message-purge-configuration) for details.
+
+```json
+{
+  "events": [
+    {
+      "id": "nightly_msgbase_fix",
+      "name": "Nightly Message Base Integrity Check",
+      "schedule": "0 2 * * *",
+      "command": "/usr/bin/go",
+      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "fix", "--repair", "--all"],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 3600,
+      "enabled": true
+    },
+    {
+      "id": "nightly_msgbase_purge",
+      "name": "Nightly Message Base Purge",
+      "schedule": "15 2 * * *",
+      "comment": "Purge limits are read from max_msg_age/max_msgs in message_areas.json",
+      "command": "/usr/bin/go",
+      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "purge", "--all"],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 3600,
+      "enabled": true
+    },
+    {
+      "id": "nightly_msgbase_pack",
+      "name": "Nightly Message Base Pack",
+      "schedule": "30 2 * * *",
+      "command": "/usr/bin/go",
+      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "pack", "--all"],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 3600,
+      "enabled": true
+    }
+  ]
+}
+```
+
 ### Nightly Maintenance
 
 Run maintenance script at 3 AM:

@@ -16,10 +16,12 @@ import (
 // areaConfig is a minimal struct for parsing message_areas.json
 // without importing the heavyweight message package.
 type areaConfig struct {
-	ID       int    `json:"id"`
-	Tag      string `json:"tag"`
-	Name     string `json:"name"`
-	BasePath string `json:"base_path"`
+	ID        int    `json:"id"`
+	Tag       string `json:"tag"`
+	Name      string `json:"name"`
+	BasePath  string `json:"base_path"`
+	MaxMsgs   int    `json:"max_msgs"`   // 0 = no limit
+	MaxMsgAge int    `json:"max_msg_age"` // days, 0 = no limit
 }
 
 func main() {
@@ -84,6 +86,7 @@ Examples:
   jamutil pack --all
   jamutil purge --days 90 --all
   jamutil purge --keep 500 data/msgbases/general
+  jamutil purge --all                              (uses per-area max_msgs/max_msg_age from config)
   jamutil fix --all
   jamutil link --all
   jamutil lastread data/msgbases/general
@@ -107,9 +110,11 @@ func resolveBasePaths(allFlag bool, configDir, dataDir string, args []string) ([
 }
 
 type baseMeta struct {
-	Path string
-	Tag  string
-	Name string
+	Path    string
+	Tag     string
+	Name    string
+	MaxMsgs int // 0 = no limit
+	MaxAge  int // days, 0 = no limit
 }
 
 func loadAllBasePaths(configDir, dataDir string) ([]baseMeta, error) {
@@ -128,9 +133,11 @@ func loadAllBasePaths(configDir, dataDir string) ([]baseMeta, error) {
 			bp = "msgbases/" + a.Tag
 		}
 		paths = append(paths, baseMeta{
-			Path: filepath.Join(dataDir, bp),
-			Tag:  a.Tag,
-			Name: a.Name,
+			Path:    filepath.Join(dataDir, bp),
+			Tag:     a.Tag,
+			Name:    a.Name,
+			MaxMsgs: a.MaxMsgs,
+			MaxAge:  a.MaxMsgAge,
 		})
 	}
 	return paths, nil
@@ -258,15 +265,19 @@ func cmdPack(args []string) {
 }
 
 // cmdPurge deletes old messages by age or count.
+// When --all is used, per-area max_msg_age and max_msgs from message_areas.json
+// take precedence; --days and --keep serve as fallback defaults for areas
+// without per-area limits configured.
 func cmdPurge(args []string) {
 	fs := flag.NewFlagSet("purge", flag.ExitOnError)
 	allFlag, configDir, dataDir, quiet := addGlobalFlags(fs)
-	days := fs.Int("days", 0, "Delete messages older than N days")
-	keep := fs.Int("keep", 0, "Keep only the newest N messages")
+	days := fs.Int("days", 0, "Delete messages older than N days (fallback when --all is used)")
+	keep := fs.Int("keep", 0, "Keep only the newest N messages (fallback when --all is used)")
 	dryRun := fs.Bool("dry-run", false, "Report what would happen without modifying")
 	fs.Parse(args)
 
-	if *days == 0 && *keep == 0 {
+	// --days or --keep are required for manual (non-all) invocations.
+	if !*allFlag && *days == 0 && *keep == 0 {
 		fmt.Fprintf(os.Stderr, "Error: --days or --keep is required\n")
 		os.Exit(1)
 	}
@@ -278,6 +289,23 @@ func cmdPurge(args []string) {
 	}
 
 	for _, meta := range paths {
+		// Resolve effective limits: per-area config takes precedence over CLI flags.
+		effectiveDays := *days
+		effectiveKeep := *keep
+		if meta.MaxAge > 0 {
+			effectiveDays = meta.MaxAge
+		}
+		if meta.MaxMsgs > 0 {
+			effectiveKeep = meta.MaxMsgs
+		}
+
+		if effectiveDays == 0 && effectiveKeep == 0 {
+			if !*quiet && *allFlag {
+				fmt.Printf("%s: no purge limits configured, skipping\n", meta.Tag)
+			}
+			continue
+		}
+
 		b, err := jam.Open(meta.Path)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error opening %s: %v\n", meta.Path, err)
@@ -285,43 +313,60 @@ func cmdPurge(args []string) {
 		}
 
 		total, _ := b.GetMessageCount()
-		var toDelete []int
 
-		if *days > 0 {
-			cutoff := uint32(time.Now().Add(-time.Duration(*days) * 24 * time.Hour).Unix())
-			for n := 1; n <= total; n++ {
+		// Collect all active message numbers in order (oldest first).
+		var active []int
+		for n := 1; n <= total; n++ {
+			hdr, err := b.ReadMessageHeader(n)
+			if err != nil {
+				continue
+			}
+			if hdr.Attribute&jam.MsgDeleted != 0 {
+				continue
+			}
+			active = append(active, n)
+		}
+
+		toDeleteSet := make(map[int]bool)
+
+		// Age pass: mark messages older than effectiveDays for deletion.
+		if effectiveDays > 0 {
+			cutoff := uint32(time.Now().Add(-time.Duration(effectiveDays) * 24 * time.Hour).Unix())
+			for _, n := range active {
 				hdr, err := b.ReadMessageHeader(n)
 				if err != nil {
-					continue
-				}
-				if hdr.Attribute&jam.MsgDeleted != 0 {
 					continue
 				}
 				if hdr.DateWritten < cutoff {
-					toDelete = append(toDelete, n)
+					toDeleteSet[n] = true
 				}
 			}
-		} else if *keep > 0 {
-			// Collect active message numbers
-			var active []int
-			for n := 1; n <= total; n++ {
-				hdr, err := b.ReadMessageHeader(n)
-				if err != nil {
-					continue
+		}
+
+		// Count pass: after age purge, if still over effectiveKeep, remove oldest.
+		if effectiveKeep > 0 {
+			remaining := make([]int, 0, len(active))
+			for _, n := range active {
+				if !toDeleteSet[n] {
+					remaining = append(remaining, n)
 				}
-				if hdr.Attribute&jam.MsgDeleted != 0 {
-					continue
+			}
+			if len(remaining) > effectiveKeep {
+				for _, n := range remaining[:len(remaining)-effectiveKeep] {
+					toDeleteSet[n] = true
 				}
-				active = append(active, n)
 			}
-			if len(active) > *keep {
-				toDelete = active[:len(active)-*keep]
-			}
+		}
+
+		toDelete := make([]int, 0, len(toDeleteSet))
+		for n := range toDeleteSet {
+			toDelete = append(toDelete, n)
 		}
 
 		if *dryRun {
 			if !*quiet {
-				fmt.Printf("%s: would delete %d messages\n", meta.Tag, len(toDelete))
+				fmt.Printf("%s: would delete %d messages (age>%dd, keep<=%d)\n",
+					meta.Tag, len(toDelete), effectiveDays, effectiveKeep)
 			}
 			b.Close()
 			continue
