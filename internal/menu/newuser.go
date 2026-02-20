@@ -205,6 +205,21 @@ func (e *MenuExecutor) handleNewUserApplication(
 	// Set the private note with creation date
 	newUser.PrivateNote = userNote
 	newUser.CreatedAt = time.Now()
+
+	// Auto-join any message areas flagged with auto_join
+	if e.MessageMgr != nil {
+		var autoJoinTags []string
+		for _, area := range e.MessageMgr.ListAreas() {
+			if area.AutoJoin {
+				autoJoinTags = append(autoJoinTags, area.Tag)
+			}
+		}
+		if len(autoJoinTags) > 0 {
+			newUser.TaggedMessageAreaTags = autoJoinTags
+			log.Printf("INFO: Node %d: Auto-joining %d message area(s) for new user '%s'", nodeNumber, len(autoJoinTags), handle)
+		}
+	}
+
 	if saveErr := userManager.UpdateUser(newUser); saveErr != nil {
 		log.Printf("ERROR: Node %d: Failed to save user note for '%s': %v", nodeNumber, handle, saveErr)
 	}

@@ -53,7 +53,7 @@ type User struct {
 	TaggedFileIDs      []uuid.UUID `json:"tagged_file_ids,omitempty"`       // List of FileRecord IDs marked for batch download
 
 	// Message System Related
-	TaggedMessageAreaIDs []int `json:"tagged_message_area_ids,omitempty"` // List of message area IDs tagged for newscan
+	TaggedMessageAreaTags []string `json:"tagged_message_area_tags,omitempty"` // List of message area tags tagged for newscan
 
 	// Terminal Preferences
 	ScreenWidth       int    `json:"screenWidth,omitempty"`       // Detected/preferred terminal width (default 80)

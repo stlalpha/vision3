@@ -343,7 +343,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	allAreas := e.MessageMgr.ListAreas()
 
 	// If tagged areas mode, check if user has any tagged areas
-	if scanCfg.WhichAreas == 1 && (currentUser.TaggedMessageAreaIDs == nil || len(currentUser.TaggedMessageAreaIDs) == 0) {
+	if scanCfg.WhichAreas == 1 && len(currentUser.TaggedMessageAreaTags) == 0 {
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanNoTaggedAreas)), outputMode)
 		time.Sleep(2 * time.Second)
 		return nil, "", nil
@@ -356,10 +356,10 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	origConfTag := currentUser.CurrentMsgConferenceTag
 
 	// Create tagged area map for quick lookup
-	taggedMap := make(map[int]bool)
-	if scanCfg.WhichAreas == 1 && currentUser.TaggedMessageAreaIDs != nil {
-		for _, areaID := range currentUser.TaggedMessageAreaIDs {
-			taggedMap[areaID] = true
+	taggedMap := make(map[string]bool)
+	if scanCfg.WhichAreas == 1 {
+		for _, tag := range currentUser.TaggedMessageAreaTags {
+			taggedMap[tag] = true
 		}
 	}
 
@@ -374,7 +374,7 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 
 		// Filter by tagged areas if WhichAreas == 1
-		if scanCfg.WhichAreas == 1 && !taggedMap[area.ID] {
+		if scanCfg.WhichAreas == 1 && !taggedMap[area.Tag] {
 			continue
 		}
 
@@ -592,11 +592,9 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	// Create tagged map for quick lookups
-	taggedMap := make(map[int]bool)
-	if currentUser.TaggedMessageAreaIDs != nil {
-		for _, areaID := range currentUser.TaggedMessageAreaIDs {
-			taggedMap[areaID] = true
-		}
+	taggedMap := make(map[string]bool)
+	for _, tag := range currentUser.TaggedMessageAreaTags {
+		taggedMap[tag] = true
 	}
 
 	// UI state
@@ -743,7 +741,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			selected := (i == currentIdx)
 			tagged := false
 			if !item.isHeader && item.area != nil {
-				tagged = taggedMap[item.area.ID]
+				tagged = taggedMap[item.area.Tag]
 			}
 
 			// Clear line and draw
@@ -776,7 +774,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			item := accessibleAreas[previousIdx]
 			tagged := false
 			if !item.isHeader && item.area != nil {
-				tagged = taggedMap[item.area.ID]
+				tagged = taggedMap[item.area.Tag]
 			}
 			line := formatAreaLine(item, false, tagged)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
@@ -788,7 +786,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			item = accessibleAreas[currentIdx]
 			tagged = false
 			if !item.isHeader && item.area != nil {
-				tagged = taggedMap[item.area.ID]
+				tagged = taggedMap[item.area.Tag]
 			}
 			line = formatAreaLine(item, true, tagged)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
@@ -930,48 +928,48 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		case ' ', editor.KeyEnter: // Space or Enter - toggle
 			if !accessibleAreas[currentIdx].isHeader {
 				area := accessibleAreas[currentIdx].area
-				if taggedMap[area.ID] {
+				if taggedMap[area.Tag] {
 					// Untag
-					delete(taggedMap, area.ID)
+					delete(taggedMap, area.Tag)
 				} else {
 					// Tag
-					taggedMap[area.ID] = true
+					taggedMap[area.Tag] = true
 				}
 				// Redraw just current line
 				itemStartLine := headerLines + 2
 				currLineNum := currentIdx - viewportOffset
 				terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[%d;1H", itemStartLine+currLineNum)), outputMode)
 				terminalio.WriteProcessedBytes(terminal, []byte("\x1b[2K"), outputMode)
-				line := formatAreaLine(accessibleAreas[currentIdx], true, taggedMap[area.ID])
+				line := formatAreaLine(accessibleAreas[currentIdx], true, taggedMap[area.Tag])
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
 			}
 
 		case 'A', 'a': // Tag all
 			for _, item := range accessibleAreas {
 				if !item.isHeader {
-					taggedMap[item.area.ID] = true
+					taggedMap[item.area.Tag] = true
 				}
 			}
 			drawItems()
 
 		case 'N', 'n': // Untag all
-			taggedMap = make(map[int]bool)
+			taggedMap = make(map[string]bool)
 			drawItems()
 
 		case editor.KeyEsc, 'Q', 'q': // ESC or Q - exit
 			// Save tagged areas to user
-			var taggedIDs []int
-			for areaID := range taggedMap {
-				taggedIDs = append(taggedIDs, areaID)
+			var taggedTags []string
+			for tag := range taggedMap {
+				taggedTags = append(taggedTags, tag)
 			}
-			currentUser.TaggedMessageAreaIDs = taggedIDs
+			currentUser.TaggedMessageAreaTags = taggedTags
 
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 			if err := userManager.UpdateUser(currentUser); err != nil {
 				log.Printf("ERROR: Node %d: Failed to save newscan config: %v", nodeNumber, err)
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanConfigError)), outputMode)
 			} else {
-				msg := fmt.Sprintf(e.LoadedStrings.ScanConfigSaved, len(taggedIDs))
+				msg := fmt.Sprintf(e.LoadedStrings.ScanConfigSaved, len(taggedTags))
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			}
 			time.Sleep(1 * time.Second)
