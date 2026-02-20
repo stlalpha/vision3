@@ -4230,17 +4230,9 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 		// --- Inline Lightbar Logic (prints at current cursor position) ---
 		log.Printf("DEBUG: Terminal height known (%d) from user preferences, using inline lightbar prompt.", termHeight)
 
-		// Hide cursor during selection
-		wErr := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
-		if wErr != nil {
-			log.Printf("WARN: Node %d: Failed hiding cursor for Yes/No prompt: %v", nodeNumber, wErr)
-		}
-		defer func() {
-			restoreErr := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
-			if restoreErr != nil {
-				log.Printf("WARN: Node %d: Failed restoring cursor for Yes/No prompt: %v", nodeNumber, restoreErr)
-			}
-		}()
+		// NOTE: We intentionally do NOT hide the cursor (\x1b[?25l) here.
+		// On iOS, MuffinTerm ties the software keyboard to cursor visibility —
+		// hiding the cursor can dismiss the keyboard and block all input.
 
 		yesLabel := strings.TrimSpace(e.LoadedStrings.YesPromptText)
 		if yesLabel == "" {
@@ -4269,16 +4261,14 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 
 		// Add spacing before options
 		spacingBytes := []byte(strings.Repeat(" ", yesNoSpacing))
-		wErr = terminalio.WriteProcessedBytes(terminal, spacingBytes, outputMode)
+		wErr := terminalio.WriteProcessedBytes(terminal, spacingBytes, outputMode)
 		if wErr != nil {
 			log.Printf("WARN: Failed writing spacing: %v", wErr)
 		}
 
-		// Save cursor position - this is where options will be drawn
-		wErr = terminalio.WriteProcessedBytes(terminal, []byte(ansi.SaveCursor()), outputMode)
-		if wErr != nil {
-			log.Printf("WARN: Failed saving cursor for options: %v", wErr)
-		}
+		// Total visible width of the options area (used for cursor-backward repositioning).
+		// This avoids cursor save/restore which is unreliable across terminals.
+		optionsWidth := len(noOptionText) + optionSpacing + len(yesOptionText)
 
 		// Track current selection: 0 = No, 1 = Yes
 		selectedIndex := 0
@@ -4286,16 +4276,22 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 			selectedIndex = 1
 		}
 
-		// Function to draw the inline options (only the options, not the prompt)
+		firstDraw := true
+
+		// Function to draw the inline options (only the options, not the prompt).
+		// Uses CUB (cursor backward) to reposition instead of save/restore.
 		drawInlineOptions := func(currentSelection int) {
-			// Restore cursor to where options start
-			wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()), outputMode)
-			if wErr != nil {
-				log.Printf("WARN: Failed restoring cursor for options: %v", wErr)
+			if !firstDraw {
+				// Move cursor back to the start of the options area
+				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.CursorBackward(optionsWidth)), outputMode)
+				if wErr != nil {
+					log.Printf("WARN: Failed moving cursor backward: %v", wErr)
+				}
 			}
+			firstDraw = false
 
 			// Clear from cursor to end of line to remove old options
-			wErr = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[K"), outputMode)
+			wErr := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[K"), outputMode)
 			if wErr != nil {
 				log.Printf("WARN: Failed clearing old options: %v", wErr)
 			}
@@ -4383,12 +4379,12 @@ func (e *MenuExecutor) promptYesNoLightbar(s ssh.Session, terminal *term.Termina
 			}
 
 			if selectionMade {
-				// Restore to option position, print the chosen label, then move to next line
+				// Move back to option start, clear, print the chosen label, then newline
 				selectedLabel := noLabel
 				if result {
 					selectedLabel = yesLabel
 				}
-				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.RestoreCursor()+"\x1b[K"+selectedLabel+"\r\n"), outputMode)
+				wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.CursorBackward(optionsWidth)+"\x1b[K"+selectedLabel+"\r\n"), outputMode)
 				if wErr != nil {
 					log.Printf("WARN: Failed writing selection result: %v", wErr)
 				}

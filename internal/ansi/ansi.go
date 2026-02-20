@@ -798,16 +798,28 @@ func MoveCursor(row, col int) string {
 	return fmt.Sprintf("\x1B[%d;%dH", row, col)
 }
 
-// SaveCursor returns an ANSI escape sequence to save the current cursor position.
-// Use RestoreCursor to return to the saved position.
+// SaveCursor returns ANSI escape sequences to save the current cursor
+// position. Both SCO (\x1b[s) and DEC (DECSC: \x1b7) forms are emitted
+// so that the widest range of terminal emulators will honor at least one.
 func SaveCursor() string {
-	return "\x1B[s"
+	return "\x1B[s\x1B7"
 }
 
-// RestoreCursor returns an ANSI escape sequence to restore the cursor to the previously saved position.
-// The position must have been saved with SaveCursor.
+// RestoreCursor returns ANSI escape sequences to restore the cursor to the
+// previously saved position. Both SCO (\x1b[u) and DEC (DECRC: \x1b8)
+// forms are emitted for broad compatibility.
 func RestoreCursor() string {
-	return "\x1B[u"
+	return "\x1B[u\x1B8"
+}
+
+// CursorBackward returns a CSI CUB sequence that moves the cursor left by n
+// columns. This is universally supported and avoids reliance on cursor
+// save/restore, which is inconsistent across terminal emulators.
+func CursorBackward(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("\x1B[%dD", n)
 }
 
 // Add StripAnsi if it was used externally
