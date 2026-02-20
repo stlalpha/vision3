@@ -54,6 +54,8 @@ Message areas are defined in `configs/message_areas.json` as an array:
 - `area_type` - Message type: `"local"`, `"echomail"`, or `"netmail"`
 - `echo_tag` - FTN echo tag for echomail areas (e.g., `"FSX_GEN"`)
 - `origin_addr` - FTN origin address for echomail (e.g., `"21:3/110"`)
+- `max_msgs` - Maximum number of messages to retain (0 = no limit). Oldest messages are removed when the count is exceeded.
+- `max_msg_age` - Maximum message age in days (0 = no limit). Messages older than this are removed.
 
 ### Area Types
 
@@ -420,6 +422,28 @@ JAM bases are binary files that may need periodic maintenance:
 - **Integrity**: If a base becomes corrupted, delete the 4 JAM files and the base will be recreated (messages will be lost)
 - **Growth**: JAM text files (.jdt) grow as messages are added. Deleted messages leave gaps that can be reclaimed by packing.
 
+The `jamutil` command handles all message base maintenance. See [Nightly Message Base Maintenance](event-scheduler.md#nightly-message-base-maintenance) in the event scheduler docs for the recommended automated maintenance sequence.
+
+### Message Purge Configuration
+
+Per-area purge limits are set in `message_areas.json` via `max_msgs` and `max_msg_age`. Both default to `0` (no limit). When set, limits are enforced nightly by `jamutil purge --all`:
+
+```json
+{
+  "tag": "FSX_GEN",
+  "max_msg_age": 90
+}
+```
+
+```json
+{
+  "tag": "GENERAL",
+  "max_msgs": 500
+}
+```
+
+Both limits can be set simultaneously. Age is applied first; if the remaining count still exceeds `max_msgs`, the oldest messages are removed until the limit is met.
+
 ### Dupe Database
 
 The FTN dupe database (`data/ftn/dupes.json`) tracks MSGIDs to prevent duplicate imports. Old entries are automatically purged after 30 days.
@@ -430,11 +454,8 @@ The FTN dupe database (`data/ftn/dupes.json`) tracks MSGIDs to prevent duplicate
 
 - Message deletion/moderation UI
 - Anonymous posting
-- Message limits per area
 - Message search
 - File attachments
-- Private messages between users
-- JAM base packing/defragmentation utility (jamutil)
 
 ### In Development
 
