@@ -506,9 +506,69 @@ When a user is soft-deleted:
 - **Data preserved**: All messages, files, uploads, and call history remain intact
 - **Attribution maintained**: Their posts and files remain attributed to their handle
 
-#### Future: Purge Deleted Users
+#### Purging Deleted Users
 
-A future enhancement will add a "purge deleted users" function to permanently remove soft-deleted users and their data after a configurable retention period (e.g., 30/60/90 days).
+Soft-deleted users are retained for a configurable number of days before they can be permanently purged. The retention period is set in `configs/config.json`:
+
+```json
+"deletedUserRetentionDays": 30
+```
+
+- **`0`** — purge immediately (on next purge run)
+- **`30`** (default) — retain for 30 days after `deletedAt`
+- **`-1`** — never purge automatically
+
+Users with no `deletedAt` timestamp are always treated as immediately eligible for purge.
+
+**Important:** Purged user IDs are not recycled. The `nextUserID` counter continues to increment, leaving a gap. This is intentional to prevent new accounts from inheriting message attribution from old accounts.
+
+##### CLI: `helper users purge`
+
+Run from the BBS root directory:
+
+```bash
+# Preview what would be purged (no changes made)
+./helper users purge --dry-run
+
+# Purge using the retention period from config.json
+./helper users purge
+
+# Override retention period for this run only
+./helper users purge --days 90
+```
+
+Each purge run logs affected accounts to `data/users/admin_activity.json` with action `PURGE_USER`.
+
+##### CLI: `helper users list`
+
+```bash
+# List all users with status column
+./helper users list
+
+# List only soft-deleted users with days-until-purge column
+./helper users list --deleted
+```
+
+##### Automated Purge via Scheduler
+
+Add to `configs/events.json` to run nightly:
+
+```json
+{
+  "id": "purge_deleted_users",
+  "name": "Nightly Deleted User Purge",
+  "schedule": "0 3 * * *",
+  "command": "{BBS_ROOT}/helper",
+  "args": ["users", "purge"],
+  "working_directory": "{BBS_ROOT}",
+  "timeout_seconds": 60,
+  "enabled": true
+}
+```
+
+##### Interactive Purge from SysOp Menu
+
+Add `RUN:PURGEUSERS` to a SysOp menu definition. When triggered, it displays all users eligible for purge with their deletion dates, prompts for confirmation, and reports the result. Requires SysOp access level.
 
 ### Promoting Users
 
@@ -526,6 +586,7 @@ Increase `accessLevel` and/or add appropriate flags.
 - `data/users/users.json` - User database
 - `data/users/callhistory.json` - Recent calls
 - `data/users/callnumber.json` - Next call number
+- `data/users/admin_activity.json` - Admin action log (validate, ban, delete, purge)
 
 ## Best Practices
 
@@ -542,7 +603,6 @@ The following user management features are planned:
 
 - Full in-BBS user editor
 - Password change function
-- **User purge utilities** - Permanently remove soft-deleted users after retention period
 - Import/export tools
 - User statistics and reports
 - Time bank system
