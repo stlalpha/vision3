@@ -28,11 +28,11 @@ func runSystemStats(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	topPath := filepath.Join(e.MenuSetPath, "templates", "SYSSTATS.TOP")
 	botPath := filepath.Join(e.MenuSetPath, "templates", "SYSSTATS.BOT")
 
-	topBytes, err := os.ReadFile(topPath)
+	topBytes, err := readTemplateFile(topPath)
 	if err != nil && !os.IsNotExist(err) {
 		log.Printf("WARN: Node %d: Failed to read %s: %v", nodeNumber, topPath, err)
 	}
-	botBytes, err := os.ReadFile(botPath)
+	botBytes, err := readTemplateFile(botPath)
 	if err != nil && !os.IsNotExist(err) {
 		log.Printf("WARN: Node %d: Failed to read %s: %v", nodeNumber, botPath, err)
 	}

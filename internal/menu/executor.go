@@ -1046,9 +1046,9 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	midTemplatePath := filepath.Join(e.MenuSetPath, "templates", "ONELINER.MID")
 	botTemplatePath := filepath.Join(e.MenuSetPath, "templates", "ONELINER.BOT")
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more ONELINER template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := e.LoadedStrings.ExecOnelinerTemplateErr
@@ -2601,9 +2601,9 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	midTemplatePath := filepath.Join(e.MenuSetPath, "templates", "LASTCALL.MID")
 	botTemplatePath := filepath.Join(e.MenuSetPath, "templates", "LASTCALL.BOT")
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more LASTCALL template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -2864,6 +2864,17 @@ func normalizePipeCodeDelimiters(input []byte) []byte {
 	}
 
 	return normalized
+}
+
+// readTemplateFile reads a template file at path. If the file is not found,
+// it retries with ".ans" appended so templates can be stored as e.g.
+// "ONELINER.TOP.ans" and recognised by ANSI editors.
+func readTemplateFile(path string) ([]byte, error) {
+	data, err := os.ReadFile(path)
+	if err != nil && os.IsNotExist(err) {
+		return os.ReadFile(path + ".ans")
+	}
+	return data, err
 }
 
 func stripSauceMetadata(input []byte) []byte {
@@ -4491,9 +4502,9 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	midTemplatePath := filepath.Join(e.MenuSetPath, "templates", "USERLIST.MID")
 	botTemplatePath := filepath.Join(e.MenuSetPath, "templates", "USERLIST.BOT")
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more USERLIST template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -7081,9 +7092,9 @@ func displayMessageAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 
 	// 1. Load templates
 	templateDir := filepath.Join(e.MenuSetPath, "templates")
-	topTemplateBytes, errTop := os.ReadFile(filepath.Join(templateDir, "MSGAREA.TOP"))
-	midTemplateBytes, errMid := os.ReadFile(filepath.Join(templateDir, "MSGAREA.MID"))
-	botTemplateBytes, errBot := os.ReadFile(filepath.Join(templateDir, "MSGAREA.BOT"))
+	topTemplateBytes, errTop := readTemplateFile(filepath.Join(templateDir, "MSGAREA.TOP"))
+	midTemplateBytes, errMid := readTemplateFile(filepath.Join(templateDir, "MSGAREA.MID"))
+	botTemplateBytes, errBot := readTemplateFile(filepath.Join(templateDir, "MSGAREA.BOT"))
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -7094,7 +7105,7 @@ func displayMessageAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 	}
 
 	// Conference header template (optional)
-	confHdrBytes, errConf := os.ReadFile(filepath.Join(templateDir, "MSGCONF.HDR"))
+	confHdrBytes, errConf := readTemplateFile(filepath.Join(templateDir, "MSGCONF.HDR"))
 	confHdrTemplate := ""
 	if errConf == nil {
 		confHdrTemplate = string(ansi.ReplacePipeCodes(confHdrBytes))
@@ -7540,9 +7551,9 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.T
 	midTemplatePath := filepath.Join(templateDir, midTemplateFilename)
 	botTemplatePath := filepath.Join(templateDir, botTemplateFilename) // Load BOT template
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath) // Load BOT template
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath) // Load BOT template
 
 	if errTop != nil || errMid != nil || errBot != nil { // Check BOT error too
 		log.Printf("ERROR: Node %d: Failed to load one or more MSGAREA template files for prompt: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -8389,9 +8400,9 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	midTemplatePath := filepath.Join(e.MenuSetPath, "templates", "FILELIST.MID")
 	botTemplatePath := filepath.Join(e.MenuSetPath, "templates", "FILELIST.BOT")
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more FILELIST template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -8936,9 +8947,9 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal
 	botTemplatePath := filepath.Join(templateDir, botTemplateFilename)
 
 	// 2. Load Template Files
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more FILEAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -8957,7 +8968,7 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal
 	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
 
 	// Conference header template (optional)
-	confHdrBytes, errConf := os.ReadFile(filepath.Join(templateDir, "FILECONF.HDR"))
+	confHdrBytes, errConf := readTemplateFile(filepath.Join(templateDir, "FILECONF.HDR"))
 	confHdrTemplate := ""
 	if errConf == nil {
 		confHdrTemplate = string(ansi.ReplacePipeCodes(confHdrBytes))
@@ -9894,9 +9905,9 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	midPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.MID")
 	botPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.BOT")
 
-	topBytes, errTop := os.ReadFile(topPath)
-	midBytes, errMid := os.ReadFile(midPath)
-	botBytes, errBot := os.ReadFile(botPath)
+	topBytes, errTop := readTemplateFile(topPath)
+	midBytes, errMid := readTemplateFile(midPath)
+	botBytes, errBot := readTemplateFile(botPath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load WHOONLN templates: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)

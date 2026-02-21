@@ -841,9 +841,9 @@ func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	midPath := filepath.Join(e.MenuSetPath, "templates", "DOORLIST.MID")
 	botPath := filepath.Join(e.MenuSetPath, "templates", "DOORLIST.BOT")
 
-	topBytes, errTop := os.ReadFile(topPath)
-	midBytes, errMid := os.ReadFile(midPath)
-	botBytes, errBot := os.ReadFile(botPath)
+	topBytes, errTop := readTemplateFile(topPath)
+	midBytes, errMid := readTemplateFile(midPath)
+	botBytes, errBot := readTemplateFile(botPath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load DOORLIST templates: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)

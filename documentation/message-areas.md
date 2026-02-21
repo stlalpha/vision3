@@ -255,25 +255,17 @@ The `NEWSCANCONFIG` function (key: **Z** in message menu) allows users to config
 
 Message display templates are in `menus/v3/templates/`:
 
-### Message Header Template
+### Message Header
 
-`MSGHEAD.TPL`:
+The message header is rendered using the `MSGHDR.*.ans` style system in
+`menus/v3/templates/message_headers/`. Users can select a header style via the
+message reader settings. See [Message Header Placeholders](message-header-placeholders.md)
+for available tokens.
 
-```text
-|08-=[ |15Area |11|CA|08 ]=---=[ |15Msg |11|MNUM|07/|11|MTOTAL|08 ]=-
-|07From : |15|MFROM|07      To : |15|MTO|
-|07Subj : |15|MSUBJ|
-|07Date : |15|MDATE|
-|08---------------------------------------------------------------
-```
+### Read Prompt
 
-### Message Prompt Template
-
-`MSGREAD.PROMPT`:
-
-```text
-[|MNUM/|MTOTAL] Command:
-```
+The read prompt at the bottom of the message reader is a hardcoded lightbar
+rendered by the Go message reader. It is not template-driven.
 
 ### Area List Templates
 
@@ -281,16 +273,10 @@ Message display templates are in `menus/v3/templates/`:
 - `MSGAREA.MID` - Row template
 - `MSGAREA.BOT` - Footer
 
-### Template Placeholders
+### Area List Template Placeholders
 
 - `|CA` - Current area tag
-- `|MNUM` - Current message number (1-based)
-- `|MTOTAL` - Total messages in area
-- `|MFROM` - Sender's handle
-- `|MTO` - Recipient
-- `|MDATE` - Post date/time
-- `|MSUBJ` - Subject line
-- `^ID` - Area ID (in area lists)
+- `^ID` - Area ID
 - `^TAG` - Area tag
 - `^NA` - Area name
 - `^DS` - Area description
