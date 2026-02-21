@@ -8,6 +8,8 @@
 *.so
 *.dylib
 log
+strings
+ue
 
 bin/
 DOS/
