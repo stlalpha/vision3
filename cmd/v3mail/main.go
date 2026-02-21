@@ -26,17 +26,17 @@ type areaConfig struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		printUsage()
+		printUsage("")
 		os.Exit(1)
 	}
 
 	cmd := os.Args[1]
 	if cmd == "--version" || cmd == "-version" {
-		fmt.Printf("v3mail %s - Vision3 Mail Utility\n", version.Number)
+		printHeader()
 		return
 	}
 	if cmd == "--help" || cmd == "-h" || cmd == "help" {
-		printUsage()
+		printUsage("")
 		return
 	}
 
@@ -60,50 +60,70 @@ func main() {
 	case "ftn-pack":
 		cmdFtnPack(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", cmd)
-		printUsage()
+		printUsage(fmt.Sprintf("Unknown command: %s", cmd))
 		os.Exit(1)
 	}
 }
 
-func printUsage() {
-	fmt.Fprintf(os.Stderr, `v3mail %s - Vision3 Mail Utility
+const (
+	clrReset   = "\033[0m"
+	clrCyan    = "\033[36m"
+	clrMagenta = "\033[35m"
+	clrBold    = "\033[1m"
+	separator  = "────────────────────────────────────────────────────────────────────────────"
+)
 
-Usage: v3mail <command> [options] [base_path...]
+func printHeader() {
+	fmt.Fprintf(os.Stderr, "%sViSiON/3 Mail Utility v%s  ·  (C)opyright 2024-2025 Ruthless Enterprises%s\n",
+		clrBold, version.Number, clrReset)
+	fmt.Fprintln(os.Stderr, separator)
+}
 
-JAM Base Commands:
-  stats     Display message base statistics
-  pack      Defragment base, removing deleted messages
-  purge     Delete old messages by age or count
-  fix       Verify base integrity
-  link      Build reply threading chains (ReplyTo/Reply1st/ReplyNext)
-  lastread  Show or reset lastread records
+func bullet(msg string) string {
+	return fmt.Sprintf("%s\u25a0%s  %s%s%s", clrMagenta, clrReset, clrCyan, msg, clrReset)
+}
 
-FTN Echomail Commands:
-  toss      Unpack FTN bundles and toss .PKT files into JAM bases
-  scan      Scan JAM bases for unsent echomail, create outbound .PKT files
-  ftn-pack  Pack outbound .PKT files into ZIP bundles for binkd
+func cmd(name, desc string) string {
+	return fmt.Sprintf("  %s%-10s%s - %s%s%s",
+		clrCyan, name, clrReset, clrCyan, desc, clrReset)
+}
 
-Global Options:
-  --all           Operate on all areas from message_areas.json (JAM commands)
-  --config DIR    Config directory (default: configs)
-  --data DIR      Data directory (default: data)
-  -q              Quiet mode
+func opt(flag, desc string) string {
+	return fmt.Sprintf("  %s%-18s%s %s%s%s",
+		clrCyan, flag, clrReset, clrCyan, desc, clrReset)
+}
 
-FTN Command Options:
-  --network NAME  Limit to a single FTN network (default: all enabled)
-
-Examples:
-  v3mail stats --all
-  v3mail pack --all
-  v3mail purge --all
-  v3mail fix --all
-  v3mail link --all
-  v3mail toss --config configs --data data
-  v3mail scan --config configs --data data
-  v3mail ftn-pack --config configs --data data
-  v3mail toss --network fsxnet
-`, version.Number)
+func printUsage(errMsg string) {
+	w := os.Stderr
+	printHeader()
+	fmt.Fprintln(w)
+	if errMsg != "" {
+		fmt.Fprintln(w, bullet(errMsg))
+	}
+	fmt.Fprintln(w, bullet("v3mail needs a little more information!"))
+	fmt.Fprintln(w, bullet("Required Format: v3mail <command> [options] [base_path...]"))
+	fmt.Fprintln(w, bullet("Valid Commands Are As Follows..."))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sJAM Base Commands:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, cmd("STATS", "Display message base statistics"))
+	fmt.Fprintln(w, cmd("PACK", "Defragment base, removing deleted messages"))
+	fmt.Fprintln(w, cmd("PURGE", "Delete messages exceeding age or count limits"))
+	fmt.Fprintln(w, cmd("FIX", "Verify and repair JAM base integrity"))
+	fmt.Fprintln(w, cmd("LINK", "Build reply-threading chains (ReplyTo/Reply1st/ReplyNext)"))
+	fmt.Fprintln(w, cmd("LASTREAD", "Show or reset per-user lastread pointers"))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sFTN Echomail Commands:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, cmd("TOSS", "Unpack inbound FTN bundles and toss .PKT files into JAM bases"))
+	fmt.Fprintln(w, cmd("SCAN", "Scan JAM bases for unsent echomail; create outbound .PKT files"))
+	fmt.Fprintln(w, cmd("FTN-PACK", "Pack outbound .PKT files into ZIP bundles for binkd"))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sGlobal Options:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, opt("--all", "Operate on all areas in message_areas.json"))
+	fmt.Fprintln(w, opt("--config DIR", "Config directory (default: configs)"))
+	fmt.Fprintln(w, opt("--data DIR", "Data directory (default: data)"))
+	fmt.Fprintln(w, opt("-q", "Suppress output"))
+	fmt.Fprintln(w, opt("--network NAME", "FTN: limit to a single network"))
+	fmt.Fprintln(w)
 }
 
 // resolveBasePaths returns base paths from positional args or --all flag.
