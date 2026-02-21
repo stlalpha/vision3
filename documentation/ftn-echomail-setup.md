@@ -6,34 +6,34 @@ across one or more FTN networks.
 
 ## Overview
 
-Vision/3 has been tested using **external binaries** for mail transport and tossing:
+Vision/3 uses **binkd** for FTN mail transport and the built-in **jamutil** commands
+for tossing, scanning, and packing:
 
 - **binkd** - FTN mailer (sends/receives packets over BinkP protocol)
   - GitHub: <https://github.com/pgul/binkd>
-- **hpt** (Husky Project Tosser) - Tosses incoming packets into JAM message bases
-  and scans outbound messages into packets
-  - GitHub: <https://github.com/huskyproject>
+- **jamutil toss** - Unpacks ZIP bundles and tosses `.pkt` files into JAM message bases
+- **jamutil scan** - Scans JAM bases for new outbound echomail and creates `.pkt` files
+- **jamutil ftn-pack** - Packs outbound `.pkt` files into ZIP bundles for binkd pickup
 
 Vision/3 itself manages the JAM message bases, presents messages to users, and
-handles new message creation. The external tools handle the network side.
-
-You don't have to use these specific tools, but they are well-known and widely used in the FTN community. The key is that your mailer must be able to receive packets from your hub, toss them into JAM bases, and create outbound packets from the JAM bases.
+handles new message creation. binkd handles the network transport.
 
 ### How It Works
 
 ```text
-Your Hub <--binkd--> secure_in/ --hpt toss--> JAM bases <-- Vision/3 --> Users
-                                                  |
-                                         hpt scan --> outbound/ --binkd--> Hub
+Your Hub <--binkd--> secure_in/ --jamutil toss--> JAM bases <-- Vision/3 --> Users
+                                                       |
+                               jamutil scan+ftn-pack --> out/ --binkd--> Hub
 ```
 
-1. **binkd** connects to your hub and receives `.pkt` files into a secure inbound
-   directory
-2. binkd triggers **hpt** to toss those packets into JAM message bases
+1. **binkd** connects to your hub and receives ZIP bundles/`.pkt` files into a secure
+   inbound directory
+2. **jamutil toss** unpacks bundles and tosses packets into JAM message bases
 3. Vision/3 reads the JAM bases and displays messages to your users
 4. When a user posts a reply, Vision/3 writes it to the JAM base
-5. **hpt** scans the JAM bases for new outbound messages and creates `.pkt` files
-6. **binkd** picks up the outbound packets and delivers them to your hub
+5. **jamutil scan** creates outbound `.pkt` files from new JAM messages
+6. **jamutil ftn-pack** bundles the `.pkt` files into ZIP archives
+7. **binkd** picks up the outbound bundles and delivers them to your hub
 
 ## Prerequisites
 
@@ -43,7 +43,7 @@ Before starting, you need:
 - An FTN network membership (address assigned by your hub/network coordinator)
 - Your hub's connection details (address, hostname/IP, port, password)
 - The network's `.na` file (list of available echo areas)
-- **binkd** and **hpt** binaries installed (see [Installing External Binaries](#step-2-install-external-binaries))
+- **binkd** installed (see [Install binkd](#step-2-install-binkd))
 
 ## Directory Structure
 
@@ -53,25 +53,23 @@ full directory layout:
 ```text
 vision3/
 ├── bin/
-│   ├── binkd              # binkd binary
-│   └── hpt                # hpt binary
+│   └── binkd              # binkd binary
 ├── configs/
 │   ├── config.json        # Main BBS config (boardName used in origin lines)
-│   ├── ftn.json           # FTN network configuration
+│   ├── ftn.json           # FTN network configuration (tosser, links, paths)
 │   ├── message_areas.json # Message area definitions
 │   └── conferences.json   # Conference groupings
 ├── data/
 │   ├── ftn/
-│   │   ├── binkd.conf     # binkd configuration
-│   │   ├── husky.cfg      # hpt/Husky configuration
-│   │   ├── in/            # Unsecure inbound (rarely used)
-│   │   ├── secure_in/     # Secure inbound (where binkd puts received packets)
-│   │   ├── temp_in/       # Temporary inbound
-│   │   ├── temp_out/      # Temporary outbound
-│   │   ├── out/           # Outbound (binkd picks up packets here)
-│   │   ├── logs/          # binkd and hpt log files
-│   │   ├── dupehist/      # hpt dupe history database
-│   │   └── dloads/        # File echos (if applicable)
+│   │   ├── binkd.conf      # binkd configuration
+│   │   ├── in/             # Unsecure inbound (rarely used)
+│   │   ├── secure_in/      # Secure inbound (where binkd puts received bundles)
+│   │   ├── temp_in/        # Temporary extraction dir (jamutil toss)
+│   │   ├── temp_out/       # Staged outbound .pkt files (jamutil scan output)
+│   │   ├── out/            # Outbound bundles (binkd picks up here)
+│   │   ├── logs/           # binkd log files
+│   │   ├── export_hwm.json # High-water mark for scan (tracks last exported msg)
+│   │   └── dupes.json      # Dupe detection database
 │   └── msgbases/
 │       ├── fsx_gen.jhr    # JAM message base files (one set per area)
 │       ├── fsx_gen.jdt
@@ -88,23 +86,20 @@ vision3/
 Create the required directory structure:
 
 ```bash
-mkdir -p data/ftn/{in,secure_in,temp_in,temp_out,out,logs,dupehist,dloads}
+mkdir -p data/ftn/{in,secure_in,temp_in,temp_out,out,logs}
 ```
 
-### Step 2: Install External Binaries
+### Step 2: Install binkd
 
-Place `binkd` and `hpt` in the `bin/` directory. You can obtain these from:
+Place `binkd` in the `bin/` directory. You can obtain binkd from:
 
-- **binkd**: Build from source at <https://github.com/pgul/binkd> or install via
-  your distribution's package manager (`apt install binkd`, etc.)
-- **hpt**: Part of the Husky FidoNet software project. Build from source at
-  <https://github.com/huskyproject> or install via package manager if available.
+- Build from source at <https://github.com/pgul/binkd>
+- Install via your distribution's package manager (`apt install binkd`, etc.)
 
 ```bash
 mkdir -p bin
 cp /path/to/binkd bin/
-cp /path/to/hpt bin/
-chmod +x bin/binkd bin/hpt
+chmod +x bin/binkd
 ```
 
 ### Step 3: Import Echo Areas with `helper`
@@ -239,12 +234,6 @@ iport 24554
 node 21:4/158@fsxnet your-hub-hostname:24555 MYSECRET -
 
 #
-# After receiving files, run hpt to toss packets into message bases
-#
-prescan
-exec "/home/bbs/vision3/bin/hpt -c /home/bbs/vision3/data/ftn/husky.cfg toss" *.[mwtfsMWTFS][oehrauOEHRAU][0-9a-zA-Z] *.pkt
-
-#
 # Additional options
 #
 percents
@@ -255,111 +244,63 @@ percents
 - `domain` - Your network name, outbound path, and zone number
 - `address` - Your assigned FTN address
 - `sysname`, `location`, `sysop` - Your BBS details
-- `inbound` - Must match where hpt expects to find incoming packets
+- `inbound` - Must match `secure_inbound_path` in `ftn.json`
 - `node` - Your hub's address, hostname:port, and shared password
-- `exec` - Full path to hpt and husky.cfg on your system
 - `iport` - Port to listen on for incoming BinkP connections (if your hub polls you)
 
-### Step 5: Configure hpt (Husky)
+### Step 5: Configure ftn.json
 
-Create `data/ftn/husky.cfg`. This tells hpt where to find packets and where to
-store messages:
+Edit `configs/ftn.json` to configure the internal tosser. The `helper ftnsetup`
+command (Step 3) populates this file with network and link settings, but you should
+verify the directory paths are correct for your installation:
 
-```conf
-# Husky Configuration File
-
-#
-# Your FTN address
-#
-Address 21:4/158.1
-
-#
-# Directory paths (use absolute paths)
-#
-DupeHistoryDir /home/bbs/vision3/data/ftn/dupehist
-EchoTossLog /home/bbs/vision3/data/ftn/logs/echotoss.log
-FileAreaBaseDir /home/bbs/vision3/data/ftn/dloads
-LogFileDir /home/bbs/vision3/data/ftn/logs
-MsgBaseDir /home/bbs/vision3/data/msgbases
-Outbound /home/bbs/vision3/data/ftn/out
-PassFileAreaDir /home/bbs/vision3/data/ftn/dloads/pass
-ProtInbound /home/bbs/vision3/data/ftn/secure_in
-TempInbound /home/bbs/vision3/data/ftn/temp_in
-TempOutbound /home/bbs/vision3/data/ftn/temp_out
-inbound /home/bbs/vision3/data/ftn/in
-
-#
-# Dupe detection - reject messages seen within this many days
-#
-areasmaxdupeage 30
-
-#
-# Archive tools for bundled mail
-#
-Unpack "/usr/bin/unzip -j -Loqq $a -d $p" 0 504b0304
-Pack zip /usr/bin/zip -9 -j -q $a $f
-
-#
-# Link definition - your hub
-#
-Link 21:4/158
-Aka 21:4/158.0
-ouraka 21:4/158.1
-Packer Zip
-echomailFlavour Crash
-
-#
-# Routing - send all mail for this zone through your hub
-#
-route crash 21:4/158 21:*
-
-#
-# Netmail area
-#
-NetmailArea NETMAIL /home/bbs/vision3/data/msgbases/netmail -b Jam
-
-#
-# Bad and dupe areas (messages that can't be delivered or are duplicates)
-#
-BadArea BadArea /home/bbs/vision3/data/msgbases/bad -b Jam
-DupeArea DupeArea /home/bbs/vision3/data/msgbases/dupe -b Jam
-
-#
-# Echo areas
-# Format: EchoArea <TAG> <base_path> -a <your_address> -b Jam <hub_address>
-#
-EchoArea FSX_GEN /home/bbs/vision3/data/msgbases/fsx_gen -a 21:4/158.1 -b Jam 21:4/158
-EchoArea FSX_BBS /home/bbs/vision3/data/msgbases/fsx_bbs -a 21:4/158.1 -b Jam 21:4/158
-EchoArea FSX_RETRO /home/bbs/vision3/data/msgbases/fsx_retro -a 21:4/158.1 -b Jam 21:4/158
-EchoArea FSX_GAMING /home/bbs/vision3/data/msgbases/fsx_gaming -a 21:4/158.1 -b Jam 21:4/158
+```json
+{
+    "dupe_db_path": "data/ftn/dupes.json",
+    "networks": {
+        "fsxnet": {
+            "internal_tosser_enabled": true,
+            "own_address": "21:4/158.1",
+            "inbound_path": "data/ftn/in",
+            "secure_inbound_path": "data/ftn/secure_in",
+            "outbound_path": "data/ftn/temp_out",
+            "binkd_outbound_path": "data/ftn/out",
+            "temp_path": "data/ftn/temp_in",
+            "tearline": "",
+            "links": [
+                {
+                    "address": "21:4/158",
+                    "password": "MYSECRET",
+                    "name": "Hub 21:4/158",
+                    "echo_areas": ["FSX_GEN", "FSX_BBS", "FSX_RETRO", "FSX_GAMING"]
+                }
+            ]
+        }
+    }
+}
 ```
 
 **Key settings to customize:**
 
-- `Address` - Your FTN address (must match binkd.conf)
-- All directory paths - Use absolute paths to your Vision/3 installation
-- `Link` / `Aka` / `ouraka` - Your hub's address and your own address
-- `ProtInbound` - Must match binkd's `inbound` directive
-- `Outbound` - Must match binkd's `domain` outbound path
-- `EchoArea` lines - One per echo area, path matches `base_path` in
-  `message_areas.json` (prefixed with your data directory)
+- `own_address` - Your FTN address (must match binkd.conf)
+- `secure_inbound_path` - Must match binkd's `inbound` directive
+- `binkd_outbound_path` - Must match binkd's `domain` outbound path
+- `links[].address` - Your hub's FTN address
+- `links[].password` - Packet password shared with your hub
+- `links[].echo_areas` - List of echo tags this link carries (must match `echo_tag` in message_areas.json)
 
-**Important:** The `EchoArea` base paths must point to the same JAM files that
-Vision/3 uses. If `message_areas.json` has `"base_path": "msgbases/fsx_gen"`, then
-hpt needs `/full/path/to/data/msgbases/fsx_gen`. The `-b Jam` flag tells hpt to
-use JAM format (required by Vision/3).
+All paths are relative to the Vision/3 installation root (where you run the BBS from).
 
 ### Step 6: Verify Configuration
 
 Check that all paths are consistent across your config files:
 
-| What           | binkd.conf    | husky.cfg        | ftn.json                   |
-| -------------- | ------------- | ---------------- | -------------------------- |
-| Secure inbound | `inbound`     | `ProtInbound`    | `inbound_path` (internal)  |
-| Outbound       | `domain` path | `Outbound`       | `outbound_path` (internal) |
-| Message bases  | —             | `EchoArea` paths | —                          |
-| Hub password   | `node` line   | —                | `links[].password`         |
-| Your address   | `address`     | `Address`        | `own_address`              |
+| What           | binkd.conf    | ftn.json                    |
+| -------------- | ------------- | --------------------------- |
+| Secure inbound | `inbound`     | `secure_inbound_path`       |
+| Outbound       | `domain` path | `binkd_outbound_path`       |
+| Hub password   | `node` line   | `links[].password`          |
+| Your address   | `address`     | `own_address`               |
 
 ### Step 7: Initialize Message Bases
 
@@ -384,16 +325,17 @@ bin/binkd -c data/ftn/binkd.conf
 The `-c` flag runs binkd as a client (calls out once and exits). Check
 `data/ftn/logs/binkd.log` for connection results.
 
-To manually toss any received packets:
+To manually toss any received bundles/packets:
 
 ```bash
-bin/hpt -c data/ftn/husky.cfg toss
+go run cmd/jamutil toss --config configs --data data
 ```
 
-To scan for outbound messages:
+To scan for outbound messages and pack bundles:
 
 ```bash
-bin/hpt -c data/ftn/husky.cfg scan
+go run cmd/jamutil scan --config configs --data data
+go run cmd/jamutil ftn-pack --config configs --data data
 ```
 
 ## Running in Production
@@ -423,59 +365,79 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-### Scanning for Outbound Mail
+### Scanning and Packing Outbound Mail
 
-When users post new echomail, hpt needs to scan the JAM bases and create outbound
-packets. Set up a cron job to do this periodically:
+When users post new echomail, `jamutil scan` creates outbound `.pkt` files from new
+JAM messages, and `jamutil ftn-pack` bundles them for binkd. Use the Vision/3 event
+scheduler (configured in `configs/events.json`) to run these automatically:
 
-```cron
-# Scan for outbound echomail every 5 minutes
-*/5 * * * * /home/bbs/vision3/bin/hpt -c /home/bbs/vision3/data/ftn/husky.cfg scan
+```json
+{
+  "id": "jamutil_scan",
+  "name": "Scan Outbound Echomail",
+  "schedule": "*/5 * * * *",
+  "command": "/usr/bin/go",
+  "args": ["run", "{BBS_ROOT}/cmd/jamutil", "scan", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+  "working_directory": "{BBS_ROOT}",
+  "timeout_seconds": 300,
+  "enabled": true
+}
 ```
 
-Alternatively, you can call hpt scan from a script that runs alongside Vision/3.
+See [event-scheduler.md](event-scheduler.md) for the full recommended FTN workflow configuration.
 
 ## Configuration Files Reference
 
 ### ftn.json
 
-**Current Status**: This configuration file is **mostly unused** in the current implementation.
-ViSiON/3 relies on **external tossers** (HPT, which uses `husky.cfg`) for echomail processing.
+`configs/ftn.json` is the central configuration for the internal FTN tosser. It is
+read by `jamutil toss`, `jamutil scan`, and `jamutil ftn-pack`.
 
-**What is currently used from ftn.json**:
-- `networks.<key>.tearline` — Optional custom tearline text per network (added to echomail messages)
+**Fields:**
 
-**What is NOT currently used** (reserved for future internal tosser):
-- `dupe_db_path` — Dupe detection database path
-- `networks.<key>.internal_tosser_enabled` — Enable internal tosser (false = use external like HPT)
-- `networks.<key>.own_address` — FTN address
-- `networks.<key>.inbound_path` / `outbound_path` / `temp_path` — Directory paths
-- `networks.<key>.poll_interval_seconds` — Polling configuration
-- `networks.<key>.links[]` — Link/hub configuration
+| Field | Description |
+|-------|-------------|
+| `dupe_db_path` | Path to the dupe detection database (relative to BBS root) |
+| `networks.<key>.internal_tosser_enabled` | Set `true` to enable `jamutil` for this network |
+| `networks.<key>.own_address` | Your FTN address (e.g., `21:4/158.1`) |
+| `networks.<key>.inbound_path` | Unsecured inbound directory |
+| `networks.<key>.secure_inbound_path` | Secure inbound (where binkd deposits received mail) |
+| `networks.<key>.outbound_path` | Staging dir for outbound `.pkt` files (`jamutil scan` output) |
+| `networks.<key>.binkd_outbound_path` | Outbound bundles dir (binkd picks up from here) |
+| `networks.<key>.temp_path` | Temp dir for bundle extraction during toss |
+| `networks.<key>.tearline` | Optional tearline suffix (empty = use default) |
+| `networks.<key>.links[].address` | Hub FTN address |
+| `networks.<key>.links[].password` | Packet password shared with hub |
+| `networks.<key>.links[].name` | Human-readable hub label |
+| `networks.<key>.links[].echo_areas` | Echo tags carried by this link |
 
-**Template configuration** (for reference only):
+**Example:**
 
 ```json
 {
     "dupe_db_path": "data/ftn/dupes.json",
     "networks": {
         "fsxnet": {
-            "internal_tosser_enabled": false,
-            "own_address": "",
-            "inbound_path": "data/ftn/fsxnet/inbound",
-            "outbound_path": "data/ftn/fsxnet/outbound",
-            "temp_path": "data/ftn/fsxnet/temp",
-            "poll_interval_seconds": 300,
-            "tearline": "My Custom Tearline",
-            "links": []
+            "internal_tosser_enabled": true,
+            "own_address": "21:4/158.1",
+            "inbound_path": "data/ftn/in",
+            "secure_inbound_path": "data/ftn/secure_in",
+            "outbound_path": "data/ftn/temp_out",
+            "binkd_outbound_path": "data/ftn/out",
+            "temp_path": "data/ftn/temp_in",
+            "tearline": "",
+            "links": [
+                {
+                    "address": "21:4/158",
+                    "password": "MYSECRET",
+                    "name": "Hub 21:4/158",
+                    "echo_areas": ["FSX_GEN", "FSX_BBS", "FSX_RETRO", "FSX_GAMING"]
+                }
+            ]
         }
     }
 }
 ```
-
-**Note**: When ViSiON/3 eventually implements an internal tosser, this configuration will
-become fully functional. Until then, use HPT's `husky.cfg` for all echomail tossing,
-scanning, and packing operations.
 
 ### message_areas.json (Echomail Entries)
 
@@ -556,20 +518,6 @@ address 46:1/100.1@agoranet
 node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 ```
 
-1. Add the link and echo areas to `husky.cfg`:
-
-```conf
-Link 46:1/100
-Aka 46:1/100.0
-ouraka 46:1/100.1
-Packer Zip
-echomailFlavour Crash
-
-route crash 46:1/100 46:*
-
-EchoArea AGN_GEN /home/bbs/vision3/data/msgbases/agn_gen -a 46:1/100.1 -b Jam 46:1/100
-```
-
 1. Restart binkd
 
 ## Troubleshooting
@@ -578,37 +526,34 @@ EchoArea AGN_GEN /home/bbs/vision3/data/msgbases/agn_gen -a 46:1/100.1 -b Jam 46
 
 - Check `data/ftn/logs/binkd.log` for connection errors
 - Verify your hub's hostname, port, and password are correct
-- Make sure `secure_in/` matches between binkd.conf (`inbound`) and husky.cfg
-  (`ProtInbound`)
+- Make sure `secure_inbound_path` in `ftn.json` matches binkd.conf `inbound`
 - Run `bin/binkd -c data/ftn/binkd.conf` manually and watch the output
 
 ### Messages arriving but not visible in BBS
 
-- Run `bin/hpt -c data/ftn/husky.cfg toss` manually to toss pending packets
-- Check `data/ftn/logs/` for hpt error output
-- Verify `EchoArea` paths in husky.cfg match `base_path` in message_areas.json
-  (husky.cfg uses absolute paths, message_areas.json uses relative paths under
-  `data/`)
+- Run `go run cmd/jamutil toss --config configs --data data` manually to toss pending
+  bundles/packets
+- Verify `echo_tag` in message_areas.json matches the AREA tag in the incoming packets
 - Run `./jamutil stats --all` to verify message counts
 
 ### Outbound messages not sending
 
-- Run `bin/hpt -c data/ftn/husky.cfg scan` to create outbound packets
-- Check that `Outbound` in husky.cfg matches the domain path in binkd.conf
-- Verify the echo area's hub address is listed at the end of the `EchoArea` line
-  in husky.cfg
+- Run `go run cmd/jamutil scan --config configs --data data` to create outbound packets
+- Run `go run cmd/jamutil ftn-pack --config configs --data data` to bundle them
+- Check that `binkd_outbound_path` in `ftn.json` matches the domain path in binkd.conf
+- Verify the echo area's hub address is listed in `links[].echo_areas` in `ftn.json`
 
 ### Duplicate messages
 
-- hpt handles dupe detection via `DupeHistoryDir` — make sure the directory exists
-  and is writable
-- Increase `areasmaxdupeage` in husky.cfg if you're seeing old dupes reappear
+- `jamutil toss` handles dupe detection via `data/ftn/dupes.json`
+- The dupe window is configured by `DupeWindow` in the tosser (default: 30 days)
 
 ### Bad/undeliverable messages
 
 - Check `data/msgbases/bad` (via `./jamutil stats data/msgbases/bad`) for messages
-  that hpt couldn't route
-- Usually means the echo tag doesn't have a matching `EchoArea` line in husky.cfg
+  that could not be tossed
+- Usually means the AREA tag in the packet doesn't match any `echo_tag` in
+  message_areas.json or any `echo_areas` entry in `ftn.json` links
 
 ## Useful Commands
 
@@ -616,11 +561,14 @@ EchoArea AGN_GEN /home/bbs/vision3/data/msgbases/agn_gen -a 46:1/100.1 -b Jam 46
 # Test hub connection (one-shot client call)
 bin/binkd -c data/ftn/binkd.conf
 
-# Toss received packets into JAM bases
-bin/hpt -c data/ftn/husky.cfg toss
+# Toss received bundles/packets into JAM bases
+go run cmd/jamutil toss --config configs --data data
 
-# Scan JAM bases for outbound messages
-bin/hpt -c data/ftn/husky.cfg scan
+# Scan JAM bases for new outbound messages (creates .pkt files)
+go run cmd/jamutil scan --config configs --data data
+
+# Pack outbound .pkt files into ZIP bundles for binkd pickup
+go run cmd/jamutil ftn-pack --config configs --data data
 
 # View message base statistics
 ./jamutil stats --all

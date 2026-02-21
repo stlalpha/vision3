@@ -144,7 +144,7 @@ vision3/
 │   │   └── dupes.json    # MSGID dupe database
 │   └── logs/
 │       └── vision3.log   # Application log
-├── bin/                   # External binaries (binkd, hpt for echomail, etc.) - created empty
+├── bin/                   # External binaries (e.g., binkd) - created empty
 ├── scripts/               # Helper shell and Python scripts (future use) - created empty
 └── menus/v3/             # Menu system files
 ```

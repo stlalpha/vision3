@@ -96,7 +96,7 @@ The system is designed as a single Go application that listens for incoming SSH 
   - Event history persistence in `data/logs/event_history.json`
   - Placeholder substitution in commands and arguments
   - Non-interactive batch execution (no PTY/TTY)
-* Common use cases: FTN mail polling (binkd), echomail tossing (HPT), backups, maintenance
+* Common use cases: FTN mail polling (binkd), echomail tossing (jamutil), backups, maintenance
 * Background service with graceful shutdown and history persistence
 
 12. **ANSI Handler (`internal/ansi/ansi.go`)**
@@ -202,4 +202,4 @@ vision3/
 5. **Multiple Output Modes**: Supports both UTF-8 and CP437 output for compatibility
 6. **JSON Configuration**: Uses JSON for all configuration files for easy editing
 7. **JAM Message Bases**: Industry-standard binary message format with indexed random access and per-user lastread tracking
-8. **Built-in FTN Tosser**: Native echomail support without external tools (HPT, etc.)
+8. **Built-in FTN Tosser**: Native echomail toss/scan/pack support via `jamutil` without external tools
