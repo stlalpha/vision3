@@ -778,7 +778,9 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		truncatedNote = userNoteToUse[:maxUserNoteLen-3] + "..."
 	}
 
-	// Build From field with user note and/or FidoNet address
+	// Build From field with user note and/or FidoNet address.
+	// Names are truncated if needed to preserve the FTN address suffix,
+	// preventing display like "(21:4/158" with a missing closing paren.
 	fromStr := msg.From
 	if includeNoteInFrom && truncatedNote != "" && msg.OrigAddr != "" {
 		// Both user note and FidoNet address
@@ -788,13 +790,13 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		fromStr = fmt.Sprintf("%s \"%s\"", msg.From, truncatedNote)
 	} else if msg.OrigAddr != "" {
 		// Just FidoNet address
-		fromStr = fmt.Sprintf("%s (%s)", msg.From, msg.OrigAddr)
+		fromStr = buildNameWithAddr(msg.From, msg.OrigAddr)
 	}
 
 	// Build To field with FidoNet destination address if available
 	toStr := msg.To
 	if msg.DestAddr != "" {
-		toStr = fmt.Sprintf("%s (%s)", msg.To, msg.DestAddr)
+		toStr = buildNameWithAddr(msg.To, msg.DestAddr)
 	}
 
 	// Build message status string from message attributes
@@ -863,6 +865,24 @@ func buildMsgSubstitutions(msg *message.DisplayMessage, areaTag string, msgNum, 
 		'X': fmt.Sprintf("%s > %s [%d/%d]", confName, areaName, msgNum, totalMsgs), // Conference > Area [current/total]
 		'K': strconv.Itoa(nodeNumber),                                              // Node number
 	}
+}
+
+// buildNameWithAddr combines a display name with an FTN address suffix like "Name (21:4/158)".
+// If the combined string exceeds 45 visible characters, the name is truncated to ensure
+// the full address (with closing parenthesis) is always visible in constrained template fields.
+func buildNameWithAddr(name, addr string) string {
+	const maxLen = 45
+	suffix := " (" + addr + ")"
+	combined := name + suffix
+	if len(combined) <= maxLen {
+		return combined
+	}
+	// Truncate name to fit, preserving the address suffix
+	nameMax := maxLen - len(suffix)
+	if nameMax < 3 {
+		nameMax = 3
+	}
+	return name[:nameMax] + suffix
 }
 
 // buildAutoWidths calculates the maximum display width for each placeholder code.
