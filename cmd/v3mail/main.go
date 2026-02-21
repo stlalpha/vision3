@@ -74,7 +74,7 @@ const (
 )
 
 func printHeader() {
-	fmt.Fprintf(os.Stderr, "%sViSiON/3 Mail Utility v%s  ·  (C)opyright 2024-2025 Ruthless Enterprises%s\n",
+	fmt.Fprintf(os.Stderr, "%sViSiON/3 Mail Utility v%s  ·  MIT License%s\n",
 		clrBold, version.Number, clrReset)
 	fmt.Fprintln(os.Stderr, separator)
 }
