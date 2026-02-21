@@ -49,28 +49,10 @@ type conferenceConfig struct {
 	ACS         string `json:"acs"`
 }
 
-type ftnConfig struct {
-	DupeDBPath string                      `json:"dupe_db_path"`
-	Networks   map[string]ftnNetworkConfig `json:"networks"`
-}
-
-type ftnNetworkConfig struct {
-	InternalTosserEnabled bool         `json:"internal_tosser_enabled"`
-	OwnAddress            string       `json:"own_address"`
-	InboundPath           string       `json:"inbound_path"`
-	OutboundPath          string       `json:"outbound_path"`
-	TempPath              string       `json:"temp_path"`
-	PollSeconds           int          `json:"poll_interval_seconds"`
-	Tearline              string       `json:"tearline,omitempty"`
-	Links                 []linkConfig `json:"links"`
-}
-
-type linkConfig struct {
-	Address   string   `json:"address"`
-	Password  string   `json:"password"`
-	Name      string   `json:"name"`
-	EchoAreas []string `json:"echo_areas"`
-}
+// Use canonical config types to avoid struct drift.
+type ftnConfig = config.FTNConfig
+type ftnNetworkConfig = config.FTNNetworkConfig
+type linkConfig = config.FTNLinkConfig
 
 func main() {
 	if len(os.Args) < 2 {

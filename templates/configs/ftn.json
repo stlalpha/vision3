@@ -13,11 +13,15 @@
             "temp_path": "data/ftn/temp_in",
             "poll_interval_seconds": 0,
             "tearline": "",
+            "netmail_area_tag": "NETMAIL",
+            "bad_area_tag": "BAD",
+            "dupe_area_tag": "DUPE",
             "links": [
                 {
                     "address": "21:4/158",
                     "password": "",
                     "name": "FSXNet Hub",
+                    "flavour": "Crash",
                     "echo_areas": [
                         "FSX_GEN",
                         "FSX_BBS"

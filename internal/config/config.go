@@ -627,23 +627,27 @@ func LoadThemeConfig(menuSetPath string) (ThemeConfig, error) {
 
 // FTNLinkConfig defines an FTN link (uplink/downlink node).
 type FTNLinkConfig struct {
-	Address   string   `json:"address"`    // e.g., "21:1/100"
-	Password  string   `json:"password"`   // Packet password
-	Name      string   `json:"name"`       // Human-readable name
-	EchoAreas []string `json:"echo_areas"` // Echo tags routed to this link
+	Address   string   `json:"address"`           // e.g., "21:1/100"
+	Password  string   `json:"password"`          // Packet password
+	Name      string   `json:"name"`              // Human-readable name
+	EchoAreas []string `json:"echo_areas"`        // Echo tags routed to this link
+	Flavour   string   `json:"flavour,omitempty"` // Delivery flavour: Normal (default), Crash, Hold, Direct
 }
 
 // FTNNetworkConfig holds settings for a single FTN network (e.g., FSXNet, FidoNet).
 type FTNNetworkConfig struct {
-	InternalTosserEnabled bool            `json:"internal_tosser_enabled"`          // Enable internal tosser (false = use external like HPT)
+	InternalTosserEnabled bool            `json:"internal_tosser_enabled"`          // Enable internal tosser
 	OwnAddress            string          `json:"own_address"`                      // e.g., "21:4/158.1"
-	InboundPath           string          `json:"inbound_path"`                     // Where binkd deposits received bundles, e.g., "data/ftn/in"
-	SecureInboundPath     string          `json:"secure_inbound_path,omitempty"`    // Authenticated inbound, e.g., "data/ftn/secure_in"
-	OutboundPath          string          `json:"outbound_path"`                    // Staging dir for outbound .PKT files, e.g., "data/ftn/temp_out"
-	BinkdOutboundPath     string          `json:"binkd_outbound_path"`              // Binkd outbound dir for ZIP bundles, e.g., "data/ftn/out"
-	TempPath              string          `json:"temp_path"`                        // Temp dir for processing, e.g., "data/ftn/temp_in"
+	InboundPath           string          `json:"inbound_path"`                     // Where binkd deposits received bundles
+	SecureInboundPath     string          `json:"secure_inbound_path,omitempty"`    // Authenticated inbound
+	OutboundPath          string          `json:"outbound_path"`                    // Staging dir for outbound .PKT files
+	BinkdOutboundPath     string          `json:"binkd_outbound_path"`              // Binkd outbound dir for ZIP bundles
+	TempPath              string          `json:"temp_path"`                        // Temp dir for processing
 	PollSeconds           int             `json:"poll_interval_seconds"`            // 0 = manual only (jamutil toss/scan)
-	Tearline              string          `json:"tearline,omitempty"`               // Custom tearline text for echomail (optional)
+	Tearline              string          `json:"tearline,omitempty"`               // Custom tearline text for echomail
+	NetmailAreaTag        string          `json:"netmail_area_tag,omitempty"`       // Area for inbound netmail (e.g., "NETMAIL")
+	BadAreaTag            string          `json:"bad_area_tag,omitempty"`           // Area for unroutable messages (e.g., "BAD")
+	DupeAreaTag           string          `json:"dupe_area_tag,omitempty"`          // Area for duplicate messages (e.g., "DUPE")
 	Links                 []FTNLinkConfig `json:"links"`
 }
 

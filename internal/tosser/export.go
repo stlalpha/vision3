@@ -216,7 +216,7 @@ func (t *Tosser) createOutboundPacket(link *linkConfig, msgs []pendingMsg) (int,
 			DestNode: uint16(destAddr.Node),
 			OrigNet:  uint16(t.ownAddr.Net),
 			DestNet:  uint16(destAddr.Net),
-			Attr:     ftn.MsgAttrLocal,
+			Attr:     linkMsgAttr(link.Flavour),
 			DateTime: ftn.FormatFTNDateTime(pm.msg.DateTime),
 			To:       pm.msg.To,
 			From:     pm.msg.From,
@@ -258,4 +258,16 @@ func (t *Tosser) createOutboundPacket(link *linkConfig, msgs []pendingMsg) (int,
 
 	log.Printf("INFO: Exported %d messages to %s for link %s", len(packedMsgs), finalName, link.Address)
 	return len(packedMsgs), nil
+}
+
+// linkMsgAttr returns the FTN packet attribute flags for a link's delivery flavour.
+func linkMsgAttr(flavour string) uint16 {
+	switch strings.ToUpper(flavour) {
+	case "CRASH":
+		return ftn.MsgAttrLocal | ftn.MsgAttrCrash
+	case "HOLD":
+		return ftn.MsgAttrLocal | ftn.MsgAttrHold
+	default: // "NORMAL", "DIRECT", ""
+		return ftn.MsgAttrLocal
+	}
 }

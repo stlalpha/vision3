@@ -92,6 +92,11 @@ func (t *Tosser) PackOutbound() PackResult {
 			filepath.Base(bundlePath), count, link.Address)
 		result.BundlesCreated++
 		result.PacketsPacked += count
+
+		// Create BSO flow file (.clo/.hlo) for crash/hold delivery.
+		if err := writeFlowFile(binkdDir, destAddr, link.Flavour, bundlePath); err != nil {
+			log.Printf("WARN: Pack: failed to write flow file for %s: %v", link.Address, err)
+		}
 	}
 
 	// Remove staged .PKT files after successful bundling
@@ -104,6 +109,39 @@ func (t *Tosser) PackOutbound() PackResult {
 	}
 
 	return result
+}
+
+// writeFlowFile appends a bundle path to the BSO flow file for a link with
+// crash/hold delivery flavour. For Normal delivery no flow file is needed.
+// The ^ prefix instructs binkd to delete the bundle after successful transmission.
+func writeFlowFile(dir string, destAddr *jam.FidoAddress, flavour, bundlePath string) error {
+	var ext string
+	switch strings.ToUpper(flavour) {
+	case "CRASH":
+		ext = ".clo"
+	case "HOLD":
+		ext = ".hlo"
+	case "DIRECT":
+		ext = ".dlo"
+	default: // "NORMAL", ""
+		return nil
+	}
+
+	flowName := fmt.Sprintf("%04x%04x%s", destAddr.Net, destAddr.Node, ext)
+	flowPath := filepath.Join(dir, flowName)
+
+	f, err := os.OpenFile(flowPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	absPath, err := filepath.Abs(bundlePath)
+	if err != nil {
+		absPath = bundlePath
+	}
+	_, err = fmt.Fprintf(f, "^%s\n", absPath)
+	return err
 }
 
 // resolveUniqueBundlePath returns a path that does not already exist. If the

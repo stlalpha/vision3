@@ -374,6 +374,228 @@ func TestPackOutboundCreatesBundle(t *testing.T) {
 	}
 }
 
+// setupExtendedTestEnv sets up a test environment with NETMAIL, BAD, and DUPE areas.
+func setupExtendedTestEnv(t *testing.T) (*testEnv, networkConfig) {
+	t.Helper()
+	env := setupTestEnv(t)
+
+	// Add NETMAIL, BAD, DUPE areas to message_areas.json
+	areas := []testArea{
+		{ID: 1, Tag: "FSX_TEST", Name: "FSXNet Test", BasePath: "msgbases/fsx_test",
+			AreaType: "echomail", EchoTag: "FSX_TEST", Network: "testnet"},
+		{ID: 2, Tag: "NETMAIL", Name: "Netmail", BasePath: "msgbases/netmail",
+			AreaType: "netmail", EchoTag: "NETMAIL", Network: "testnet"},
+		{ID: 3, Tag: "BAD", Name: "Bad Messages", BasePath: "msgbases/bad",
+			AreaType: "echomail", EchoTag: "BAD", Network: "testnet"},
+		{ID: 4, Tag: "DUPE", Name: "Duplicate Messages", BasePath: "msgbases/dupe",
+			AreaType: "echomail", EchoTag: "DUPE", Network: "testnet"},
+	}
+	areasData, _ := json.Marshal(areas)
+	os.WriteFile(filepath.Join(env.configDir, "message_areas.json"), areasData, 0644)
+	for _, sub := range []string{"netmail", "bad", "dupe"} {
+		os.MkdirAll(filepath.Join(env.dataDir, "msgbases", sub), 0755)
+	}
+
+	// Re-create the MessageManager to pick up the updated areas file
+	var err error
+	env.msgMgr, err = message.NewMessageManager(env.dataDir, env.configDir, "TestBBS", nil)
+	if err != nil {
+		t.Fatalf("NewMessageManager (extended): %v", err)
+	}
+
+	extCfg := networkConfig{
+		InternalTosserEnabled: true,
+		OwnAddress:            "21:4/158.1",
+		InboundPath:           env.inboundDir,
+		OutboundPath:          env.outboundDir,
+		BinkdOutboundPath:     env.binkdDir,
+		TempPath:              env.tempDir,
+		NetmailAreaTag:        "NETMAIL",
+		BadAreaTag:            "BAD",
+		DupeAreaTag:           "DUPE",
+		Links: []linkConfig{
+			{Address: "21:4/158", Password: "", Name: "Test Hub", EchoAreas: []string{"FSX_TEST"}},
+		},
+	}
+	return env, extCfg
+}
+
+// TestTossNetmail verifies that a message without AREA kludge is routed to the netmail area.
+func TestTossNetmail(t *testing.T) {
+	env, extCfg := setupExtendedTestEnv(t)
+	tosser, err := New("testnet", extCfg, env.dupeDB, env.hwm, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Netmail has no AREA tag — pass empty string to makePktSimple and it will omit AREA
+	pktData := makePktSimpleNetmail(t, "Remote User", "Local Sysop", "Private Note", "Secret content\r", "21:4/100 FEEDFACE")
+	pktPath := filepath.Join(env.inboundDir, "netmail.pkt")
+	os.WriteFile(pktPath, pktData, 0644)
+
+	result := tosser.ProcessInbound()
+
+	if result.MessagesImported != 1 {
+		t.Errorf("expected 1 imported, got %d (errors: %v)", result.MessagesImported, result.Errors)
+	}
+
+	base, err := env.msgMgr.GetBase(2) // NETMAIL is area ID 2
+	if err != nil {
+		t.Fatalf("GetBase(NETMAIL): %v", err)
+	}
+	defer base.Close()
+
+	count, _ := base.GetMessageCount()
+	if count != 1 {
+		t.Errorf("expected 1 message in NETMAIL base, got %d", count)
+	}
+	msg, _ := base.ReadMessage(1)
+	if msg.From != "Remote User" {
+		t.Errorf("netmail From: got %q, want %q", msg.From, "Remote User")
+	}
+}
+
+// TestTossBadArea verifies that a message for an unknown area is routed to the bad area.
+func TestTossBadArea(t *testing.T) {
+	env, extCfg := setupExtendedTestEnv(t)
+	tosser, err := New("testnet", extCfg, env.dupeDB, env.hwm, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	pktData := makePktSimple(t, "UNKNOWN_AREA", "Sender", "All", "Bad Subject", "Goes to bad area\r", "21:4/100 BADBEEF1")
+	pktPath := filepath.Join(env.inboundDir, "badarea.pkt")
+	os.WriteFile(pktPath, pktData, 0644)
+
+	result := tosser.ProcessInbound()
+
+	// Bad area routing counts as imported (message was preserved)
+	if result.MessagesImported != 1 {
+		t.Errorf("expected 1 imported (via bad area), got %d (errors: %v)", result.MessagesImported, result.Errors)
+	}
+
+	base, err := env.msgMgr.GetBase(3) // BAD is area ID 3
+	if err != nil {
+		t.Fatalf("GetBase(BAD): %v", err)
+	}
+	defer base.Close()
+
+	count, _ := base.GetMessageCount()
+	if count != 1 {
+		t.Errorf("expected 1 message in BAD base, got %d", count)
+	}
+}
+
+// TestTossDupeArea verifies that a duplicate MSGID is routed to the dupe area.
+func TestTossDupeArea(t *testing.T) {
+	env, extCfg := setupExtendedTestEnv(t)
+	tosser, err := New("testnet", extCfg, env.dupeDB, env.hwm, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	msgID := "21:4/100 DUPE0001"
+	pktData := makePktSimple(t, "FSX_TEST", "Sender", "All", "Dupe Test", "First copy\r", msgID)
+
+	// First toss — should land in FSX_TEST
+	pkt1 := filepath.Join(env.inboundDir, "dupe_first.pkt")
+	os.WriteFile(pkt1, pktData, 0644)
+	r1 := tosser.ProcessInbound()
+	if r1.MessagesImported != 1 {
+		t.Errorf("first toss: expected 1 imported, got %d", r1.MessagesImported)
+	}
+
+	// Second toss — same MSGID, should go to DUPE
+	pkt2 := filepath.Join(env.inboundDir, "dupe_second.pkt")
+	os.WriteFile(pkt2, pktData, 0644)
+	r2 := tosser.ProcessInbound()
+	if r2.DupesSkipped != 1 {
+		t.Errorf("second toss: expected 1 dupe, got %d", r2.DupesSkipped)
+	}
+
+	base, err := env.msgMgr.GetBase(4) // DUPE is area ID 4
+	if err != nil {
+		t.Fatalf("GetBase(DUPE): %v", err)
+	}
+	defer base.Close()
+
+	count, _ := base.GetMessageCount()
+	if count != 1 {
+		t.Errorf("expected 1 message in DUPE base, got %d", count)
+	}
+}
+
+// TestPackFlowFileCreated verifies that a .clo flow file is written when link flavour is Crash.
+func TestPackFlowFileCreated(t *testing.T) {
+	env := setupTestEnv(t)
+
+	// Configure link with Crash flavour
+	env.netCfg.Links = []linkConfig{
+		{Address: "21:4/158", Password: "", Name: "Test Hub",
+			EchoAreas: []string{"FSX_TEST"}, Flavour: "Crash"},
+	}
+
+	// Put a staged .PKT in the outbound dir
+	os.WriteFile(filepath.Join(env.outboundDir, "staged.pkt"), []byte("fake pkt"), 0644)
+
+	tosser, _ := New("testnet", env.netCfg, env.dupeDB, env.hwm, env.msgMgr)
+	result := tosser.PackOutbound()
+
+	if result.BundlesCreated != 1 {
+		t.Fatalf("expected 1 bundle, got %d (errors: %v)", result.BundlesCreated, result.Errors)
+	}
+
+	// Flow file: net=4 (0x0004), node=158 (0x009e) → 0004009e.clo
+	flowPath := filepath.Join(env.binkdDir, "0004009e.clo")
+	data, err := os.ReadFile(flowPath)
+	if err != nil {
+		t.Fatalf(".clo flow file not created: %v", err)
+	}
+	content := string(data)
+	line := strings.TrimSpace(content)
+	if !strings.HasPrefix(line, "^") {
+		t.Errorf(".clo line should start with '^', got: %q", content)
+	}
+	// The referenced bundle file should actually exist in the binkd dir
+	bundlePath := strings.TrimPrefix(line, "^")
+	if _, err := os.Stat(bundlePath); err != nil {
+		t.Errorf(".clo references non-existent bundle %q: %v", bundlePath, err)
+	}
+}
+
+// makePktSimpleNetmail creates a netmail packet (no AREA tag).
+func makePktSimpleNetmail(t *testing.T, from, to, subject, body, msgID string) []byte {
+	t.Helper()
+
+	hdr := ftn.NewPacketHeader(21, 4, 100, 0, 21, 4, 158, 1, "")
+
+	parsedBody := &ftn.ParsedBody{
+		Area:    "", // No AREA for netmail
+		Text:    body,
+		Kludges: []string{"MSGID: " + msgID},
+	}
+
+	packed := &ftn.PackedMessage{
+		MsgType:  2,
+		OrigNode: 100,
+		DestNode: 158,
+		OrigNet:  4,
+		DestNet:  4,
+		Attr:     0x0001, // Private flag for netmail
+		DateTime: "21 Feb 26  12:00:00",
+		To:       to,
+		From:     from,
+		Subject:  subject,
+		Body:     ftn.FormatPackedMessageBody(parsedBody),
+	}
+
+	var buf bytes.Buffer
+	if err := ftn.WritePacket(&buf, hdr, []*ftn.PackedMessage{packed}); err != nil {
+		t.Fatalf("WritePacket: %v", err)
+	}
+	return buf.Bytes()
+}
+
 // makePktSimple creates a test FTN packet (Type-2+) with one message.
 func makePktSimple(t *testing.T, areaTag, from, to, subject, body, msgID string) []byte {
 	t.Helper()

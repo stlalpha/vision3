@@ -207,12 +207,6 @@ var errDupe = fmt.Errorf("duplicate message")
 func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) error {
 	parsed := ftn.ParsePackedMessageBody(msg.Body)
 
-	// Echomail must have an AREA tag
-	if parsed.Area == "" {
-		log.Printf("TRACE: Skipping non-echo message (no AREA tag) from %s to %s", msg.From, msg.To)
-		return nil // Skip netmail/local for now
-	}
-
 	// Extract MSGID from kludges for dupe checking
 	msgID := ""
 	for _, k := range parsed.Kludges {
@@ -222,16 +216,42 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 		}
 	}
 
+	// Netmail: messages without AREA: kludge are private point-to-point messages.
+	if parsed.Area == "" {
+		if t.config.NetmailAreaTag != "" {
+			if err := t.writeMsgToArea(t.config.NetmailAreaTag, msg, pktHdr, parsed, msgID); err != nil {
+				return fmt.Errorf("netmail to area %q: %w", t.config.NetmailAreaTag, err)
+			}
+			log.Printf("INFO: Tossed netmail from %s to %s (MSGID: %s)", msg.From, msg.To, msgID)
+			return nil
+		}
+		log.Printf("TRACE: Skipping netmail from %s to %s (netmail_area_tag not configured)", msg.From, msg.To)
+		return nil
+	}
+
 	// Dupe check (only meaningful if message has a MSGID)
 	if msgID != "" && t.dupeDB.Add(msgID) {
-		log.Printf("TRACE: Dupe message MSGID=%s in area %s", msgID, parsed.Area)
+		log.Printf("TRACE: Dupe MSGID=%s area %s", msgID, parsed.Area)
+		if t.config.DupeAreaTag != "" {
+			if err := t.writeMsgToArea(t.config.DupeAreaTag, msg, pktHdr, parsed, msgID); err != nil {
+				log.Printf("WARN: Dupe area write failed: %v", err)
+			}
+		}
 		return errDupe
 	}
 
 	// Find the target area by echo tag
 	area, found := t.msgMgr.GetAreaByTag(parsed.Area)
 	if !found {
-		log.Printf("WARN: Unknown echo area %q, skipping message from %s", parsed.Area, msg.From)
+		log.Printf("WARN: Unknown echo area %q from %s", parsed.Area, msg.From)
+		if t.config.BadAreaTag != "" {
+			if err := t.writeMsgToArea(t.config.BadAreaTag, msg, pktHdr, parsed, msgID); err != nil {
+				log.Printf("WARN: Bad area write failed for area %q: %v", parsed.Area, err)
+				return fmt.Errorf("unknown area %q", parsed.Area)
+			}
+			log.Printf("INFO: Routed unknown area %q message from %s to bad area", parsed.Area, msg.From)
+			return nil // counted as imported
+		}
 		return fmt.Errorf("unknown area %q", parsed.Area)
 	}
 
@@ -327,4 +347,46 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 
 	log.Printf("INFO: Tossed message from %s to %s in %s (MSGID: %s)", msg.From, msg.To, parsed.Area, msgID)
 	return nil
+}
+
+// writeMsgToArea writes a packet message to any JAM area by tag.
+// Used for netmail, bad-area, and dupe-area routing.
+func (t *Tosser) writeMsgToArea(areaTag string, msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader, parsed *ftn.ParsedBody, msgID string) error {
+	area, found := t.msgMgr.GetAreaByTag(areaTag)
+	if !found {
+		return fmt.Errorf("area %q not configured", areaTag)
+	}
+	base, err := t.msgMgr.GetBase(area.ID)
+	if err != nil {
+		return fmt.Errorf("get base for area %q: %w", areaTag, err)
+	}
+	defer base.Close()
+
+	jamMsg := jam.NewMessage()
+	jamMsg.From = msg.From
+	jamMsg.To = msg.To
+	jamMsg.Subject = msg.Subject
+	jamMsg.Text = parsed.Text
+	if msgID != "" {
+		jamMsg.MsgID = msgID
+	}
+
+	dt, err := ftn.ParseFTNDateTime(msg.DateTime)
+	if err != nil {
+		dt = time.Now()
+	}
+	jamMsg.DateTime = dt
+
+	origZone := pktHdr.OrigZone
+	if origZone == 0 {
+		origZone = pktHdr.QOrigZone
+	}
+	if origZone == 0 {
+		origZone = uint16(t.ownAddr.Zone)
+	}
+	jamMsg.OrigAddr = fmt.Sprintf("%d:%d/%d", origZone, msg.OrigNet, msg.OrigNode)
+
+	msgType := jam.DetermineMessageType(area.AreaType, area.EchoTag)
+	_, err = base.WriteMessageExt(jamMsg, msgType, area.EchoTag, "", "")
+	return err
 }
