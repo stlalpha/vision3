@@ -14,6 +14,8 @@ type MessageArea struct {
 	RealNameOnly bool   `json:"real_name_only,omitempty"`  // Require real name for posts in this area
 	ConferenceID int    `json:"conference_id,omitempty"`   // Conference this area belongs to (0=ungrouped)
 	BasePath     string `json:"base_path"`                 // Relative path to JAM base (e.g., "msgbases/general")
+	MaxMessages  int    `json:"max_messages,omitempty"`    // Max messages to retain (0=unlimited)
+	MaxAge       int    `json:"max_age,omitempty"`         // Auto-purge messages older than N days (0=unlimited)
 	AutoJoin     bool   `json:"auto_join,omitempty"`       // Auto-join this area for new users
 	AreaType     string `json:"area_type"`                 // "local", "echomail", "netmail"
 	EchoTag      string `json:"echo_tag,omitempty"`        // FTN echo tag (e.g., "FSX_GEN")

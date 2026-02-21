@@ -4,13 +4,20 @@
         "tag": "LOCAL",
         "name": "Local Areas",
         "description": "Local BBS discussion and file areas",
-        "acs": ""
+        "acs": "s10"
     },
     {
         "id": 2,
         "tag": "FSXNET",
         "name": "fsxNet",
         "description": "fsxNet message areas",
-        "acs": ""
+        "acs": "s10"
+    },
+    {
+        "id": 3,
+        "tag": "TQWNET",
+        "name": "tqwNet",
+        "description": "tqwNet message areas",
+        "acs": "s10"
     }
 ]

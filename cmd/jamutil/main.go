@@ -20,8 +20,8 @@ type areaConfig struct {
 	Tag       string `json:"tag"`
 	Name      string `json:"name"`
 	BasePath  string `json:"base_path"`
-	MaxMsgs   int    `json:"max_msgs"`   // 0 = no limit
-	MaxMsgAge int    `json:"max_msg_age"` // days, 0 = no limit
+	MaxMsgs   int    `json:"max_messages"` // 0 = no limit
+	MaxMsgAge int    `json:"max_age"`      // days, 0 = no limit
 }
 
 func main() {
