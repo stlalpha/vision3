@@ -98,10 +98,10 @@ func TestExecuteEvent_WithEnvironmentVars(t *testing.T) {
 	s := &Scheduler{}
 
 	event := config.EventConfig{
-		ID:             "test_env",
-		Name:           "Test Environment Variables",
-		Command:        lookPath(t, "sh"),
-		Args:           []string{"-c", "echo $TEST_VAR"},
+		ID:      "test_env",
+		Name:    "Test Environment Variables",
+		Command: lookPath(t, "sh"),
+		Args:    []string{"-c", "echo $TEST_VAR"},
 		EnvironmentVars: map[string]string{
 			"TEST_VAR": "test_value",
 		},
@@ -167,5 +167,46 @@ func TestPlaceholderSubstitutionInWorkingDirectory(t *testing.T) {
 
 	if strings.Contains(result.Output, "{BBS_ROOT}") {
 		t.Error("Working directory placeholder was not substituted")
+	}
+}
+
+func TestPlaceholderSubstitutionInCommand(t *testing.T) {
+	s := &Scheduler{}
+
+	echoPath := lookPath(t, "echo")
+
+	event := config.EventConfig{
+		ID:             "test_cmd_sub",
+		Name:           "Test Command Path Substitution",
+		Command:        "{BBS_ROOT}/nonexistent_should_be_replaced",
+		Args:           []string{"hello"},
+		TimeoutSeconds: 5,
+	}
+
+	// The substituted command won't exist, so it should fail with a path that
+	// does NOT contain the literal placeholder.
+	result := s.executeEvent(context.Background(), event)
+
+	if result.Error != nil && strings.Contains(result.Error.Error(), "{BBS_ROOT}") {
+		t.Error("Command placeholder was not substituted")
+	}
+
+	// Now test with a valid command using the placeholder mechanism.
+	// We'll set the command to the real echo path (no placeholder) to confirm
+	// normal execution still works after the refactor.
+	event2 := config.EventConfig{
+		ID:             "test_cmd_real",
+		Name:           "Test Real Command Execution",
+		Command:        echoPath,
+		Args:           []string{"placeholder_test_ok"},
+		TimeoutSeconds: 5,
+	}
+
+	result2 := s.executeEvent(context.Background(), event2)
+	if !result2.Success {
+		t.Errorf("Expected success, got failure: %v", result2.Error)
+	}
+	if !strings.Contains(result2.Output, "placeholder_test_ok") {
+		t.Errorf("Expected output to contain 'placeholder_test_ok', got: %s", result2.Output)
 	}
 }

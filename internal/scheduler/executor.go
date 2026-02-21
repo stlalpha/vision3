@@ -56,7 +56,13 @@ func (s *Scheduler) executeEvent(ctx context.Context, event config.EventConfig) 
 		defer cancel()
 	}
 
-	cmd := exec.CommandContext(cmdCtx, event.Command, substitutedArgs...)
+	// Substitute placeholders in command path
+	substitutedCommand := event.Command
+	for key, val := range substitutions {
+		substitutedCommand = strings.ReplaceAll(substitutedCommand, key, val)
+	}
+
+	cmd := exec.CommandContext(cmdCtx, substitutedCommand, substitutedArgs...)
 
 	// Set working directory if specified (with placeholder substitution)
 	if event.WorkingDirectory != "" {
