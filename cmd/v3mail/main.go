@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -25,6 +27,16 @@ type areaConfig struct {
 }
 
 func main() {
+	// Set up logging to both stderr and data/logs/v3mail.log
+	logDir := filepath.Join("data", "logs")
+	os.MkdirAll(logDir, 0755)
+	logPath := filepath.Join(logDir, "v3mail.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err == nil {
+		log.SetOutput(io.MultiWriter(os.Stderr, logFile))
+		defer logFile.Close()
+	}
+
 	if len(os.Args) < 2 {
 		printUsage("")
 		os.Exit(1)

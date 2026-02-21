@@ -67,10 +67,8 @@
       "name": "Example: Toss Echomail (v3mail)",
       "schedule": "@hourly",
       "comment": "Toss inbound FTN bundles and .PKT files into JAM message bases every hour. Requires ftn.json to be configured.",
-      "command": "/usr/bin/go",
+      "command": "{BBS_ROOT}/v3mail",
       "args": [
-        "run",
-        "{BBS_ROOT}/cmd/v3mail",
         "toss",
         "--config",
         "{BBS_ROOT}/configs",
@@ -86,10 +84,8 @@
       "name": "Example: Scan Echomail (v3mail)",
       "schedule": "*/5 * * * *",
       "comment": "Scan JAM bases for new outgoing echomail every 5 minutes and create outbound .PKT files. Uses a persistent high-water mark so only new messages are exported each run.",
-      "command": "/usr/bin/go",
+      "command": "{BBS_ROOT}/v3mail",
       "args": [
-        "run",
-        "{BBS_ROOT}/cmd/v3mail",
         "scan",
         "--config",
         "{BBS_ROOT}/configs",
@@ -105,10 +101,8 @@
       "name": "Example: Pack Echomail Bundles (v3mail)",
       "schedule": "2,7,12,17,22,27,32,37,42,47,52,57 * * * *",
       "comment": "Pack outbound .PKT files into ZIP bundles for binkd to transmit. Runs 2 minutes after scan to ensure packets are ready. BSO day-of-week naming convention.",
-      "command": "/usr/bin/go",
+      "command": "{BBS_ROOT}/v3mail",
       "args": [
-        "run",
-        "{BBS_ROOT}/cmd/v3mail",
         "ftn-pack",
         "--config",
         "{BBS_ROOT}/configs",
@@ -178,10 +172,8 @@
       "name": "Example: Nightly Message Base Integrity Check",
       "schedule": "0 2 * * *",
       "comment": "Check and repair JAM message base integrity across all areas at 2 AM. Part of a 3-step nightly maintenance sequence: fix → purge → pack.",
-      "command": "/usr/bin/go",
+      "command": "{BBS_ROOT}/v3mail",
       "args": [
-        "run",
-        "{BBS_ROOT}/cmd/v3mail",
         "fix",
         "--repair",
         "--all"
@@ -195,10 +187,8 @@
       "name": "Example: Nightly Message Base Purge",
       "schedule": "15 2 * * *",
       "comment": "Purge messages exceeding per-area age/count limits (max_msg_age, max_msgs) configured in message_areas.json. Runs at 2:15 AM between fix and pack. No flags needed — limits are read from config.",
-      "command": "/usr/bin/go",
+      "command": "{BBS_ROOT}/v3mail",
       "args": [
-        "run",
-        "{BBS_ROOT}/cmd/v3mail",
         "purge",
         "--all"
       ],
@@ -211,10 +201,8 @@
       "name": "Example: Nightly Message Base Pack",
       "schedule": "30 2 * * *",
       "comment": "Defragment and compact all JAM message bases at 2:30 AM, reclaiming space from purged/deleted messages. Runs last in the nightly sequence.",
-      "command": "/usr/bin/go",
+      "command": "{BBS_ROOT}/v3mail",
       "args": [
-        "run",
-        "{BBS_ROOT}/cmd/v3mail",
         "pack",
         "--all"
       ],
