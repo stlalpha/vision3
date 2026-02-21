@@ -635,13 +635,15 @@ type FTNLinkConfig struct {
 
 // FTNNetworkConfig holds settings for a single FTN network (e.g., FSXNet, FidoNet).
 type FTNNetworkConfig struct {
-	InternalTosserEnabled bool            `json:"internal_tosser_enabled"` // Enable internal tosser (false = use external like HPT)
-	OwnAddress            string          `json:"own_address"`             // e.g., "21:3/110"
-	InboundPath           string          `json:"inbound_path"`            // e.g., "data/ftn/fsxnet/inbound"
-	OutboundPath          string          `json:"outbound_path"`           // e.g., "data/ftn/fsxnet/outbound"
-	TempPath              string          `json:"temp_path"`               // e.g., "data/ftn/fsxnet/temp"
-	PollSeconds           int             `json:"poll_interval_seconds"`   // 0 = manual only
-	Tearline              string          `json:"tearline,omitempty"`      // Custom tearline text for echomail (optional)
+	InternalTosserEnabled bool            `json:"internal_tosser_enabled"`          // Enable internal tosser (false = use external like HPT)
+	OwnAddress            string          `json:"own_address"`                      // e.g., "21:4/158.1"
+	InboundPath           string          `json:"inbound_path"`                     // Where binkd deposits received bundles, e.g., "data/ftn/in"
+	SecureInboundPath     string          `json:"secure_inbound_path,omitempty"`    // Authenticated inbound, e.g., "data/ftn/secure_in"
+	OutboundPath          string          `json:"outbound_path"`                    // Staging dir for outbound .PKT files, e.g., "data/ftn/temp_out"
+	BinkdOutboundPath     string          `json:"binkd_outbound_path"`              // Binkd outbound dir for ZIP bundles, e.g., "data/ftn/out"
+	TempPath              string          `json:"temp_path"`                        // Temp dir for processing, e.g., "data/ftn/temp_in"
+	PollSeconds           int             `json:"poll_interval_seconds"`            // 0 = manual only (jamutil toss/scan)
+	Tearline              string          `json:"tearline,omitempty"`               // Custom tearline text for echomail (optional)
 	Links                 []FTNLinkConfig `json:"links"`
 }
 

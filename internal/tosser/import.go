@@ -13,6 +13,19 @@ import (
 	"github.com/stlalpha/vision3/internal/message"
 )
 
+// inboundDirs returns all inbound directories to scan, deduplicating empty paths.
+func (t *Tosser) inboundDirs() []string {
+	seen := make(map[string]bool)
+	var dirs []string
+	for _, d := range []string{t.config.InboundPath, t.config.SecureInboundPath} {
+		if d != "" && !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
+}
+
 // TossResult holds the results of a toss/scan cycle.
 type TossResult struct {
 	PacketsProcessed int
@@ -24,29 +37,29 @@ type TossResult struct {
 
 // Tosser handles importing and exporting FTN echomail packets for a single network.
 type Tosser struct {
-	networkName     string
-	config          networkConfig
-	msgMgr          *message.MessageManager
-	dupeDB          *DupeDB
-	ownAddr         *jam.FidoAddress
-	exportHighWater map[int]int // area ID -> last scanned msgNum (for export optimization)
+	networkName string
+	config      networkConfig
+	msgMgr      *message.MessageManager
+	dupeDB      *DupeDB
+	ownAddr     *jam.FidoAddress
+	hwm         *HighWaterMark // persistent export position tracking
 }
 
 // New creates a new Tosser instance for a single FTN network.
-// The dupeDB is shared across networks (MSGIDs are globally unique).
-func New(networkName string, cfg networkConfig, dupeDB *DupeDB, msgMgr *message.MessageManager) (*Tosser, error) {
+// The dupeDB and hwm are shared across networks.
+func New(networkName string, cfg networkConfig, dupeDB *DupeDB, hwm *HighWaterMark, msgMgr *message.MessageManager) (*Tosser, error) {
 	addr, err := jam.ParseAddress(cfg.OwnAddress)
 	if err != nil {
 		return nil, fmt.Errorf("tosser[%s]: invalid own_address %q: %w", networkName, cfg.OwnAddress, err)
 	}
 
 	return &Tosser{
-		networkName:     networkName,
-		config:          cfg,
-		msgMgr:          msgMgr,
-		dupeDB:          dupeDB,
-		ownAddr:         addr,
-		exportHighWater: make(map[int]int),
+		networkName: networkName,
+		config:      cfg,
+		msgMgr:      msgMgr,
+		dupeDB:      dupeDB,
+		ownAddr:     addr,
+		hwm:         hwm,
 	}, nil
 }
 
@@ -56,55 +69,108 @@ func NewDupeDBFromPath(dupeDBPath string) (*DupeDB, error) {
 	return NewDupeDB(dupeDBPath, maxAge)
 }
 
-// ProcessInbound scans the inbound directory for .PKT files and tosses them.
+// ProcessInbound scans all configured inbound directories for .PKT files and
+// ZIP bundles, unpacking bundles as needed, then tosses each packet.
 func (t *Tosser) ProcessInbound() TossResult {
 	result := TossResult{}
 
-	entries, err := os.ReadDir(t.config.InboundPath)
+	for _, inboundDir := range t.inboundDirs() {
+		t.processInboundDir(inboundDir, &result)
+	}
+
+	// Save dupe DB after processing all directories
+	if err := t.dupeDB.Save(); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("save dupe DB: %v", err))
+	}
+
+	return result
+}
+
+// processInboundDir scans a single directory for bundles and .PKT files.
+func (t *Tosser) processInboundDir(dir string, result *TossResult) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return result // No inbound directory = nothing to do
+			return
 		}
-		result.Errors = append(result.Errors, fmt.Sprintf("read inbound dir: %v", err))
-		return result
+		result.Errors = append(result.Errors, fmt.Sprintf("read inbound dir %s: %v", dir, err))
+		return
 	}
 
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		name := strings.ToLower(entry.Name())
-		if !strings.HasSuffix(name, ".pkt") {
+		name := entry.Name()
+		nameLower := strings.ToLower(name)
+		path := filepath.Join(dir, name)
+
+		if strings.HasSuffix(nameLower, ".pkt") {
+			// Direct .PKT file
+			t.tossPktFile(path, name, result)
 			continue
 		}
 
-		pktPath := filepath.Join(t.config.InboundPath, entry.Name())
-		imported, dupes, errs := t.tossPacket(pktPath)
-		result.PacketsProcessed++
-		result.MessagesImported += imported
-		result.DupesSkipped += dupes
-		result.Errors = append(result.Errors, errs...)
-
-		// Move processed packet to temp (or delete)
-		if len(errs) == 0 {
-			if err := os.Remove(pktPath); err != nil {
-				log.Printf("WARN: Failed to remove processed packet %s: %v", pktPath, err)
+		if ftn.BundleExtension(nameLower) {
+			// Potential ZIP bundle — verify magic bytes first
+			isZIP, err := ftn.IsZIPBundle(path)
+			if err != nil {
+				result.Errors = append(result.Errors, fmt.Sprintf("check bundle %s: %v", name, err))
+				continue
 			}
-		} else {
-			// Move to temp for inspection
-			badPath := filepath.Join(t.config.TempPath, entry.Name())
-			if err := os.Rename(pktPath, badPath); err != nil {
-				log.Printf("WARN: Failed to move bad packet %s to %s: %v", pktPath, badPath, err)
+			if !isZIP {
+				continue // .flo or other non-ZIP file, skip
 			}
+			t.processBundle(path, name, result)
 		}
 	}
+}
 
-	// Save dupe DB after processing
-	if err := t.dupeDB.Save(); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("save dupe DB: %v", err))
+// processBundle unpacks a ZIP bundle, tosses its .PKT contents, then removes it.
+func (t *Tosser) processBundle(path, name string, result *TossResult) {
+	tempDir := filepath.Join(t.config.TempPath, "unpack")
+	pktPaths, err := ftn.ExtractBundle(path, tempDir)
+	if err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("extract bundle %s: %v", name, err))
+		// Move bad bundle to temp for inspection
+		badPath := filepath.Join(t.config.TempPath, name)
+		if renErr := os.Rename(path, badPath); renErr != nil {
+			log.Printf("WARN: Failed to move bad bundle %s: %v", path, renErr)
+		}
+		return
 	}
 
-	return result
+	log.Printf("INFO: Unpacked bundle %s: %d .PKT files", name, len(pktPaths))
+
+	// tossPktFile handles cleanup of each extracted .PKT (removes on success, moves to temp on error).
+	for _, pktPath := range pktPaths {
+		t.tossPktFile(pktPath, filepath.Base(pktPath), result)
+	}
+
+	// Remove the bundle itself after processing all packets.
+	if err := os.Remove(path); err != nil {
+		log.Printf("WARN: Failed to remove processed bundle %s: %v", path, err)
+	}
+}
+
+// tossPktFile processes a single .PKT file at path and updates result.
+func (t *Tosser) tossPktFile(path, displayName string, result *TossResult) {
+	imported, dupes, errs := t.tossPacket(path)
+	result.PacketsProcessed++
+	result.MessagesImported += imported
+	result.DupesSkipped += dupes
+	result.Errors = append(result.Errors, errs...)
+
+	if len(errs) == 0 {
+		if err := os.Remove(path); err != nil {
+			log.Printf("WARN: Failed to remove processed packet %s: %v", path, err)
+		}
+	} else {
+		badPath := filepath.Join(t.config.TempPath, displayName)
+		if err := os.Rename(path, badPath); err != nil {
+			log.Printf("WARN: Failed to move bad packet %s to %s: %v", path, badPath, err)
+		}
+	}
 }
 
 // tossPacket processes a single .PKT file, returning counts and errors.

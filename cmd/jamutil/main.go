@@ -53,6 +53,12 @@ func main() {
 		cmdLink(os.Args[2:])
 	case "lastread":
 		cmdLastread(os.Args[2:])
+	case "toss":
+		cmdToss(os.Args[2:])
+	case "scan":
+		cmdScan(os.Args[2:])
+	case "ftn-pack":
+		cmdFtnPack(os.Args[2:])
 	default:
 		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", cmd)
 		printUsage()
@@ -65,7 +71,7 @@ func printUsage() {
 
 Usage: jamutil <command> [options] [base_path...]
 
-Commands:
+JAM Base Commands:
   stats     Display message base statistics
   pack      Defragment base, removing deleted messages
   purge     Delete old messages by age or count
@@ -73,24 +79,30 @@ Commands:
   link      Build reply threading chains (ReplyTo/Reply1st/ReplyNext)
   lastread  Show or reset lastread records
 
+FTN Echomail Commands (replaces HPT):
+  toss      Unpack FTN bundles and toss .PKT files into JAM bases
+  scan      Scan JAM bases for unsent echomail, create outbound .PKT files
+  ftn-pack  Pack outbound .PKT files into ZIP bundles for binkd
+
 Global Options:
-  --all           Operate on all areas from message_areas.json
+  --all           Operate on all areas from message_areas.json (JAM commands)
   --config DIR    Config directory (default: configs)
   --data DIR      Data directory (default: data)
   -q              Quiet mode
 
+FTN Command Options:
+  --network NAME  Limit to a single FTN network (default: all enabled)
+
 Examples:
-  jamutil stats data/msgbases/general
   jamutil stats --all
-  jamutil pack --dry-run data/msgbases/general
   jamutil pack --all
-  jamutil purge --days 90 --all
-  jamutil purge --keep 500 data/msgbases/general
-  jamutil purge --all                              (uses per-area max_msgs/max_msg_age from config)
+  jamutil purge --all
   jamutil fix --all
   jamutil link --all
-  jamutil lastread data/msgbases/general
-  jamutil lastread --reset testuser data/msgbases/general
+  jamutil toss --config configs --data data
+  jamutil scan --config configs --data data
+  jamutil ftn-pack --config configs --data data
+  jamutil toss --network fsxnet
 `, version.Number)
 }
 
