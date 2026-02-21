@@ -642,40 +642,62 @@ func (um *UserMgr) PurgeDeletedUsers(retentionDays int) ([]PurgeResult, error) {
 	um.mu.Lock()
 	defer um.mu.Unlock()
 
-	var purged []PurgeResult
+	// Phase 1: identify eligible users without modifying the map yet.
+	type candidate struct {
+		key    string
+		user   *User
+		result PurgeResult
+	}
+	var candidates []candidate
 	for key, u := range um.users {
 		if !u.DeletedUser {
 			continue
 		}
 		if u.DeletedAt == nil {
-			// Deleted but no timestamp: treat as immediately eligible
-			purged = append(purged, PurgeResult{
-				ID:       u.ID,
-				Username: u.Username,
-				Handle:   u.Handle,
+			// Deleted but no timestamp: treat as immediately eligible.
+			candidates = append(candidates, candidate{
+				key:  key,
+				user: u,
+				result: PurgeResult{
+					ID:       u.ID,
+					Username: u.Username,
+					Handle:   u.Handle,
+				},
 			})
-			delete(um.users, key)
-			continue
-		}
-		if u.DeletedAt.Before(cutoff) {
-			purged = append(purged, PurgeResult{
-				ID:        u.ID,
-				Username:  u.Username,
-				Handle:    u.Handle,
-				DeletedAt: *u.DeletedAt,
+		} else if u.DeletedAt.Before(cutoff) {
+			candidates = append(candidates, candidate{
+				key:  key,
+				user: u,
+				result: PurgeResult{
+					ID:        u.ID,
+					Username:  u.Username,
+					Handle:    u.Handle,
+					DeletedAt: *u.DeletedAt,
+				},
 			})
-			delete(um.users, key)
 		}
 	}
 
-	if len(purged) == 0 {
+	if len(candidates) == 0 {
 		return nil, nil
 	}
 
+	// Phase 2: remove from in-memory store, then persist.
+	// Roll back in-memory changes if save fails so the store stays consistent.
+	for _, c := range candidates {
+		delete(um.users, c.key)
+	}
 	if err := um.saveUsersLocked(); err != nil {
+		for _, c := range candidates {
+			um.users[c.key] = c.user
+		}
 		return nil, fmt.Errorf("purge: failed to save users: %w", err)
 	}
 
+	purged := make([]PurgeResult, len(candidates))
+	for i, c := range candidates {
+		purged[i] = c.result
+	}
 	log.Printf("INFO: Purged %d soft-deleted user account(s)", len(purged))
 	return purged, nil
 }

@@ -88,7 +88,9 @@ func TestIsZIPBundle(t *testing.T) {
 
 	// Plain text flow file
 	flowPath := filepath.Join(dir, "flow.flo")
-	os.WriteFile(flowPath, []byte("# flow file\npath/to/packet.pkt"), 0644)
+	if err := os.WriteFile(flowPath, []byte("# flow file\npath/to/packet.pkt"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
 	ok, err = IsZIPBundle(flowPath)
 	if err != nil {
 		t.Fatalf("IsZIPBundle on flow file: %v", err)

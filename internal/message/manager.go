@@ -616,6 +616,7 @@ func (mm *MessageManager) DeleteMessage(areaID, msgNum int) error {
 	if err != nil {
 		return fmt.Errorf("open base for area %d: %w", areaID, err)
 	}
+	defer b.Close()
 	if err := b.DeleteMessage(msgNum); err != nil {
 		return fmt.Errorf("delete message %d in area %d: %w", msgNum, areaID, err)
 	}
@@ -633,6 +634,7 @@ func (mm *MessageManager) PackAndLinkArea(areaID int) error {
 	if err != nil {
 		return fmt.Errorf("open base for area %d: %w", areaID, err)
 	}
+	defer b.Close()
 	if _, err := b.Pack(); err != nil {
 		return fmt.Errorf("pack area %d: %w", areaID, err)
 	}

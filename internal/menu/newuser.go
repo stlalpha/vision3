@@ -480,7 +480,7 @@ func (e *MenuExecutor) promptForRealName(
 			if errors.Is(err, io.EOF) {
 				return "", io.EOF
 			}
-				if errors.Is(err, errInputAborted) {
+			if errors.Is(err, errInputAborted) {
 				exit, confirmErr := e.confirmExitNewUser(s, terminal, outputMode, nodeNumber, termWidth, termHeight)
 				if confirmErr != nil {
 					return "", confirmErr

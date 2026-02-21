@@ -195,6 +195,6 @@ func resolveUniqueBundlePath(path string) string {
 			return candidate
 		}
 	}
-	// Fall back to timestamp-based name
-	return fmt.Sprintf("%s_%d.pkt", base, time.Now().UnixNano()&0xFFFF)
+	// Fall back to timestamp-based name, preserving the bundle extension type.
+	return fmt.Sprintf("%s_%d%s0", base, time.Now().UnixNano()&0xFFFF, prefix)
 }

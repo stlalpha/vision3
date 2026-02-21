@@ -46,7 +46,7 @@ func StringEntries() []StringEntry {
 		{Label: "Post on Current Board", Key: "postOnBoardStr", Description: "Used when asking if a user wants to leave a Post ( |CB=Current Board )"},
 		{Label: "Message Title String", Key: "msgTitleStr", Description: "This is displayed when a user is asked what he wishes to title a message"},
 		{Label: "Send Message To String", Key: "msgToStr", Description: "This is displayed when a user is asked who he wishes to send the msg to"},
-		{Label: "Upload a Message String", Key: "uploadFileStr", Description: "This is displayed when asking a user if he wishes to upload a message"},
+		{Label: "Upload a Message String", Key: "uploadMsgStr", Description: "This is displayed when asking a user if he wishes to upload a message"},
 		{Label: "Post Anonymous String", Key: "msgAnonStr", Description: "This is displayed when asking a user if he wished to post Anonymous"},
 		{Label: "Save/Quote/Abort String", Key: "slashStr", Description: "This String is displayed in the message editor Save/Quote/Abort prompt"},
 		{Label: "Not Used (extra7a)", Key: "_extra7a", Description: "Reserved - not currently used"},
