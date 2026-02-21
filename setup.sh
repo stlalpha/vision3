@@ -218,11 +218,11 @@ echo "Building ViSiON/3..."
 go build -o vision3 ./cmd/vision3
 echo "Building helper..."
 go build -o helper ./cmd/helper
-echo "Building jamutil..."
-go build -o jamutil ./cmd/jamutil
+echo "Building v3mail..."
+go build -o v3mail ./cmd/v3mail
 
 echo "Initializing JAM bases..."
-./jamutil stats --all --config configs --data data > /dev/null
+./v3mail stats --all --config configs --data data > /dev/null
 
 echo
 echo "=== Setup Complete ==="

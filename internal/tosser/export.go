@@ -51,7 +51,7 @@ func (t *Tosser) ScanAndExport() TossResult {
 		}
 
 		// Start scanning from high-water mark to avoid re-scanning exported messages
-		startMsg := t.exportHighWater[area.ID] + 1
+		startMsg := t.hwm.Get(t.networkName, area.ID) + 1
 		if startMsg < 1 {
 			startMsg = 1
 		}
@@ -65,8 +65,9 @@ func (t *Tosser) ScanAndExport() TossResult {
 			// Skip already-processed messages
 			if hdr.DateProcessed != 0 {
 				// Advance high-water mark past consecutive processed messages
-				if msgNum == t.exportHighWater[area.ID]+1 {
-					t.exportHighWater[area.ID] = msgNum
+				cur := t.hwm.Get(t.networkName, area.ID)
+				if msgNum == cur+1 {
+					t.hwm.Set(t.networkName, area.ID, msgNum)
 				}
 				continue
 			}
@@ -115,15 +116,25 @@ func (t *Tosser) ScanAndExport() TossResult {
 		}
 
 		// Mark messages as processed only AFTER the packet was written successfully
+		now := uint32(time.Now().Unix())
 		for _, pm := range msgs {
-			pm.hdr.DateProcessed = uint32(time.Now().Unix())
+			pm.hdr.DateProcessed = now
 			if err := pm.base.UpdateMessageHeader(pm.msgNum, pm.hdr); err != nil {
 				log.Printf("WARN: Export: failed to update DateProcessed for msg %d: %v",
 					pm.msgNum, err)
 			}
+			// Advance HWM so the next scan skips this message
+			if pm.msgNum > t.hwm.Get(t.networkName, pm.area.ID) {
+				t.hwm.Set(t.networkName, pm.area.ID, pm.msgNum)
+			}
 		}
 
 		result.MessagesExported += exported
+	}
+
+	// Persist high-water marks after a successful export cycle
+	if err := t.hwm.Save(); err != nil {
+		result.Errors = append(result.Errors, fmt.Sprintf("save hwm: %v", err))
 	}
 
 	return result
@@ -205,7 +216,7 @@ func (t *Tosser) createOutboundPacket(link *linkConfig, msgs []pendingMsg) (int,
 			DestNode: uint16(destAddr.Node),
 			OrigNet:  uint16(t.ownAddr.Net),
 			DestNet:  uint16(destAddr.Net),
-			Attr:     ftn.MsgAttrLocal,
+			Attr:     linkMsgAttr(link.Flavour),
 			DateTime: ftn.FormatFTNDateTime(pm.msg.DateTime),
 			To:       pm.msg.To,
 			From:     pm.msg.From,
@@ -247,4 +258,16 @@ func (t *Tosser) createOutboundPacket(link *linkConfig, msgs []pendingMsg) (int,
 
 	log.Printf("INFO: Exported %d messages to %s for link %s", len(packedMsgs), finalName, link.Address)
 	return len(packedMsgs), nil
+}
+
+// linkMsgAttr returns the FTN packet attribute flags for a link's delivery flavour.
+func linkMsgAttr(flavour string) uint16 {
+	switch strings.ToUpper(flavour) {
+	case "CRASH":
+		return ftn.MsgAttrLocal | ftn.MsgAttrCrash
+	case "HOLD":
+		return ftn.MsgAttrLocal | ftn.MsgAttrHold
+	default: // "NORMAL", "DIRECT", ""
+		return ftn.MsgAttrLocal
+	}
 }

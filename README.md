@@ -155,12 +155,12 @@ vision3/
 ├── bin/                    # Compiled binaries (not tracked in git)
 │   ├── vision3             # Main BBS server executable
 │   ├── helper              # FTN setup utility executable
-│   └── jamutil             # JAM message base utility executable
+│   └── v3mail             # JAM message base utility executable
 ├── scripts/                # Utility scripts
 ├── cmd/
 │   ├── ansitest/           # ANSI color test utility
 │   ├── helper/             # FTN setup utility (import echomail areas)
-│   ├── jamutil/            # JAM message base utility (stats, pack, purge, fix)
+│   ├── v3mail/            # JAM message base utility (stats, pack, purge, fix)
 │   └── vision3/            # Main BBS server application
 ├── configs/                # Active configuration files (not tracked in git)
 │   ├── config.json         # Main BBS configuration

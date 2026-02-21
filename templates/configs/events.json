@@ -63,34 +63,60 @@
       "enabled": false
     },
     {
-      "id": "example_hpt_toss",
-      "name": "Example: HPT Toss Echomail",
+      "id": "example_v3mail_toss",
+      "name": "Example: Toss Echomail (v3mail)",
       "schedule": "@hourly",
-      "comment": "Toss echomail using HPT. Update command and config paths for your system.",
-      "command": "/usr/local/bin/hpt",
+      "comment": "Toss inbound FTN bundles and .PKT files into JAM message bases every hour. Requires ftn.json to be configured.",
+      "command": "/usr/bin/go",
       "args": [
+        "run",
+        "{BBS_ROOT}/cmd/v3mail",
         "toss",
-        "-c",
-        "{BBS_ROOT}/data/ftn/husky.cfg"
+        "--config",
+        "{BBS_ROOT}/configs",
+        "--data",
+        "{BBS_ROOT}/data"
       ],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 600,
       "enabled": false
     },
     {
-      "id": "example_hpt_scan_pack",
-      "name": "Example: HPT Scan and Pack",
-      "schedule": "0 */2 * * *",
-      "comment": "Scan and pack echomail every 2 hours. Uses high water marks to only export new messages. Update command and config paths.",
-      "command": "/usr/local/bin/hpt",
+      "id": "example_v3mail_scan",
+      "name": "Example: Scan Echomail (v3mail)",
+      "schedule": "*/5 * * * *",
+      "comment": "Scan JAM bases for new outgoing echomail every 5 minutes and create outbound .PKT files. Uses a persistent high-water mark so only new messages are exported each run.",
+      "command": "/usr/bin/go",
       "args": [
-        "-c",
-        "{BBS_ROOT}/data/ftn/husky.cfg",
+        "run",
+        "{BBS_ROOT}/cmd/v3mail",
         "scan",
-        "pack"
+        "--config",
+        "{BBS_ROOT}/configs",
+        "--data",
+        "{BBS_ROOT}/data"
       ],
       "working_directory": "{BBS_ROOT}",
-      "timeout_seconds": 900,
+      "timeout_seconds": 300,
+      "enabled": false
+    },
+    {
+      "id": "example_v3mail_ftn_pack",
+      "name": "Example: Pack Echomail Bundles (v3mail)",
+      "schedule": "2,7,12,17,22,27,32,37,42,47,52,57 * * * *",
+      "comment": "Pack outbound .PKT files into ZIP bundles for binkd to transmit. Runs 2 minutes after scan to ensure packets are ready. BSO day-of-week naming convention.",
+      "command": "/usr/bin/go",
+      "args": [
+        "run",
+        "{BBS_ROOT}/cmd/v3mail",
+        "ftn-pack",
+        "--config",
+        "{BBS_ROOT}/configs",
+        "--data",
+        "{BBS_ROOT}/data"
+      ],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 300,
       "enabled": false
     },
     {
@@ -155,7 +181,7 @@
       "command": "/usr/bin/go",
       "args": [
         "run",
-        "{BBS_ROOT}/cmd/jamutil",
+        "{BBS_ROOT}/cmd/v3mail",
         "fix",
         "--repair",
         "--all"
@@ -172,7 +198,7 @@
       "command": "/usr/bin/go",
       "args": [
         "run",
-        "{BBS_ROOT}/cmd/jamutil",
+        "{BBS_ROOT}/cmd/v3mail",
         "purge",
         "--all"
       ],
@@ -188,7 +214,7 @@
       "command": "/usr/bin/go",
       "args": [
         "run",
-        "{BBS_ROOT}/cmd/jamutil",
+        "{BBS_ROOT}/cmd/v3mail",
         "pack",
         "--all"
       ],

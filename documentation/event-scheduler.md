@@ -150,9 +150,8 @@ Event commands and arguments can include placeholders that are substituted at ru
 ### Finding Command Paths
 
 ```bash
-# Check if binkd/hpt are installed
+# Check if binkd is installed
 which binkd
-which hpt
 
 # Common locations
 /usr/bin/binkd
@@ -167,7 +166,9 @@ Before adding to scheduler, test commands manually:
 ```bash
 cd /home/bbs/git/vision3
 /usr/local/bin/binkd -p -D data/ftn/binkd.conf
-/usr/local/bin/hpt toss -c data/ftn/hpt.conf
+go run cmd/v3mail toss --config configs --data data
+go run cmd/v3mail scan --config configs --data data
+go run cmd/v3mail ftn-pack --config configs --data data
 ```
 
 ## Common Use Cases
@@ -204,34 +205,49 @@ cd /home/bbs/git/vision3
 }
 ```
 
-### Echomail Tossing (HPT)
+### Echomail Tossing (v3mail)
 
-**Toss echomail every hour:**
+**Toss inbound echomail every hour:**
 
 ```json
 {
-  "id": "hpt_toss",
-  "name": "HPT Toss Echomail",
+  "id": "v3mail_toss",
+  "name": "Toss Echomail",
   "schedule": "@hourly",
-  "command": "/usr/local/bin/hpt",
-  "args": ["toss", "-c", "{BBS_ROOT}/data/ftn/hpt.conf"],
+  "command": "/usr/bin/go",
+  "args": ["run", "{BBS_ROOT}/cmd/v3mail", "toss", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
   "working_directory": "{BBS_ROOT}",
   "timeout_seconds": 600,
   "enabled": true
 }
 ```
 
-**Scan and pack every 2 hours:**
+**Scan outbound messages every 5 minutes:**
 
 ```json
 {
-  "id": "hpt_scan_pack",
-  "name": "HPT Scan and Pack",
-  "schedule": "0 */2 * * *",
-  "command": "/usr/local/bin/hpt",
-  "args": ["scan", "pack", "-c", "{BBS_ROOT}/data/ftn/hpt.conf"],
+  "id": "v3mail_scan",
+  "name": "Scan Outbound Echomail",
+  "schedule": "*/5 * * * *",
+  "command": "/usr/bin/go",
+  "args": ["run", "{BBS_ROOT}/cmd/v3mail", "scan", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
   "working_directory": "{BBS_ROOT}",
-  "timeout_seconds": 900,
+  "timeout_seconds": 300,
+  "enabled": true
+}
+```
+
+**Pack outbound bundles (runs 2 minutes after scan):**
+
+```json
+{
+  "id": "v3mail_ftn_pack",
+  "name": "Pack Outbound Bundles",
+  "schedule": "2,7,12,17,22,27,32,37,42,47,52,57 * * * *",
+  "command": "/usr/bin/go",
+  "args": ["run", "{BBS_ROOT}/cmd/v3mail", "ftn-pack", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+  "working_directory": "{BBS_ROOT}",
+  "timeout_seconds": 300,
   "enabled": true
 }
 ```
@@ -253,21 +269,33 @@ Process mail in stages with timing offsets:
       "enabled": true
     },
     {
-      "id": "hpt_toss",
+      "id": "v3mail_toss",
       "name": "Toss Mail After Poll",
       "schedule": "5,35 * * * *",
-      "command": "/usr/local/bin/hpt",
-      "args": ["toss", "-c", "{BBS_ROOT}/data/ftn/hpt.conf"],
+      "command": "/usr/bin/go",
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "toss", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+      "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 600,
       "enabled": true
     },
     {
-      "id": "hpt_pack",
-      "name": "Pack Mail After Toss",
+      "id": "v3mail_scan",
+      "name": "Scan Outbound After Toss",
+      "schedule": "7,37 * * * *",
+      "command": "/usr/bin/go",
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "scan", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 300,
+      "enabled": true
+    },
+    {
+      "id": "v3mail_ftn_pack",
+      "name": "Pack Outbound Bundles",
       "schedule": "10,40 * * * *",
-      "command": "/usr/local/bin/hpt",
-      "args": ["pack", "-c", "{BBS_ROOT}/data/ftn/hpt.conf"],
-      "timeout_seconds": 600,
+      "command": "/usr/bin/go",
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "ftn-pack", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+      "working_directory": "{BBS_ROOT}",
+      "timeout_seconds": 300,
       "enabled": true
     }
   ]
@@ -277,11 +305,12 @@ Process mail in stages with timing offsets:
 This creates a workflow:
 - **:00, :30** - Poll mail from uplinks
 - **:05, :35** - Toss received mail into message bases
-- **:10, :40** - Pack outbound mail for next poll
+- **:07, :37** - Scan JAM bases for new outbound messages
+- **:10, :40** - Pack outbound `.pkt` files into ZIP bundles for binkd pickup
 
 ### Nightly Message Base Maintenance
 
-ViSiON/3 uses `jamutil` for JAM message base maintenance. The recommended nightly sequence runs in three stages:
+ViSiON/3 uses `v3mail` for JAM message base maintenance. The recommended nightly sequence runs in three stages:
 
 | Time | Stage | Purpose |
 |------|-------|---------|
@@ -289,7 +318,7 @@ ViSiON/3 uses `jamutil` for JAM message base maintenance. The recommended nightl
 | 2:15 AM | `purge --all` | Remove messages exceeding per-area age/count limits |
 | 2:30 AM | `pack --all` | Defragment bases and reclaim space from deleted messages |
 
-Purge limits (`max_msg_age`, `max_msgs`) are configured per area in `message_areas.json`. See [Message Purge Configuration](message-areas.md#message-purge-configuration) for details.
+Purge limits (`max_age`, `max_messages`) are configured per area in `message_areas.json`. See [Message Purge Configuration](message-areas.md#message-purge-configuration) for details.
 
 ```json
 {
@@ -299,7 +328,7 @@ Purge limits (`max_msg_age`, `max_msgs`) are configured per area in `message_are
       "name": "Nightly Message Base Integrity Check",
       "schedule": "0 2 * * *",
       "command": "/usr/bin/go",
-      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "fix", "--repair", "--all"],
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "fix", "--repair", "--all"],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 3600,
       "enabled": true
@@ -310,7 +339,7 @@ Purge limits (`max_msg_age`, `max_msgs`) are configured per area in `message_are
       "schedule": "15 2 * * *",
       "comment": "Purge limits are read from max_msg_age/max_msgs in message_areas.json",
       "command": "/usr/bin/go",
-      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "purge", "--all"],
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "purge", "--all"],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 3600,
       "enabled": true
@@ -320,7 +349,7 @@ Purge limits (`max_msg_age`, `max_msgs`) are configured per area in `message_are
       "name": "Nightly Message Base Pack",
       "schedule": "30 2 * * *",
       "command": "/usr/bin/go",
-      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "pack", "--all"],
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "pack", "--all"],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 3600,
       "enabled": true
@@ -502,14 +531,14 @@ ERROR: Event 'binkd_poll' failed to start: fork/exec /usr/local/bin/binkd: no su
 ### Config File Not Found
 
 ```
-ERROR: Event 'hpt_toss' stderr: Cannot open config file
+ERROR: Event 'v3mail_toss' stderr: cannot open config directory
 ```
 
 **Fix:**
-1. Verify file exists: `ls -la data/ftn/hpt.conf`
-2. Use absolute path or `{BBS_ROOT}/data/ftn/hpt.conf`
+1. Verify directory exists: `ls -la configs/`
+2. Use absolute path or `{BBS_ROOT}/configs` for `--config` argument
 3. Check `working_directory` is set correctly
-4. Verify file permissions
+4. Verify directory permissions
 
 ### Event Timeout
 

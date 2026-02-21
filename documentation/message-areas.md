@@ -422,11 +422,11 @@ JAM bases are binary files that may need periodic maintenance:
 - **Integrity**: If a base becomes corrupted, delete the 4 JAM files and the base will be recreated (messages will be lost)
 - **Growth**: JAM text files (.jdt) grow as messages are added. Deleted messages leave gaps that can be reclaimed by packing.
 
-The `jamutil` command handles all message base maintenance. See [Nightly Message Base Maintenance](event-scheduler.md#nightly-message-base-maintenance) in the event scheduler docs for the recommended automated maintenance sequence.
+The `v3mail` command handles all message base maintenance. See [Nightly Message Base Maintenance](event-scheduler.md#nightly-message-base-maintenance) in the event scheduler docs for the recommended automated maintenance sequence.
 
 ### Message Purge Configuration
 
-Per-area purge limits are set in `message_areas.json` via `max_msgs` and `max_msg_age`. Both default to `0` (no limit). When set, limits are enforced nightly by `jamutil purge --all`:
+Per-area purge limits are set in `message_areas.json` via `max_msgs` and `max_msg_age`. Both default to `0` (no limit). When set, limits are enforced nightly by `v3mail purge --all`:
 
 ```json
 {

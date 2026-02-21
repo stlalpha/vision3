@@ -35,7 +35,7 @@ if ! go build -o helper ./cmd/helper; then
     echo "Build failed!"
     exit 1
 fi
-if ! go build -o jamutil ./cmd/jamutil; then
+if ! go build -o v3mail ./cmd/v3mail; then
     echo "Build failed!"
     exit 1
 fi

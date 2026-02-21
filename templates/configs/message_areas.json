@@ -90,5 +90,25 @@
         "max_messages": 1000,
         "max_age": 365,
         "auto_join": true
+    },
+    {
+        "_comment": "Example echomail area. Use 'helper ftnsetup' to auto-populate from a FIDONET.NA file. Remove this entry and configure for your network.",
+        "id": 7,
+        "tag": "FSX_GEN",
+        "name": "General Chat + More..",
+        "description": "FSXNet general discussion area",
+        "acs_read": "",
+        "acs_write": "",
+        "allow_anonymous": false,
+        "real_name_only": false,
+        "conference_id": 2,
+        "base_path": "msgbases/fsx_gen",
+        "area_type": "echomail",
+        "echo_tag": "FSX_GEN",
+        "origin_addr": "21:4/999.1",
+        "network": "fsxnet",
+        "max_messages": 1000,
+        "max_age": 365,
+        "auto_join": true
     }
 ]
