@@ -33,13 +33,14 @@ func runPage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 			sessHandle = sess.User.Handle
 		}
 		sessNodeID := sess.NodeID
+		sessInvisible := sess.Invisible
 		sess.Mutex.RUnlock()
 
 		if sessNodeID == nodeNumber {
 			continue // Skip self
 		}
 		// Skip invisible sessions for non-CoSysOp viewers
-		if sess.Invisible && !e.isCoSysOpOrAbove(currentUser) {
+		if sessInvisible && !e.isCoSysOpOrAbove(currentUser) {
 			continue
 		}
 		line := fmt.Sprintf(e.LoadedStrings.PageNodeListEntry, sessNodeID, sessHandle)
@@ -74,7 +75,15 @@ func runPage(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	}
 
 	targetSession := e.SessionRegistry.Get(targetNodeID)
-	if targetSession == nil || (targetSession.Invisible && !e.isCoSysOpOrAbove(currentUser)) {
+	if targetSession == nil {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageNodeOffline)), outputMode)
+		time.Sleep(500 * time.Millisecond)
+		return nil, "", nil
+	}
+	targetSession.Mutex.RLock()
+	targetInvisible := targetSession.Invisible
+	targetSession.Mutex.RUnlock()
+	if targetInvisible && !e.isCoSysOpOrAbove(currentUser) {
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.PageNodeOffline)), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return nil, "", nil

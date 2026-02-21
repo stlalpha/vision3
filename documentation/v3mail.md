@@ -6,21 +6,21 @@
 
 ### JAM Base Commands
 
-| Command | Description |
-|---|---|
-| `stats` | Display message counts, base sizes, and metadata for one or all areas |
-| `pack` | Defragment a base — physically removes deleted messages and compacts storage |
-| `purge` | Delete messages exceeding per-area `max_messages` or `max_age` limits |
-| `fix` | Verify base integrity; use `--repair` to automatically fix corrupt headers |
-| `link` | Build reply-thread chains (`ReplyTo` / `Reply1st` / `ReplyNext` JAM fields) |
-| `lastread` | Show or reset per-user lastread pointers |
+| Command    | Description                                                                  |
+| ---------- | ---------------------------------------------------------------------------- |
+| `stats`    | Display message counts, base sizes, and metadata for one or all areas        |
+| `pack`     | Defragment a base — physically removes deleted messages and compacts storage |
+| `purge`    | Delete messages exceeding per-area `max_messages` or `max_age` limits        |
+| `fix`      | Verify base integrity; use `--repair` to automatically fix corrupt headers   |
+| `link`     | Build reply-thread chains (`ReplyTo` / `Reply1st` / `ReplyNext` JAM fields)  |
+| `lastread` | Show or reset per-user lastread pointers                                     |
 
 ### FTN Echomail Commands
 
-| Command | Description |
-|---|---|
-| `toss` | Unpack inbound ZIP bundles and toss `.pkt` files into JAM message bases |
-| `scan` | Scan JAM bases for new outbound echomail and create staging `.pkt` files |
+| Command    | Description                                                                |
+| ---------- | -------------------------------------------------------------------------- |
+| `toss`     | Unpack inbound ZIP bundles and toss `.pkt` files into JAM message bases    |
+| `scan`     | Scan JAM bases for new outbound echomail and create staging `.pkt` files   |
 | `ftn-pack` | Pack staged `.pkt` files into ZIP bundles for binkd; writes BSO flow files |
 
 ## Global Options
@@ -66,26 +66,26 @@
 
 FTN behaviour is controlled by `configs/ftn.json`. Key per-network fields:
 
-| Field | Description |
-|---|---|
-| `own_address` | This node's FTN address (zone:net/node.point) |
-| `inbound_path` | Directory binkd delivers inbound bundles to |
-| `secure_inbound_path` | Directory for password-authenticated sessions |
-| `outbound_path` | Staging directory for outbound `.pkt` files (`scan` output) |
-| `binkd_outbound_path` | binkd BSO outbound directory (`ftn-pack` output) |
-| `temp_path` | Temporary directory for bundle extraction |
-| `netmail_area_tag` | JAM area tag for inbound netmail (e.g. `"NETMAIL"`) |
-| `bad_area_tag` | JAM area tag for messages with unknown echo tags (e.g. `"BAD"`) |
-| `dupe_area_tag` | JAM area tag for duplicate MSGIDs (e.g. `"DUPE"`) |
+| Field                 | Description                                                     |
+| --------------------- | --------------------------------------------------------------- |
+| `own_address`         | This node's FTN address (zone:net/node.point)                   |
+| `inbound_path`        | Directory binkd delivers inbound bundles to                     |
+| `secure_inbound_path` | Directory for password-authenticated sessions                   |
+| `outbound_path`       | Staging directory for outbound `.pkt` files (`scan` output)     |
+| `binkd_outbound_path` | binkd BSO outbound directory (`ftn-pack` output)                |
+| `temp_path`           | Temporary directory for bundle extraction                       |
+| `netmail_area_tag`    | JAM area tag for inbound netmail (e.g. `"NETMAIL"`)             |
+| `bad_area_tag`        | JAM area tag for messages with unknown echo tags (e.g. `"BAD"`) |
+| `dupe_area_tag`       | JAM area tag for duplicate MSGIDs (e.g. `"DUPE"`)               |
 
 Per-link fields:
 
-| Field | Description |
-|---|---|
-| `address` | Link's FTN address |
-| `password` | Session password (empty for no auth) |
-| `flavour` | Delivery mode: `Normal` (default), `Crash`, `Hold`, `Direct` |
-| `echo_areas` | List of echo area tags this link exchanges |
+| Field        | Description                                                  |
+| ------------ | ------------------------------------------------------------ |
+| `address`    | Link's FTN address                                           |
+| `password`   | Session password (empty for no auth)                         |
+| `flavour`    | Delivery mode: `Normal` (default), `Crash`, `Hold`, `Direct` |
+| `echo_areas` | List of echo area tags this link exchanges                   |
 
 ## How Echomail Flow Works
 
@@ -102,7 +102,7 @@ Outbound:
 1. binkd receives a bundle from your hub and places it in `inbound_path`
 2. `v3mail toss` extracts the bundle, parses each `.pkt`, and writes messages into the correct JAM bases; updates SEEN-BY and PATH; detects duplicates via `data/ftn/dupes.json`
 3. Users read and reply to messages in Vision/3
-4. `v3mail scan` reads new messages from JAM bases (using a persistent high-water mark in `data/ftn/export_hwm.json`) and creates outbound `.pkt` files in `outbound_path`
+4. `v3mail scan` reads new messages from JAM bases (using a per-base high-water mark stored in each area's `.jlr` file under the `v3mail` scanner user) and creates outbound `.pkt` files in `outbound_path`
 5. `v3mail ftn-pack` bundles the `.pkt` files into BSO ZIP archives in `binkd_outbound_path`; if link `flavour` is `Crash`, a `.clo` flow file is written to trigger an immediate binkd call
 6. binkd transmits the bundle to the hub
 
@@ -110,11 +110,11 @@ Outbound:
 
 The recommended nightly sequence (configured via the event scheduler):
 
-| Time | Command | Purpose |
-|---|---|---|
-| 02:00 | `v3mail fix --repair --all` | Check and repair JAM base integrity |
-| 02:15 | `v3mail purge --all` | Remove messages past age/count limits |
-| 02:30 | `v3mail pack --all` | Defragment and compact all bases |
+| Time  | Command                     | Purpose                               |
+| ----- | --------------------------- | ------------------------------------- |
+| 02:00 | `v3mail fix --repair --all` | Check and repair JAM base integrity   |
+| 02:15 | `v3mail purge --all`        | Remove messages past age/count limits |
+| 02:30 | `v3mail pack --all`         | Defragment and compact all bases      |
 
 ## Event Scheduler Integration
 

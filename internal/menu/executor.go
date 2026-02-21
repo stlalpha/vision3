@@ -9933,18 +9933,11 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	now := time.Now()
 	visibleCount := 0
 	for _, sess := range sessions {
-		// Skip invisible sessions for non-CoSysOp viewers
-		if sess.Invisible && !e.isCoSysOpOrAbove(currentUser) {
-			continue
-		}
-		visibleCount++
-		line := processedMid
-
-		nodeStr := strconv.Itoa(sess.NodeID)
-		line = replaceWhoOnlineToken(line, "ND", nodeStr)
-
-		// Read session fields under RLock to avoid racing with main loop writes
+		// Read all volatile session fields under a single lock to prevent data races.
 		sess.Mutex.RLock()
+		sessInvisible := sess.Invisible
+		sessNodeID := sess.NodeID
+		sessStartTime := sess.StartTime
 		userName := "Logging In..."
 		userLevel := 0
 		groupLocation := ""
@@ -9960,6 +9953,15 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		lastActivity := sess.LastActivity
 		sess.Mutex.RUnlock()
 
+		// Skip invisible sessions for non-CoSysOp viewers
+		if sessInvisible && !e.isCoSysOpOrAbove(currentUser) {
+			continue
+		}
+		visibleCount++
+		line := processedMid
+
+		nodeStr := strconv.Itoa(sessNodeID)
+		line = replaceWhoOnlineToken(line, "ND", nodeStr)
 		line = replaceWhoOnlineToken(line, "UN", userName)
 
 		// Level and Group/Location tokens
@@ -9974,7 +9976,7 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		}
 		line = replaceWhoOnlineToken(line, "LO", activity)
 
-		safeStart := sess.StartTime
+		safeStart := sessStartTime
 		if safeStart.IsZero() {
 			safeStart = now
 		}

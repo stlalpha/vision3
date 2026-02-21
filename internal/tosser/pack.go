@@ -46,40 +46,70 @@ func (t *Tosser) PackOutbound() PackResult {
 		return result
 	}
 
-	var pktFiles []string
+	// Read each .PKT header to determine its destination, then group by link.
+	// linkPkts maps link address -> list of .pkt file paths destined for that link.
+	linkPkts := make(map[string][]string)
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		if strings.ToLower(filepath.Ext(entry.Name())) == ".pkt" {
-			pktFiles = append(pktFiles, filepath.Join(stagingDir, entry.Name()))
+		if strings.ToLower(filepath.Ext(entry.Name())) != ".pkt" {
+			continue
+		}
+		pktPath := filepath.Join(stagingDir, entry.Name())
+
+		hdr, err := ftn.ReadPacketHeaderFromFile(pktPath)
+		if err != nil {
+			result.Errors = append(result.Errors, fmt.Sprintf("read pkt header %s: %v", entry.Name(), err))
+			continue
+		}
+
+		// Match the packet's destination to a configured link by net:node.
+		matched := false
+		for _, link := range t.config.Links {
+			destAddr, err := jam.ParseAddress(link.Address)
+			if err != nil {
+				continue
+			}
+			if uint16(destAddr.Net) == hdr.DestNet && uint16(destAddr.Node) == hdr.DestNode {
+				linkPkts[link.Address] = append(linkPkts[link.Address], pktPath)
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			result.Errors = append(result.Errors, fmt.Sprintf(
+				"pkt %s: no link found for dest %d/%d", entry.Name(), hdr.DestNet, hdr.DestNode))
 		}
 	}
 
-	if len(pktFiles) == 0 {
-		return result // Nothing to pack
+	if len(linkPkts) == 0 {
+		return result
 	}
 
-	// Group .PKT files by destination link (one bundle per link)
-	// Each .PKT file is addressed to a specific link — read the packet header
-	// to determine the destination. For simplicity in this implementation,
-	// we create one bundle per link configuration and include all staged packets.
-	// A more sophisticated implementation would parse each packet header.
+	// bundledPkts tracks which .pkt files were successfully packed so we only
+	// remove those — leaving any pkt that failed bundling for retry next run.
+	bundledPkts := make(map[string]bool)
+
+	dayIdx := int(time.Now().Weekday()+6) % 7 // Monday=0 ... Sunday=6
+
 	for _, link := range t.config.Links {
+		pkts := linkPkts[link.Address]
+		if len(pkts) == 0 {
+			continue
+		}
+
 		destAddr, err := jam.ParseAddress(link.Address)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("parse link address %q: %v", link.Address, err))
 			continue
 		}
 
-		dayIdx := int(time.Now().Weekday()+6) % 7 // Monday=0 ... Sunday=6
 		bundleName := ftn.BundleFileName(uint16(destAddr.Net), uint16(destAddr.Node), dayIdx)
 		bundlePath := filepath.Join(binkdDir, bundleName)
-
-		// If a bundle for today already exists, find a non-colliding name
 		bundlePath = resolveUniqueBundlePath(bundlePath)
 
-		count, err := ftn.CreateBundle(bundlePath, pktFiles)
+		count, err := ftn.CreateBundle(bundlePath, pkts)
 		if err != nil {
 			result.Errors = append(result.Errors, fmt.Sprintf("create bundle for %s: %v", link.Address, err))
 			continue
@@ -93,18 +123,21 @@ func (t *Tosser) PackOutbound() PackResult {
 		result.BundlesCreated++
 		result.PacketsPacked += count
 
+		// Mark these pkts as successfully bundled.
+		for _, p := range pkts {
+			bundledPkts[p] = true
+		}
+
 		// Create BSO flow file (.clo/.hlo) for crash/hold delivery.
 		if err := writeFlowFile(binkdDir, destAddr, link.Flavour, bundlePath); err != nil {
 			log.Printf("WARN: Pack: failed to write flow file for %s: %v", link.Address, err)
 		}
 	}
 
-	// Remove staged .PKT files after successful bundling
-	if result.BundlesCreated > 0 {
-		for _, pkt := range pktFiles {
-			if err := os.Remove(pkt); err != nil {
-				log.Printf("WARN: Pack: failed to remove staged pkt %s: %v", pkt, err)
-			}
+	// Remove only the .pkt files that were successfully bundled.
+	for pktPath := range bundledPkts {
+		if err := os.Remove(pktPath); err != nil {
+			log.Printf("WARN: Pack: failed to remove staged pkt %s: %v", pktPath, err)
 		}
 	}
 

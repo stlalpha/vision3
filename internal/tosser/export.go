@@ -13,6 +13,21 @@ import (
 	"github.com/stlalpha/vision3/internal/message"
 )
 
+// getBaseHWM reads the export high-water mark from a JAM base's .jlr file.
+// Returns 0 if no mark has been recorded yet.
+func getBaseHWM(base *jam.Base) int {
+	lr, err := base.GetLastRead(ScannerUser)
+	if err != nil {
+		return 0
+	}
+	return int(lr.LastReadMsg)
+}
+
+// setBaseHWM writes the export high-water mark into a JAM base's .jlr file.
+func setBaseHWM(base *jam.Base, msgNum int) error {
+	return base.SetLastRead(ScannerUser, uint32(msgNum), uint32(msgNum))
+}
+
 // ScanAndExport finds unsent echomail messages (DateProcessed=0) and
 // creates outbound .PKT files grouped by destination link.
 func (t *Tosser) ScanAndExport() TossResult {
@@ -22,6 +37,15 @@ func (t *Tosser) ScanAndExport() TossResult {
 
 	// Collect messages to export, grouped by link address
 	linkMsgs := make(map[string][]pendingMsg) // link address -> messages
+
+	// Track open bases explicitly; they must stay open through the update phase
+	// since pending messages hold references to their base for DateProcessed updates.
+	var openBases []*jam.Base
+	defer func() {
+		for _, b := range openBases {
+			b.Close()
+		}
+	}()
 
 	for _, area := range areas {
 		if area.AreaType != "echomail" && area.AreaType != "echo" {
@@ -38,11 +62,7 @@ func (t *Tosser) ScanAndExport() TossResult {
 			log.Printf("WARN: Export: cannot get base for area %d (%s): %v", area.ID, area.Tag, err)
 			continue
 		}
-		// TODO: Consider refactoring to close bases earlier for systems with many areas.
-		// Current defer keeps all bases open until ScanAndExport returns. For large area
-		// counts or long export runs, could close after processing each area or batch
-		// DateProcessed updates to reduce open file descriptors.
-		defer base.Close()
+		openBases = append(openBases, base)
 
 		count, err := base.GetMessageCount()
 		if err != nil {
@@ -50,8 +70,8 @@ func (t *Tosser) ScanAndExport() TossResult {
 			continue
 		}
 
-		// Start scanning from high-water mark to avoid re-scanning exported messages
-		startMsg := t.hwm.Get(t.networkName, area.ID) + 1
+		// Start scanning from high-water mark stored in the base's .jlr file
+		startMsg := getBaseHWM(base) + 1
 		if startMsg < 1 {
 			startMsg = 1
 		}
@@ -62,12 +82,13 @@ func (t *Tosser) ScanAndExport() TossResult {
 				continue
 			}
 
-			// Skip already-processed messages
+			// Skip already-processed messages and advance HWM past them
 			if hdr.DateProcessed != 0 {
-				// Advance high-water mark past consecutive processed messages
-				cur := t.hwm.Get(t.networkName, area.ID)
+				cur := getBaseHWM(base)
 				if msgNum == cur+1 {
-					t.hwm.Set(t.networkName, area.ID, msgNum)
+					if err := setBaseHWM(base, msgNum); err != nil {
+						log.Printf("WARN: Export: failed to advance HWM for area %d: %v", area.ID, err)
+					}
 				}
 				continue
 			}
@@ -123,18 +144,16 @@ func (t *Tosser) ScanAndExport() TossResult {
 				log.Printf("WARN: Export: failed to update DateProcessed for msg %d: %v",
 					pm.msgNum, err)
 			}
-			// Advance HWM so the next scan skips this message
-			if pm.msgNum > t.hwm.Get(t.networkName, pm.area.ID) {
-				t.hwm.Set(t.networkName, pm.area.ID, pm.msgNum)
+			// Advance HWM in the base's .jlr so the next scan skips this message
+			if pm.msgNum > getBaseHWM(pm.base) {
+				if err := setBaseHWM(pm.base, pm.msgNum); err != nil {
+					log.Printf("WARN: Export: failed to update HWM for area %d msg %d: %v",
+						pm.area.ID, pm.msgNum, err)
+				}
 			}
 		}
 
 		result.MessagesExported += exported
-	}
-
-	// Persist high-water marks after a successful export cycle
-	if err := t.hwm.Save(); err != nil {
-		result.Errors = append(result.Errors, fmt.Sprintf("save hwm: %v", err))
 	}
 
 	return result

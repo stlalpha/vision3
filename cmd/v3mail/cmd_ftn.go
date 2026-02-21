@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/message"
@@ -19,7 +20,7 @@ func cmdToss(args []string) {
 	quiet := fs.Bool("q", false, "Quiet mode")
 	fs.Parse(args)
 
-	ftnCfg, msgMgr, hwm, dupeDB, err := loadFTNDeps(*configDir, *dataDir)
+	ftnCfg, msgMgr, dupeDB, err := loadFTNDeps(*configDir, *dataDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -36,7 +37,7 @@ func cmdToss(args []string) {
 			continue
 		}
 
-		t, err := tosser.New(name, netCfg, dupeDB, hwm, msgMgr)
+		t, err := tosser.New(name, netCfg, dupeDB, msgMgr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating tosser for %s: %v\n", name, err)
 			hadErrors = true
@@ -81,7 +82,7 @@ func cmdScan(args []string) {
 	quiet := fs.Bool("q", false, "Quiet mode")
 	fs.Parse(args)
 
-	ftnCfg, msgMgr, hwm, dupeDB, err := loadFTNDeps(*configDir, *dataDir)
+	ftnCfg, msgMgr, dupeDB, err := loadFTNDeps(*configDir, *dataDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -98,7 +99,7 @@ func cmdScan(args []string) {
 			continue
 		}
 
-		t, err := tosser.New(name, netCfg, dupeDB, hwm, msgMgr)
+		t, err := tosser.New(name, netCfg, dupeDB, msgMgr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating tosser for %s: %v\n", name, err)
 			hadErrors = true
@@ -140,7 +141,7 @@ func cmdFtnPack(args []string) {
 	quiet := fs.Bool("q", false, "Quiet mode")
 	fs.Parse(args)
 
-	ftnCfg, msgMgr, hwm, dupeDB, err := loadFTNDeps(*configDir, *dataDir)
+	ftnCfg, msgMgr, dupeDB, err := loadFTNDeps(*configDir, *dataDir)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -157,7 +158,7 @@ func cmdFtnPack(args []string) {
 			continue
 		}
 
-		t, err := tosser.New(name, netCfg, dupeDB, hwm, msgMgr)
+		t, err := tosser.New(name, netCfg, dupeDB, msgMgr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating tosser for %s: %v\n", name, err)
 			hadErrors = true
@@ -192,10 +193,10 @@ func cmdFtnPack(args []string) {
 }
 
 // loadFTNDeps loads all shared dependencies needed by toss/scan/ftn-pack commands.
-func loadFTNDeps(configDir, dataDir string) (config.FTNConfig, *message.MessageManager, *tosser.HighWaterMark, *tosser.DupeDB, error) {
+func loadFTNDeps(configDir, dataDir string) (config.FTNConfig, *message.MessageManager, *tosser.DupeDB, error) {
 	ftnCfg, err := config.LoadFTNConfig(configDir)
 	if err != nil {
-		return config.FTNConfig{}, nil, nil, nil, fmt.Errorf("load ftn config: %w", err)
+		return config.FTNConfig{}, nil, nil, fmt.Errorf("load ftn config: %w", err)
 	}
 
 	// Build tearlines map for MessageManager
@@ -213,25 +214,18 @@ func loadFTNDeps(configDir, dataDir string) (config.FTNConfig, *message.MessageM
 
 	msgMgr, err := message.NewMessageManager(dataDir, configDir, boardName, tearlines)
 	if err != nil {
-		return config.FTNConfig{}, nil, nil, nil, fmt.Errorf("init message manager: %w", err)
-	}
-
-	// Load or create persistent high-water mark
-	hwmFilePath := tosser.HWMPath(dataDir)
-	hwm, err := tosser.LoadHighWaterMark(hwmFilePath)
-	if err != nil {
-		return config.FTNConfig{}, nil, nil, nil, fmt.Errorf("load hwm: %w", err)
+		return config.FTNConfig{}, nil, nil, fmt.Errorf("init message manager: %w", err)
 	}
 
 	// Load or create dupe database
 	dupeDBPath := ftnCfg.DupeDBPath
 	if dupeDBPath == "" {
-		dupeDBPath = dataDir + "/ftn/dupes.json"
+		dupeDBPath = filepath.Join(dataDir, "ftn", "dupes.json")
 	}
 	dupeDB, err := tosser.NewDupeDBFromPath(dupeDBPath)
 	if err != nil {
-		return config.FTNConfig{}, nil, nil, nil, fmt.Errorf("load dupe db: %w", err)
+		return config.FTNConfig{}, nil, nil, fmt.Errorf("load dupe db: %w", err)
 	}
 
-	return ftnCfg, msgMgr, hwm, dupeDB, nil
+	return ftnCfg, msgMgr, dupeDB, nil
 }

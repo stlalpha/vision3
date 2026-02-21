@@ -83,7 +83,9 @@ func runChat(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManage
 	// Check if user is invisible (suppress join/leave announcements)
 	invisible := false
 	if sess := e.SessionRegistry.Get(nodeNumber); sess != nil {
+		sess.Mutex.RLock()
 		invisible = sess.Invisible
+		sess.Mutex.RUnlock()
 	}
 
 	// Subscribe to room

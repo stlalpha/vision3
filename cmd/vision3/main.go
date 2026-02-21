@@ -793,8 +793,8 @@ func sessionHandler(s ssh.Session) {
 	log.Printf("Node %d: Command: %v", nodeID, s.Command())
 
 	// Capture start time and declare authenticatedUser *before* the defer
-	capturedStartTime := time.Now()        // Capture start time close to session start
-	var authenticatedUser *user.User = nil       // Declare here so the closure can capture it
+	capturedStartTime := time.Now()          // Capture start time close to session start
+	var authenticatedUser *user.User = nil   // Declare here so the closure can capture it
 	var bbsSession *session.BbsSession = nil // Declare here so the deferred disconnect can read Invisible flag
 
 	// Defer removal from active sessions map and logging disconnection
@@ -1629,7 +1629,7 @@ func main() {
 	}
 
 	if ftnErr == nil && len(ftnConfig.Networks) > 0 {
-		log.Printf("INFO: Internal FTN tosser disabled; use external tosser (e.g., hpt).")
+		log.Printf("INFO: Internal FTN tosser disabled; use v3mail for toss/scan.")
 	}
 
 	// Load event scheduler configuration

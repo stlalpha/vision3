@@ -110,6 +110,8 @@ func extractZipFile(zf *zip.File, destPath string) error {
 
 // CreateBundle creates a ZIP bundle archive at bundlePath containing the .PKT
 // files listed in pktPaths. Returns the number of files bundled.
+// It writes to a temporary file and renames on success so a partial bundle
+// is never left at bundlePath if an error occurs.
 func CreateBundle(bundlePath string, pktPaths []string) (int, error) {
 	if len(pktPaths) == 0 {
 		return 0, nil
@@ -119,21 +121,36 @@ func CreateBundle(bundlePath string, pktPaths []string) (int, error) {
 		return 0, fmt.Errorf("create bundle dir: %w", err)
 	}
 
-	f, err := os.Create(bundlePath)
+	tmpPath := bundlePath + ".tmp"
+	f, err := os.Create(tmpPath)
 	if err != nil {
 		return 0, fmt.Errorf("create bundle file: %w", err)
 	}
-	defer f.Close()
 
 	zw := zip.NewWriter(f)
-	defer zw.Close()
-
 	count := 0
 	for _, pktPath := range pktPaths {
 		if err := addFileToZip(zw, pktPath); err != nil {
+			zw.Close()
+			f.Close()
+			os.Remove(tmpPath)
 			return count, fmt.Errorf("add %s to bundle: %w", filepath.Base(pktPath), err)
 		}
 		count++
+	}
+
+	if err := zw.Close(); err != nil {
+		f.Close()
+		os.Remove(tmpPath)
+		return count, fmt.Errorf("close zip writer: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tmpPath)
+		return count, fmt.Errorf("close bundle file: %w", err)
+	}
+	if err := os.Rename(tmpPath, bundlePath); err != nil {
+		os.Remove(tmpPath)
+		return 0, fmt.Errorf("rename bundle: %w", err)
 	}
 	return count, nil
 }

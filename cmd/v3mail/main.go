@@ -701,7 +701,7 @@ func linkBase(b *jam.Base, quiet bool, tag string) (int, error) {
 		headers = append(headers, hdrInfo{hdr: hdr, msgNum: n, msgID: msgID, replyID: replyID})
 		if msgID != "" {
 			msgIDToNum[msgID] = n
-			// FTN MSGIDs are "address serial" — HPT often stores REPLY
+			// FTN MSGIDs are "address serial" — some tossers store REPLY
 			// kludges without the serial suffix.  Index the address part
 			// too so prefix-based lookups succeed.
 			if idx := strings.LastIndex(msgID, " "); idx > 0 {
@@ -742,7 +742,7 @@ func linkBase(b *jam.Base, quiet bool, tag string) (int, error) {
 
 		// Reply1st: if this message has a MSGID with replies, point to the first reply.
 		// Check both the full MSGID and the address-only prefix (without serial)
-		// since HPT may store REPLY kludges without the serial suffix.
+		// since some tossers may store REPLY kludges without the serial suffix.
 		if h.msgID != "" {
 			replies := replyIDToNums[h.msgID]
 			if len(replies) == 0 {

@@ -35,6 +35,11 @@ type TossResult struct {
 	Errors           []string
 }
 
+// ScannerUser is the synthetic username stored in each JAM base's .jlr file
+// to track the export high-water mark. This follows the traditional FTN convention
+// of keeping per-base scanner positions in the lastread file.
+const ScannerUser = "v3mail"
+
 // Tosser handles importing and exporting FTN echomail packets for a single network.
 type Tosser struct {
 	networkName string
@@ -42,12 +47,10 @@ type Tosser struct {
 	msgMgr      *message.MessageManager
 	dupeDB      *DupeDB
 	ownAddr     *jam.FidoAddress
-	hwm         *HighWaterMark // persistent export position tracking
 }
 
 // New creates a new Tosser instance for a single FTN network.
-// The dupeDB and hwm are shared across networks.
-func New(networkName string, cfg networkConfig, dupeDB *DupeDB, hwm *HighWaterMark, msgMgr *message.MessageManager) (*Tosser, error) {
+func New(networkName string, cfg networkConfig, dupeDB *DupeDB, msgMgr *message.MessageManager) (*Tosser, error) {
 	addr, err := jam.ParseAddress(cfg.OwnAddress)
 	if err != nil {
 		return nil, fmt.Errorf("tosser[%s]: invalid own_address %q: %w", networkName, cfg.OwnAddress, err)
@@ -59,7 +62,6 @@ func New(networkName string, cfg networkConfig, dupeDB *DupeDB, hwm *HighWaterMa
 		msgMgr:      msgMgr,
 		dupeDB:      dupeDB,
 		ownAddr:     addr,
-		hwm:         hwm,
 	}, nil
 }
 
@@ -385,6 +387,30 @@ func (t *Tosser) writeMsgToArea(areaTag string, msg *ftn.PackedMessage, pktHdr *
 		origZone = uint16(t.ownAddr.Zone)
 	}
 	jamMsg.OrigAddr = fmt.Sprintf("%d:%d/%d", origZone, msg.OrigNet, msg.OrigNode)
+
+	// Preserve kludges (excluding MSGID/REPLY which are handled separately)
+	for _, k := range parsed.Kludges {
+		if strings.HasPrefix(k, "MSGID: ") || strings.HasPrefix(k, "REPLY: ") {
+			continue
+		}
+		jamMsg.Kludges = append(jamMsg.Kludges, k)
+	}
+
+	// Extract REPLY kludge
+	for _, k := range parsed.Kludges {
+		if strings.HasPrefix(k, "REPLY: ") {
+			jamMsg.ReplyID = strings.TrimPrefix(k, "REPLY: ")
+			break
+		}
+	}
+
+	// Preserve SEEN-BY and PATH
+	if len(parsed.SeenBy) > 0 {
+		jamMsg.SeenBy = strings.Join(parsed.SeenBy, " ")
+	}
+	if len(parsed.Path) > 0 {
+		jamMsg.Path = strings.Join(parsed.Path, " ")
+	}
 
 	msgType := jam.DetermineMessageType(area.AreaType, area.EchoTag)
 	_, err = base.WriteMessageExt(jamMsg, msgType, area.EchoTag, "", "")

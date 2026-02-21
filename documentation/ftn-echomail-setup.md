@@ -68,13 +68,12 @@ vision3/
 │   │   ├── temp_out/       # Staged outbound .pkt files (v3mail scan output)
 │   │   ├── out/            # Outbound bundles (binkd picks up here)
 │   │   ├── logs/           # binkd log files
-│   │   ├── export_hwm.json # High-water mark for scan (tracks last exported msg)
 │   │   └── dupes.json      # Dupe detection database
 │   └── msgbases/
 │       ├── fsx_gen.jhr    # JAM message base files (one set per area)
 │       ├── fsx_gen.jdt
 │       ├── fsx_gen.jdx
-│       ├── fsx_gen.jlr
+│       ├── fsx_gen.jlr    # Per-user lastread + v3mail export high-water mark
 │       └── ...
 └── helper                 # Setup utility
 ```
@@ -295,12 +294,12 @@ All paths are relative to the Vision/3 installation root (where you run the BBS 
 
 Check that all paths are consistent across your config files:
 
-| What           | binkd.conf    | ftn.json                    |
-| -------------- | ------------- | --------------------------- |
-| Secure inbound | `inbound`     | `secure_inbound_path`       |
-| Outbound       | `domain` path | `binkd_outbound_path`       |
-| Hub password   | `node` line   | `links[].password`          |
-| Your address   | `address`     | `own_address`               |
+| What           | binkd.conf    | ftn.json              |
+| -------------- | ------------- | --------------------- |
+| Secure inbound | `inbound`     | `secure_inbound_path` |
+| Outbound       | `domain` path | `binkd_outbound_path` |
+| Hub password   | `node` line   | `links[].password`    |
+| Your address   | `address`     | `own_address`         |
 
 ### Step 7: Initialize Message Bases
 
@@ -395,21 +394,21 @@ read by `v3mail toss`, `v3mail scan`, and `v3mail ftn-pack`.
 
 **Fields:**
 
-| Field | Description |
-|-------|-------------|
-| `dupe_db_path` | Path to the dupe detection database (relative to BBS root) |
-| `networks.<key>.internal_tosser_enabled` | Set `true` to enable `v3mail` for this network |
-| `networks.<key>.own_address` | Your FTN address (e.g., `21:4/158.1`) |
-| `networks.<key>.inbound_path` | Unsecured inbound directory |
-| `networks.<key>.secure_inbound_path` | Secure inbound (where binkd deposits received mail) |
-| `networks.<key>.outbound_path` | Staging dir for outbound `.pkt` files (`v3mail scan` output) |
-| `networks.<key>.binkd_outbound_path` | Outbound bundles dir (binkd picks up from here) |
-| `networks.<key>.temp_path` | Temp dir for bundle extraction during toss |
-| `networks.<key>.tearline` | Optional tearline suffix (empty = use default) |
-| `networks.<key>.links[].address` | Hub FTN address |
-| `networks.<key>.links[].password` | Packet password shared with hub |
-| `networks.<key>.links[].name` | Human-readable hub label |
-| `networks.<key>.links[].echo_areas` | Echo tags carried by this link |
+| Field                                    | Description                                                  |
+| ---------------------------------------- | ------------------------------------------------------------ |
+| `dupe_db_path`                           | Path to the dupe detection database (relative to BBS root)   |
+| `networks.<key>.internal_tosser_enabled` | Set `true` to enable `v3mail` for this network               |
+| `networks.<key>.own_address`             | Your FTN address (e.g., `21:4/158.1`)                        |
+| `networks.<key>.inbound_path`            | Unsecured inbound directory                                  |
+| `networks.<key>.secure_inbound_path`     | Secure inbound (where binkd deposits received mail)          |
+| `networks.<key>.outbound_path`           | Staging dir for outbound `.pkt` files (`v3mail scan` output) |
+| `networks.<key>.binkd_outbound_path`     | Outbound bundles dir (binkd picks up from here)              |
+| `networks.<key>.temp_path`               | Temp dir for bundle extraction during toss                   |
+| `networks.<key>.tearline`                | Optional tearline suffix (empty = use default)               |
+| `networks.<key>.links[].address`         | Hub FTN address                                              |
+| `networks.<key>.links[].password`        | Packet password shared with hub                              |
+| `networks.<key>.links[].name`            | Human-readable hub label                                     |
+| `networks.<key>.links[].echo_areas`      | Echo tags carried by this link                               |
 
 **Example:**
 
