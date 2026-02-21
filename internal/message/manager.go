@@ -611,7 +611,7 @@ func (mm *MessageManager) GetNextUnreadMessage(areaID int, username string) (int
 
 // DeleteMessage marks a message as deleted in the JAM base.
 // The message is flagged MsgDeleted; call PackAndLinkArea afterward to
-// physically remove and re-link, or run jamutil pack + link later.
+// physically remove and re-link, or run v3mail pack + link later.
 func (mm *MessageManager) DeleteMessage(areaID, msgNum int) error {
 	b, _, err := mm.openBase(areaID)
 	if err != nil {

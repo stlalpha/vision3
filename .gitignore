@@ -41,7 +41,7 @@ go.work.sum
 /vision3
 /cmd/vision3/vision3
 /cmd/ansitest/ansitest
-/jamutil
+/v3mail
 /helper
 tmp/
 /tmp/*

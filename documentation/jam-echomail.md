@@ -53,7 +53,7 @@ Implementation: `internal/jam/msgid.go`.
 
 ## Reading Messages
 
-Incoming echomail tossed by `jamutil toss` is read from JAM and displayed by the message reader. If an origin address is missing from subfields, Vision3 attempts to extract it from the origin line in the text.
+Incoming echomail tossed by `v3mail toss` is read from JAM and displayed by the message reader. If an origin address is missing from subfields, Vision3 attempts to extract it from the origin line in the text.
 
 Implementation: `internal/jam/message.go`.
 

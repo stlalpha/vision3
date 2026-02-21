@@ -1,5 +1,5 @@
 {
-    "_comment": "FTN (FidoNet Technology Network) echomail configuration. Used by the internal tosser (jamutil toss/scan/ftn-pack). Run 'helper ftnsetup' to populate this from a FIDONET.NA file.",
+    "_comment": "FTN (FidoNet Technology Network) echomail configuration. Used by the internal tosser (v3mail toss/scan/ftn-pack). Run 'helper ftnsetup' to populate this from a FIDONET.NA file.",
     "dupe_db_path": "data/ftn/dupes.json",
     "networks": {
         "fsxnet": {

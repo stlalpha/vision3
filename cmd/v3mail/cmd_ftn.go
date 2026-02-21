@@ -10,7 +10,7 @@ import (
 	"github.com/stlalpha/vision3/internal/tosser"
 )
 
-// cmdToss implements 'jamutil toss': unpack FTN bundles and toss .PKT files into JAM bases.
+// cmdToss implements 'v3mail toss': unpack FTN bundles and toss .PKT files into JAM bases.
 func cmdToss(args []string) {
 	fs := flag.NewFlagSet("toss", flag.ExitOnError)
 	configDir := fs.String("config", "configs", "Config directory")
@@ -72,7 +72,7 @@ func cmdToss(args []string) {
 	}
 }
 
-// cmdScan implements 'jamutil scan': scan JAM bases for unsent echomail and create outbound .PKT files.
+// cmdScan implements 'v3mail scan': scan JAM bases for unsent echomail and create outbound .PKT files.
 func cmdScan(args []string) {
 	fs := flag.NewFlagSet("scan", flag.ExitOnError)
 	configDir := fs.String("config", "configs", "Config directory")
@@ -131,7 +131,7 @@ func cmdScan(args []string) {
 	}
 }
 
-// cmdFtnPack implements 'jamutil ftn-pack': create ZIP bundles from staged .PKT files for binkd.
+// cmdFtnPack implements 'v3mail ftn-pack': create ZIP bundles from staged .PKT files for binkd.
 func cmdFtnPack(args []string) {
 	fs := flag.NewFlagSet("ftn-pack", flag.ExitOnError)
 	configDir := fs.String("config", "configs", "Config directory")

@@ -16,7 +16,7 @@ type hwmFile struct {
 
 // HighWaterMark manages per-area export position persistence.
 // It tracks the highest message number already exported per area per network,
-// so that jamutil scan can resume from where it left off rather than re-scanning
+// so that v3mail scan can resume from where it left off rather than re-scanning
 // from message 1 on every invocation.
 type HighWaterMark struct {
 	mu       sync.Mutex

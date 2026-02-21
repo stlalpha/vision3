@@ -166,9 +166,9 @@ Before adding to scheduler, test commands manually:
 ```bash
 cd /home/bbs/git/vision3
 /usr/local/bin/binkd -p -D data/ftn/binkd.conf
-go run cmd/jamutil toss --config configs --data data
-go run cmd/jamutil scan --config configs --data data
-go run cmd/jamutil ftn-pack --config configs --data data
+go run cmd/v3mail toss --config configs --data data
+go run cmd/v3mail scan --config configs --data data
+go run cmd/v3mail ftn-pack --config configs --data data
 ```
 
 ## Common Use Cases
@@ -205,17 +205,17 @@ go run cmd/jamutil ftn-pack --config configs --data data
 }
 ```
 
-### Echomail Tossing (jamutil)
+### Echomail Tossing (v3mail)
 
 **Toss inbound echomail every hour:**
 
 ```json
 {
-  "id": "jamutil_toss",
+  "id": "v3mail_toss",
   "name": "Toss Echomail",
   "schedule": "@hourly",
   "command": "/usr/bin/go",
-  "args": ["run", "{BBS_ROOT}/cmd/jamutil", "toss", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+  "args": ["run", "{BBS_ROOT}/cmd/v3mail", "toss", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
   "working_directory": "{BBS_ROOT}",
   "timeout_seconds": 600,
   "enabled": true
@@ -226,11 +226,11 @@ go run cmd/jamutil ftn-pack --config configs --data data
 
 ```json
 {
-  "id": "jamutil_scan",
+  "id": "v3mail_scan",
   "name": "Scan Outbound Echomail",
   "schedule": "*/5 * * * *",
   "command": "/usr/bin/go",
-  "args": ["run", "{BBS_ROOT}/cmd/jamutil", "scan", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+  "args": ["run", "{BBS_ROOT}/cmd/v3mail", "scan", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
   "working_directory": "{BBS_ROOT}",
   "timeout_seconds": 300,
   "enabled": true
@@ -241,11 +241,11 @@ go run cmd/jamutil ftn-pack --config configs --data data
 
 ```json
 {
-  "id": "jamutil_ftn_pack",
+  "id": "v3mail_ftn_pack",
   "name": "Pack Outbound Bundles",
   "schedule": "2,7,12,17,22,27,32,37,42,47,52,57 * * * *",
   "command": "/usr/bin/go",
-  "args": ["run", "{BBS_ROOT}/cmd/jamutil", "ftn-pack", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+  "args": ["run", "{BBS_ROOT}/cmd/v3mail", "ftn-pack", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
   "working_directory": "{BBS_ROOT}",
   "timeout_seconds": 300,
   "enabled": true
@@ -269,31 +269,31 @@ Process mail in stages with timing offsets:
       "enabled": true
     },
     {
-      "id": "jamutil_toss",
+      "id": "v3mail_toss",
       "name": "Toss Mail After Poll",
       "schedule": "5,35 * * * *",
       "command": "/usr/bin/go",
-      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "toss", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "toss", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 600,
       "enabled": true
     },
     {
-      "id": "jamutil_scan",
+      "id": "v3mail_scan",
       "name": "Scan Outbound After Toss",
       "schedule": "7,37 * * * *",
       "command": "/usr/bin/go",
-      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "scan", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "scan", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 300,
       "enabled": true
     },
     {
-      "id": "jamutil_ftn_pack",
+      "id": "v3mail_ftn_pack",
       "name": "Pack Outbound Bundles",
       "schedule": "10,40 * * * *",
       "command": "/usr/bin/go",
-      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "ftn-pack", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "ftn-pack", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 300,
       "enabled": true
@@ -310,7 +310,7 @@ This creates a workflow:
 
 ### Nightly Message Base Maintenance
 
-ViSiON/3 uses `jamutil` for JAM message base maintenance. The recommended nightly sequence runs in three stages:
+ViSiON/3 uses `v3mail` for JAM message base maintenance. The recommended nightly sequence runs in three stages:
 
 | Time | Stage | Purpose |
 |------|-------|---------|
@@ -328,7 +328,7 @@ Purge limits (`max_age`, `max_messages`) are configured per area in `message_are
       "name": "Nightly Message Base Integrity Check",
       "schedule": "0 2 * * *",
       "command": "/usr/bin/go",
-      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "fix", "--repair", "--all"],
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "fix", "--repair", "--all"],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 3600,
       "enabled": true
@@ -339,7 +339,7 @@ Purge limits (`max_age`, `max_messages`) are configured per area in `message_are
       "schedule": "15 2 * * *",
       "comment": "Purge limits are read from max_msg_age/max_msgs in message_areas.json",
       "command": "/usr/bin/go",
-      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "purge", "--all"],
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "purge", "--all"],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 3600,
       "enabled": true
@@ -349,7 +349,7 @@ Purge limits (`max_age`, `max_messages`) are configured per area in `message_are
       "name": "Nightly Message Base Pack",
       "schedule": "30 2 * * *",
       "command": "/usr/bin/go",
-      "args": ["run", "{BBS_ROOT}/cmd/jamutil", "pack", "--all"],
+      "args": ["run", "{BBS_ROOT}/cmd/v3mail", "pack", "--all"],
       "working_directory": "{BBS_ROOT}",
       "timeout_seconds": 3600,
       "enabled": true
@@ -531,7 +531,7 @@ ERROR: Event 'binkd_poll' failed to start: fork/exec /usr/local/bin/binkd: no su
 ### Config File Not Found
 
 ```
-ERROR: Event 'jamutil_toss' stderr: cannot open config directory
+ERROR: Event 'v3mail_toss' stderr: cannot open config directory
 ```
 
 **Fix:**

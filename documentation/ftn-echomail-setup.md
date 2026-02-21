@@ -6,14 +6,14 @@ across one or more FTN networks.
 
 ## Overview
 
-Vision/3 uses **binkd** for FTN mail transport and the built-in **jamutil** commands
+Vision/3 uses **binkd** for FTN mail transport and the built-in **v3mail** commands
 for tossing, scanning, and packing:
 
 - **binkd** - FTN mailer (sends/receives packets over BinkP protocol)
   - GitHub: <https://github.com/pgul/binkd>
-- **jamutil toss** - Unpacks ZIP bundles and tosses `.pkt` files into JAM message bases
-- **jamutil scan** - Scans JAM bases for new outbound echomail and creates `.pkt` files
-- **jamutil ftn-pack** - Packs outbound `.pkt` files into ZIP bundles for binkd pickup
+- **v3mail toss** - Unpacks ZIP bundles and tosses `.pkt` files into JAM message bases
+- **v3mail scan** - Scans JAM bases for new outbound echomail and creates `.pkt` files
+- **v3mail ftn-pack** - Packs outbound `.pkt` files into ZIP bundles for binkd pickup
 
 Vision/3 itself manages the JAM message bases, presents messages to users, and
 handles new message creation. binkd handles the network transport.
@@ -21,18 +21,18 @@ handles new message creation. binkd handles the network transport.
 ### How It Works
 
 ```text
-Your Hub <--binkd--> secure_in/ --jamutil toss--> JAM bases <-- Vision/3 --> Users
+Your Hub <--binkd--> secure_in/ --v3mail toss--> JAM bases <-- Vision/3 --> Users
                                                        |
-                               jamutil scan+ftn-pack --> out/ --binkd--> Hub
+                               v3mail scan+ftn-pack --> out/ --binkd--> Hub
 ```
 
 1. **binkd** connects to your hub and receives ZIP bundles/`.pkt` files into a secure
    inbound directory
-2. **jamutil toss** unpacks bundles and tosses packets into JAM message bases
+2. **v3mail toss** unpacks bundles and tosses packets into JAM message bases
 3. Vision/3 reads the JAM bases and displays messages to your users
 4. When a user posts a reply, Vision/3 writes it to the JAM base
-5. **jamutil scan** creates outbound `.pkt` files from new JAM messages
-6. **jamutil ftn-pack** bundles the `.pkt` files into ZIP archives
+5. **v3mail scan** creates outbound `.pkt` files from new JAM messages
+6. **v3mail ftn-pack** bundles the `.pkt` files into ZIP archives
 7. **binkd** picks up the outbound bundles and delivers them to your hub
 
 ## Prerequisites
@@ -64,8 +64,8 @@ vision3/
 │   │   ├── binkd.conf      # binkd configuration
 │   │   ├── in/             # Unsecure inbound (rarely used)
 │   │   ├── secure_in/      # Secure inbound (where binkd puts received bundles)
-│   │   ├── temp_in/        # Temporary extraction dir (jamutil toss)
-│   │   ├── temp_out/       # Staged outbound .pkt files (jamutil scan output)
+│   │   ├── temp_in/        # Temporary extraction dir (v3mail toss)
+│   │   ├── temp_out/       # Staged outbound .pkt files (v3mail scan output)
 │   │   ├── out/            # Outbound bundles (binkd picks up here)
 │   │   ├── logs/           # binkd log files
 │   │   ├── export_hwm.json # High-water mark for scan (tracks last exported msg)
@@ -305,10 +305,10 @@ Check that all paths are consistent across your config files:
 ### Step 7: Initialize Message Bases
 
 JAM message bases are created automatically the first time they are accessed, but
-you can verify them with `jamutil`:
+you can verify them with `v3mail`:
 
 ```bash
-./jamutil stats --all
+./v3mail stats --all
 ```
 
 This will show statistics for all configured message areas and create any missing
@@ -328,14 +328,14 @@ The `-c` flag runs binkd as a client (calls out once and exits). Check
 To manually toss any received bundles/packets:
 
 ```bash
-go run cmd/jamutil toss --config configs --data data
+go run cmd/v3mail toss --config configs --data data
 ```
 
 To scan for outbound messages and pack bundles:
 
 ```bash
-go run cmd/jamutil scan --config configs --data data
-go run cmd/jamutil ftn-pack --config configs --data data
+go run cmd/v3mail scan --config configs --data data
+go run cmd/v3mail ftn-pack --config configs --data data
 ```
 
 ## Running in Production
@@ -367,17 +367,17 @@ WantedBy=multi-user.target
 
 ### Scanning and Packing Outbound Mail
 
-When users post new echomail, `jamutil scan` creates outbound `.pkt` files from new
-JAM messages, and `jamutil ftn-pack` bundles them for binkd. Use the Vision/3 event
+When users post new echomail, `v3mail scan` creates outbound `.pkt` files from new
+JAM messages, and `v3mail ftn-pack` bundles them for binkd. Use the Vision/3 event
 scheduler (configured in `configs/events.json`) to run these automatically:
 
 ```json
 {
-  "id": "jamutil_scan",
+  "id": "v3mail_scan",
   "name": "Scan Outbound Echomail",
   "schedule": "*/5 * * * *",
   "command": "/usr/bin/go",
-  "args": ["run", "{BBS_ROOT}/cmd/jamutil", "scan", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+  "args": ["run", "{BBS_ROOT}/cmd/v3mail", "scan", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
   "working_directory": "{BBS_ROOT}",
   "timeout_seconds": 300,
   "enabled": true
@@ -391,18 +391,18 @@ See [event-scheduler.md](event-scheduler.md) for the full recommended FTN workfl
 ### ftn.json
 
 `configs/ftn.json` is the central configuration for the internal FTN tosser. It is
-read by `jamutil toss`, `jamutil scan`, and `jamutil ftn-pack`.
+read by `v3mail toss`, `v3mail scan`, and `v3mail ftn-pack`.
 
 **Fields:**
 
 | Field | Description |
 |-------|-------------|
 | `dupe_db_path` | Path to the dupe detection database (relative to BBS root) |
-| `networks.<key>.internal_tosser_enabled` | Set `true` to enable `jamutil` for this network |
+| `networks.<key>.internal_tosser_enabled` | Set `true` to enable `v3mail` for this network |
 | `networks.<key>.own_address` | Your FTN address (e.g., `21:4/158.1`) |
 | `networks.<key>.inbound_path` | Unsecured inbound directory |
 | `networks.<key>.secure_inbound_path` | Secure inbound (where binkd deposits received mail) |
-| `networks.<key>.outbound_path` | Staging dir for outbound `.pkt` files (`jamutil scan` output) |
+| `networks.<key>.outbound_path` | Staging dir for outbound `.pkt` files (`v3mail scan` output) |
 | `networks.<key>.binkd_outbound_path` | Outbound bundles dir (binkd picks up from here) |
 | `networks.<key>.temp_path` | Temp dir for bundle extraction during toss |
 | `networks.<key>.tearline` | Optional tearline suffix (empty = use default) |
@@ -531,26 +531,26 @@ node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 
 ### Messages arriving but not visible in BBS
 
-- Run `go run cmd/jamutil toss --config configs --data data` manually to toss pending
+- Run `go run cmd/v3mail toss --config configs --data data` manually to toss pending
   bundles/packets
 - Verify `echo_tag` in message_areas.json matches the AREA tag in the incoming packets
-- Run `./jamutil stats --all` to verify message counts
+- Run `./v3mail stats --all` to verify message counts
 
 ### Outbound messages not sending
 
-- Run `go run cmd/jamutil scan --config configs --data data` to create outbound packets
-- Run `go run cmd/jamutil ftn-pack --config configs --data data` to bundle them
+- Run `go run cmd/v3mail scan --config configs --data data` to create outbound packets
+- Run `go run cmd/v3mail ftn-pack --config configs --data data` to bundle them
 - Check that `binkd_outbound_path` in `ftn.json` matches the domain path in binkd.conf
 - Verify the echo area's hub address is listed in `links[].echo_areas` in `ftn.json`
 
 ### Duplicate messages
 
-- `jamutil toss` handles dupe detection via `data/ftn/dupes.json`
+- `v3mail toss` handles dupe detection via `data/ftn/dupes.json`
 - The dupe window is configured by `DupeWindow` in the tosser (default: 30 days)
 
 ### Bad/undeliverable messages
 
-- Check `data/msgbases/bad` (via `./jamutil stats data/msgbases/bad`) for messages
+- Check `data/msgbases/bad` (via `./v3mail stats data/msgbases/bad`) for messages
   that could not be tossed
 - Usually means the AREA tag in the packet doesn't match any `echo_tag` in
   message_areas.json or any `echo_areas` entry in `ftn.json` links
@@ -562,28 +562,28 @@ node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 bin/binkd -c data/ftn/binkd.conf
 
 # Toss received bundles/packets into JAM bases
-go run cmd/jamutil toss --config configs --data data
+go run cmd/v3mail toss --config configs --data data
 
 # Scan JAM bases for new outbound messages (creates .pkt files)
-go run cmd/jamutil scan --config configs --data data
+go run cmd/v3mail scan --config configs --data data
 
 # Pack outbound .pkt files into ZIP bundles for binkd pickup
-go run cmd/jamutil ftn-pack --config configs --data data
+go run cmd/v3mail ftn-pack --config configs --data data
 
 # View message base statistics
-./jamutil stats --all
+./v3mail stats --all
 
 # Check a specific area
-./jamutil stats data/msgbases/fsx_gen
+./v3mail stats data/msgbases/fsx_gen
 
 # Fix corrupted message base
-./jamutil fix data/msgbases/fsx_gen
+./v3mail fix data/msgbases/fsx_gen
 
 # Purge old messages (90 days)
-./jamutil purge --days 90 --all
+./v3mail purge --days 90 --all
 
 # Pack/defragment message bases
-./jamutil pack --all
+./v3mail pack --all
 
 # Preview helper changes before applying
 ./helper ftnsetup --na network.na --address 21:4/158.1 --hub 21:4/158 --dry-run

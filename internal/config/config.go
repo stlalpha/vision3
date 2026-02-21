@@ -643,7 +643,7 @@ type FTNNetworkConfig struct {
 	OutboundPath          string          `json:"outbound_path"`                    // Staging dir for outbound .PKT files
 	BinkdOutboundPath     string          `json:"binkd_outbound_path"`              // Binkd outbound dir for ZIP bundles
 	TempPath              string          `json:"temp_path"`                        // Temp dir for processing
-	PollSeconds           int             `json:"poll_interval_seconds"`            // 0 = manual only (jamutil toss/scan)
+	PollSeconds           int             `json:"poll_interval_seconds"`            // 0 = manual only (v3mail toss/scan)
 	Tearline              string          `json:"tearline,omitempty"`               // Custom tearline text for echomail
 	NetmailAreaTag        string          `json:"netmail_area_tag,omitempty"`       // Area for inbound netmail (e.g., "NETMAIL")
 	BadAreaTag            string          `json:"bad_area_tag,omitempty"`           // Area for unroutable messages (e.g., "BAD")

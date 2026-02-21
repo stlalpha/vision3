@@ -32,7 +32,7 @@ func main() {
 
 	cmd := os.Args[1]
 	if cmd == "--version" || cmd == "-version" {
-		fmt.Printf("jamutil %s - JAM Message Base Utility for Vision3\n", version.Number)
+		fmt.Printf("v3mail %s - Vision3 Mail Utility\n", version.Number)
 		return
 	}
 	if cmd == "--help" || cmd == "-h" || cmd == "help" {
@@ -67,9 +67,9 @@ func main() {
 }
 
 func printUsage() {
-	fmt.Fprintf(os.Stderr, `jamutil %s - JAM Message Base Utility for Vision3
+	fmt.Fprintf(os.Stderr, `v3mail %s - Vision3 Mail Utility
 
-Usage: jamutil <command> [options] [base_path...]
+Usage: v3mail <command> [options] [base_path...]
 
 JAM Base Commands:
   stats     Display message base statistics
@@ -79,7 +79,7 @@ JAM Base Commands:
   link      Build reply threading chains (ReplyTo/Reply1st/ReplyNext)
   lastread  Show or reset lastread records
 
-FTN Echomail Commands (replaces HPT):
+FTN Echomail Commands:
   toss      Unpack FTN bundles and toss .PKT files into JAM bases
   scan      Scan JAM bases for unsent echomail, create outbound .PKT files
   ftn-pack  Pack outbound .PKT files into ZIP bundles for binkd
@@ -94,15 +94,15 @@ FTN Command Options:
   --network NAME  Limit to a single FTN network (default: all enabled)
 
 Examples:
-  jamutil stats --all
-  jamutil pack --all
-  jamutil purge --all
-  jamutil fix --all
-  jamutil link --all
-  jamutil toss --config configs --data data
-  jamutil scan --config configs --data data
-  jamutil ftn-pack --config configs --data data
-  jamutil toss --network fsxnet
+  v3mail stats --all
+  v3mail pack --all
+  v3mail purge --all
+  v3mail fix --all
+  v3mail link --all
+  v3mail toss --config configs --data data
+  v3mail scan --config configs --data data
+  v3mail ftn-pack --config configs --data data
+  v3mail toss --network fsxnet
 `, version.Number)
 }
 

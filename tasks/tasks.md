@@ -215,7 +215,7 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
     *   [ ] User editor
     *   [ ] System configuration editor
     *   [ ] File/Message area managers
-*   **JAM Utilities (`cmd/jamutil`):**
+*   **JAM Utilities (`cmd/v3mail`):**
     *   [ ] Base info/stats display
     *   [ ] Message packing/defragmentation
     *   [ ] Orphan cleanup and integrity checking
@@ -237,7 +237,7 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 - [ ] String Editor (`cmd/json-string-editor`): Create TUI tool to edit `config/strings.json`.
 - [x] String Decoder (`cmd/strings-decoder`): Created tool to decode STRINGS.DAT.
-- [ ] JAM Utility (`cmd/jamutil`): Command-line tool for JAM base maintenance (pack, fix, purge, stats).
+- [ ] JAM Utility (`cmd/v3mail`): Command-line tool for JAM base maintenance (pack, fix, purge, stats).
 
 ## Documentation
 
