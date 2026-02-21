@@ -24,10 +24,13 @@ This guide covers deploying ViSiON/3 using Docker and Docker Compose.
 
    This will:
    - Build the Docker image with libssh support
-   - Create necessary directories (`configs/`, `data/`, `menus/`)
+   - Compile all Go binaries (ViSiON3, v3mail, helper, strings)
+   - Build lrzsz from source for zmodem file transfers
+   - Bundle binkd (FTN mailer) from `bin/binkd`
+   - Create necessary directories (`configs/`, `data/`, `menus/`, `temp/`)
    - Generate SSH host keys automatically
    - Initialize config files from templates
-   - Start the BBS on port 2222
+   - Start the BBS on ports 2222 (SSH) and 2323 (telnet)
 
 3. **Check logs:**
 
@@ -64,6 +67,7 @@ If you prefer not to use Docker Compose:
    docker run -d \
      --name vision3-bbs \
      -p 2222:2222 \
+     -p 2323:2323 \
      -v "$(pwd)/configs:/vision3/configs" \
      -v "$(pwd)/data:/vision3/data" \
      -v "$(pwd)/menus:/vision3/menus" \
@@ -79,6 +83,9 @@ ViSiON/3 **requires libssh via CGO** for SSH server functionality. The Dockerfil
 - Enables CGO in the build stage (`CGO_ENABLED=1`)
 - Installs `libssh-dev` during build
 - Includes `libssh` runtime library in the final image
+- Builds all Go binaries: `ViSiON3`, `v3mail`, `helper`, `strings`
+- Builds `lrzsz` from source for zmodem file transfers (`sz`/`rz`)
+- Copies the static `binkd` binary for FTN mailer support
 
 **Do not disable CGO** or the SSH server will not work.
 
@@ -99,7 +106,7 @@ The following directories are mounted as volumes and persist across container re
   - `msgbases/` - JAM message bases (including `privmail/`)
   - `files/` - File areas
   - `ftn/` - FidoNet/echomail data
-  - `logs/` - Application logs
+  - `logs/` - Application logs (vision3.log, v3mail.log, binkd.log)
 
 - **`menus/`** - Menu files (ANSI screens, configs)
   - Mount your custom menu set here
@@ -192,7 +199,8 @@ To use different ports, edit `docker-compose.yml`:
 
 ```yaml
 ports:
-  - "2323:2222"  # Expose BBS on port 2323
+  - "2323:2222"  # Expose SSH on port 2323
+  - "2324:2323"  # Expose telnet on port 2324
 ```
 
 ### Resource Limits

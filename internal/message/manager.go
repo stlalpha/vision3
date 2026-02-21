@@ -85,7 +85,6 @@ func NewMessageManager(dataPath, configPath, boardName string, networkTearlines 
 	}
 
 	log.Printf("INFO: MessageManager initialized. Loaded %d areas.", len(mm.areasByID))
-	log.Printf("INFO: JAM bases will be opened on-demand for external tosser compatibility.")
 	return mm, nil
 }
 

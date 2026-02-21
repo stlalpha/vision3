@@ -10,6 +10,7 @@ services:
     restart: unless-stopped
     ports:
       - "2222:2222"  # SSH port
+      - "2323:2323"  # Telnet port
     volumes:
       # Persistent data - these directories will be created on host
       - ./configs:/vision3/configs

@@ -6,18 +6,23 @@ mkdir -p /vision3/data/users
 mkdir -p /vision3/data/logs
 mkdir -p /vision3/data/msgbases/privmail
 mkdir -p /vision3/data/files
+mkdir -p /vision3/temp
 for d in \
     /vision3/data/ftn/in \
     /vision3/data/ftn/secure_in \
     /vision3/data/ftn/temp_in \
     /vision3/data/ftn/temp_out \
     /vision3/data/ftn/out \
-    /vision3/data/ftn/logs \
     /vision3/data/ftn/dupehist \
     /vision3/data/ftn/dloads \
     /vision3/data/ftn/dloads/pass
 do
     mkdir -p "$d"
+done
+
+# Create per-node temp directories (used by doors and session temp files)
+for i in $(seq 1 10); do
+    mkdir -p /vision3/temp/node${i}
 done
 
 # Generate SSH host keys if missing

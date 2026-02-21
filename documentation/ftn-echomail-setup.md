@@ -67,7 +67,6 @@ vision3/
 │   │   ├── temp_in/        # Temporary extraction dir (v3mail toss)
 │   │   ├── temp_out/       # Staged outbound .pkt files (v3mail scan output)
 │   │   ├── out/            # Outbound bundles (binkd picks up here)
-│   │   ├── logs/           # binkd log files
 │   │   └── dupes.json      # Dupe detection database
 │   └── msgbases/
 │       ├── fsx_gen.jhr    # JAM message base files (one set per area)
@@ -202,7 +201,7 @@ maxclients 1
 #
 # Logging
 #
-log /home/bbs/vision3/data/ftn/logs/binkd.log
+log /home/bbs/vision3/data/logs/binkd.log
 loglevel 4
 conlog 4
 
@@ -322,7 +321,7 @@ bin/binkd -c data/ftn/binkd.conf
 ```
 
 The `-c` flag runs binkd as a client (calls out once and exits). Check
-`data/ftn/logs/binkd.log` for connection results.
+`data/logs/binkd.log` for connection results.
 
 To manually toss any received bundles/packets:
 
@@ -523,7 +522,7 @@ node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 
 ### No messages arriving
 
-- Check `data/ftn/logs/binkd.log` for connection errors
+- Check `data/logs/binkd.log` for connection errors
 - Verify your hub's hostname, port, and password are correct
 - Make sure `secure_inbound_path` in `ftn.json` matches binkd.conf `inbound`
 - Run `bin/binkd -c data/ftn/binkd.conf` manually and watch the output

@@ -1,9 +1,16 @@
-# docker run -d -p 2222:2222 -v "$(pwd)/configs:/vision3/configs" -v "$(pwd)/data:/vision3/data" -v "$(pwd)/menus:/vision3/menus" vision3
+# docker run -d -p 2222:2222 -p 2323:2323 \
+#   -v "$(pwd)/configs:/vision3/configs" \
+#   -v "$(pwd)/data:/vision3/data" \
+#   -v "$(pwd)/menus:/vision3/menus" \
+#   vision3
 
+# ---------------------------------------------------------------------------
+# Stage 1: Build Go binaries + lrzsz (zmodem)
+# ---------------------------------------------------------------------------
 FROM golang:1.24-alpine AS builder
 
-# Install build dependencies including libssh-dev for CGO
-RUN apk add --no-cache git gcc musl-dev libssh-dev
+# Install build dependencies including libssh-dev for CGO and lrzsz build deps
+RUN apk add --no-cache git gcc musl-dev libssh-dev make
 
 WORKDIR /vision3
 
@@ -14,7 +21,22 @@ COPY . .
 
 # Enable CGO for libssh support (required for SSH server)
 RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o /vision3/ViSiON3 ./cmd/vision3
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/v3mail   ./cmd/v3mail
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/helper   ./cmd/helper
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/strings  ./cmd/strings
 
+# Build lrzsz from source (not available in Alpine repos)
+RUN cd /tmp && \
+    wget -q https://www.ohse.de/uwe/releases/lrzsz-0.12.20.tar.gz && \
+    tar xzf lrzsz-0.12.20.tar.gz && \
+    cd lrzsz-0.12.20 && \
+    ./configure --prefix=/usr/local && \
+    make && \
+    make install
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime image
+# ---------------------------------------------------------------------------
 FROM alpine:latest
 
 # Install runtime dependencies (libssh required for SSH server)
@@ -28,7 +50,21 @@ WORKDIR /vision3
 COPY docker-entrypoint.sh /usr/local/bin/
 RUN chmod a+x /usr/local/bin/docker-entrypoint.sh
 
+# Copy all built Go binaries
 COPY --from=builder /vision3/ViSiON3 .
+COPY --from=builder /vision3/v3mail  .
+COPY --from=builder /vision3/helper  .
+COPY --from=builder /vision3/strings .
+
+# Copy lrzsz binaries (zmodem sz/rz for file transfers)
+COPY --from=builder /usr/local/bin/lsz /usr/local/bin/lsz
+COPY --from=builder /usr/local/bin/lrz /usr/local/bin/lrz
+RUN ln -s /usr/local/bin/lsz /usr/local/bin/sz && \
+    ln -s /usr/local/bin/lrz /usr/local/bin/rz
+
+# Copy binkd (statically linked FTN mailer)
+COPY bin/binkd ./bin/binkd
+RUN chmod +x ./bin/binkd
 
 # Copy template configs for initialization
 COPY templates/ ./templates/
@@ -39,7 +75,7 @@ VOLUME /vision3/configs
 VOLUME /vision3/menus
 VOLUME /vision3/data
 
-EXPOSE 2222
+EXPOSE 2222 2323
 
 USER vision3
 

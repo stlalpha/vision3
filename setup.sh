@@ -105,7 +105,7 @@ mkdir -p data/users
 mkdir -p data/files/general
 mkdir -p data/logs
 mkdir -p data/msgbases
-mkdir -p data/ftn/{in,secure_in,temp_in,temp_out,out,logs,dupehist,dloads,dloads/pass}
+mkdir -p data/ftn/{in,secure_in,temp_in,temp_out,out,dupehist,dloads,dloads/pass}
 mkdir -p configs
 mkdir -p bin
 mkdir -p scripts
