@@ -411,12 +411,68 @@ func (ct *ConnectionTracker) RecordFailedLoginAttempt(ip string) bool {
 		tracker.LockedUntil = time.Now().Add(time.Duration(ct.lockoutMinutes) * time.Minute)
 		log.Printf("SECURITY: IP %s locked out after %d failed login attempts. Locked until %s",
 			ip, tracker.Attempts, tracker.LockedUntil.Format(time.RFC3339))
+		// Persist to blocklist file outside the lock to avoid deadlock
+		go func() {
+			if err := ct.AppendToBlocklist(ip); err != nil {
+				log.Printf("ERROR: Failed to persist blocked IP %s to blocklist: %v", ip, err)
+			}
+		}()
 		return true
 	}
 
 	log.Printf("SECURITY: Failed login attempt from IP %s (%d/%d)",
 		ip, tracker.Attempts, ct.maxFailedLogins)
 	return false
+}
+
+// AppendToBlocklist appends an IP to the blocklist file and updates the in-memory list immediately.
+// If blocklistPath is not configured, this is a no-op.
+func (ct *ConnectionTracker) AppendToBlocklist(ip string) error {
+	if ct.blocklistPath == "" {
+		return nil
+	}
+
+	parsedIP := net.ParseIP(ip)
+	if parsedIP == nil {
+		return fmt.Errorf("invalid IP address: %s", ip)
+	}
+	normalizedIP := parsedIP.String()
+
+	// Check if already in blocklist
+	ct.mu.Lock()
+	alreadyBlocked := ct.blocklist != nil && ct.blocklist.Contains(normalizedIP)
+	ct.mu.Unlock()
+
+	if alreadyBlocked {
+		return nil
+	}
+
+	// Append to file
+	f, err := os.OpenFile(ct.blocklistPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open blocklist file: %w", err)
+	}
+	defer f.Close()
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	line := fmt.Sprintf("%s # auto-blocked %s: too many failed logins\n", normalizedIP, timestamp)
+	if _, err := f.WriteString(line); err != nil {
+		return fmt.Errorf("failed to write to blocklist file: %w", err)
+	}
+
+	// Update in-memory list immediately — don't wait for fsnotify debounce
+	ct.mu.Lock()
+	if ct.blocklist == nil {
+		ct.blocklist = &IPList{
+			ips:      make(map[string]bool),
+			networks: make([]*net.IPNet, 0),
+		}
+	}
+	ct.blocklist.ips[normalizedIP] = true
+	ct.mu.Unlock()
+
+	log.Printf("SECURITY: IP %s permanently added to blocklist %s", normalizedIP, ct.blocklistPath)
+	return nil
 }
 
 // ClearFailedLoginAttempts clears the failed login counter for an IP on successful authentication.
