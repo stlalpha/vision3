@@ -1,3 +1,29 @@
 {
-    "networks": {}
+    "_comment": "FTN (FidoNet Technology Network) echomail configuration. Used by the internal tosser (jamutil toss/scan/ftn-pack). Run 'helper ftnsetup' to populate this from a FIDONET.NA file.",
+    "dupe_db_path": "data/ftn/dupes.json",
+    "networks": {
+        "fsxnet": {
+            "_comment": "Example: FSXNet configuration. Replace addresses, paths, and echo areas for your system.",
+            "internal_tosser_enabled": true,
+            "own_address": "21:4/999.1",
+            "inbound_path": "data/ftn/in",
+            "secure_inbound_path": "data/ftn/secure_in",
+            "outbound_path": "data/ftn/temp_out",
+            "binkd_outbound_path": "data/ftn/out",
+            "temp_path": "data/ftn/temp_in",
+            "poll_interval_seconds": 0,
+            "tearline": "",
+            "links": [
+                {
+                    "address": "21:4/158",
+                    "password": "",
+                    "name": "FSXNet Hub",
+                    "echo_areas": [
+                        "FSX_GEN",
+                        "FSX_BBS"
+                    ]
+                }
+            ]
+        }
+    }
 }
