@@ -36,6 +36,7 @@ import (
 	"github.com/stlalpha/vision3/internal/sshserver"
 	"github.com/stlalpha/vision3/internal/telnetserver"
 	"github.com/stlalpha/vision3/internal/terminalio"
+	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -1671,8 +1672,18 @@ func main() {
 	// Initialize global chat room for teleconference
 	chatRoom := chat.NewChatRoom(100)
 
+	// Load transfer protocol configuration
+	var loadedProtocols []transfer.ProtocolConfig
+	protocolsPath := filepath.Join(rootConfigPath, "protocols.json")
+	if protocols, err := transfer.LoadProtocols(protocolsPath); err != nil {
+		log.Printf("WARN: Failed to load protocols.json: %v. File transfers will be unavailable.", err)
+	} else {
+		loadedProtocols = protocols
+		log.Printf("INFO: Loaded %d transfer protocol(s) from %s", len(loadedProtocols), protocolsPath)
+	}
+
 	// Initialize MenuExecutor with new paths, loaded theme, server config, message manager, and connection tracker
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence, sessionRegistry, chatRoom)
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence, sessionRegistry, chatRoom, loadedProtocols)
 
 	// Initialize configuration file watcher for hot reload
 	var serverConfigMu sync.RWMutex

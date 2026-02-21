@@ -7,26 +7,50 @@
 - SSH client for testing
 - `libssh` - C library for SSH (required by the SSH server)
 - `pkg-config` - Used to locate libssh during build
+- `lrzsz` - ZModem send/receive (`sz`/`rz`) for file transfers (recommended)
 
-### Installing C Dependencies
+### Optional: File Transfer Binaries
+
+- **lrzsz** — Standard ZModem implementation providing `sz` (send) and `rz` (receive). This is the default file transfer protocol.
+- **sexyz** — Synchronet's ZModem 8k implementation, recommended for telnet connections. Must be obtained from [Synchronet BBS builds](https://www.synchro.net) or [GitLab](https://gitlab.synchro.net). Place the binary at `bin/sexyz`.
+
+### Installing Dependencies
 
 **macOS (Homebrew):**
 
 ```bash
-brew install libssh pkg-config
+brew install libssh pkg-config lrzsz
 ```
 
 **Debian/Ubuntu:**
 
 ```bash
-sudo apt install libssh-dev pkg-config
+sudo apt install libssh-dev pkg-config lrzsz
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install libssh-devel pkgconf-pkg-config
+sudo dnf install libssh-devel pkgconf-pkg-config lrzsz
 ```
+
+**Windows (WSL):**
+
+```bash
+# Inside WSL (Debian/Ubuntu)
+sudo apt install lrzsz
+```
+
+> **Note:** On Windows native, lrzsz equivalents can be obtained through MSYS2 or Cygwin. sexyz is available as a Windows binary from Synchronet builds.
+
+### Obtaining sexyz (Optional)
+
+sexyz is not available through standard package managers. It must be obtained from Synchronet BBS:
+
+1. Download from https://www.synchro.net or https://gitlab.synchro.net
+2. Build from source or download a pre-built binary for your platform
+3. Place the binary at `bin/sexyz` (or ensure it's in your `PATH`)
+4. Make it executable: `chmod +x bin/sexyz`
 
 ## Installation Steps
 
@@ -144,7 +168,8 @@ vision3/
 │   │   └── dupes.json    # MSGID dupe database
 │   └── logs/
 │       └── vision3.log   # Application log
-├── bin/                   # External binaries (e.g., binkd) - created empty
+├── bin/                   # External binaries
+│   └── sexyz              # Synchronet ZModem 8k (optional, obtain from synchro.net)
 ├── scripts/               # Helper shell and Python scripts (future use) - created empty
 └── menus/v3/             # Menu system files
 ```
@@ -172,4 +197,5 @@ If you encounter SSH key errors, ensure the key was generated in the correct loc
 - Review the [Configuration Guide](configuration.md) to customize your BBS
 - Set up [Message Areas](message-areas.md) and [File Areas](file-areas.md)
 - Configure [Door Programs](doors.md) if desired
+- Set up [File Transfer Protocols](file-transfer-protocols.md) (lrzsz, sexyz)
 - Refer to [User Management](user-management.md) for managing users

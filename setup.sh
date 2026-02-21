@@ -76,6 +76,28 @@ else
     MISSING_PREREQS=1
 fi
 
+# Check for lrzsz (ZModem file transfers)
+if command -v sz &> /dev/null && command -v rz &> /dev/null; then
+    echo -e "${GREEN}✓${NC} lrzsz (sz/rz for ZModem transfers)"
+else
+    echo -e "${YELLOW}!${NC} lrzsz is not installed (optional — required for ZModem file transfers)"
+    echo "  Install instructions:"
+    echo "    Debian/Ubuntu: sudo apt install lrzsz"
+    echo "    Fedora: sudo dnf install lrzsz"
+    echo "    macOS: brew install lrzsz"
+    echo "  Note: sexyz (Synchronet) is an alternative; obtain from Synchronet builds"
+fi
+
+# Check for sexyz (optional — Synchronet ZModem 8k for telnet)
+if command -v sexyz &> /dev/null || [ -x "bin/sexyz" ]; then
+    echo -e "${GREEN}✓${NC} sexyz (Synchronet ZModem 8k — optional)"
+else
+    echo -e "${YELLOW}!${NC} sexyz not found (optional — recommended for telnet file transfers)"
+    echo "  sexyz must be obtained from Synchronet BBS builds:"
+    echo "    https://www.synchro.net  or  https://gitlab.synchro.net"
+    echo "  Place the binary in bin/sexyz"
+fi
+
 echo
 
 # Exit if prerequisites are missing

@@ -84,8 +84,11 @@ ViSiON/3 **requires libssh via CGO** for SSH server functionality. The Dockerfil
 - Installs `libssh-dev` during build
 - Includes `libssh` runtime library in the final image
 - Builds all Go binaries: `ViSiON3`, `v3mail`, `helper`, `strings`
-- Builds `lrzsz` from source for zmodem file transfers (`sz`/`rz`)
+- Builds `lrzsz` from source for zmodem file transfers (`sz`/`rz`) — Alpine does not package lrzsz
+- Copies `bin/sexyz` if present (Synchronet ZModem 8k — optional, for telnet transfers)
 - Copies the static `binkd` binary for FTN mailer support
+
+> **Note:** sexyz must be obtained separately from [Synchronet BBS](https://www.synchro.net) and placed in `bin/sexyz` before building. See [File Transfer Protocols](file-transfer-protocols.md) for details.
 
 **Do not disable CGO** or the SSH server will not work.
 

@@ -282,14 +282,55 @@ For importing many files:
 
 ## File Transfer Protocols
 
+Protocol configurations are defined in `configs/protocols.json`. ViSiON/3 supports multiple external transfer protocol engines.
+
+### Available Protocols
+
+**ZModem via lrzsz (default):**
+
+- Uses standard `sz` (send) and `rz` (receive) commands
+- Requires `lrzsz` package installed on the server
+- Operates through a PTY (pseudo-terminal)
+- Best for SSH connections
+
+**ZModem 8k via sexyz (optional):**
+
+- Uses Synchronet's `sexyz` binary for 8k block ZModem
+- Operates on raw sockets — no PTY required
+- Recommended for telnet connections
+- Must be obtained from [Synchronet BBS builds](https://www.synchro.net)
+- Place the binary at `bin/sexyz`
+
+### Installing Transfer Dependencies
+
+**Linux (Debian/Ubuntu):**
+
+```bash
+sudo apt install lrzsz
+```
+
+**Linux (Fedora/RHEL):**
+
+```bash
+sudo dnf install lrzsz
+```
+
+**macOS:**
+
+```bash
+brew install lrzsz
+```
+
+**Docker:** lrzsz is built from source in the Docker image automatically.
+
+**sexyz:** Not available through package managers. Obtain from https://www.synchro.net or https://gitlab.synchro.net and place in `bin/sexyz`.
+
 **Currently Implemented:**
 
 - **Zmodem**: Using external `sz` command for downloads
 
 **Planned:**
 
-- **Xmodem**: Fallback option
-- **Ymodem**: Batch transfers
 - **Upload support**: Using `rz` or similar
 
 ## Troubleshooting

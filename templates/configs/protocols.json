@@ -1,0 +1,52 @@
+[
+    {
+        "key": "Z",
+        "name": "Zmodem",
+        "description": "Zmodem batch file transfer protocol (lrzsz)",
+        "send_cmd": "sz",
+        "send_args": [
+            "-b",
+            "-e"
+        ],
+        "recv_cmd": "rz",
+        "recv_args": [
+            "-b",
+            "-r"
+        ],
+        "batch_send": true,
+        "use_pty": true,
+        "default": true
+    },
+    {
+        "key": "Z",
+        "name": "Zmodem (sexyz)",
+        "description": "Zmodem using Synchronet SEXYZ",
+        "send_cmd": "sexyz",
+        "send_args": [
+            "-sz"
+        ],
+        "recv_cmd": "sexyz",
+        "recv_args": [
+            "-rz"
+        ],
+        "batch_send": true,
+        "use_pty": true,
+        "default": false
+    },
+    {
+        "key": "Y",
+        "name": "Ymodem",
+        "description": "Ymodem batch file transfer protocol (lrzsz)",
+        "send_cmd": "sb",
+        "send_args": [
+            "-b"
+        ],
+        "recv_cmd": "rb",
+        "recv_args": [
+            "-b"
+        ],
+        "batch_send": true,
+        "use_pty": true,
+        "default": false
+    }
+]

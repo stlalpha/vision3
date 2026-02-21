@@ -188,14 +188,12 @@ type MenuExecutor struct {
 	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
 	SessionRegistry *session.SessionRegistry      // Session registry for who's online
 	ChatRoom        *chat.ChatRoom                // Global teleconference chat room
+	Protocols       []transfer.ProtocolConfig     // Loaded transfer protocol configurations
 	configMu        sync.RWMutex                  // Mutex for thread-safe config updates
 }
 
 // NewExecutor creates a new MenuExecutor.
-// Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, serverCfg, and ipLockoutCheck parameters
-// Updated paths to use new structure
-// << UPDATED Signature with msgMgr, fileMgr, serverCfg, and ipLockoutCheck
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry, chatRoom *chat.ChatRoom) *MenuExecutor {
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry, chatRoom *chat.ChatRoom, protocols []transfer.ProtocolConfig) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -203,22 +201,23 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 	registerAppRunnables(runRegistry)            // Add application-specific runnables
 
 	return &MenuExecutor{
-		MenuSetPath:     menuSetPath,    // Store path to active menu set
-		RootConfigPath:  rootConfigPath, // Store path to global configs
-		RootAssetsPath:  rootAssetsPath, // Store path to global assets
+		MenuSetPath:     menuSetPath,
+		RootConfigPath:  rootConfigPath,
+		RootAssetsPath:  rootAssetsPath,
 		RunRegistry:     runRegistry,
 		DoorRegistry:    doorRegistry,
-		OneLiners:       oneLiners,       // Store loaded oneliners
-		LoadedStrings:   loadedStrings,   // Store loaded strings
-		Theme:           theme,           // Store loaded theme
-		ServerCfg:       serverCfg,       // Store server configuration
-		MessageMgr:      msgMgr,          // <-- ASSIGN FIELD
-		FileMgr:         fileMgr,         // <-- ASSIGN FIELD
-		ConferenceMgr:   confMgr,         // Conference grouping manager
-		IPLockoutCheck:  ipLockoutCheck,  // IP-based lockout checker
-		LoginSequence:   loginSequence,   // Configurable login sequence
-		SessionRegistry: sessionRegistry, // Session registry for who's online
-		ChatRoom:        chatRoom,        // Global teleconference chat room
+		OneLiners:       oneLiners,
+		LoadedStrings:   loadedStrings,
+		Theme:           theme,
+		ServerCfg:       serverCfg,
+		MessageMgr:      msgMgr,
+		FileMgr:         fileMgr,
+		ConferenceMgr:   confMgr,
+		IPLockoutCheck:  ipLockoutCheck,
+		LoginSequence:   loginSequence,
+		SessionRegistry: sessionRegistry,
+		ChatRoom:        chatRoom,
+		Protocols:       protocols,
 	}
 }
 
@@ -8129,8 +8128,18 @@ func (e *MenuExecutor) runUploadFiles(
 		existingNames[strings.ToLower(f.Filename)] = true
 	}
 
-	// 5. Display instructions
-	msg := fmt.Sprintf("\r\n|15Uploading to: |14%s|07\r\n\r\n|11Start the ZMODEM send in your terminal.|07\r\n|07After transfer, you will be prompted for file descriptions.\r\n\r\n|07Press |15ENTER|07 to begin or |15Q|07 to cancel: ", area.Name)
+	// 5. Resolve transfer protocol.
+	proto, hasProto := transfer.DefaultProtocol(e.Protocols)
+	if !hasProto {
+		log.Printf("ERROR: Node %d: No transfer protocols configured", nodeNumber)
+		errMsg := "\r\n|01Error: No transfer protocols configured on this system.|07\r\n"
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+		time.Sleep(2 * time.Second)
+		return nil
+	}
+
+	// 6. Display instructions
+	msg := fmt.Sprintf("\r\n|15Uploading to: |14%s|07\r\n\r\n|11Start the %s send in your terminal.|07\r\n|07After transfer, you will be prompted for file descriptions.\r\n\r\n|07Press |15ENTER|07 to begin or |15Q|07 to cancel: ", area.Name, proto.Name)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
 	input, err := readLineFromSessionIH(s, terminal)
@@ -8144,7 +8153,7 @@ func (e *MenuExecutor) runUploadFiles(
 		return nil
 	}
 
-	// 6. Create temp directory for receiving uploads
+	// 7. Create temp directory for receiving uploads
 	incomingDir, err := os.MkdirTemp(targetDir, ".incoming-*")
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to create incoming directory: %v", nodeNumber, err)
@@ -8152,20 +8161,22 @@ func (e *MenuExecutor) runUploadFiles(
 	}
 	defer os.RemoveAll(incomingDir)
 
-	// 7. Execute ZMODEM receive into temp directory
-	msg = "\r\n|15Starting ZMODEM receive...|07\r\n"
+	// 8. Execute protocol receive into temp directory
+	msg = fmt.Sprintf("\r\n|15Starting %s receive...|07\r\n", proto.Name)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
-	transferErr := transfer.ExecuteZmodemReceive(s, incomingDir)
+	resetSessionIH(s)
+	transferErr := proto.ExecuteReceive(s, incomingDir)
+	getSessionIH(s)
 	if transferErr != nil {
-		log.Printf("ERROR: Node %d: ZMODEM receive failed: %v", nodeNumber, transferErr)
-		errMsg := "\r\n|01ZMODEM receive failed.|07\r\n"
+		log.Printf("ERROR: Node %d: %q receive failed: %v", nodeNumber, proto.Name, transferErr)
+		errMsg := "\r\n|01Transfer receive failed.|07\r\n"
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		time.Sleep(2 * time.Second)
 		return nil
 	}
 
-	// 8. Scan received files from temp directory
+	// 9. Scan received files from temp directory
 	receivedFiles, err := scanDirectoryFiles(incomingDir)
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to scan incoming directory: %v", nodeNumber, err)
@@ -8734,60 +8745,43 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			}
 
 			if len(filesToDownload) > 0 {
-				// **** Actual ZMODEM Transfer using sz ****
-				log.Printf("INFO: Node %d: Attempting ZMODEM transfer for files: %v", nodeNumber, filenamesOnly)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15Initiating ZMODEM transfer (sz)...\r\n")), outputMode)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the ZMODEM receive function in your terminal.\r\n")), outputMode)
-
-				// 1. Find sz executable
-				szPath, err := exec.LookPath("sz")
-				if err != nil {
-					log.Printf("ERROR: Node %d: 'sz' command not found in PATH: %v", nodeNumber, err)
-					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Error: 'sz' command not found on server. Cannot start download.\r\n")), outputMode)
-					failCount = len(filesToDownload) // Mark all as failed
+				// Resolve transfer protocol.
+				proto, hasProto := transfer.DefaultProtocol(e.Protocols)
+				if !hasProto {
+					log.Printf("ERROR: Node %d: No transfer protocols configured", nodeNumber)
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Error: No transfer protocols configured on this system.\r\n")), outputMode)
+					failCount = len(filesToDownload)
 				} else {
-					// 2. Prepare arguments - Re-add -e flag
-					args := []string{"-b", "-e"} // Binary, Escape control chars
-					args = append(args, filesToDownload...)
-					log.Printf("DEBUG: Node %d: Executing command: %s %v", nodeNumber, szPath, args)
+					log.Printf("INFO: Node %d: Sending %d file(s) via protocol %q: %v", nodeNumber, len(filesToDownload), proto.Name, filenamesOnly)
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15Initiating %s transfer...\r\n", proto.Name))), outputMode)
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
 
-					// 3. Create command and use PTY helper
-					cmd := exec.Command(szPath, args...)
-					// Note: Stdin/Stdout/Stderr are handled by runCommandWithPTY
+					resetSessionIH(s)
+					transferErr := proto.ExecuteSend(s, filesToDownload...)
+					getSessionIH(s)
 
-					log.Printf("INFO: Node %d: Executing Zmodem send via runCommandWithPTY: %s %v", nodeNumber, szPath, args)
-
-					// 4. Execute using the PTY helper from the transfer package
-					transferErr := transfer.RunCommandWithPTY(s, cmd) // Pass the ssh.Session and the command (Use exported name)
-
-					// 5. Handle Result
 					if transferErr != nil {
-						// sz likely exited with an error (transfer failed or cancelled)
-						log.Printf("ERROR: Node %d: 'sz' command execution failed: %v", nodeNumber, transferErr)
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01ZMODEM transfer failed or was cancelled.\r\n")), outputMode)
-						failCount = len(filesToDownload) // Assume all failed if sz returns error
+						log.Printf("ERROR: Node %d: %q send failed: %v", nodeNumber, proto.Name, transferErr)
+						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Transfer failed or was cancelled.\r\n")), outputMode)
+						failCount = len(filesToDownload)
 						successCount = 0
 					} else {
-						// sz exited successfully (transfer presumed complete)
-						log.Printf("INFO: Node %d: 'sz' command completed successfully.", nodeNumber)
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07ZMODEM transfer complete.\r\n")), outputMode)
-						successCount = len(filesToDownload) // Assume all succeeded if sz exits cleanly
-						failCount = 0                       // Reset fail count determined earlier
+						log.Printf("INFO: Node %d: %q send completed successfully.", nodeNumber, proto.Name)
+						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Transfer complete.\r\n")), outputMode)
+						successCount = len(filesToDownload)
+						failCount = 0
 
-						// Increment download counts only on successful transfer completion
+						// Increment download counts only on successful transfer completion.
 						for _, fileID := range currentUser.TaggedFileIDs {
-							// Check again if we had a valid path originally
 							if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
 								if err := e.FileMgr.IncrementDownloadCount(fileID); err != nil {
-									log.Printf("WARN: Node %d: Failed to increment download count for file %s after successful sz: %v", nodeNumber, fileID, err)
+									log.Printf("WARN: Node %d: Failed to increment download count for %s: %v", nodeNumber, fileID, err)
 								}
 							}
 						}
 					}
 				}
-				// Add a small delay after transfer attempt
 				time.Sleep(1 * time.Second)
-				// ---- End ZMODEM Transfer ----
 
 			} else {
 				log.Printf("WARN: Node %d: No valid file paths found for tagged files.", nodeNumber)
