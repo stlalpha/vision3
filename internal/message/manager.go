@@ -45,7 +45,7 @@ const messageAreaFile = "message_areas.json"
 
 // MessageManager handles message areas backed by JAM message bases.
 // Bases are opened on-demand and closed after each operation to allow
-// external tossers (like HPT) concurrent access.
+// v3mail and other external tools concurrent access.
 type MessageManager struct {
 	mu         sync.RWMutex
 	dataPath   string // Base data directory (e.g., "data")
@@ -520,7 +520,7 @@ func (mm *MessageManager) buildMSGIDIndex(b *jam.Base, total int, modCounter uin
 			if sf.LoID == jam.SfldMsgID {
 				full := string(sf.Buffer)
 				ids[full] = i
-				// FTN MSGIDs are "address serial" — HPT often stores REPLY
+				// FTN MSGIDs are "address serial" — some tossers store REPLY
 				// kludges without the serial suffix.  Index the address part
 				// too so prefix-based lookups succeed.
 				if idx := strings.LastIndex(full, " "); idx > 0 {

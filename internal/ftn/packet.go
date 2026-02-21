@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 )
@@ -127,6 +128,27 @@ func NewPacketHeader(origZone, origNet, origNode, origPoint uint16,
 	copy(h.Password[:], pw)
 
 	return h
+}
+
+// ReadPacketHeaderFromFile reads only the 58-byte header from a .PKT file at path.
+// This is more efficient than ReadPacket when only the destination address is needed.
+func ReadPacketHeaderFromFile(path string) (*PacketHeader, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	data := make([]byte, PacketHeaderSize)
+	if _, err := io.ReadFull(f, data); err != nil {
+		return nil, fmt.Errorf("read header: %w", err)
+	}
+
+	hdr := &PacketHeader{}
+	if err := binary.Read(bytes.NewReader(data), binary.LittleEndian, hdr); err != nil {
+		return nil, fmt.Errorf("parse header: %w", err)
+	}
+	return hdr, nil
 }
 
 // ReadPacket parses a complete .PKT file from the reader.
