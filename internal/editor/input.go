@@ -69,8 +69,9 @@ const (
 // reader into a buffered channel. This makes select-based timeouts reliable
 // regardless of whether the reader supports SetReadDeadline (e.g. ssh.Session).
 type InputHandler struct {
-	incoming  chan byte // raw bytes from background reader goroutine
-	unreadBuf []byte   // bytes pushed back for re-reading
+	incoming  chan byte    // raw bytes from background reader goroutine
+	done      chan struct{} // closed when background goroutine fully exits
+	unreadBuf []byte       // bytes pushed back for re-reading
 	debug     bool
 
 	// idleNs is the session-level idle timeout in nanoseconds (0 = disabled).
@@ -104,6 +105,7 @@ func (ih *InputHandler) sessionIdleTimeout() time.Duration {
 func NewInputHandler(input io.Reader) *InputHandler {
 	ih := &InputHandler{
 		incoming: make(chan byte, 256),
+		done:     make(chan struct{}),
 	}
 
 	// If the reader supports read interruption (ssh/telnet adapters do),
@@ -115,6 +117,10 @@ func NewInputHandler(input io.Reader) *InputHandler {
 	}
 
 	go func() {
+		// Defers run LIFO: setReadInterrupt(nil) first, then close(incoming),
+		// then close(done). Callers waiting on done are guaranteed that the
+		// session's readInterrupt has already been cleared before they unblock.
+		defer close(ih.done)
 		defer close(ih.incoming)
 		if ih.setReadInterrupt != nil {
 			defer ih.setReadInterrupt(nil)
@@ -142,6 +148,18 @@ func (ih *InputHandler) Close() {
 			close(ih.readInterrupt)
 		}
 	})
+}
+
+// CloseAndWait stops the background goroutine and blocks until it has fully
+// exited (including the deferred setReadInterrupt(nil) call). This eliminates
+// the race where a door's SetReadInterrupt call is overwritten by the outgoing
+// handler's deferred cleanup. For sessions without SetReadInterrupt support
+// (e.g. telnet), it returns immediately after signaling close.
+func (ih *InputHandler) CloseAndWait() {
+	ih.Close()
+	if ih.readInterrupt != nil {
+		<-ih.done
+	}
 }
 
 // Read implements io.Reader. It reads exactly one byte from the incoming channel,

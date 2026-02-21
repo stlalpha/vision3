@@ -68,10 +68,13 @@ func getSessionIH(s ssh.Session) *editor.InputHandler {
 // resetSessionIH stops and removes any session-scoped InputHandler for s.
 // Use this before flows that must read from ssh.Session directly (doors/zmodem),
 // then recreate via getSessionIH(s) after returning to menu input.
+// CloseAndWait is used to ensure the goroutine's deferred setReadInterrupt(nil)
+// has run before the door installs its own SetReadInterrupt, preventing the race
+// where the handler's cleanup clears the door's interrupt channel.
 func resetSessionIH(s ssh.Session) {
 	if v, ok := sessionInputHandlers.Load(s); ok {
 		if ih, ok := v.(*editor.InputHandler); ok {
-			ih.Close()
+			ih.CloseAndWait()
 		}
 		sessionInputHandlers.Delete(s)
 	}
