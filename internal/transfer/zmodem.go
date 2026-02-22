@@ -84,66 +84,77 @@ func RunCommandDirect(s ssh.Session, cmd *exec.Cmd) error {
 		}
 	}
 
-	// Close stdin pipe first so any pending write returns an error.
+	// Close stdin pipe so the next write from the stdin goroutine will fail.
 	_ = stdinPipe.Close()
 
-	// Interrupt the session read to unblock the stdin goroutine immediately.
-	// Without this, io.Copy(stdinPipe, s) blocks on s.Read() for 10-15 seconds
-	// waiting for the client to send data (or the ZModem timeout to fire),
-	// causing the caller's post-transfer UI to hang.
+	// Unblock the stdin goroutine's pending s.Read() call.  On telnet sessions
+	// this uses SetReadInterrupt which causes Read to return io.EOF.
 	if ri, ok := s.(readInterrupter); ok {
 		interruptCh := make(chan struct{})
-		close(interruptCh) // fire immediately
+		close(interruptCh)
 		ri.SetReadInterrupt(interruptCh)
-		defer ri.SetReadInterrupt(nil) // clear so future reads work normally
 	}
 
-	// Wait for stdin goroutine with a short timeout.
+	// Wait briefly for the stdin goroutine to notice the closed pipe / interrupt.
 	select {
 	case <-inputDone:
+		log.Printf("DEBUG: (%s) stdin goroutine finished cleanly", cmd.Path)
 	case <-time.After(2 * time.Second):
 		log.Printf("WARN: (%s) stdin goroutine did not finish within 2s, proceeding", cmd.Path)
 	}
 
-	// Drain any leftover protocol bytes from the session input buffer.
-	// After a ZModem transfer, the client may still be sending final ACK/ZFIN
-	// frames. If these aren't consumed, they appear as garbage ("**B01") to the
-	// BBS when it resumes reading, or worse, trigger a disconnect.
+	// CRITICAL: Clear the read interrupt and reset the connection deadline
+	// BEFORE returning.  The interrupt causes TelnetConn.Read() to return
+	// io.EOF.  If the interrupt is not cleared, the next InputHandler that
+	// calls s.Read() will immediately get io.EOF and report "user disconnected".
+	if ri, ok := s.(readInterrupter); ok {
+		ri.SetReadInterrupt(nil)
+	}
+
+	// Brief pause to let the client's terminal finish its post-transfer
+	// cleanup (SyncTerm/ZModem end-of-transfer signaling).
+	time.Sleep(250 * time.Millisecond)
+
+	// Drain any leftover protocol bytes (ZModem ZFIN/OO, ACK frames) from
+	// the session so they don't appear as garbage when the BBS resumes.
 	drainSessionInput(s, 500*time.Millisecond)
 
 	return cmdErr
 }
 
 // drainSessionInput reads and discards any pending bytes from the session
-// for the given duration. This prevents leftover protocol bytes from
-// corrupting the post-transfer menu display.
+// for the given duration.  Uses a simple non-blocking polling loop that does
+// NOT use SetReadInterrupt — avoiding goroutine races that can leave stale
+// deadlines on the connection and cause spurious disconnects.
 func drainSessionInput(s ssh.Session, duration time.Duration) {
-	deadline := time.Now().Add(duration)
 	buf := make([]byte, 1024)
 	totalDrained := 0
-	for time.Now().Before(deadline) {
-		// Set a short read deadline if the session supports it.
+	end := time.Now().Add(duration)
+
+	for time.Now().Before(end) {
+		// Use a short-lived read interrupt for each poll cycle so we
+		// don't block the entire duration if no data is available.
 		if ri, ok := s.(readInterrupter); ok {
-			shortCh := make(chan struct{})
-			go func() {
-				time.Sleep(50 * time.Millisecond)
-				close(shortCh)
-			}()
-			ri.SetReadInterrupt(shortCh)
+			ch := make(chan struct{})
+			time.AfterFunc(50*time.Millisecond, func() { close(ch) })
+			ri.SetReadInterrupt(ch)
 		}
-		n, err := s.Read(buf)
+
+		n, readErr := s.Read(buf)
 		totalDrained += n
-		if err != nil {
-			break
+
+		// Clear the interrupt immediately after each read attempt
+		// so no stale deadline lingers.
+		if ri, ok := s.(readInterrupter); ok {
+			ri.SetReadInterrupt(nil)
 		}
-		if n == 0 {
+
+		if readErr != nil || n == 0 {
+			// No more data or error — stop draining.
 			break
 		}
 	}
-	// Clear any interrupt we may have set.
-	if ri, ok := s.(readInterrupter); ok {
-		ri.SetReadInterrupt(nil)
-	}
+
 	if totalDrained > 0 {
 		log.Printf("DEBUG: Drained %d leftover bytes from session after transfer", totalDrained)
 	}
