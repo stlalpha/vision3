@@ -21,12 +21,14 @@ var ErrReadInterrupted = fmt.Errorf("read interrupted")
 
 // Config holds SSH server configuration.
 type Config struct {
-	HostKeyPath         string
-	Host                string
-	Port                int
-	LegacySSHAlgorithms bool
-	SessionHandler      func(ssh.Session)
-	PasswordHandler     func(ctx ssh.Context, password string) bool
+	HostKeyPath                string
+	Host                       string
+	Port                       int
+	LegacySSHAlgorithms        bool
+	SessionHandler             func(ssh.Session)
+	PasswordHandler            func(ctx ssh.Context, password string) bool
+	KeyboardInteractiveHandler func(ctx ssh.Context, challenger gossh.KeyboardInteractiveChallenge) bool
+	Version                    string // SSH server banner version (default: "Vision3")
 }
 
 // Server wraps a gliderlabs/ssh server.
@@ -54,6 +56,13 @@ func NewServer(cfg Config) (*Server, error) {
 		Handler:         cfg.SessionHandler,
 		HostSigners:     []ssh.Signer{signer},
 		PasswordHandler: cfg.PasswordHandler,
+		Version:         cfg.Version,
+		ConnectionFailedCallback: func(conn net.Conn, err error) {
+			log.Printf("WARN: SSH connection failed from %s: %v", conn.RemoteAddr(), err)
+		},
+	}
+	if cfg.KeyboardInteractiveHandler != nil {
+		srv.KeyboardInteractiveHandler = cfg.KeyboardInteractiveHandler
 	}
 
 	// Configure algorithm suites via ServerConfigCallback.
@@ -64,7 +73,7 @@ func NewServer(cfg Config) (*Server, error) {
 	srv.ServerConfigCallback = func(ctx ssh.Context) *gossh.ServerConfig {
 		sc := &gossh.ServerConfig{}
 		if legacy {
-			log.Printf("INFO: SSH legacy algorithms enabled for retro BBS client compatibility")
+			log.Printf("DEBUG: SSH legacy algorithms enabled for retro BBS client compatibility")
 			sc.Config.KeyExchanges = []string{
 				"curve25519-sha256",
 				"curve25519-sha256@libssh.org",

@@ -7,6 +7,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/sshserver"
+	gossh "golang.org/x/crypto/ssh"
 )
 
 // startSSHServer creates, configures, and starts the pure-Go SSH server.
@@ -20,22 +21,18 @@ func startSSHServer(hostKeyPath, sshHost string, sshPort int, legacyAlgorithms b
 		Port:                sshPort,
 		LegacySSHAlgorithms: legacyAlgorithms,
 		SessionHandler:      sshSessionHandler,
+		Version:             "Vision3",
+		// BBS handles its own login flow — accept all SSH auth methods.
+		// The PasswordHandler and KeyboardInteractiveHandler both return true
+		// so any SSH client (SyncTERM, NetRunner, OpenSSH, etc.) can connect
+		// regardless of which auth method it prefers.
 		PasswordHandler: func(ctx ssh.Context, password string) bool {
-			username := ctx.User()
-			// If user exists in BBS database, validate password
-			u, found := userMgr.GetUser(username)
-			if !found {
-				// Unknown user — allow through to BBS login/new user flow
-				return true
-			}
-			// Existing user — verify bcrypt password
-			_, ok := userMgr.Authenticate(username, password)
-			if !ok {
-				log.Printf("WARN: SSH password auth failed for existing user: %s", username)
-			} else {
-				log.Printf("INFO: SSH password auth verified for user: %s (ID: %d)", username, u.ID)
-			}
-			return ok
+			log.Printf("DEBUG: SSH password auth from user=%q addr=%s", ctx.User(), ctx.RemoteAddr())
+			return true
+		},
+		KeyboardInteractiveHandler: func(ctx ssh.Context, challenger gossh.KeyboardInteractiveChallenge) bool {
+			log.Printf("DEBUG: SSH keyboard-interactive auth from user=%q addr=%s", ctx.User(), ctx.RemoteAddr())
+			return true
 		},
 	})
 	if err != nil {
