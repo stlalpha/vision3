@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -11,6 +12,12 @@ import (
 
 	"github.com/gliderlabs/ssh"
 )
+
+// ErrBinaryNotFound is returned by ExecuteSend/ExecuteReceive when the
+// external transfer binary (e.g. sexyz) cannot be found on disk. Callers
+// should check errors.Is(err, ErrBinaryNotFound) and display a sysop-friendly
+// message to the user instead of a generic "transfer failed" notice.
+var ErrBinaryNotFound = errors.New("transfer binary not found")
 
 // Connection type constants for ProtocolConfig.ConnectionType.
 const (
@@ -108,7 +115,7 @@ func (p *ProtocolConfig) ExecuteSend(s ssh.Session, filePaths ...string) error {
 	cmdPath, err := exec.LookPath(p.SendCmd)
 	if err != nil {
 		log.Printf("ERROR: send command %q not found for protocol %q: %v", p.SendCmd, p.Name, err)
-		return fmt.Errorf("send command %q not found for protocol %q: %w", p.SendCmd, p.Name, err)
+		return fmt.Errorf("%w: send command %q not found for protocol %q — see documentation/file-transfer-protocols.md", ErrBinaryNotFound, p.SendCmd, p.Name)
 	}
 	// Resolve to absolute path so relative binary paths survive any working-directory changes.
 	if !filepath.IsAbs(cmdPath) {
@@ -143,7 +150,7 @@ func (p *ProtocolConfig) ExecuteReceive(s ssh.Session, targetDir string) error {
 	cmdPath, err := exec.LookPath(p.RecvCmd)
 	if err != nil {
 		log.Printf("ERROR: recv command %q not found for protocol %q: %v", p.RecvCmd, p.Name, err)
-		return fmt.Errorf("recv command %q not found for protocol %q: %w", p.RecvCmd, p.Name, err)
+		return fmt.Errorf("%w: recv command %q not found for protocol %q — see documentation/file-transfer-protocols.md", ErrBinaryNotFound, p.RecvCmd, p.Name)
 	}
 	// Resolve to absolute path so that cmd.Dir does not break relative binary paths.
 	if !filepath.IsAbs(cmdPath) {

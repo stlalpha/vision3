@@ -19,6 +19,7 @@ import (
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/terminalio"
+	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/user"
 	"github.com/stlalpha/vision3/internal/ziplab"
 )
@@ -677,7 +678,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 						transferErr := proto.ExecuteSend(s, filesToDownload...)
 						if transferErr != nil {
 							log.Printf("ERROR: Node %d: %s batch send failed: %v", nodeNumber, proto.Name, transferErr)
-							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|01%s transfer failed or was cancelled.\r\n", proto.Name))), outputMode)
+							if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
+								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+							} else {
+								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|01%s transfer failed or was cancelled.\r\n", proto.Name))), outputMode)
+							}
 							failCount = len(filesToDownload)
 							successCount = 0
 						} else {
@@ -698,6 +703,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(filesToDownload), filenamesOnly[i]))), outputMode)
 							if sendErr := proto.ExecuteSend(s, fp); sendErr != nil {
 								log.Printf("ERROR: Node %d: %s send failed for %s: %v", nodeNumber, proto.Name, filenamesOnly[i], sendErr)
+								if errors.Is(sendErr, transfer.ErrBinaryNotFound) {
+									_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+									failCount += len(filesToDownload) - i
+									break
+								}
 								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(" |01FAILED|07\r\n")), outputMode)
 								failCount++
 							} else {
