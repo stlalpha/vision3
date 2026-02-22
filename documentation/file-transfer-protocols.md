@@ -1,215 +1,176 @@
 # File Transfer Protocols
 
-This document covers the file transfer protocol system in ViSiON/3, including setup, configuration, and platform-specific dependencies.
+This document covers the file transfer protocol system in ViSiON/3, including setup, configuration, and building from source.
 
 ## Overview
 
-ViSiON/3 uses external programs for file transfers. Protocol definitions are stored in `configs/protocols.json`, allowing sysops to configure which transfer engines are available. Four protocols are supported out of the box:
+ViSiON/3 uses **sexyz** (Synchronet's external file transfer program) as its sole file transfer engine. sexyz provides ZModem with 8k blocks and works on both SSH and telnet connections. Protocol definitions are stored in `configs/protocols.json`.
 
-| Protocol  | Engine             | Key  | Best For           | PTY Required |
-| --------- | ------------------ | ---- | ------------------ | ------------ |
-| ZModem    | lrzsz (`sz`/`rz`)  | `Z`  | SSH connections    | Yes          |
-| ZModem 8k | sexyz (Synchronet) | `ZS` | Telnet connections | No           |
-| YModem    | sexyz (Synchronet) | `YS` | Telnet connections | No           |
-| XModem    | sexyz (Synchronet) | `XS` | Telnet connections | No           |
+| Protocol  | Engine             | Key | Connection Types | PTY Required |
+| --------- | ------------------ | --- | ---------------- | ------------ |
+| ZModem 8k | sexyz (Synchronet) | `Z` | SSH + Telnet     | No           |
+
+### Why sexyz?
+
+- **Universal** — Works on both SSH and telnet connections without modification
+- **No PTY required** — Operates on raw I/O pipes, avoiding PTY line-discipline corruption
+- **8k blocks** — Faster throughput than standard 1k ZModem
+- **Battle-tested** — Used by Synchronet BBS and other BBS software for decades
 
 ## Dependencies
 
-### lrzsz (Recommended — Default Protocol)
+### sexyz (Required)
 
-lrzsz provides the standard ZModem `sz` (send) and `rz` (receive) commands used by the default transfer protocol. This is the primary file transfer dependency.
-
-**Linux (Debian/Ubuntu):**
-
-```bash
-sudo apt install lrzsz
-```
-
-**Linux (Fedora/RHEL):**
-
-```bash
-sudo dnf install lrzsz
-```
-
-**Linux (Arch):**
-
-```bash
-sudo pacman -S lrzsz
-```
-
-**Linux (Alpine):**
-
-lrzsz is not in Alpine's standard repos. It is built from source in the Dockerfile:
-
-```dockerfile
-RUN cd /tmp && \
-    wget -q https://www.ohse.de/uwe/releases/lrzsz-0.12.20.tar.gz && \
-    tar xzf lrzsz-0.12.20.tar.gz && \
-    cd lrzsz-0.12.20 && \
-    ./configure --prefix=/usr/local && \
-    make && make install
-```
-
-**macOS (Homebrew):**
-
-```bash
-brew install lrzsz
-```
-
-**Windows (WSL):**
-
-```bash
-# Inside WSL (Debian/Ubuntu)
-sudo apt install lrzsz
-```
-
-**Windows (native — MSYS2):**
-
-```bash
-pacman -S lrzsz
-```
-
-**Windows (native — Cygwin):**
-
-Install `lrzsz` package from the Cygwin installer.
-
-### sexyz (Optional — Synchronet ZModem 8k)
-
-sexyz is Synchronet's external file transfer program providing ZModem with 8k blocks. It operates directly on TCP sockets (no PTY needed), making it ideal for telnet connections.
-
-**sexyz is NOT available through standard package managers.** It must be obtained from Synchronet BBS:
+sexyz is **not available through standard package managers**. It must be built from source or obtained from Synchronet BBS.
 
 - Website: https://www.synchro.net
 - Source: https://gitlab.synchro.net
 
-#### Obtaining sexyz
+### Building sexyz from Source
 
-1. **From Synchronet builds:**
-   - Download the appropriate build for your platform from the Synchronet website
-   - Extract the `sexyz` binary
+The recommended approach is to build sexyz v3.2 from the Synchronet source repository:
 
-2. **From source:**
-   - Clone the Synchronet repository from GitLab
-   - Build with the provided makefiles
-   - The sexyz binary is part of the `exec/` output
+```bash
+# Clone the Synchronet source
+git clone https://gitlab.synchro.net/main/sbbs.git
+cd sbbs
 
-3. **Install:**
-   ```bash
-   cp sexyz /path/to/vision3/bin/sexyz
-   chmod +x /path/to/vision3/bin/sexyz
-   ```
+# Build sexyz
+cd src/sbbs3
+make RELEASE=1 sexyz
 
-#### Platform Availability
+# The binary will be at:
+# src/sbbs3/*/sexyz (platform-specific subdirectory)
+```
 
-| Platform     | Availability                            |
+### Installing sexyz
+
+```bash
+cp sexyz /path/to/vision3/bin/sexyz
+chmod +x /path/to/vision3/bin/sexyz
+```
+
+Verify it works:
+
+```bash
+bin/sexyz -help
+```
+
+You should see version and usage information from Synchronet External X/Y/ZMODEM.
+
+### Platform Availability
+
+| Platform     | How to Obtain                           |
 | ------------ | --------------------------------------- |
-| Linux x86_64 | Pre-built binaries or build from source |
+| Linux x86_64 | Build from source (recommended)         |
 | Linux ARM64  | Build from source                       |
 | macOS        | Build from source                       |
 | Windows      | Pre-built .exe from Synchronet builds   |
 
 ## Configuration
 
-Protocols are defined in `configs/protocols.json`:
+The default protocol configuration in `configs/protocols.json`:
 
 ```json
 [
   {
-    "key": "zmodem-lrzsz",
-    "name": "ZModem (lrzsz)",
-    "description": "ZModem via lrzsz sz/rz — standard external transfer",
-    "send_cmd": "sz",
-    "send_args": ["-b", "-e", "{filePath}"],
-    "recv_cmd": "rz",
-    "recv_args": ["-b", "-r"],
-    "batch_send": true,
-    "use_pty": true,
-    "default": true
-  },
-  {
-    "key": "zmodem-sexyz",
-    "name": "ZModem 8k (sexyz)",
-    "description": "ZModem 8k via Synchronet sexyz — recommended for telnet",
-    "send_cmd": "sexyz",
-    "send_args": ["{socket}", "sz", "{filePath}"],
-    "recv_cmd": "sexyz",
-    "recv_args": ["{socket}", "rz"],
+    "key": "Z",
+    "name": "Zmodem 8k (SEXYZ)",
+    "description": "ZModem-8k batch file transfer via Synchronet SEXYZ",
+    "send_cmd": "bin/sexyz",
+    "send_args": ["-raw", "-8", "sz", "{filePath}"],
+    "recv_cmd": "bin/sexyz",
+    "recv_args": ["-raw", "-8", "rz", "{targetDir}"],
     "batch_send": true,
     "use_pty": false,
-    "default": false
+    "default": true,
+    "connection_type": ""
   }
 ]
 ```
 
 ### Configuration Fields
 
-| Field         | Type     | Description                                                |
-| ------------- | -------- | ---------------------------------------------------------- |
-| `key`         | string   | Machine-readable identifier (e.g., `zmodem-lrzsz`)         |
-| `name`        | string   | Display name shown to users                                |
-| `description` | string   | Short description for help/selection menus                 |
-| `send_cmd`    | string   | Executable path for sending files (download to user)       |
-| `send_args`   | string[] | Arguments for send command                                 |
-| `recv_cmd`    | string   | Executable path for receiving files (upload from user)     |
-| `recv_args`   | string[] | Arguments for receive command                              |
-| `batch_send`  | bool     | Whether the protocol supports multi-file batch sends       |
-| `use_pty`     | bool     | Whether the command requires a PTY (pseudo-terminal)       |
-| `default`     | bool     | Sets this as the default protocol when user doesn't choose |
+| Field             | Type     | Description                                                |
+| ----------------- | -------- | ---------------------------------------------------------- |
+| `key`             | string   | Short key shown in protocol selection menu                 |
+| `name`            | string   | Display name shown to users                                |
+| `description`     | string   | Short description for help/selection menus                 |
+| `send_cmd`        | string   | Executable path for sending files (download to user)       |
+| `send_args`       | string[] | Arguments for send command                                 |
+| `recv_cmd`        | string   | Executable path for receiving files (upload from user)     |
+| `recv_args`       | string[] | Arguments for receive command                              |
+| `batch_send`      | bool     | Whether the protocol supports multi-file batch sends       |
+| `use_pty`         | bool     | Whether the command requires a PTY (pseudo-terminal)       |
+| `default`         | bool     | Sets this as the default protocol when user doesn't choose |
+| `connection_type` | string   | `""` = any, `"ssh"` = SSH only, `"telnet"` = telnet only  |
 
 ### Argument Placeholders
 
 - `{filePath}` — Expanded to one or more file paths (send only). If absent from `send_args`, file paths are appended at the end.
-- `{targetDir}` — Expanded to the upload target directory (receive only).
-- `{socket}` — Expanded to the raw TCP socket file descriptor (used by sexyz).
+- `{targetDir}` — Expanded to the upload target directory (receive only). A trailing `/` is automatically ensured for sexyz compatibility.
+- `{fileListPath}` — Expanded to a temporary file containing one file path per line (for batch sends).
+
+### sexyz Flags
+
+- `-raw` — Disables telnet IAC processing within sexyz. ViSiON/3's telnet layer handles IAC transparently, so sexyz must not double-process it. Harmless on SSH (no IAC exists).
+- `-8` — Enables 8k ZModem blocks for faster throughput.
+- `sz` / `rz` — Send (download to user) / Receive (upload from user) ZModem mode.
+
+## How It Works
+
+### SSH Connections
+
+SSH provides a fully binary-transparent channel. sexyz's `-raw` flag has no effect (there are no IAC sequences to process). The data flows through `RunCommandDirect` which pipes sexyz's stdin/stdout directly to the SSH session channel.
+
+### Telnet Connections
+
+ViSiON/3's telnet layer (`TelnetConn`) handles IAC stripping/escaping transparently. sexyz sees a clean byte stream via `-raw` mode. The data flows through `RunCommandDirect` with the same pipe-based I/O.
+
+### Execution Flow
+
+1. User selects files and initiates transfer
+2. The session's `InputHandler` is reset (`resetSessionIH`) to release the session reader
+3. sexyz is launched via `RunCommandDirect` (no PTY)
+4. Two goroutines copy data: session→sexyz stdin, sexyz stdout→session
+5. When sexyz exits, the stdin goroutine is interrupted via `SetReadInterrupt`
+6. Leftover protocol bytes are drained from the session
+7. The `InputHandler` is recreated and the BBS resumes normal operation
 
 ## Docker Deployment
 
-The Docker image handles lrzsz automatically:
-
-- **Build stage:** lrzsz is compiled from source (Alpine doesn't package it)
-- **Runtime stage:** `lsz` and `lrz` binaries are copied to `/usr/local/bin/` with `sz`/`rz` symlinks
-
-To add sexyz to a Docker deployment, place it in `bin/sexyz` before building and add to the Dockerfile:
+For Docker deployments, the sexyz binary must be included in the image. Place it at `bin/sexyz` before building:
 
 ```dockerfile
-# Copy sexyz binary (if available)
+# Copy sexyz binary
 COPY bin/sexyz ./bin/sexyz
 RUN chmod +x ./bin/sexyz
 ```
 
-The existing `bin/sexyz` in the repository is included with the project but is platform-specific. Ensure the binary matches the Docker container's architecture (typically linux/amd64).
+Ensure the binary matches the Docker container's architecture (typically linux/amd64 for Alpine-based images).
 
 ## Troubleshooting
 
-### "sz: command not found"
+### "sexyz: command not found" or "no such file"
 
-lrzsz is not installed. Install it for your platform (see Dependencies above).
+sexyz is not at `bin/sexyz`. Build it from source or download from Synchronet and place it in the `bin/` directory.
 
-### "sexyz: command not found"
+### Transfer hangs or times out
 
-sexyz is not in `PATH` or `bin/sexyz`. Obtain it from Synchronet and place in `bin/sexyz`.
+- Ensure your terminal client supports ZModem (SyncTerm, NetRunner, etc.)
+- Check that sexyz has execute permissions: `chmod +x bin/sexyz`
+- Review logs for sexyz stderr output (logged as `INFO: [sexyz stderr] ...`)
 
-### Transfer hangs or fails over telnet
-
-- Try the sexyz protocol instead of lrzsz — it works better over raw telnet connections
-- lrzsz requires PTY passthrough which can conflict with telnet negotiation
-
-### Transfer fails over SSH
-
-- Ensure `use_pty: true` is set for lrzsz-based protocols
-- Check that the SSH session supports binary data passthrough
-
-### Permission denied on transfer binaries
+### Permission denied on sexyz binary
 
 ```bash
 chmod +x bin/sexyz
-# or for system-installed lrzsz, check:
-which sz rz
 ```
 
-## Summary Table
+### "No transfer protocols configured"
 
-| Dependency | Required?   | Package Manager              | Notes                                      |
-| ---------- | ----------- | ---------------------------- | ------------------------------------------ |
-| `lrzsz`    | Recommended | apt/dnf/brew/pacman          | Default ZModem protocol (`sz`/`rz`)        |
-| `sexyz`    | Optional    | N/A (Synchronet builds only) | ZModem 8k for telnet; place in `bin/sexyz` |
+Ensure `configs/protocols.json` exists and contains valid protocol definitions. The `connection_type` field must match the user's connection (or be `""` for both).
+
+## Adding Custom Protocols
+
+While sexyz is the default and recommended engine, the protocol system supports any external transfer program. To add a custom protocol, add an entry to `configs/protocols.json` following the field definitions above. Set `use_pty: true` if the program requires a pseudo-terminal, and use `connection_type` to restrict it to specific connection types.

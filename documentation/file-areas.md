@@ -109,7 +109,7 @@ The `LISTFILES` function shows files in current area:
 
 - **Browse**: Navigate paginated file listings
 - **Mark/Unmark**: Tag files for batch download using file numbers
-- **Download**: ZMODEM transfer using `sz` command
+- **Download**: ZModem 8k transfer using sexyz
 
 **In Development:**
 
@@ -282,56 +282,28 @@ For importing many files:
 
 ## File Transfer Protocols
 
-Protocol configurations are defined in `configs/protocols.json`. ViSiON/3 supports multiple external transfer protocol engines.
+Protocol configurations are defined in `configs/protocols.json`. ViSiON/3 uses **sexyz** (Synchronet's ZModem 8k) as its file transfer engine, supporting both SSH and telnet connections.
 
-### Available Protocols
+### Default Protocol
 
-**ZModem via lrzsz (default):**
+**ZModem 8k via sexyz:**
 
-- Uses standard `sz` (send) and `rz` (receive) commands
-- Requires `lrzsz` package installed on the server
-- Operates through a PTY (pseudo-terminal)
-- Best for SSH connections
+- Uses Synchronet's `sexyz` binary with 8k block ZModem
+- Works on both SSH and telnet connections
+- Operates on raw I/O pipes — no PTY required
+- Binary is included at `bin/sexyz`
+- Can be built from source — see [File Transfer Protocols](file-transfer-protocols.md)
 
-**ZModem 8k via sexyz (optional):**
+### Transfer Binary
 
-- Uses Synchronet's `sexyz` binary for 8k block ZModem
-- Operates on raw sockets — no PTY required
-- Recommended for telnet connections
-- Must be obtained from [Synchronet BBS builds](https://www.synchro.net)
-- Place the binary at `bin/sexyz`
+sexyz is included as a pre-built binary at `bin/sexyz`. If you need to build it for a different platform, see [File Transfer Protocols](file-transfer-protocols.md) for instructions.
 
-### Installing Transfer Dependencies
-
-**Linux (Debian/Ubuntu):**
-
-```bash
-sudo apt install lrzsz
-```
-
-**Linux (Fedora/RHEL):**
-
-```bash
-sudo dnf install lrzsz
-```
-
-**macOS:**
-
-```bash
-brew install lrzsz
-```
-
-**Docker:** lrzsz is built from source in the Docker image automatically.
-
-**sexyz:** Not available through package managers. Obtain from https://www.synchro.net or https://gitlab.synchro.net and place in `bin/sexyz`.
+**Docker:** The sexyz binary is copied into the Docker image automatically if present at `bin/sexyz`.
 
 **Currently Implemented:**
 
-- **Zmodem**: Using external `sz` command for downloads
-
-**Planned:**
-
-- **Upload support**: Using `rz` or similar
+- **ZModem 8k downloads**: Batch file sends via sexyz
+- **ZModem 8k uploads**: File receives via sexyz
 
 ## Troubleshooting
 
