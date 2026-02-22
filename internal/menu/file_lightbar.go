@@ -713,7 +713,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 						}
 					}
 					time.Sleep(250 * time.Millisecond)
-					getSessionIH(s)
+					ih = getSessionIH(s)
 				}
 				time.Sleep(1 * time.Second)
 			} else {
@@ -745,6 +745,9 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			if uploadErr != nil {
 				log.Printf("ERROR: Node %d: Upload error: %v", nodeNumber, uploadErr)
 			}
+			// runUploadFiles calls resetSessionIH/getSessionIH internally,
+			// so the local ih is now stale — refresh it.
+			ih = getSessionIH(s)
 			// Refresh file list after upload.
 			allFiles = e.FileMgr.GetFilesForArea(currentAreaID)
 			if selectedIndex >= len(allFiles) && len(allFiles) > 0 {
