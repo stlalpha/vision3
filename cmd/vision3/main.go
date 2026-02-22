@@ -33,7 +33,6 @@ import (
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/scheduler"
 	"github.com/stlalpha/vision3/internal/session"
-	"github.com/stlalpha/vision3/internal/sshserver"
 	"github.com/stlalpha/vision3/internal/telnetserver"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/transfer"
@@ -58,6 +57,14 @@ var (
 	outputModeFlag    string             // Output mode flag (auto, utf8, cp437)
 	connectionTracker *ConnectionTracker // Global connection tracker
 )
+
+// sshAcceptor is implemented by the platform-specific SSH server (libssh on
+// Unix, unavailable on Windows). The main accept loop calls Accept() in a
+// tight loop to handle incoming SSH connections.
+type sshAcceptor interface {
+	Accept() error
+	Close() error
+}
 
 // allocateNodeIDForSession assigns the lowest available node slot (1..maxNodes)
 // and records it in activeSessions. Falls back to a monotonic counter if maxNodes
@@ -1467,30 +1474,6 @@ func sessionHandler(s ssh.Session) {
 	log.Printf("Node %d: Session handler finished for %s.", nodeID, authenticatedUser.Handle)
 }
 
-// libsshSessionHandler adapts libssh sessions to the existing BBS session handler
-func libsshSessionHandler(sess *sshserver.Session) error {
-	// Create adapter that implements ssh.Session interface
-	adapter := sshserver.NewBBSSessionAdapter(sess)
-
-	// Atomically check limits and register connection
-	canAccept, reason := connectionTracker.TryAccept(adapter.RemoteAddr())
-	if !canAccept {
-		log.Printf("INFO: Rejecting SSH connection from %s: %s", adapter.RemoteAddr(), reason)
-		fmt.Fprintf(adapter, "\r\nConnection rejected: %s\r\n", reason)
-		fmt.Fprintf(adapter, "Please try again later.\r\n")
-		time.Sleep(2 * time.Second) // Brief delay before closing
-		return fmt.Errorf("connection limit exceeded: %s", reason)
-	}
-
-	// Connection is registered; ensure it's removed when done
-	defer connectionTracker.RemoveConnection(adapter.RemoteAddr())
-
-	// Call the existing session handler with the adapter
-	sessionHandler(adapter)
-
-	return nil
-}
-
 // telnetSessionHandler adapts telnet sessions to the existing BBS session handler
 func telnetSessionHandler(adapter *telnetserver.TelnetSessionAdapter) {
 	// Atomically check limits and register connection
@@ -1743,46 +1726,20 @@ func main() {
 	}
 
 	// Start SSH server if enabled
-	var server *sshserver.Server
+	var server sshAcceptor
 	if serverConfig.SSHEnabled {
-		sshPort := serverConfig.SSHPort
-		sshHost := serverConfig.SSHHost
-		log.Printf("INFO: Configuring libssh SSH server on %s:%d...", sshHost, sshPort)
-
+		var cleanup func()
 		var err error
-		server, err = sshserver.NewServer(sshserver.Config{
-			HostKeyPath:         hostKeyPath,
-			Port:                sshPort,
-			LegacySSHAlgorithms: serverConfig.LegacySSHAlgorithms,
-			SessionHandler:      libsshSessionHandler,
-			AuthPasswordFunc: func(username, password string) bool {
-				// If user exists in BBS database, validate password
-				u, found := userMgr.GetUser(username)
-				if !found {
-					// Unknown user — allow through to BBS login/new user flow
-					return true
-				}
-				// Existing user — verify bcrypt password
-				_, ok := userMgr.Authenticate(username, password)
-				if !ok {
-					log.Printf("WARN: SSH password auth failed for existing user: %s", username)
-				} else {
-					log.Printf("INFO: SSH password auth verified for user: %s (ID: %d)", username, u.ID)
-				}
-				return ok
-			},
-		})
+		server, cleanup, err = startSSHServer(
+			hostKeyPath,
+			serverConfig.SSHHost,
+			serverConfig.SSHPort,
+			serverConfig.LegacySSHAlgorithms,
+		)
 		if err != nil {
-			log.Fatalf("FATAL: Failed to create SSH server: %v", err)
+			log.Fatalf("FATAL: %v", err)
 		}
-		defer server.Close()
-		defer sshserver.Cleanup()
-
-		if err := server.Listen(); err != nil {
-			log.Fatalf("FATAL: Failed to start SSH server: %v", err)
-		}
-
-		log.Printf("INFO: SSH server ready - connect via: ssh <username>@%s -p %d", sshHost, sshPort)
+		defer cleanup()
 	} else {
 		log.Printf("INFO: SSH server disabled in config")
 	}
