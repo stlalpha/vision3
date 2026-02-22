@@ -1,59 +1,25 @@
 [
     {
         "key": "Z",
-        "name": "Zmodem",
-        "description": "Zmodem batch file transfer protocol (lrzsz)",
-        "send_cmd": "sz",
-        "send_args": [
-            "-b"
-        ],
-        "recv_cmd": "rz",
-        "recv_args": [
-            "-b",
-            "-r"
-        ],
-        "batch_send": true,
-        "use_pty": true,
-        "default": true
-    },
-    {
-        "key": "ZS",
-        "name": "Zmodem (SEXYZ)",
-        "description": "Telnet-safe Zmodem via SEXYZ v2.0",
+        "name": "Zmodem 8k (SEXYZ)",
+        "description": "ZModem-8k batch file transfer via SEXYZ",
         "send_cmd": "bin/sexyz",
         "send_args": [
-            "-s",
-            "z",
+            "-raw",
+            "-8",
+            "sz",
             "{filePath}"
         ],
         "recv_cmd": "bin/sexyz",
         "recv_args": [
-            "-r",
-            "z"
+            "-raw",
+            "-8",
+            "rz",
+            "{targetDir}"
         ],
         "batch_send": true,
-        "use_pty": true,
-        "default": false,
-        "connection_type": "telnet"
-    },
-    {
-        "key": "YS",
-        "name": "Ymodem (SEXYZ)",
-        "description": "Telnet-safe Ymodem batch via SEXYZ v2.0",
-        "send_cmd": "bin/sexyz",
-        "send_args": [
-            "-s",
-            "y",
-            "{filePath}"
-        ],
-        "recv_cmd": "bin/sexyz",
-        "recv_args": [
-            "-r",
-            "y"
-        ],
-        "batch_send": true,
-        "use_pty": true,
-        "default": false,
-        "connection_type": "telnet"
+        "use_pty": false,
+        "default": true,
+        "connection_type": ""
     }
 ]
