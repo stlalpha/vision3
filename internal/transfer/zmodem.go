@@ -87,8 +87,8 @@ func RunCommandDirect(s ssh.Session, cmd *exec.Cmd) error {
 	// Close stdin pipe so the next write from the stdin goroutine will fail.
 	_ = stdinPipe.Close()
 
-	// Unblock the stdin goroutine's pending s.Read() call.  On telnet sessions
-	// this uses SetReadInterrupt which causes Read to return io.EOF.
+	// Unblock the stdin goroutine's pending s.Read() call.  SetReadInterrupt
+	// causes Read to return io.EOF (telnet) or ErrReadInterrupted (SSH).
 	if ri, ok := s.(readInterrupter); ok {
 		interruptCh := make(chan struct{})
 		close(interruptCh)
