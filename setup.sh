@@ -76,26 +76,20 @@ else
     MISSING_PREREQS=1
 fi
 
-# Check for lrzsz (ZModem file transfers)
-if command -v sz &> /dev/null && command -v rz &> /dev/null; then
-    echo -e "${GREEN}✓${NC} lrzsz (sz/rz for ZModem transfers)"
+# Check for sexyz (required — Synchronet ZModem 8k for file transfers)
+if [ -x "bin/sexyz" ]; then
+    echo -e "${GREEN}✓${NC} sexyz (Synchronet ZModem 8k) at bin/sexyz"
+    if [ -f "bin/sexyz.ini" ]; then
+        echo -e "${GREEN}✓${NC} sexyz.ini configuration found"
+    else
+        echo -e "${YELLOW}!${NC} bin/sexyz.ini not found — sexyz will use defaults"
+        echo "  Copy sexyz.ini from the repository to bin/sexyz.ini for optimal settings"
+    fi
 else
-    echo -e "${YELLOW}!${NC} lrzsz is not installed (optional — required for ZModem file transfers)"
-    echo "  Install instructions:"
-    echo "    Debian/Ubuntu: sudo apt install lrzsz"
-    echo "    Fedora: sudo dnf install lrzsz"
-    echo "    macOS: brew install lrzsz"
-    echo "  Note: sexyz (Synchronet) is an alternative; obtain from Synchronet builds"
-fi
-
-# Check for sexyz (optional — Synchronet ZModem 8k for telnet)
-if command -v sexyz &> /dev/null || [ -x "bin/sexyz" ]; then
-    echo -e "${GREEN}✓${NC} sexyz (Synchronet ZModem 8k — optional)"
-else
-    echo -e "${YELLOW}!${NC} sexyz not found (optional — recommended for telnet file transfers)"
-    echo "  sexyz must be obtained from Synchronet BBS builds:"
-    echo "    https://www.synchro.net  or  https://gitlab.synchro.net"
-    echo "  Place the binary in bin/sexyz"
+    echo -e "${YELLOW}!${NC} sexyz not found at bin/sexyz (required for file transfers)"
+    echo "  Build from source: https://gitlab.synchro.net/main/sbbs.git"
+    echo "  See documentation/file-transfer-protocols.md for build instructions"
+    echo "  Place the binary at bin/sexyz and make it executable"
 fi
 
 echo

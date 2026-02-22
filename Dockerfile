@@ -5,11 +5,11 @@
 #   vision3
 
 # ---------------------------------------------------------------------------
-# Stage 1: Build Go binaries + lrzsz (zmodem)
+# Stage 1: Build Go binaries
 # ---------------------------------------------------------------------------
 FROM golang:1.24-alpine AS builder
 
-# Install build dependencies including libssh-dev for CGO and lrzsz build deps
+# Install build dependencies including libssh-dev for CGO
 RUN apk add --no-cache git gcc musl-dev libssh-dev make
 
 WORKDIR /vision3
@@ -24,15 +24,6 @@ RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o /vision3/ViSiON3 ./cmd
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/v3mail   ./cmd/v3mail
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/helper   ./cmd/helper
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/strings  ./cmd/strings
-
-# Build lrzsz from source (not available in Alpine repos)
-RUN cd /tmp && \
-    wget -q https://www.ohse.de/uwe/releases/lrzsz-0.12.20.tar.gz && \
-    tar xzf lrzsz-0.12.20.tar.gz && \
-    cd lrzsz-0.12.20 && \
-    ./configure --prefix=/usr/local && \
-    make && \
-    make install
 
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime image
@@ -56,11 +47,10 @@ COPY --from=builder /vision3/v3mail  .
 COPY --from=builder /vision3/helper  .
 COPY --from=builder /vision3/strings .
 
-# Copy lrzsz binaries (zmodem sz/rz for file transfers)
-COPY --from=builder /usr/local/bin/lsz /usr/local/bin/lsz
-COPY --from=builder /usr/local/bin/lrz /usr/local/bin/lrz
-RUN ln -s /usr/local/bin/lsz /usr/local/bin/sz && \
-    ln -s /usr/local/bin/lrz /usr/local/bin/rz
+# Copy sexyz binary + config (Synchronet ZModem 8k for file transfers)
+COPY bin/sexyz ./bin/sexyz
+COPY bin/sexyz.ini ./bin/sexyz.ini
+RUN chmod +x ./bin/sexyz
 
 # Copy binkd (statically linked FTN mailer)
 COPY bin/binkd ./bin/binkd
