@@ -58,14 +58,6 @@ var (
 	connectionTracker *ConnectionTracker // Global connection tracker
 )
 
-// sshAcceptor is implemented by the platform-specific SSH server (libssh on
-// Unix, unavailable on Windows). The main accept loop calls Accept() in a
-// tight loop to handle incoming SSH connections.
-type sshAcceptor interface {
-	Accept() error
-	Close() error
-}
-
 // allocateNodeIDForSession assigns the lowest available node slot (1..maxNodes)
 // and records it in activeSessions. Falls back to a monotonic counter if maxNodes
 // is unavailable or all slots appear occupied.
@@ -1726,11 +1718,8 @@ func main() {
 	}
 
 	// Start SSH server if enabled
-	var server sshAcceptor
 	if serverConfig.SSHEnabled {
-		var cleanup func()
-		var err error
-		server, cleanup, err = startSSHServer(
+		cleanup, err := startSSHServer(
 			hostKeyPath,
 			serverConfig.SSHHost,
 			serverConfig.SSHPort,
@@ -1771,19 +1760,10 @@ func main() {
 		log.Printf("INFO: Telnet server disabled in config")
 	}
 
-	// Main accept loop — SSH accepts if enabled, otherwise block on signal
-	if server != nil {
-		for {
-			if err := server.Accept(); err != nil {
-				log.Printf("ERROR: Failed to accept connection: %v", err)
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
-	} else {
-		// Telnet-only mode: block until interrupted
-		log.Printf("INFO: Running in telnet-only mode")
-		select {}
-	}
+	// Block forever — SSH and telnet servers run in background goroutines.
+	// The process exits when the OS terminates it or log.Fatalf fires.
+	log.Printf("INFO: Vision/3 BBS running. Press Ctrl+C to stop.")
+	select {}
 
 }
 
