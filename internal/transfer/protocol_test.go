@@ -29,7 +29,7 @@ func TestExpandArgs_filePath_appended_when_absent(t *testing.T) {
 func TestExpandArgs_targetDir_standalone(t *testing.T) {
 	tmpl := []string{"-r", "{targetDir}"}
 	got, _ := expandArgs(tmpl, nil, "/upload/tmp")
-	want := []string{"-r", "/upload/tmp"}
+	want := []string{"-r", "/upload/tmp/"}
 	assertStringSlice(t, want, got)
 }
 
@@ -42,10 +42,10 @@ func TestExpandArgs_sexyz_send(t *testing.T) {
 }
 
 func TestExpandArgs_sexyz_recv(t *testing.T) {
-	// sexyz -raw -8 rz /upload  (dir as positional arg)
+	// sexyz -raw -8 rz /upload/  (dir with trailing separator)
 	tmpl := []string{"-raw", "-8", "rz", "{targetDir}"}
 	got, _ := expandArgs(tmpl, nil, "/upload")
-	want := []string{"-raw", "-8", "rz", "/upload"}
+	want := []string{"-raw", "-8", "rz", "/upload/"}
 	assertStringSlice(t, want, got)
 }
 
@@ -261,7 +261,9 @@ func TestSexyZSendArgs(t *testing.T) {
 	assertStringSlice(t, want, args)
 }
 
-// TestSexyZRecvArgs verifies the sexyz receive command: sexyz -raw -8 rz /targetDir
+// TestSexyZRecvArgs verifies the sexyz receive command: sexyz -raw -8 rz /targetDir/
+// The trailing separator is critical — sexyz concatenates dir+filename without
+// inserting a separator (Synchronet bug: backslash() call is commented out).
 func TestSexyZRecvArgs(t *testing.T) {
 	p := ProtocolConfig{
 		Name:     "Zmodem 8k (sexyz)",
@@ -269,8 +271,24 @@ func TestSexyZRecvArgs(t *testing.T) {
 		RecvArgs: []string{"-raw", "-8", "rz", "{targetDir}"},
 	}
 	args, _ := expandArgs(p.RecvArgs, nil, "/upload/tmp-123")
-	want := []string{"-raw", "-8", "rz", "/upload/tmp-123"}
+	want := []string{"-raw", "-8", "rz", "/upload/tmp-123/"}
 	assertStringSlice(t, want, args)
+}
+
+// TestExpandArgs_targetDir_already_has_separator ensures no double slash.
+func TestExpandArgs_targetDir_already_has_separator(t *testing.T) {
+	tmpl := []string{"rz", "{targetDir}"}
+	got, _ := expandArgs(tmpl, nil, "/upload/tmp/")
+	want := []string{"rz", "/upload/tmp/"}
+	assertStringSlice(t, want, got)
+}
+
+// TestExpandArgs_targetDir_empty stays empty.
+func TestExpandArgs_targetDir_empty(t *testing.T) {
+	tmpl := []string{"rz", "{targetDir}"}
+	got, _ := expandArgs(tmpl, nil, "")
+	want := []string{"rz", ""}
+	assertStringSlice(t, want, got)
 }
 
 // TestYmodemSendArgs verifies lrzsz sb command args.

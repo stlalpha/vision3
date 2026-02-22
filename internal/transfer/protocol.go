@@ -170,7 +170,9 @@ func (p *ProtocolConfig) ExecuteReceive(s ssh.Session, targetDir string) error {
 //
 // Rules:
 //   - A standalone "{filePath}" arg is replaced by all filePaths (one arg each).
-//   - A standalone "{targetDir}" arg is replaced by targetDir.
+//   - A standalone "{targetDir}" arg is replaced by targetDir (always ends with
+//     a path separator — some external programs like sexyz concatenate the
+//     directory path with the filename without adding a separator).
 //   - "{fileListPath}" (standalone or inline) is replaced by the path to a
 //     temporary file containing one filename per line. Callers must clean up
 //     the returned listFile path (if non-empty) after the command completes.
@@ -181,6 +183,14 @@ func expandArgs(template []string, filePaths []string, targetDir string) ([]stri
 	var result []string
 	filePathUsed := false
 	var listFilePath string
+
+	// Ensure targetDir always ends with a path separator.
+	// Some external programs (e.g. Synchronet sexyz) concatenate the directory
+	// path + filename without inserting a separator, producing a mangled path
+	// like "/tmp/.incoming-123MYFILE.ZIP" instead of "/tmp/.incoming-123/MYFILE.ZIP".
+	if targetDir != "" && !strings.HasSuffix(targetDir, string(filepath.Separator)) {
+		targetDir += string(filepath.Separator)
+	}
 
 	for _, arg := range template {
 		switch arg {
