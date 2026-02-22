@@ -11,11 +11,18 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
 	"golang.org/x/term"
 )
+
+// readInterrupter is implemented by session adapters that support unblocking
+// a pending Read() call (e.g. TelnetSessionAdapter).
+type readInterrupter interface {
+	SetReadInterrupt(ch <-chan struct{})
+}
 
 // RunCommandDirect executes an external command with its stdin/stdout/stderr
 // piped directly to the SSH session — no PTY allocated. This is essential for
@@ -61,12 +68,14 @@ func RunCommandDirect(s ssh.Session, cmd *exec.Cmd) error {
 		log.Printf("DEBUG: (%s) direct stdout copy finished. Bytes: %d, Error: %v", cmd.Path, n, cpErr)
 	}()
 
-	// Wait for the command to exit
+	// Wait for output to finish (command closed its stdout).
+	<-outputDone
+
+	// Wait for the command to exit.
 	cmdErr := cmd.Wait()
 	log.Printf("DEBUG: (%s) command finished (direct). Error: %v", cmd.Path, cmdErr)
 
-	// Log stderr output from the external transfer program (status/progress
-	// messages that must NOT be sent to the client).
+	// Log stderr output from the external transfer program.
 	if stderrBuf.Len() > 0 {
 		for _, line := range strings.Split(strings.TrimSpace(stderrBuf.String()), "\n") {
 			if line = strings.TrimSpace(line); line != "" {
@@ -75,16 +84,69 @@ func RunCommandDirect(s ssh.Session, cmd *exec.Cmd) error {
 		}
 	}
 
-	// Close stdin pipe to unblock the input goroutine if it's still reading
+	// Close stdin pipe first so any pending write returns an error.
 	_ = stdinPipe.Close()
 
-	<-outputDone
-	// Don't block forever on inputDone — the session read may hang until the
-	// client sends more data.  The stdinPipe.Close() above will cause the
-	// io.Copy to return on the next read attempt.
-	<-inputDone
+	// Interrupt the session read to unblock the stdin goroutine immediately.
+	// Without this, io.Copy(stdinPipe, s) blocks on s.Read() for 10-15 seconds
+	// waiting for the client to send data (or the ZModem timeout to fire),
+	// causing the caller's post-transfer UI to hang.
+	if ri, ok := s.(readInterrupter); ok {
+		interruptCh := make(chan struct{})
+		close(interruptCh) // fire immediately
+		ri.SetReadInterrupt(interruptCh)
+		defer ri.SetReadInterrupt(nil) // clear so future reads work normally
+	}
+
+	// Wait for stdin goroutine with a short timeout.
+	select {
+	case <-inputDone:
+	case <-time.After(2 * time.Second):
+		log.Printf("WARN: (%s) stdin goroutine did not finish within 2s, proceeding", cmd.Path)
+	}
+
+	// Drain any leftover protocol bytes from the session input buffer.
+	// After a ZModem transfer, the client may still be sending final ACK/ZFIN
+	// frames. If these aren't consumed, they appear as garbage ("**B01") to the
+	// BBS when it resumes reading, or worse, trigger a disconnect.
+	drainSessionInput(s, 500*time.Millisecond)
 
 	return cmdErr
+}
+
+// drainSessionInput reads and discards any pending bytes from the session
+// for the given duration. This prevents leftover protocol bytes from
+// corrupting the post-transfer menu display.
+func drainSessionInput(s ssh.Session, duration time.Duration) {
+	deadline := time.Now().Add(duration)
+	buf := make([]byte, 1024)
+	totalDrained := 0
+	for time.Now().Before(deadline) {
+		// Set a short read deadline if the session supports it.
+		if ri, ok := s.(readInterrupter); ok {
+			shortCh := make(chan struct{})
+			go func() {
+				time.Sleep(50 * time.Millisecond)
+				close(shortCh)
+			}()
+			ri.SetReadInterrupt(shortCh)
+		}
+		n, err := s.Read(buf)
+		totalDrained += n
+		if err != nil {
+			break
+		}
+		if n == 0 {
+			break
+		}
+	}
+	// Clear any interrupt we may have set.
+	if ri, ok := s.(readInterrupter); ok {
+		ri.SetReadInterrupt(nil)
+	}
+	if totalDrained > 0 {
+		log.Printf("DEBUG: Drained %d leftover bytes from session after transfer", totalDrained)
+	}
 }
 
 // RunCommandWithPTY executes an external command attached to the user's SSH
