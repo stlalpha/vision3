@@ -41,4 +41,11 @@ if [ ! -f "/vision3/configs/config.json" ]; then
     cp -n /vision3/templates/configs/*.json /vision3/configs/ 2>/dev/null || true
 fi
 
+# Ensure sexyz.ini is in bin/ (binary must be provided by user)
+mkdir -p /vision3/bin
+if [ ! -f "/vision3/bin/sexyz.ini" ] && [ -f "/vision3/templates/configs/sexyz.ini" ]; then
+    echo "Copying sexyz.ini to bin/..."
+    cp /vision3/templates/configs/sexyz.ini /vision3/bin/sexyz.ini
+fi
+
 exec "$@"

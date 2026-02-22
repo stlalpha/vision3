@@ -76,6 +76,12 @@ else
     MISSING_PREREQS=1
 fi
 
+# Copy sexyz.ini to bin/ if not present
+if [ -f "templates/configs/sexyz.ini" ] && [ ! -f "bin/sexyz.ini" ]; then
+    echo "  Creating bin/sexyz.ini from template..."
+    cp templates/configs/sexyz.ini bin/sexyz.ini
+fi
+
 # Check for sexyz (required — Synchronet ZModem 8k for file transfers)
 if [ -x "bin/sexyz" ]; then
     echo -e "${GREEN}✓${NC} sexyz (Synchronet ZModem 8k) at bin/sexyz"
@@ -83,7 +89,6 @@ if [ -x "bin/sexyz" ]; then
         echo -e "${GREEN}✓${NC} sexyz.ini configuration found"
     else
         echo -e "${YELLOW}!${NC} bin/sexyz.ini not found — sexyz will use defaults"
-        echo "  Copy sexyz.ini from the repository to bin/sexyz.ini for optimal settings"
     fi
 else
     echo -e "${YELLOW}!${NC} sexyz not found at bin/sexyz (required for file transfers)"

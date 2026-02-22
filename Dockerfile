@@ -47,10 +47,8 @@ COPY --from=builder /vision3/v3mail  .
 COPY --from=builder /vision3/helper  .
 COPY --from=builder /vision3/strings .
 
-# Copy sexyz binary + config (Synchronet ZModem 8k for file transfers)
-COPY bin/sexyz ./bin/sexyz
+# Copy sexyz.ini config (user must provide bin/sexyz binary for their platform)
 COPY bin/sexyz.ini ./bin/sexyz.ini
-RUN chmod +x ./bin/sexyz
 
 # Copy binkd (statically linked FTN mailer)
 COPY bin/binkd ./bin/binkd
