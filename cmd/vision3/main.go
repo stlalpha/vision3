@@ -1211,6 +1211,7 @@ func sessionHandler(s ssh.Session) {
 
 	// --- Invisible Login Prompt (SysOp/CoSysOp only) ---
 	if authenticatedUser.AccessLevel >= menuExecutor.GetServerConfig().CoSysOpLevel {
+		terminal.Write([]byte("\x1b[2J\x1b[H"))
 		invisPrompt := loadedStrings.InvisibleLogonPrompt
 		if invisPrompt == "" {
 			invisPrompt = " |03Invisible Logon?|07"

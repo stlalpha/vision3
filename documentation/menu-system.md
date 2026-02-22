@@ -170,8 +170,10 @@ Dynamic content placeholders in prompts and ANSI files:
 
 - `|UH` - User handle
 - `|TL` - Time left (in minutes)
-- `|CA` - Current area (message or file area tag)
-- `|CAN` - Current area name (resolved display name)
+- `|CA` - Current message area tag
+- `|CAN` - Current message area name (resolved display name)
+- `|CFA` - Current file area tag
+- `|CFAN` - Current file area name (resolved display name)
 - `|DATE` - Current date (MM/DD/YY)
 - `|TIME` - Current time (HH:MM)
 - `|CALLS` - User's total calls

@@ -12,30 +12,42 @@ import (
 	"github.com/gliderlabs/ssh"
 )
 
+// Connection type constants for ProtocolConfig.ConnectionType.
+const (
+	ConnTypeAny    = ""       // Available on all connection types
+	ConnTypeSSH    = "ssh"    // SSH sessions only
+	ConnTypeTelnet = "telnet" // Telnet sessions only
+)
+
 // ProtocolConfig defines a user-visible file transfer protocol.
 // The send/receive commands are external programs (e.g., lrzsz, sexyz).
 //
 // Argument placeholders:
 //
-//	{filePath}  — expanded to one or more file paths (send only)
-//	{targetDir} — expanded to the upload target directory (recv only)
+//	{filePath}     — expanded to one or more file paths (send only)
+//	{fileListPath} — replaced by a temp file path containing one filename per
+//	                 line; commonly prefixed with "@" for sexyz (e.g. "@{fileListPath}")
+//	{targetDir}    — expanded to the upload target directory (recv only)
 //
 // If {filePath} is absent from send_args, file paths are appended at the end.
 type ProtocolConfig struct {
-	Key         string   `json:"key"`         // Machine-readable key (e.g. "zmodem-lrzsz")
-	Name        string   `json:"name"`        // Display name shown to users
-	Description string   `json:"description"` // Short description for help text
-	SendCmd     string   `json:"send_cmd"`    // Executable for sending (download to user)
-	SendArgs    []string `json:"send_args"`   // Arguments for send command
-	RecvCmd     string   `json:"recv_cmd"`    // Executable for receiving (upload from user)
-	RecvArgs    []string `json:"recv_args"`   // Arguments for receive command
-	BatchSend   bool     `json:"batch_send"`  // True if the protocol supports multi-file batch sends
-	UsePTY      bool     `json:"use_pty"`     // True if the command requires a PTY
-	Default     bool     `json:"default"`     // True if this is the default protocol when none is selected
+	Key            string   `json:"key"`             // Selection key shown to users (e.g. "Z", "ZST")
+	Name           string   `json:"name"`            // Display name shown to users
+	Description    string   `json:"description"`     // Short description for help text
+	SendCmd        string   `json:"send_cmd"`        // Executable for sending (download to user)
+	SendArgs       []string `json:"send_args"`       // Arguments for send command
+	RecvCmd        string   `json:"recv_cmd"`        // Executable for receiving (upload from user)
+	RecvArgs       []string `json:"recv_args"`       // Arguments for receive command
+	BatchSend      bool     `json:"batch_send"`      // True if the protocol supports multi-file batch sends
+	UsePTY         bool     `json:"use_pty"`         // True if the command requires a PTY
+	Default        bool     `json:"default"`         // True if this is the default protocol when none is selected
+	ConnectionType string   `json:"connection_type"` // "" = any, "ssh" = SSH only, "telnet" = telnet only
 }
 
 // defaultProtocols returns built-in defaults.
-func defaultProtocols() []ProtocolConfig {return []ProtocolConfig{{Key:"Z",Name:"Zmodem",Description:"Zmodem (lrzsz)",SendCmd:"sz",SendArgs:[]string{"-b","-e"},RecvCmd:"rz",RecvArgs:[]string{"-b","-r"},BatchSend:true,UsePTY:true,Default:true}}}
+func defaultProtocols() []ProtocolConfig {
+	return []ProtocolConfig{{Key: "Z", Name: "Zmodem", Description: "Zmodem (lrzsz)", SendCmd: "sz", SendArgs: []string{"-b", "-e"}, RecvCmd: "rz", RecvArgs: []string{"-b", "-r"}, BatchSend: true, UsePTY: true, Default: true}}
+}
 
 // LoadProtocols reads a JSON array of ProtocolConfig definitions from path.
 func LoadProtocols(path string) ([]ProtocolConfig, error) {
@@ -54,7 +66,16 @@ func LoadProtocols(path string) ([]ProtocolConfig, error) {
 	return protocols, nil
 }
 
-func FindProtocol(ps []ProtocolConfig,key string)(ProtocolConfig,bool){u:=strings.ToUpper(key);for _,p:=range ps{if strings.ToUpper(p.Key)==u{return p,true}};d,_:=DefaultProtocol(ps);return d,false}
+func FindProtocol(ps []ProtocolConfig, key string) (ProtocolConfig, bool) {
+	u := strings.ToUpper(key)
+	for _, p := range ps {
+		if strings.ToUpper(p.Key) == u {
+			return p, true
+		}
+	}
+	d, _ := DefaultProtocol(ps)
+	return d, false
+}
 
 // DefaultProtocol returns the first protocol marked as default, or the first
 // protocol in the slice if none is marked default. Returns false if the slice
@@ -89,12 +110,24 @@ func (p *ProtocolConfig) ExecuteSend(s ssh.Session, filePaths ...string) error {
 		log.Printf("ERROR: send command %q not found for protocol %q: %v", p.SendCmd, p.Name, err)
 		return fmt.Errorf("send command %q not found for protocol %q: %w", p.SendCmd, p.Name, err)
 	}
+	// Resolve to absolute path so relative binary paths survive any working-directory changes.
+	if !filepath.IsAbs(cmdPath) {
+		if abs, absErr := filepath.Abs(cmdPath); absErr == nil {
+			cmdPath = abs
+		}
+	}
 
-	args := expandArgs(p.SendArgs, filePaths, "")
+	args, listFile := expandArgs(p.SendArgs, filePaths, "")
+	if listFile != "" {
+		defer os.Remove(listFile)
+	}
 	cmd := exec.Command(cmdPath, args...)
 
-	log.Printf("INFO: Protocol %q send: %s %v", p.Name, cmdPath, args)
-	return RunCommandWithPTY(s, cmd)
+	log.Printf("INFO: Protocol %q send: %s %v (pty=%v)", p.Name, cmdPath, args, p.UsePTY)
+	if p.UsePTY {
+		return RunCommandWithPTY(s, cmd)
+	}
+	return RunCommandDirect(s, cmd)
 }
 
 // ExecuteReceive runs this protocol's receive command to accept files from the user.
@@ -112,13 +145,25 @@ func (p *ProtocolConfig) ExecuteReceive(s ssh.Session, targetDir string) error {
 		log.Printf("ERROR: recv command %q not found for protocol %q: %v", p.RecvCmd, p.Name, err)
 		return fmt.Errorf("recv command %q not found for protocol %q: %w", p.RecvCmd, p.Name, err)
 	}
+	// Resolve to absolute path so that cmd.Dir does not break relative binary paths.
+	if !filepath.IsAbs(cmdPath) {
+		if abs, absErr := filepath.Abs(cmdPath); absErr == nil {
+			cmdPath = abs
+		}
+	}
 
-	args := expandArgs(p.RecvArgs, nil, targetDir)
+	args, listFile := expandArgs(p.RecvArgs, nil, targetDir)
+	if listFile != "" {
+		defer os.Remove(listFile)
+	}
 	cmd := exec.Command(cmdPath, args...)
 	cmd.Dir = targetDir
 
-	log.Printf("INFO: Protocol %q receive in %s: %s %v", p.Name, targetDir, cmdPath, args)
-	return RunCommandWithPTY(s, cmd)
+	log.Printf("INFO: Protocol %q receive in %s: %s %v (pty=%v)", p.Name, targetDir, cmdPath, args, p.UsePTY)
+	if p.UsePTY {
+		return RunCommandWithPTY(s, cmd)
+	}
+	return RunCommandDirect(s, cmd)
 }
 
 // expandArgs substitutes placeholders in a command argument template.
@@ -126,11 +171,16 @@ func (p *ProtocolConfig) ExecuteReceive(s ssh.Session, targetDir string) error {
 // Rules:
 //   - A standalone "{filePath}" arg is replaced by all filePaths (one arg each).
 //   - A standalone "{targetDir}" arg is replaced by targetDir.
-//   - Inline occurrences (e.g. "sz:{filePath}") use only the first filePath.
-//   - If {filePath} never appears as a standalone arg, filePaths are appended at the end.
-func expandArgs(template []string, filePaths []string, targetDir string) []string {
+//   - "{fileListPath}" (standalone or inline) is replaced by the path to a
+//     temporary file containing one filename per line. Callers must clean up
+//     the returned listFile path (if non-empty) after the command completes.
+//   - Inline occurrences (e.g. "@{fileListPath}") perform in-place substitution.
+//   - If {filePath} never appears as a standalone arg and {fileListPath} is not
+//     used either, filePaths are appended at the end.
+func expandArgs(template []string, filePaths []string, targetDir string) ([]string, string) {
 	var result []string
 	filePathUsed := false
+	var listFilePath string
 
 	for _, arg := range template {
 		switch arg {
@@ -139,20 +189,50 @@ func expandArgs(template []string, filePaths []string, targetDir string) []strin
 			filePathUsed = true
 		case "{targetDir}":
 			result = append(result, targetDir)
+		case "{fileListPath}":
+			// Write a temp file with one path per line.
+			if listFilePath == "" && len(filePaths) > 0 {
+				listFilePath = writeFileList(filePaths)
+			}
+			result = append(result, listFilePath)
+			filePathUsed = true
 		default:
 			a := arg
-			if len(filePaths) > 0 {
+			if strings.Contains(a, "{fileListPath}") && len(filePaths) > 0 {
+				if listFilePath == "" {
+					listFilePath = writeFileList(filePaths)
+				}
+				a = strings.ReplaceAll(a, "{fileListPath}", listFilePath)
+				filePathUsed = true
+			}
+			if len(filePaths) > 0 && strings.Contains(a, "{filePath}") {
 				a = strings.ReplaceAll(a, "{filePath}", filePaths[0])
+				filePathUsed = true
 			}
 			a = strings.ReplaceAll(a, "{targetDir}", targetDir)
 			result = append(result, a)
 		}
 	}
 
-	// Append file paths at end if the template had no standalone {filePath}.
+	// Append file paths at end only when {filePath} never appeared (standalone or inline).
 	if !filePathUsed && len(filePaths) > 0 {
 		result = append(result, filePaths...)
 	}
 
-	return result
+	return result, listFilePath
+}
+
+// writeFileList creates a temporary file containing one path per line and
+// returns the file path in the OS temp directory.  Returns "" on error.
+func writeFileList(paths []string) string {
+	f, err := os.CreateTemp("", "sexyz-filelist-*.txt")
+	if err != nil {
+		log.Printf("ERROR: failed to create file list temp file: %v", err)
+		return ""
+	}
+	for _, p := range paths {
+		fmt.Fprintln(f, p)
+	}
+	_ = f.Close()
+	return f.Name()
 }

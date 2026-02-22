@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -20,7 +19,6 @@ import (
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/terminalio"
-	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/user"
 	"github.com/stlalpha/vision3/internal/ziplab"
 )
@@ -655,40 +653,67 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 
 			if len(filesToDownload) > 0 {
-				log.Printf("INFO: Node %d: Attempting ZMODEM transfer for files: %v", nodeNumber, filenamesOnly)
-				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15Initiating ZMODEM transfer (sz)...\r\n")), outputMode)
-				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the ZMODEM receive function in your terminal.\r\n")), outputMode)
+				log.Printf("INFO: Node %d: Initiating transfer for files: %v", nodeNumber, filenamesOnly)
 
-				szPath, lookErr := exec.LookPath("sz")
-				if lookErr != nil {
-					log.Printf("ERROR: Node %d: 'sz' command not found in PATH: %v", nodeNumber, lookErr)
-					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Error: 'sz' command not found on server. Cannot start download.\r\n")), outputMode)
+				// Use protocol selection (respects connection type - SSH vs Telnet)
+				proto, protoOK, protoErr := e.selectTransferProtocol(s, terminal, outputMode)
+				if protoErr != nil {
+					if errors.Is(protoErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					log.Printf("ERROR: Node %d: Protocol selection error: %v", nodeNumber, protoErr)
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error: No transfer protocols configured on this system.|07\r\n")), outputMode)
 					failCount = len(filesToDownload)
+				} else if !protoOK {
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Download cancelled.|07\r\n")), outputMode)
 				} else {
-					args := []string{"-b", "-e"}
-					args = append(args, filesToDownload...)
-					cmd := exec.Command(szPath, args...)
-					log.Printf("INFO: Node %d: Executing Zmodem send: %s %v", nodeNumber, szPath, args)
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15Initiating %s transfer...\r\n", proto.Name))), outputMode)
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
 
-					transferErr := transfer.RunCommandWithPTY(s, cmd)
-					if transferErr != nil {
-						log.Printf("ERROR: Node %d: 'sz' command execution failed: %v", nodeNumber, transferErr)
-						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01ZMODEM transfer failed or was cancelled.\r\n")), outputMode)
-						failCount = len(filesToDownload)
-						successCount = 0
+					log.Printf("INFO: Node %d: Executing %s send: %v", nodeNumber, proto.Name, filenamesOnly)
+
+					resetSessionIH(s)
+					if proto.BatchSend && len(filesToDownload) > 1 {
+						transferErr := proto.ExecuteSend(s, filesToDownload...)
+						if transferErr != nil {
+							log.Printf("ERROR: Node %d: %s batch send failed: %v", nodeNumber, proto.Name, transferErr)
+							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|01%s transfer failed or was cancelled.\r\n", proto.Name))), outputMode)
+							failCount = len(filesToDownload)
+							successCount = 0
+						} else {
+							log.Printf("INFO: Node %d: %s batch send completed successfully.", nodeNumber, proto.Name)
+							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|07%s transfer complete.\r\n", proto.Name))), outputMode)
+							successCount = len(filesToDownload)
+							failCount = 0
+							for _, fileID := range currentUser.TaggedFileIDs {
+								if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
+									if incErr := e.FileMgr.IncrementDownloadCount(fileID); incErr != nil {
+										log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, fileID, incErr)
+									}
+								}
+							}
+						}
 					} else {
-						log.Printf("INFO: Node %d: 'sz' command completed successfully.", nodeNumber)
-						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07ZMODEM transfer complete.\r\n")), outputMode)
-						successCount = len(filesToDownload)
-						failCount = 0
-						for _, fileID := range currentUser.TaggedFileIDs {
-							if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
-								if incErr := e.FileMgr.IncrementDownloadCount(fileID); incErr != nil {
-									log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, fileID, incErr)
+						for i, fp := range filesToDownload {
+							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(filesToDownload), filenamesOnly[i]))), outputMode)
+							if sendErr := proto.ExecuteSend(s, fp); sendErr != nil {
+								log.Printf("ERROR: Node %d: %s send failed for %s: %v", nodeNumber, proto.Name, filenamesOnly[i], sendErr)
+								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(" |01FAILED|07\r\n")), outputMode)
+								failCount++
+							} else {
+								log.Printf("INFO: Node %d: %s sent %s OK", nodeNumber, proto.Name, filenamesOnly[i])
+								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(" |02OK|07\r\n")), outputMode)
+								successCount++
+								if _, pathErr := e.FileMgr.GetFilePath(currentUser.TaggedFileIDs[i]); pathErr == nil {
+									if incErr := e.FileMgr.IncrementDownloadCount(currentUser.TaggedFileIDs[i]); incErr != nil {
+										log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, currentUser.TaggedFileIDs[i], incErr)
+									}
 								}
 							}
 						}
 					}
+					time.Sleep(250 * time.Millisecond)
+					getSessionIH(s)
 				}
 				time.Sleep(1 * time.Second)
 			} else {

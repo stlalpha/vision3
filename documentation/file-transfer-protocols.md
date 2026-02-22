@@ -4,12 +4,14 @@ This document covers the file transfer protocol system in ViSiON/3, including se
 
 ## Overview
 
-ViSiON/3 uses external programs for file transfers. Protocol definitions are stored in `configs/protocols.json`, allowing sysops to configure which transfer engines are available. Two protocols are supported out of the box:
+ViSiON/3 uses external programs for file transfers. Protocol definitions are stored in `configs/protocols.json`, allowing sysops to configure which transfer engines are available. Four protocols are supported out of the box:
 
-| Protocol  | Engine             | Key            | Best For           | PTY Required |
-| --------- | ------------------ | -------------- | ------------------ | ------------ |
-| ZModem    | lrzsz (`sz`/`rz`)  | `zmodem-lrzsz` | SSH connections    | Yes          |
-| ZModem 8k | sexyz (Synchronet) | `zmodem-sexyz` | Telnet connections | No           |
+| Protocol  | Engine             | Key  | Best For           | PTY Required |
+| --------- | ------------------ | ---- | ------------------ | ------------ |
+| ZModem    | lrzsz (`sz`/`rz`)  | `Z`  | SSH connections    | Yes          |
+| ZModem 8k | sexyz (Synchronet) | `ZS` | Telnet connections | No           |
+| YModem    | sexyz (Synchronet) | `YS` | Telnet connections | No           |
+| XModem    | sexyz (Synchronet) | `XS` | Telnet connections | No           |
 
 ## Dependencies
 

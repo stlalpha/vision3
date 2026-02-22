@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -8,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -15,24 +17,83 @@ import (
 	"golang.org/x/term"
 )
 
-// runCommandWithPTY executes an external command attached to the user's SSH session using a PTY.
-// It handles setting raw mode, resizing, and copying I/O.
+// RunCommandDirect executes an external command with its stdin/stdout/stderr
+// piped directly to the SSH session — no PTY allocated. This is essential for
+// binary file-transfer protocols (ZMODEM, YMODEM, XMODEM) where a PTY's line
+// discipline would corrupt the data stream.
+func RunCommandDirect(s ssh.Session, cmd *exec.Cmd) error {
+	log.Printf("DEBUG: Starting command '%s' in DIRECT (no-PTY) mode", cmd.Path)
+
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe for '%s': %w", cmd.Path, err)
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdout pipe for '%s': %w", cmd.Path, err)
+	}
+	// Capture stderr separately — NEVER merge it into stdout.
+	// External protocol drivers (e.g. sexyz) write status/progress messages
+	// to stderr; merging them into stdout corrupts the binary data stream
+	// (ZModem frames, etc.) and causes transfers to fail.
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start command '%s': %w", cmd.Path, err)
+	}
+
+	inputDone := make(chan struct{})
+	outputDone := make(chan struct{})
+
+	// session → command stdin
+	go func() {
+		defer close(inputDone)
+		n, cpErr := io.Copy(stdinPipe, s)
+		log.Printf("DEBUG: (%s) direct stdin copy finished. Bytes: %d, Error: %v", cmd.Path, n, cpErr)
+		_ = stdinPipe.Close()
+	}()
+
+	// command stdout → session
+	go func() {
+		defer close(outputDone)
+		n, cpErr := io.Copy(s, stdoutPipe)
+		log.Printf("DEBUG: (%s) direct stdout copy finished. Bytes: %d, Error: %v", cmd.Path, n, cpErr)
+	}()
+
+	// Wait for the command to exit
+	cmdErr := cmd.Wait()
+	log.Printf("DEBUG: (%s) command finished (direct). Error: %v", cmd.Path, cmdErr)
+
+	// Log stderr output from the external transfer program (status/progress
+	// messages that must NOT be sent to the client).
+	if stderrBuf.Len() > 0 {
+		for _, line := range strings.Split(strings.TrimSpace(stderrBuf.String()), "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				log.Printf("INFO: [%s stderr] %s", filepath.Base(cmd.Path), line)
+			}
+		}
+	}
+
+	// Close stdin pipe to unblock the input goroutine if it's still reading
+	_ = stdinPipe.Close()
+
+	<-outputDone
+	// Don't block forever on inputDone — the session read may hang until the
+	// client sends more data.  The stdinPipe.Close() above will cause the
+	// io.Copy to return on the next read attempt.
+	<-inputDone
+
+	return cmdErr
+}
+
+// RunCommandWithPTY executes an external command attached to the user's SSH
+// session using a PTY. It handles setting raw mode, resizing, and copying I/O.
 func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 	ptyReq, winCh, isPty := s.Pty()
 	if !isPty {
-		// Fallback? Or error? Zmodem likely *needs* a PTY.
-		// Let's try running without PTY and see if sz/rz handle it.
-		log.Printf("WARN: No PTY available for session. Running command %s directly. Transfer might fail.", cmd.Path)
-		cmd.Stdin = s
-		cmd.Stdout = s
-		cmd.Stderr = s // Redirect stderr too?
-		err := cmd.Run()
-		if err != nil {
-			log.Printf("ERROR: Command %s failed (no PTY): %v", cmd.Path, err)
-		}
-		return err
-		// Original PTY required logic:
-		// return fmt.Errorf("PTY not available for this session, cannot run interactive command")
+		log.Printf("WARN: No PTY available for session. Falling back to direct mode for %s.", cmd.Path)
+		return RunCommandDirect(s, cmd)
 	}
 
 	log.Printf("DEBUG: Starting command '%s' with PTY", cmd.Path)
@@ -58,32 +119,19 @@ func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 		}
 	}()
 
-	// --- Terminal Raw Mode Handling ---
-	// Use the underlying file descriptor of the session *if* it supports it.
-	// Otherwise, fall back to PTY file descriptor.
-	var fd int
-	if f, ok := s.(interface{ Fd() uintptr }); ok {
-		fd = int(f.Fd())
-		log.Printf("DEBUG: Using session file descriptor (%d) for raw mode.", fd)
-	} else {
-		fd = int(ptmx.Fd())
-		log.Printf("DEBUG: Session does not expose Fd(), using PTY file descriptor (%d) for raw mode.", fd)
-	}
-
-	var restoreTerminal func() = func() {} // No-op default
+	// Set PTY to raw mode so binary protocol data passes through unmodified.
+	fd := int(ptmx.Fd())
+	var restoreTerminal func() = func() {}
 	originalState, err := term.MakeRaw(fd)
 	if err != nil {
-		log.Printf("WARN: Failed to put terminal (fd: %d) into raw mode for command '%s': %v. Command might misbehave.", fd, cmd.Path, err)
+		log.Printf("WARN: Failed to put PTY (fd: %d) into raw mode for command '%s': %v.", fd, cmd.Path, err)
 	} else {
-		log.Printf("DEBUG: Terminal (fd: %d) set to raw mode for command '%s'.", fd, cmd.Path)
 		restoreTerminal = func() {
-			log.Printf("DEBUG: Restoring terminal mode (fd: %d) after command '%s'.", fd, cmd.Path)
 			if err := term.Restore(fd, originalState); err != nil {
 				log.Printf("ERROR: Failed to restore terminal state (fd: %d) after command '%s': %v", fd, cmd.Path, err)
 			}
 		}
 	}
-	// restoreTerminal is called explicitly during shutdown sequence below
 
 	// --- SetReadInterrupt for clean shutdown ---
 	readInterrupt := make(chan struct{})
