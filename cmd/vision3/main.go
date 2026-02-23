@@ -1223,6 +1223,7 @@ func sessionHandler(s ssh.Session) {
 				log.Printf("Node %d: User disconnected during invisible logon prompt.", nodeID)
 				return
 			}
+			log.Printf("WARN: Node %d: Error during invisible logon prompt: %v", nodeID, invisErr)
 		}
 		if invisChoice {
 			bbsSession.Mutex.Lock()
@@ -1258,6 +1259,7 @@ func sessionHandler(s ssh.Session) {
 					log.Printf("Node %d: User disconnected during terminal size prompt.", nodeID)
 					return
 				}
+				log.Printf("WARN: Node %d: Error during terminal size prompt: %v", nodeID, promptErr)
 			}
 
 			if useNew {
@@ -1362,7 +1364,13 @@ func sessionHandler(s ssh.Session) {
 			terminal.Write([]byte("How many rows are available for BBS display? [\x1b[1m" + fmt.Sprintf("%d", detectedHeight) + "\x1b[0m]: "))
 
 			heightChoice, heightErr := terminal.ReadLine()
-			if heightErr == nil {
+			if heightErr != nil {
+				if errors.Is(heightErr, io.EOF) {
+					log.Printf("Node %d: User disconnected during height adjustment prompt.", nodeID)
+					return
+				}
+				log.Printf("WARN: Node %d: Error during height adjustment prompt: %v", nodeID, heightErr)
+			} else {
 				heightChoice = strings.TrimSpace(heightChoice)
 				if heightChoice != "" {
 					if adjustedHeight, parseErr := strconv.Atoi(heightChoice); parseErr == nil && adjustedHeight >= 20 && adjustedHeight <= detectedHeight {

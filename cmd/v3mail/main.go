@@ -174,7 +174,7 @@ func loadAllBasePaths(configDir, dataDir string) ([]baseMeta, error) {
 	for _, a := range areas {
 		bp := a.BasePath
 		if bp == "" {
-			bp = "msgbases/" + a.Tag
+			bp = "msgbases/" + strings.ToLower(a.Tag)
 		}
 		paths = append(paths, baseMeta{
 			Path:    filepath.Join(dataDir, bp),

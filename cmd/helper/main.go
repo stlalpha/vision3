@@ -283,7 +283,7 @@ func eligibleForPurge(users []*user.User, cutoff time.Time) []*user.User {
 		if !u.DeletedUser {
 			continue
 		}
-		if u.DeletedAt == nil || u.DeletedAt.Before(cutoff) {
+		if u.DeletedAt != nil && u.DeletedAt.Before(cutoff) {
 			result = append(result, u)
 		}
 	}
