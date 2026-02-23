@@ -242,6 +242,8 @@ vision3/
 
 ## Setup & Installation
 
+> **Third-party binaries:** `sexyz` (ZMODEM file transfers) and `binkd` (FTN echomail/netmail) are not built by this project. Pre-compiled binaries for these — along with all ViSiON/3 binaries — are available on the [GitHub Releases page](https://github.com/stlalpha/vision3/releases).
+
 ### Docker Deployment (Recommended)
 
 The easiest way to run ViSiON/3 is using Docker:
