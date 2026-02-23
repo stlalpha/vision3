@@ -76,6 +76,27 @@ else
     MISSING_PREREQS=1
 fi
 
+# Copy sexyz.ini to bin/ if not present
+if [ -f "templates/configs/sexyz.ini" ] && [ ! -f "bin/sexyz.ini" ]; then
+    echo "  Creating bin/sexyz.ini from template..."
+    cp templates/configs/sexyz.ini bin/sexyz.ini
+fi
+
+# Check for sexyz (required — Synchronet ZModem 8k for file transfers)
+if [ -x "bin/sexyz" ]; then
+    echo -e "${GREEN}✓${NC} sexyz (Synchronet ZModem 8k) at bin/sexyz"
+    if [ -f "bin/sexyz.ini" ]; then
+        echo -e "${GREEN}✓${NC} sexyz.ini configuration found"
+    else
+        echo -e "${YELLOW}!${NC} bin/sexyz.ini not found — sexyz will use defaults"
+    fi
+else
+    echo -e "${YELLOW}!${NC} sexyz not found at bin/sexyz (required for file transfers)"
+    echo "  Build from source: https://gitlab.synchro.net/main/sbbs.git"
+    echo "  See documentation/file-transfer-protocols.md for build instructions"
+    echo "  Place the binary at bin/sexyz and make it executable"
+fi
+
 echo
 
 # Exit if prerequisites are missing
@@ -220,6 +241,10 @@ echo "Building helper..."
 go build -o helper ./cmd/helper
 echo "Building v3mail..."
 go build -o v3mail ./cmd/v3mail
+echo "Building strings..."
+go build -o strings ./cmd/strings
+echo "Building ue..."
+go build -o ue ./cmd/ue
 
 echo "Initializing JAM bases..."
 ./v3mail stats --all --config configs --data data > /dev/null

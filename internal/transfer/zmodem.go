@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -8,31 +9,164 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gliderlabs/ssh"
 	"golang.org/x/term"
 )
 
-// runCommandWithPTY executes an external command attached to the user's SSH session using a PTY.
-// It handles setting raw mode, resizing, and copying I/O.
+// readInterrupter is implemented by session adapters that support unblocking
+// a pending Read() call (e.g. TelnetSessionAdapter).
+type readInterrupter interface {
+	SetReadInterrupt(ch <-chan struct{})
+}
+
+// RunCommandDirect executes an external command with its stdin/stdout/stderr
+// piped directly to the SSH session — no PTY allocated. This is essential for
+// binary file-transfer protocols (ZMODEM, YMODEM, XMODEM) where a PTY's line
+// discipline would corrupt the data stream.
+func RunCommandDirect(s ssh.Session, cmd *exec.Cmd) error {
+	log.Printf("DEBUG: Starting command '%s' in DIRECT (no-PTY) mode", cmd.Path)
+
+	stdinPipe, err := cmd.StdinPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdin pipe for '%s': %w", cmd.Path, err)
+	}
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to create stdout pipe for '%s': %w", cmd.Path, err)
+	}
+	// Capture stderr separately — NEVER merge it into stdout.
+	// External protocol drivers (e.g. sexyz) write status/progress messages
+	// to stderr; merging them into stdout corrupts the binary data stream
+	// (ZModem frames, etc.) and causes transfers to fail.
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = &stderrBuf
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start command '%s': %w", cmd.Path, err)
+	}
+
+	inputDone := make(chan struct{})
+	outputDone := make(chan struct{})
+
+	// session → command stdin
+	go func() {
+		defer close(inputDone)
+		n, cpErr := io.Copy(stdinPipe, s)
+		log.Printf("DEBUG: (%s) direct stdin copy finished. Bytes: %d, Error: %v", cmd.Path, n, cpErr)
+		_ = stdinPipe.Close()
+	}()
+
+	// command stdout → session
+	go func() {
+		defer close(outputDone)
+		n, cpErr := io.Copy(s, stdoutPipe)
+		log.Printf("DEBUG: (%s) direct stdout copy finished. Bytes: %d, Error: %v", cmd.Path, n, cpErr)
+	}()
+
+	// Wait for output to finish (command closed its stdout).
+	<-outputDone
+
+	// Wait for the command to exit.
+	cmdErr := cmd.Wait()
+	log.Printf("DEBUG: (%s) command finished (direct). Error: %v", cmd.Path, cmdErr)
+
+	// Log stderr output from the external transfer program.
+	if stderrBuf.Len() > 0 {
+		for _, line := range strings.Split(strings.TrimSpace(stderrBuf.String()), "\n") {
+			if line = strings.TrimSpace(line); line != "" {
+				log.Printf("INFO: [%s stderr] %s", filepath.Base(cmd.Path), line)
+			}
+		}
+	}
+
+	// Close stdin pipe so the next write from the stdin goroutine will fail.
+	_ = stdinPipe.Close()
+
+	// Unblock the stdin goroutine's pending s.Read() call.  SetReadInterrupt
+	// causes Read to return io.EOF (telnet) or ErrReadInterrupted (SSH).
+	if ri, ok := s.(readInterrupter); ok {
+		interruptCh := make(chan struct{})
+		close(interruptCh)
+		ri.SetReadInterrupt(interruptCh)
+	}
+
+	// Wait briefly for the stdin goroutine to notice the closed pipe / interrupt.
+	select {
+	case <-inputDone:
+		log.Printf("DEBUG: (%s) stdin goroutine finished cleanly", cmd.Path)
+	case <-time.After(2 * time.Second):
+		log.Printf("WARN: (%s) stdin goroutine did not finish within 2s, proceeding", cmd.Path)
+	}
+
+	// CRITICAL: Clear the read interrupt and reset the connection deadline
+	// BEFORE returning.  The interrupt causes TelnetConn.Read() to return
+	// io.EOF.  If the interrupt is not cleared, the next InputHandler that
+	// calls s.Read() will immediately get io.EOF and report "user disconnected".
+	if ri, ok := s.(readInterrupter); ok {
+		ri.SetReadInterrupt(nil)
+	}
+
+	// Brief pause to let the client's terminal finish its post-transfer
+	// cleanup (SyncTerm/ZModem end-of-transfer signaling).
+	time.Sleep(250 * time.Millisecond)
+
+	// Drain any leftover protocol bytes (ZModem ZFIN/OO, ACK frames) from
+	// the session so they don't appear as garbage when the BBS resumes.
+	drainSessionInput(s, 500*time.Millisecond)
+
+	return cmdErr
+}
+
+// drainSessionInput reads and discards any pending bytes from the session
+// for the given duration.  Uses a simple non-blocking polling loop that does
+// NOT use SetReadInterrupt — avoiding goroutine races that can leave stale
+// deadlines on the connection and cause spurious disconnects.
+func drainSessionInput(s ssh.Session, duration time.Duration) {
+	buf := make([]byte, 1024)
+	totalDrained := 0
+	end := time.Now().Add(duration)
+
+	for time.Now().Before(end) {
+		// Use a short-lived read interrupt for each poll cycle so we
+		// don't block the entire duration if no data is available.
+		if ri, ok := s.(readInterrupter); ok {
+			ch := make(chan struct{})
+			time.AfterFunc(50*time.Millisecond, func() { close(ch) })
+			ri.SetReadInterrupt(ch)
+		}
+
+		n, readErr := s.Read(buf)
+		totalDrained += n
+
+		// Clear the interrupt immediately after each read attempt
+		// so no stale deadline lingers.
+		if ri, ok := s.(readInterrupter); ok {
+			ri.SetReadInterrupt(nil)
+		}
+
+		if readErr != nil || n == 0 {
+			// No more data or error — stop draining.
+			break
+		}
+	}
+
+	if totalDrained > 0 {
+		log.Printf("DEBUG: Drained %d leftover bytes from session after transfer", totalDrained)
+	}
+}
+
+// RunCommandWithPTY executes an external command attached to the user's SSH
+// session using a PTY. It handles setting raw mode, resizing, and copying I/O.
 func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 	ptyReq, winCh, isPty := s.Pty()
 	if !isPty {
-		// Fallback? Or error? Zmodem likely *needs* a PTY.
-		// Let's try running without PTY and see if sz/rz handle it.
-		log.Printf("WARN: No PTY available for session. Running command %s directly. Transfer might fail.", cmd.Path)
-		cmd.Stdin = s
-		cmd.Stdout = s
-		cmd.Stderr = s // Redirect stderr too?
-		err := cmd.Run()
-		if err != nil {
-			log.Printf("ERROR: Command %s failed (no PTY): %v", cmd.Path, err)
-		}
-		return err
-		// Original PTY required logic:
-		// return fmt.Errorf("PTY not available for this session, cannot run interactive command")
+		log.Printf("WARN: No PTY available for session. Falling back to direct mode for %s.", cmd.Path)
+		return RunCommandDirect(s, cmd)
 	}
 
 	log.Printf("DEBUG: Starting command '%s' with PTY", cmd.Path)
@@ -58,32 +192,19 @@ func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 		}
 	}()
 
-	// --- Terminal Raw Mode Handling ---
-	// Use the underlying file descriptor of the session *if* it supports it.
-	// Otherwise, fall back to PTY file descriptor.
-	var fd int
-	if f, ok := s.(interface{ Fd() uintptr }); ok {
-		fd = int(f.Fd())
-		log.Printf("DEBUG: Using session file descriptor (%d) for raw mode.", fd)
-	} else {
-		fd = int(ptmx.Fd())
-		log.Printf("DEBUG: Session does not expose Fd(), using PTY file descriptor (%d) for raw mode.", fd)
-	}
-
-	var restoreTerminal func() = func() {} // No-op default
+	// Set PTY to raw mode so binary protocol data passes through unmodified.
+	fd := int(ptmx.Fd())
+	var restoreTerminal func() = func() {}
 	originalState, err := term.MakeRaw(fd)
 	if err != nil {
-		log.Printf("WARN: Failed to put terminal (fd: %d) into raw mode for command '%s': %v. Command might misbehave.", fd, cmd.Path, err)
+		log.Printf("WARN: Failed to put PTY (fd: %d) into raw mode for command '%s': %v.", fd, cmd.Path, err)
 	} else {
-		log.Printf("DEBUG: Terminal (fd: %d) set to raw mode for command '%s'.", fd, cmd.Path)
 		restoreTerminal = func() {
-			log.Printf("DEBUG: Restoring terminal mode (fd: %d) after command '%s'.", fd, cmd.Path)
 			if err := term.Restore(fd, originalState); err != nil {
 				log.Printf("ERROR: Failed to restore terminal state (fd: %d) after command '%s': %v", fd, cmd.Path, err)
 			}
 		}
 	}
-	// restoreTerminal is called explicitly during shutdown sequence below
 
 	// --- SetReadInterrupt for clean shutdown ---
 	readInterrupt := make(chan struct{})

@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -142,17 +141,12 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		headerLines = 1
 	}
 
-	// Footer lines: command bar (1) + BOT template lines.
+	// Reserve the last 2 rows for the command bar (row termHeight-1) and BOT (row termHeight).
+	// Both are rendered with absolute cursor positioning so the row count is exact.
+	// File area occupies rows (headerLines+2) through (termHeight-2):
+	//   visibleRows = (termHeight-2) - (headerLines+2) + 1 = termHeight - headerLines - 3
 	botContent := strings.TrimRight(string(processedBotTemplate), "\r\n")
-	botLines := 1 // command bar always takes one line
-	if len(botContent) > 0 {
-		botLines += strings.Count(botContent, "\n") + 1
-	} else {
-		botLines++ // hardcoded page indicator fallback
-	}
-
-	// +1 for the CRLF after the top template write.
-	visibleRows := termHeight - headerLines - 1 - botLines
+	visibleRows := termHeight - headerLines - 3
 	if visibleRows < 3 {
 		visibleRows = 3
 	}
@@ -203,6 +197,61 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		return lines
 	}
 
+	// Compute the constant prefix length from the MID template so we can
+	// calculate how many screen lines each file entry occupies (description
+	// wrapping).  All substitution fields have fixed widths, so the prefix
+	// length is the same for every file entry.
+	sampleLine := processedMidTemplate
+	sampleLine = strings.ReplaceAll(sampleLine, "^MARK", " ")
+	sampleLine = strings.ReplaceAll(sampleLine, "^NUM", "  1")
+	sampleLine = strings.ReplaceAll(sampleLine, "^NAME", fmt.Sprintf("%-18s", "x"))
+	sampleLine = strings.ReplaceAll(sampleLine, "^DATE", "01/01/01")
+	sampleLine = strings.ReplaceAll(sampleLine, "^SIZE", fmt.Sprintf("%7s", "0B"))
+	sampleNoDesc := strings.ReplaceAll(sampleLine, "^DESC", "")
+	midPrefixLen := len(stripAnsi(string(ansi.ReplacePipeCodes([]byte(sampleNoDesc)))))
+	firstDescWidth := termWidth - midPrefixLen - 1
+	if firstDescWidth < 10 {
+		firstDescWidth = 10
+	}
+	contDescWidth := termWidth - midPrefixLen - 1
+	if contDescWidth < 20 {
+		contDescWidth = 20
+	}
+
+	// fileEntryHeight returns the number of screen lines a file at idx takes,
+	// accounting for description word-wrapping (matches the render logic).
+	fileEntryHeight := func(idx int) int {
+		if idx < 0 || idx >= len(allFiles) {
+			return 1
+		}
+		desc := strings.ReplaceAll(allFiles[idx].Description, "\r", "")
+		desc = strings.ReplaceAll(desc, "\n", " ")
+		desc = strings.TrimSpace(desc)
+		if len(desc) <= firstDescWidth {
+			return 1
+		}
+		// First-line word wrap cut.
+		cut := firstDescWidth
+		if spIdx := strings.LastIndex(desc[:firstDescWidth], " "); spIdx > 0 {
+			cut = spIdx
+		}
+		remainder := strings.TrimSpace(desc[cut:])
+		lines := 1
+		for remainder != "" && lines < 11 { // up to 10 continuation lines (FILE_ID.DIZ spec)
+			if len(remainder) <= contDescWidth {
+				lines++
+				break
+			}
+			cut = contDescWidth
+			if spIdx := strings.LastIndex(remainder[:contDescWidth], " "); spIdx > 0 {
+				cut = spIdx
+			}
+			remainder = strings.TrimSpace(remainder[cut:])
+			lines++
+		}
+		return lines
+	}
+
 	clampSelection := func() {
 		if len(allFiles) == 0 {
 			selectedIndex = 0
@@ -218,185 +267,267 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		if selectedIndex < topIndex {
 			topIndex = selectedIndex
 		}
-		if selectedIndex >= topIndex+visibleRows {
-			topIndex = selectedIndex - visibleRows + 1
+		// Scroll down: advance topIndex until selectedIndex fits within the
+		// visible screen area, accounting for multi-line file entries.
+		for topIndex < selectedIndex {
+			usedLines := 0
+			fits := false
+			for idx := topIndex; idx < len(allFiles) && usedLines < visibleRows; idx++ {
+				h := fileEntryHeight(idx)
+				if usedLines+1 > visibleRows {
+					break // can't fit even the first line
+				}
+				if usedLines+h > visibleRows {
+					h = 1 // truncate continuation lines, first line still fits
+				}
+				usedLines += h
+				if idx == selectedIndex {
+					fits = true
+					break
+				}
+			}
+			if fits {
+				break
+			}
+			topIndex++
 		}
 		if topIndex < 0 {
 			topIndex = 0
 		}
 	}
 
-	render := func() error {
-		// Clear screen.
-		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode); err != nil {
-			return err
+	// --- Rendering helpers for smart refresh ---
+
+	// fileAreaStartRow is the absolute terminal row where file entries begin.
+	fileAreaStartRow := headerLines + 2
+
+	// buildFileEntry produces the ANSI output for a single file entry at the
+	// given file index, returning the rendered lines (first line + continuations)
+	// already processed through pipe codes.  If highlighted is true the first
+	// line uses the highlight color with stripped ANSI (lightbar style).
+	// The caller specifies how many screen lines are available (maxLines) so the
+	// function can truncate continuation lines to fit.
+	buildFileEntry := func(idx int, highlighted bool, maxLines int) []string {
+		if idx < 0 || idx >= len(allFiles) {
+			return nil
+		}
+		fileRec := allFiles[idx]
+
+		fileNumStr := fmt.Sprintf("%3d", idx+1)
+		name := fileRec.Filename
+		if len(name) > 18 {
+			name = name[:18]
+		}
+		fileNameStr := fmt.Sprintf("%-18s", name)
+		dateStr := fileRec.UploadedAt.Format("01/02/06")
+		sizeStr := fmt.Sprintf("%7s", formatSize(fileRec.Size))
+
+		fullDesc := strings.ReplaceAll(fileRec.Description, "\r", "")
+		fullDesc = strings.ReplaceAll(fullDesc, "\n", " ")
+		fullDesc = strings.TrimSpace(fullDesc)
+
+		markStr := " "
+		if isFileTagged(fileRec.ID) {
+			markStr = "*"
 		}
 
-		// Write top template.
-		if err := terminalio.WriteProcessedBytes(terminal, processedTopTemplate, outputMode); err != nil {
-			return err
+		line := processedMidTemplate
+		line = strings.ReplaceAll(line, "^MARK", markStr)
+		line = strings.ReplaceAll(line, "^NUM", fileNumStr)
+		line = strings.ReplaceAll(line, "^NAME", fileNameStr)
+		line = strings.ReplaceAll(line, "^DATE", dateStr)
+		line = strings.ReplaceAll(line, "^SIZE", sizeStr)
+
+		lineWithoutDesc := strings.ReplaceAll(line, "^DESC", "")
+		processedNoDesc := string(ansi.ReplacePipeCodes([]byte(lineWithoutDesc)))
+		prefixLen := len(stripAnsi(processedNoDesc))
+		flDescWidth := termWidth - prefixLen - 1
+		if flDescWidth < 10 {
+			flDescWidth = 10
 		}
-		if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
-			return err
+		descIndent := strings.Repeat(" ", prefixLen)
+		dcWidth := termWidth - prefixLen - 1
+		if dcWidth < 20 {
+			dcWidth = 20
 		}
 
-		// File rows — each file can take multiple lines if description wraps.
-		linesUsed := 0
+		firstDesc := fullDesc
+		remainDesc := ""
+		if len(fullDesc) > flDescWidth {
+			cut := flDescWidth
+			if spIdx := strings.LastIndex(fullDesc[:flDescWidth], " "); spIdx > 0 {
+				cut = spIdx
+			}
+			firstDesc = fullDesc[:cut]
+			remainDesc = strings.TrimSpace(fullDesc[cut:])
+		}
 
-		if len(allFiles) == 0 {
-			msg := "|07   No files in this area."
-			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg+"\r\n")), outputMode); err != nil {
+		line = strings.ReplaceAll(line, "^DESC", firstDesc)
+		processed := string(ansi.ReplacePipeCodes([]byte(line)))
+
+		var contLines []string
+		rem := remainDesc
+		for rem != "" && len(contLines) < 10 {
+			cl := rem
+			if len(cl) > dcWidth {
+				cut := dcWidth
+				if spIdx := strings.LastIndex(rem[:dcWidth], " "); spIdx > 0 {
+					cut = spIdx
+				}
+				cl = rem[:cut]
+				rem = strings.TrimSpace(rem[cut:])
+			} else {
+				rem = ""
+			}
+			contLines = append(contLines, cl)
+		}
+
+		// Truncate continuation lines to fit maxLines.
+		if 1+len(contLines) > maxLines {
+			contLines = nil
+		}
+
+		var result []string
+
+		// First line: highlighted or normal.
+		if highlighted {
+			plain := stripAnsi(processed)
+			padWidth := termWidth - 1
+			if len(plain) < padWidth {
+				plain += strings.Repeat(" ", padWidth-len(plain))
+			}
+			result = append(result, hiColorSeq+plain+"\x1b[0m")
+		} else {
+			result = append(result, processed)
+		}
+
+		for _, cl := range contLines {
+			result = append(result, string(ansi.ReplacePipeCodes([]byte("|07"+descIndent+cl))))
+		}
+		return result
+	}
+
+	// screenRowForFile returns the absolute terminal row a file entry starts on,
+	// given the current topIndex.  Returns -1 if the file is not in the viewport.
+	screenRowForFile := func(fileIdx int) (startRow int, height int) {
+		if fileIdx < topIndex {
+			return -1, 0
+		}
+		row := fileAreaStartRow
+		for idx := topIndex; idx < len(allFiles) && (row-fileAreaStartRow) < visibleRows; idx++ {
+			h := fileEntryHeight(idx)
+			remaining := visibleRows - (row - fileAreaStartRow)
+			if h > remaining {
+				h = 1
+			}
+			if remaining < 1 {
+				break
+			}
+			if idx == fileIdx {
+				return row, h
+			}
+			row += h
+		}
+		return -1, 0
+	}
+
+	// writeFileRow renders a single file entry at the given absolute screen row,
+	// clearing the lines it occupies first.
+	writeFileRow := func(screenRow int, fileIdx int, highlighted bool, height int) error {
+		lines := buildFileEntry(fileIdx, highlighted, height)
+		for i, ln := range lines {
+			r := screenRow + i
+			if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(r, 1)+"\x1b[2K"), outputMode); err != nil {
 				return err
 			}
-			linesUsed++
-		} else {
-			for idx := topIndex; idx < len(allFiles) && linesUsed < visibleRows; idx++ {
-				fileRec := allFiles[idx]
-
-				fileNumStr := fmt.Sprintf("%3d", idx+1)
-				name := fileRec.Filename
-				if len(name) > 18 {
-					name = name[:18]
-				}
-				fileNameStr := fmt.Sprintf("%-18s", name)
-				dateStr := fileRec.UploadedAt.Format("01/02/06")
-				sizeStr := fmt.Sprintf("%7s", formatSize(fileRec.Size))
-
-				// Normalize description whitespace.
-				fullDesc := strings.ReplaceAll(fileRec.Description, "\r", "")
-				fullDesc = strings.ReplaceAll(fullDesc, "\n", " ")
-				fullDesc = strings.TrimSpace(fullDesc)
-
-				markStr := " "
-				if isFileTagged(fileRec.ID) {
-					markStr = "*"
-				}
-
-				// Build the first line from the MID template with a placeholder for desc.
-				line := processedMidTemplate
-				line = strings.ReplaceAll(line, "^MARK", markStr)
-				line = strings.ReplaceAll(line, "^NUM", fileNumStr)
-				line = strings.ReplaceAll(line, "^NAME", fileNameStr)
-				line = strings.ReplaceAll(line, "^DATE", dateStr)
-				line = strings.ReplaceAll(line, "^SIZE", sizeStr)
-
-				// Measure how much space the description has on the first line.
-				lineWithoutDesc := strings.ReplaceAll(line, "^DESC", "")
-				processedNoDesc := string(ansi.ReplacePipeCodes([]byte(lineWithoutDesc)))
-				prefixLen := len(stripAnsi(processedNoDesc))
-				firstLineDescWidth := termWidth - prefixLen - 1 // -1 to avoid auto-wrap
-				if firstLineDescWidth < 10 {
-					firstLineDescWidth = 10
-				}
-
-				// Continuation lines align with description column (PCBoard style).
-				descIndent := strings.Repeat(" ", prefixLen)
-				descContWidth := termWidth - prefixLen - 1
-				if descContWidth < 20 {
-					descContWidth = 20
-				}
-
-				// Split description into first-line portion and remainder.
-				firstDesc := fullDesc
-				remainDesc := ""
-				if len(fullDesc) > firstLineDescWidth {
-					// Word-wrap at space boundary.
-					cut := firstLineDescWidth
-					if spIdx := strings.LastIndex(fullDesc[:firstLineDescWidth], " "); spIdx > 0 {
-						cut = spIdx
-					}
-					firstDesc = fullDesc[:cut]
-					remainDesc = strings.TrimSpace(fullDesc[cut:])
-				}
-
-				line = strings.ReplaceAll(line, "^DESC", firstDesc)
-				processed := string(ansi.ReplacePipeCodes([]byte(line)))
-
-				// Build continuation lines from the remainder.
-				var contLines []string
-				remaining := remainDesc
-				for remaining != "" && len(contLines) < 10 { // FILE_ID.DIZ spec: up to 10 lines
-					cl := remaining
-					if len(cl) > descContWidth {
-						cut := descContWidth
-						if spIdx := strings.LastIndex(remaining[:descContWidth], " "); spIdx > 0 {
-							cut = spIdx
-						}
-						cl = remaining[:cut]
-						remaining = strings.TrimSpace(remaining[cut:])
-					} else {
-						remaining = ""
-					}
-					contLines = append(contLines, cl)
-				}
-
-				// Check if this entry fits in remaining visible rows.
-				entryLines := 1 + len(contLines)
-				if linesUsed+entryLines > visibleRows {
-					// Only show what fits — show the first line at minimum.
-					contLines = nil
-					if linesUsed+1 > visibleRows {
-						break
-					}
-					entryLines = 1
-				}
-
-				// Render first line.
-				if idx == selectedIndex {
-					plain := stripAnsi(processed)
-					padWidth := termWidth - 1
-					if len(plain) < padWidth {
-						plain += strings.Repeat(" ", padWidth-len(plain))
-					}
-					wrapped := hiColorSeq + plain + "\x1b[0m"
-					if err := terminalio.WriteProcessedBytes(terminal, []byte(wrapped), outputMode); err != nil {
-						return err
-					}
-				} else {
-					if err := writeProcessedStringWithManualEncoding(terminal, []byte(processed), outputMode); err != nil {
-						return err
-					}
-				}
-				if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
+			if highlighted && i == 0 {
+				// First line already has raw ANSI from buildFileEntry; write directly.
+				if err := terminalio.WriteProcessedBytes(terminal, []byte(ln), outputMode); err != nil {
 					return err
 				}
-				linesUsed++
-
-				// Render continuation lines (never highlighted).
-				for _, cl := range contLines {
-					contFormatted := "|07" + descIndent + cl
-					if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(contFormatted)), outputMode); err != nil {
-						return err
-					}
-					if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
-						return err
-					}
-					linesUsed++
+			} else if i == 0 {
+				if err := writeProcessedStringWithManualEncoding(terminal, []byte(ln), outputMode); err != nil {
+					return err
+				}
+			} else {
+				if err := terminalio.WriteProcessedBytes(terminal, []byte(ln), outputMode); err != nil {
+					return err
 				}
 			}
 		}
+		// Clear any remaining lines in this entry's allocated height.
+		for i := len(lines); i < height; i++ {
+			r := screenRow + i
+			if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(r, 1)+"\x1b[2K"), outputMode); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 
-		// Pad empty rows.
+	// renderFileArea redraws only the file list rows using absolute cursor
+	// positioning and line-clear (no full screen clear).
+	renderFileArea := func() error {
+		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(fileAreaStartRow, 1)), outputMode); err != nil {
+			return err
+		}
+
+		linesUsed := 0
+		if len(allFiles) == 0 {
+			msg := "|07   No files in this area."
+			if err := terminalio.WriteProcessedBytes(terminal, []byte("\x1b[2K"), outputMode); err != nil {
+				return err
+			}
+			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode); err != nil {
+				return err
+			}
+			linesUsed = 1
+		} else {
+			for idx := topIndex; idx < len(allFiles) && linesUsed < visibleRows; idx++ {
+				h := fileEntryHeight(idx)
+				remaining := visibleRows - linesUsed
+				if h > remaining {
+					h = 1
+				}
+				if remaining < 1 {
+					break
+				}
+				row := fileAreaStartRow + linesUsed
+				if err := writeFileRow(row, idx, idx == selectedIndex, h); err != nil {
+					return err
+				}
+				linesUsed += h
+			}
+		}
+
+		// Clear unused rows.
 		for linesUsed < visibleRows {
-			if err := terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode); err != nil {
+			r := fileAreaStartRow + linesUsed
+			if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(r, 1)+"\x1b[2K"), outputMode); err != nil {
 				return err
 			}
 			linesUsed++
 		}
+		return nil
+	}
 
-		// Command bar (horizontal lightbar), centered with per-entry colors.
+	// renderCmdBar redraws only the horizontal command bar.
+	renderCmdBar := func() error {
+		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)+"\x1b[2K"), outputMode); err != nil {
+			return err
+		}
 		barWidth := 0
 		for ci, ent := range cmdEntries {
-			barWidth += len(ent.label) + 2 // " label "
+			barWidth += len(ent.label) + 2
 			if ci < len(cmdEntries)-1 {
-				barWidth += 2 // gap between items
+				barWidth += 2
 			}
 		}
 		pad := (termWidth - barWidth) / 2
 		if pad < 0 {
 			pad = 0
 		}
-		cmdBar := "\r\n" + strings.Repeat(" ", pad)
+		cmdBar := strings.Repeat(" ", pad)
 		for ci, ent := range cmdEntries {
 			if ci == cmdIndex {
 				cmdBar += ent.highlightColor + " " + ent.label + " " + "\x1b[0m"
@@ -407,13 +538,16 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				cmdBar += "  "
 			}
 		}
-		if err := terminalio.WriteProcessedBytes(terminal, []byte(cmdBar), outputMode); err != nil {
-			return err
-		}
+		return terminalio.WriteProcessedBytes(terminal, []byte(cmdBar), outputMode)
+	}
 
-		// Page indicator from BOT template or hardcoded fallback.
+	// renderPageIndicator redraws only the page/bot indicator row(s).
+	renderPageIndicator := func() error {
 		currentPage := 1
 		if len(allFiles) > 0 && visibleRows > 0 {
+			currentPage = (topIndex / visibleRows) + 1
+			// More accurately: count how many viewports topIndex has scrolled past.
+			// But use selectedIndex-based page for user-facing consistency.
 			currentPage = (selectedIndex / visibleRows) + 1
 		}
 		calcTotalPages := 1
@@ -422,46 +556,105 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 
 		if len(botContent) > 0 {
-			// Use BOT template with substitutions.
 			pageStr := botContent
 			pageStr = strings.ReplaceAll(pageStr, "^PAGE", fmt.Sprintf("%d", currentPage))
 			pageStr = strings.ReplaceAll(pageStr, "^TOTALPAGES", fmt.Sprintf("%d", calcTotalPages))
-			// Process pipe codes in the template.
 			processedPage := string(ansi.ReplacePipeCodes([]byte(pageStr)))
-			// Center each line of the BOT template.
-			for _, botLine := range strings.Split(processedPage, "\n") {
+			botLineSlice := strings.Split(processedPage, "\n")
+			for i, botLine := range botLineSlice {
 				botLine = strings.TrimRight(botLine, "\r")
 				plainLen := len(stripAnsi(botLine))
 				linePad := (termWidth - plainLen) / 2
 				if linePad < 0 {
 					linePad = 0
 				}
-				centered := "\r\n" + strings.Repeat(" ", linePad) + botLine
+				row := termHeight - len(botLineSlice) + 1 + i
+				if row < 1 {
+					row = 1
+				}
+				centered := ansi.MoveCursor(row, 1) + "\x1b[2K" + strings.Repeat(" ", linePad) + botLine
 				if err := terminalio.WriteProcessedBytes(terminal, []byte(centered), outputMode); err != nil {
 					return err
 				}
 			}
 		} else {
-			// Hardcoded fallback.
 			pageText := fmt.Sprintf("Page %d of %d", currentPage, calcTotalPages)
 			pagePad := (termWidth - len(pageText)) / 2
 			if pagePad < 0 {
 				pagePad = 0
 			}
-			pageLine := "\r\n" + strings.Repeat(" ", pagePad) + "|08" + pageText + "|07"
+			pageLine := ansi.MoveCursor(termHeight, 1) + "\x1b[2K" + strings.Repeat(" ", pagePad) + "|08" + pageText + "|07"
 			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(pageLine)), outputMode); err != nil {
 				return err
 			}
 		}
-
 		return nil
 	}
 
+	// renderFull performs a complete screen redraw (used on first display and
+	// after overlay commands that clobber the screen).
+	renderFull := func() error {
+		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode); err != nil {
+			return err
+		}
+		if err := terminalio.WriteProcessedBytes(terminal, processedTopTemplate, outputMode); err != nil {
+			return err
+		}
+		if err := renderFileArea(); err != nil {
+			return err
+		}
+		if err := renderCmdBar(); err != nil {
+			return err
+		}
+		return renderPageIndicator()
+	}
+
+	// Track previous state for smart refresh.
+	prevSelectedIndex := -1
+	prevTopIndex := -1
+	prevCmdIndex := -1
+	needFullRedraw := true
+
 	for {
 		clampSelection()
-		if err := render(); err != nil {
-			return nil, "", err
+
+		if needFullRedraw {
+			if err := renderFull(); err != nil {
+				return nil, "", err
+			}
+			needFullRedraw = false
+		} else if topIndex != prevTopIndex {
+			// Viewport scrolled — redraw file area + page indicator.
+			if err := renderFileArea(); err != nil {
+				return nil, "", err
+			}
+			if err := renderPageIndicator(); err != nil {
+				return nil, "", err
+			}
+		} else if selectedIndex != prevSelectedIndex {
+			// Same viewport, selection changed — redraw only old and new rows.
+			if prevSelectedIndex >= 0 && prevSelectedIndex < len(allFiles) {
+				if row, h := screenRowForFile(prevSelectedIndex); row >= 0 {
+					if err := writeFileRow(row, prevSelectedIndex, false, h); err != nil {
+						return nil, "", err
+					}
+				}
+			}
+			if row, h := screenRowForFile(selectedIndex); row >= 0 {
+				if err := writeFileRow(row, selectedIndex, true, h); err != nil {
+					return nil, "", err
+				}
+			}
 		}
+		if cmdIndex != prevCmdIndex {
+			if err := renderCmdBar(); err != nil {
+				return nil, "", err
+			}
+		}
+
+		prevSelectedIndex = selectedIndex
+		prevTopIndex = topIndex
+		prevCmdIndex = cmdIndex
 
 		key, err := readKeySequenceIH(ih)
 		if err != nil {
@@ -532,6 +725,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				if err := userManager.UpdateUser(currentUser); err != nil {
 					log.Printf("ERROR: Node %d: Failed to save user after tag toggle: %v", nodeNumber, err)
 				}
+				// Redraw just the toggled row to show/hide the mark.
+				if row, h := screenRowForFile(selectedIndex); row >= 0 {
+					_ = writeFileRow(row, selectedIndex, true, h)
+				}
 			}
 
 		case "q":
@@ -573,6 +770,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|08Press any key to return...|07")), outputMode)
 				_, _ = readKeySequenceIH(ih)
+				needFullRedraw = true
 			}
 
 		case "v":
@@ -593,6 +791,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				}
 				// Hide cursor again.
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+				needFullRedraw = true
 			}
 
 		case "d":
@@ -600,6 +799,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				msg := "\r\n|07No files marked for download. Use |15Space|07 to mark files.|07\r\n"
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(1 * time.Second)
+				needFullRedraw = true
 				continue
 			}
 
@@ -615,6 +815,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				}
 				log.Printf("ERROR: Node %d: Error getting download confirmation: %v", nodeNumber, promptErr)
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+				needFullRedraw = true
 				continue
 			}
 
@@ -622,6 +823,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Download cancelled.|07")), outputMode)
 				time.Sleep(500 * time.Millisecond)
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+				needFullRedraw = true
 				continue
 			}
 
@@ -655,40 +857,76 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 
 			if len(filesToDownload) > 0 {
-				log.Printf("INFO: Node %d: Attempting ZMODEM transfer for files: %v", nodeNumber, filenamesOnly)
-				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15Initiating ZMODEM transfer (sz)...\r\n")), outputMode)
-				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the ZMODEM receive function in your terminal.\r\n")), outputMode)
+				log.Printf("INFO: Node %d: Initiating transfer for files: %v", nodeNumber, filenamesOnly)
 
-				szPath, lookErr := exec.LookPath("sz")
-				if lookErr != nil {
-					log.Printf("ERROR: Node %d: 'sz' command not found in PATH: %v", nodeNumber, lookErr)
-					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Error: 'sz' command not found on server. Cannot start download.\r\n")), outputMode)
+				// Use protocol selection (respects connection type - SSH vs Telnet)
+				proto, protoOK, protoErr := e.selectTransferProtocol(s, terminal, outputMode)
+				if protoErr != nil {
+					if errors.Is(protoErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					log.Printf("ERROR: Node %d: Protocol selection error: %v", nodeNumber, protoErr)
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error: No transfer protocols configured on this system.|07\r\n")), outputMode)
 					failCount = len(filesToDownload)
+				} else if !protoOK {
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Download cancelled.|07\r\n")), outputMode)
 				} else {
-					args := []string{"-b", "-e"}
-					args = append(args, filesToDownload...)
-					cmd := exec.Command(szPath, args...)
-					log.Printf("INFO: Node %d: Executing Zmodem send: %s %v", nodeNumber, szPath, args)
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15Initiating %s transfer...\r\n", proto.Name))), outputMode)
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
 
-					transferErr := transfer.RunCommandWithPTY(s, cmd)
-					if transferErr != nil {
-						log.Printf("ERROR: Node %d: 'sz' command execution failed: %v", nodeNumber, transferErr)
-						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01ZMODEM transfer failed or was cancelled.\r\n")), outputMode)
-						failCount = len(filesToDownload)
-						successCount = 0
+					log.Printf("INFO: Node %d: Executing %s send: %v", nodeNumber, proto.Name, filenamesOnly)
+
+					resetSessionIH(s)
+					if proto.BatchSend && len(filesToDownload) > 1 {
+						transferErr := proto.ExecuteSend(s, filesToDownload...)
+						if transferErr != nil {
+							log.Printf("ERROR: Node %d: %s batch send failed: %v", nodeNumber, proto.Name, transferErr)
+							if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
+								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+							} else {
+								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|01%s transfer failed or was cancelled.\r\n", proto.Name))), outputMode)
+							}
+							failCount = len(filesToDownload)
+							successCount = 0
+						} else {
+							log.Printf("INFO: Node %d: %s batch send completed successfully.", nodeNumber, proto.Name)
+							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|07%s transfer complete.\r\n", proto.Name))), outputMode)
+							successCount = len(filesToDownload)
+							failCount = 0
+							for _, fileID := range currentUser.TaggedFileIDs {
+								if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
+									if incErr := e.FileMgr.IncrementDownloadCount(fileID); incErr != nil {
+										log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, fileID, incErr)
+									}
+								}
+							}
+						}
 					} else {
-						log.Printf("INFO: Node %d: 'sz' command completed successfully.", nodeNumber)
-						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07ZMODEM transfer complete.\r\n")), outputMode)
-						successCount = len(filesToDownload)
-						failCount = 0
-						for _, fileID := range currentUser.TaggedFileIDs {
-							if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
-								if incErr := e.FileMgr.IncrementDownloadCount(fileID); incErr != nil {
-									log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, fileID, incErr)
+						for i, fp := range filesToDownload {
+							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(filesToDownload), filenamesOnly[i]))), outputMode)
+							if sendErr := proto.ExecuteSend(s, fp); sendErr != nil {
+								log.Printf("ERROR: Node %d: %s send failed for %s: %v", nodeNumber, proto.Name, filenamesOnly[i], sendErr)
+								if errors.Is(sendErr, transfer.ErrBinaryNotFound) {
+									_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+									failCount += len(filesToDownload) - i
+									break
+								}
+								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(" |01FAILED|07\r\n")), outputMode)
+								failCount++
+							} else {
+								log.Printf("INFO: Node %d: %s sent %s OK", nodeNumber, proto.Name, filenamesOnly[i])
+								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(" |02OK|07\r\n")), outputMode)
+								successCount++
+								if _, pathErr := e.FileMgr.GetFilePath(currentUser.TaggedFileIDs[i]); pathErr == nil {
+									if incErr := e.FileMgr.IncrementDownloadCount(currentUser.TaggedFileIDs[i]); incErr != nil {
+										log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, currentUser.TaggedFileIDs[i], incErr)
+									}
 								}
 							}
 						}
 					}
+					time.Sleep(250 * time.Millisecond)
+					ih = getSessionIH(s)
 				}
 				time.Sleep(1 * time.Second)
 			} else {
@@ -713,6 +951,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				selectedIndex = len(allFiles) - 1
 			}
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			needFullRedraw = true
 
 		case "u":
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
@@ -720,12 +959,16 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			if uploadErr != nil {
 				log.Printf("ERROR: Node %d: Upload error: %v", nodeNumber, uploadErr)
 			}
+			// runUploadFiles calls resetSessionIH/getSessionIH internally,
+			// so the local ih is now stale — refresh it.
+			ih = getSessionIH(s)
 			// Refresh file list after upload.
 			allFiles = e.FileMgr.GetFilesForArea(currentAreaID)
 			if selectedIndex >= len(allFiles) && len(allFiles) > 0 {
 				selectedIndex = len(allFiles) - 1
 			}
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			needFullRedraw = true
 		}
 	}
 }

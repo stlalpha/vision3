@@ -320,8 +320,11 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 	for _, k := range parsed.Kludges {
 		if strings.HasPrefix(k, "REPLY: ") {
 			replyValue := strings.TrimPrefix(k, "REPLY: ")
-			// Take only the first MSGID when multiple are present.
-			if parts := strings.Fields(replyValue); len(parts) > 0 {
+			// FTN MSGID is "address unique" — take the first complete pair
+			// (addr + unique) when multiple MSGIDs are present in the kludge.
+			if parts := strings.Fields(replyValue); len(parts) >= 2 {
+				jamMsg.ReplyID = parts[0] + " " + parts[1]
+			} else if len(parts) == 1 {
 				jamMsg.ReplyID = parts[0]
 			}
 			break

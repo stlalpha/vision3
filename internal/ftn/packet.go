@@ -148,6 +148,9 @@ func ReadPacketHeaderFromFile(path string) (*PacketHeader, error) {
 	if err := binary.Read(bytes.NewReader(data), binary.LittleEndian, hdr); err != nil {
 		return nil, fmt.Errorf("parse header: %w", err)
 	}
+	if hdr.PktType != PacketType2Plus {
+		return nil, fmt.Errorf("unsupported packet type %d (expected %d)", hdr.PktType, PacketType2Plus)
+	}
 	return hdr, nil
 }
 

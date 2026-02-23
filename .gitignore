@@ -14,7 +14,6 @@ ue
 bin/
 DOS/
 doors/
-/configs/
 
 # Test binary, built with `go test -c`
 *.test
@@ -48,8 +47,8 @@ tmp/
 .gocache/
 
 # Config files (contain site-specific settings, FTN addresses, passwords)
-# Actual config files are ignored, but templates/ directory is tracked
 /configs/*.json
+/configs/*.txt
 
 # SSH host keys (generated during setup, not tracked in git)
 /configs/ssh_host_*

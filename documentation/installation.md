@@ -7,8 +7,13 @@
 - SSH client for testing
 - `libssh` - C library for SSH (required by the SSH server)
 - `pkg-config` - Used to locate libssh during build
+- `sexyz` - Synchronet's ZModem 8k file transfer binary (included in `bin/sexyz`)
 
-### Installing C Dependencies
+### File Transfer Binary: sexyz
+
+**sexyz** is Synchronet's external ZModem 8k implementation and is the sole file transfer engine used by ViSiON/3. It works on both SSH and telnet connections. The binary is included at `bin/sexyz` but can also be built from source — see [File Transfer Protocols](file-transfer-protocols.md) for build instructions.
+
+### Installing Dependencies
 
 **macOS (Homebrew):**
 
@@ -27,6 +32,8 @@ sudo apt install libssh-dev pkg-config
 ```bash
 sudo dnf install libssh-devel pkgconf-pkg-config
 ```
+
+> **Note:** sexyz is included as a pre-built binary at `bin/sexyz`. If you need to build it for a different platform, see [File Transfer Protocols](file-transfer-protocols.md).
 
 ## Installation Steps
 
@@ -144,7 +151,8 @@ vision3/
 │   │   └── dupes.json    # MSGID dupe database
 │   └── logs/
 │       └── vision3.log   # Application log
-├── bin/                   # External binaries (e.g., binkd) - created empty
+├── bin/                   # External binaries
+│   └── sexyz              # Synchronet ZModem 8k file transfer binary
 ├── scripts/               # Helper shell and Python scripts (future use) - created empty
 └── menus/v3/             # Menu system files
 ```
@@ -172,4 +180,5 @@ If you encounter SSH key errors, ensure the key was generated in the correct loc
 - Review the [Configuration Guide](configuration.md) to customize your BBS
 - Set up [Message Areas](message-areas.md) and [File Areas](file-areas.md)
 - Configure [Door Programs](doors.md) if desired
+- Review [File Transfer Protocols](file-transfer-protocols.md) (sexyz ZModem 8k)
 - Refer to [User Management](user-management.md) for managing users

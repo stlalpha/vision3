@@ -1184,7 +1184,7 @@ func displayReaderHelp(terminal *term.Terminal, outputMode ansi.OutputMode, isSy
 		"|08" + strings.Repeat("-", 40) + "|07\r\n" +
 		"|15N|07ext Message          |15#|07 Read Message #\r\n" +
 		"|15R|07eply to Message       |15P|07ost a Message\r\n" +
-		"|15S|07kip to Next Area     |15T|07hread Search\r\n" +
+		"|15S|07 Prev Message        |15T|07hread Search\r\n" +
 		"|15J|07ump to Message #     |15M|07ail Reply\r\n" +
 		"|15L|07ist Titles           |15Q|07uit Reader\r\n"
 	if isSysop {

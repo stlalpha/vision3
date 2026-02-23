@@ -32,6 +32,7 @@ import (
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/session"
+	"github.com/stlalpha/vision3/internal/telnetserver"
 	"github.com/stlalpha/vision3/internal/terminalio" // <-- Added import
 	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/types"
@@ -188,14 +189,12 @@ type MenuExecutor struct {
 	LoginSequence   []config.LoginItem            // Configurable login sequence from login.json
 	SessionRegistry *session.SessionRegistry      // Session registry for who's online
 	ChatRoom        *chat.ChatRoom                // Global teleconference chat room
+	Protocols       []transfer.ProtocolConfig     // Loaded transfer protocol configurations
 	configMu        sync.RWMutex                  // Mutex for thread-safe config updates
 }
 
 // NewExecutor creates a new MenuExecutor.
-// Added oneLiners, loadedStrings, theme, messageMgr, fileMgr, serverCfg, and ipLockoutCheck parameters
-// Updated paths to use new structure
-// << UPDATED Signature with msgMgr, fileMgr, serverCfg, and ipLockoutCheck
-func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry, chatRoom *chat.ChatRoom) *MenuExecutor {
+func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners []string, doorRegistry map[string]config.DoorConfig, loadedStrings config.StringsConfig, theme config.ThemeConfig, serverCfg config.ServerConfig, msgMgr *message.MessageManager, fileMgr *file.FileManager, confMgr *conference.ConferenceManager, ipLockoutCheck IPLockoutChecker, loginSequence []config.LoginItem, sessionRegistry *session.SessionRegistry, chatRoom *chat.ChatRoom, protocols []transfer.ProtocolConfig) *MenuExecutor {
 
 	// Initialize the run registry
 	runRegistry := make(map[string]RunnableFunc) // Use local RunnableFunc
@@ -203,22 +202,23 @@ func NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath string, oneLiners [
 	registerAppRunnables(runRegistry)            // Add application-specific runnables
 
 	return &MenuExecutor{
-		MenuSetPath:     menuSetPath,    // Store path to active menu set
-		RootConfigPath:  rootConfigPath, // Store path to global configs
-		RootAssetsPath:  rootAssetsPath, // Store path to global assets
+		MenuSetPath:     menuSetPath,
+		RootConfigPath:  rootConfigPath,
+		RootAssetsPath:  rootAssetsPath,
 		RunRegistry:     runRegistry,
 		DoorRegistry:    doorRegistry,
-		OneLiners:       oneLiners,       // Store loaded oneliners
-		LoadedStrings:   loadedStrings,   // Store loaded strings
-		Theme:           theme,           // Store loaded theme
-		ServerCfg:       serverCfg,       // Store server configuration
-		MessageMgr:      msgMgr,          // <-- ASSIGN FIELD
-		FileMgr:         fileMgr,         // <-- ASSIGN FIELD
-		ConferenceMgr:   confMgr,         // Conference grouping manager
-		IPLockoutCheck:  ipLockoutCheck,  // IP-based lockout checker
-		LoginSequence:   loginSequence,   // Configurable login sequence
-		SessionRegistry: sessionRegistry, // Session registry for who's online
-		ChatRoom:        chatRoom,        // Global teleconference chat room
+		OneLiners:       oneLiners,
+		LoadedStrings:   loadedStrings,
+		Theme:           theme,
+		ServerCfg:       serverCfg,
+		MessageMgr:      msgMgr,
+		FileMgr:         fileMgr,
+		ConferenceMgr:   confMgr,
+		IPLockoutCheck:  ipLockoutCheck,
+		LoginSequence:   loginSequence,
+		SessionRegistry: sessionRegistry,
+		ChatRoom:        chatRoom,
+		Protocols:       protocols,
 	}
 }
 
@@ -315,20 +315,32 @@ func (e *MenuExecutor) isCoSysOpOrAbove(u *user.User) bool {
 	return u != nil && u.AccessLevel >= e.ServerCfg.CoSysOpLevel
 }
 
-// handleIdleTimeout writes the idle timeout message at the bottom of the
-// terminal and logs the disconnection. Call this before returning LOGOFF/DISCONNECT
-// whenever ErrIdleTimeout is received from any input loop.
+// handleIdleTimeout displays TIMEOUT.ANS (if available) or falls back to the
+// idle timeout string, then logs the disconnection. Call this before returning
+// LOGOFF/DISCONNECT whenever ErrIdleTimeout is received from any input loop.
 func (e *MenuExecutor) handleIdleTimeout(terminal *term.Terminal, outputMode ansi.OutputMode, nodeNumber int, termHeight int) {
-	msg := e.LoadedStrings.IdleTimeout
-	if msg == "" {
-		msg = "\r\n|09You've been idle too long... Come back when you are there!|07\r\n"
+	// Try to display TIMEOUT.ANS first.
+	ansPath := filepath.Join(e.MenuSetPath, "ansi", "TIMEOUT.ANS")
+	if rawContent, err := ansi.GetAnsiFileContent(ansPath); err == nil {
+		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+		if outputMode == ansi.OutputModeCP437 {
+			terminal.Write(rawContent)
+		} else {
+			terminalio.WriteProcessedBytes(terminal, rawContent, outputMode)
+		}
+	} else {
+		// Fall back to the configured string.
+		msg := e.LoadedStrings.IdleTimeout
+		if msg == "" {
+			msg = "\r\n|09You've been idle too long... Come back when you are there!|07\r\n"
+		}
+		row := termHeight - 1
+		if row < 1 {
+			row = 1
+		}
+		terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[%d;1H", row)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	}
-	row := termHeight - 1
-	if row < 1 {
-		row = 1
-	}
-	terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[%d;1H", row)), outputMode)
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	log.Printf("INFO: Node %d: Idle timeout after %d minutes, disconnecting", nodeNumber, e.GetServerConfig().SessionIdleTimeoutMinutes)
 }
 
@@ -504,7 +516,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["WHOISONLINE"] = runWhoIsOnline                         // Who's online display
 	registry["CFG_HOTKEYS"] = runCfgHotKeys
 	registry["CFG_MOREPROMPTS"] = runCfgMorePrompts
-registry["CFG_SCREENWIDTH"] = runCfgScreenWidth
+	registry["CFG_SCREENWIDTH"] = runCfgScreenWidth
 	registry["CFG_SCREENHEIGHT"] = runCfgScreenHeight
 	registry["CFG_TERMTYPE"] = runCfgTermType
 	registry["CFG_REALNAME"] = runCfgRealName
@@ -1046,9 +1058,9 @@ func runOneliners(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	midTemplatePath := filepath.Join(e.MenuSetPath, "templates", "ONELINER.MID")
 	botTemplatePath := filepath.Join(e.MenuSetPath, "templates", "ONELINER.BOT")
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more ONELINER template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		msg := e.LoadedStrings.ExecOnelinerTemplateErr
@@ -1498,7 +1510,10 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 	// Clean up the session-scoped InputHandler when this Run() returns so the
 	// goroutine is not reused across re-entrant calls or after the session ends.
-	defer sessionInputHandlers.Delete(s)
+	// resetSessionIH calls CloseAndWait() before deleting, which stops the telnet
+	// read goroutine via the read-interrupt mechanism before a new one is created.
+	// Without this, two goroutines compete on the same bufio.Reader, freezing input.
+	defer resetSessionIH(s)
 
 	if currentUser != nil {
 		log.Printf("DEBUG: Running menu for user %s (Level: %d)", currentUser.Handle, currentUser.AccessLevel)
@@ -1539,7 +1554,10 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			}
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|NEWUSERS"), []byte(newUsersVal))
 			currentAreaTag, currentAreaDisplayName := e.resolveCurrentAreaTokens(currentUser, currentAreaName)
-			// Replace longer token first to avoid partial replacement conflicts with |CA.
+			currentFileAreaTag, currentFileAreaDisplayName := e.resolveCurrentFileAreaTokens(currentUser)
+			// Replace longer tokens first to avoid partial replacement conflicts (e.g. |CFAN vs |CFA vs |CAN vs |CA).
+			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CFAN"), []byte(currentFileAreaDisplayName))
+			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CFA"), []byte(currentFileAreaTag))
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CAN"), []byte(currentAreaDisplayName))
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CA"), []byte(currentAreaTag))
 			rawAnsiContent = replaceMenuATCode(rawAnsiContent, "UC", strconv.Itoa(userManager.GetUserCount()))
@@ -2165,7 +2183,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 		// 6. Process Input / Find Command Match (userInput determined by menu type)
 		matched := false
-		nextAction := "" // Store the action determined by the matched command
+		nextAction := ""          // Store the action determined by the matched command
 		matchedNodeActivity := "" // Store matched command's node activity
 
 		// Global hangup shortcut: /G
@@ -2601,9 +2619,9 @@ func runLastCallers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	midTemplatePath := filepath.Join(e.MenuSetPath, "templates", "LASTCALL.MID")
 	botTemplatePath := filepath.Join(e.MenuSetPath, "templates", "LASTCALL.BOT")
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more LASTCALL template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -2866,6 +2884,28 @@ func normalizePipeCodeDelimiters(input []byte) []byte {
 	return normalized
 }
 
+// readTemplateFile reads a template file at path, trying the base path first,
+// then path+".ANS", then path+".ans", so files saved by ANSI editors (which
+// typically append the uppercase .ANS extension) are recognised automatically.
+// SAUCE metadata is stripped from the returned content.
+func readTemplateFile(path string) ([]byte, error) {
+	var (
+		data []byte
+		err  error
+	)
+	for _, candidate := range []string{path, path + ".ANS", path + ".ans"} {
+		data, err = os.ReadFile(candidate)
+		if err == nil {
+			return stripSauceMetadata(data), nil
+		}
+		if !os.IsNotExist(err) {
+			// Real I/O error (permissions, etc.) — stop trying.
+			return nil, err
+		}
+	}
+	return nil, err
+}
+
 func stripSauceMetadata(input []byte) []byte {
 	if len(input) < 7 {
 		return input
@@ -3088,6 +3128,77 @@ func (e *MenuExecutor) resolveCurrentAreaTokens(currentUser *user.User, currentA
 	return areaTag, areaName
 }
 
+// resolveCurrentFileAreaTokens returns the tag and display name for the user's
+// current file area. If no file area is set or the area cannot be found, it
+// returns "None" for both values.
+func (e *MenuExecutor) resolveCurrentFileAreaTokens(currentUser *user.User) (string, string) {
+	areaTag := "None"
+	areaName := "None"
+
+	if currentUser == nil {
+		return areaTag, areaName
+	}
+
+	if currentUser.CurrentFileAreaTag != "" {
+		areaTag = currentUser.CurrentFileAreaTag
+	}
+	if e.FileMgr != nil && currentUser.CurrentFileAreaID > 0 {
+		if area, found := e.FileMgr.GetAreaByID(currentUser.CurrentFileAreaID); found {
+			if strings.TrimSpace(area.Tag) != "" {
+				areaTag = area.Tag
+			}
+			if strings.TrimSpace(area.Name) != "" {
+				areaName = area.Name
+			}
+		}
+	}
+
+	return areaTag, areaName
+}
+
+// applyCommonTemplateTokens replaces pipe-style tokens (|CFAN, |CFA, |CAN, |CA,
+// |UH, |NODE, |DATE, |TIME, etc.) in template bytes before ANSI pipe-code
+// processing.  This mirrors the substitution that displayMenuPrompt performs so
+// templates behave consistently with prompts.  Longer tokens are replaced first
+// to avoid prefix collisions (e.g. |CFAN before |CFA, |CAN before |CA).
+func (e *MenuExecutor) applyCommonTemplateTokens(data []byte, currentUser *user.User, nodeNumber int) []byte {
+	now := config.NowIn(e.ServerCfg.Timezone)
+	fileAreaTag, fileAreaName := e.resolveCurrentFileAreaTokens(currentUser)
+	msgAreaTag, msgAreaName := e.resolveCurrentAreaTokens(currentUser, "")
+
+	tokens := map[string]string{
+		"|NODE": strconv.Itoa(nodeNumber),
+		"|DATE": now.Format("01/02/06"),
+		"|TIME": now.Format("3:04 pm"),
+		"|CA":   msgAreaTag,
+		"|CAN":  msgAreaName,
+		"|CFA":  fileAreaTag,
+		"|CFAN": fileAreaName,
+		"|UH":   "Guest",
+		"|ALIAS":  "Guest",
+		"|HANDLE": "Guest",
+		"|LEVEL":  "0",
+	}
+	if currentUser != nil {
+		tokens["|UH"] = currentUser.Handle
+		tokens["|ALIAS"] = currentUser.Handle
+		tokens["|HANDLE"] = currentUser.Handle
+		tokens["|LEVEL"] = strconv.Itoa(currentUser.AccessLevel)
+	}
+
+	// Sort longest-key-first so |CFAN is replaced before |CFA, etc.
+	keys := make([]string, 0, len(tokens))
+	for k := range tokens {
+		keys = append(keys, k)
+	}
+	sort.SliceStable(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
+	pairs := make([]string, 0, len(tokens)*2)
+	for _, k := range keys {
+		pairs = append(pairs, k, tokens[k])
+	}
+	return []byte(strings.NewReplacer(pairs...).Replace(string(data)))
+}
+
 // displayFile reads and displays an ANSI file from the MENU SET's ansi directory.
 func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, outputMode ansi.OutputMode) error {
 	// Construct full path using MenuSetPath
@@ -3186,31 +3297,34 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 
 	now := config.NowIn(e.ServerCfg.Timezone)
 	currentAreaTag, currentAreaDisplayName := e.resolveCurrentAreaTokens(currentUser, currentAreaName)
+	currentFileAreaTag, currentFileAreaDisplayName := e.resolveCurrentFileAreaTokens(currentUser)
 
 	placeholders := map[string]string{
 		"|NODE":     strconv.Itoa(nodeNumber), // Node Number
 		"|DATE":     now.Format("01/02/06"),
 		"|TIME":     now.Format("3:04 pm"),
-		"|MN":       currentMenuName,        // Menu Name
-		"|PV":       "0",                    // Pending validations
-		"|UH":       "Guest",                // User Handle
-		"|NEWUSERS": newUsersStatus,         // Allow new users (YES/NO)
-		"|ALIAS":    "Guest",                // Default
-		"|HANDLE":   "Guest",                // Default
-		"|LEVEL":    "0",                    // Default
-		"|NAME":     "Guest User",           // Default
-		"|PHONE":    "",                     // Default
-		"|GL":       "",                     // Group/Location default
-		"|UN":       "",                     // User note (privateNote) default
-		"|UPLDS":    "0",                    // Default
-		"|DNLDS":    "0",                    // Default
-		"|POSTS":    "0",                    // Default
-		"|CALLS":    "0",                    // Default
-		"|LCALL":    "Never",                // Default
-		"|TL":       "N/A",                  // Default
-		"|CA":       currentAreaTag,         // Current area tag
-		"|CAN":      currentAreaDisplayName, // Current area display name
-		"|CC":       "None",                 // Current conference default
+		"|MN":       currentMenuName,            // Menu Name
+		"|PV":       "0",                        // Pending validations
+		"|UH":       "Guest",                    // User Handle
+		"|NEWUSERS": newUsersStatus,             // Allow new users (YES/NO)
+		"|ALIAS":    "Guest",                    // Default
+		"|HANDLE":   "Guest",                    // Default
+		"|LEVEL":    "0",                        // Default
+		"|NAME":     "Guest User",               // Default
+		"|PHONE":    "",                         // Default
+		"|GL":       "",                         // Group/Location default
+		"|UN":       "",                         // User note (privateNote) default
+		"|UPLDS":    "0",                        // Default
+		"|DNLDS":    "0",                        // Default
+		"|POSTS":    "0",                        // Default
+		"|CALLS":    "0",                        // Default
+		"|LCALL":    "Never",                    // Default
+		"|TL":       "N/A",                      // Default
+		"|CA":       currentAreaTag,             // Current message area tag
+		"|CAN":      currentAreaDisplayName,     // Current message area display name
+		"|CFA":      currentFileAreaTag,         // Current file area tag
+		"|CFAN":     currentFileAreaDisplayName, // Current file area display name
+		"|CC":       "None",                     // Current conference default
 	}
 
 	// Populate user-specific placeholders if logged in
@@ -3717,15 +3831,15 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	type loginHandler func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error)
 
 	handlers := map[string]loginHandler{
-		"LASTCALLS":    runLastCallers,
-		"ONELINERS":    runOneliners,
-		"USERSTATS":    runShowStats,
-		"NMAILSCAN":    runNewMailScan,
-		"DISPLAYFILE":  runLoginDisplayFile,
-		"RUNDOOR":      runLoginDoor,
-		"FASTLOGIN":    runFastLogin,
-		"NEWUSERVAL":   runNewUserValidation,
-		"WHOISONLINE":  runLoginWhosOnline,
+		"LASTCALLS":   runLastCallers,
+		"ONELINERS":   runOneliners,
+		"USERSTATS":   runShowStats,
+		"NMAILSCAN":   runNewMailScan,
+		"DISPLAYFILE": runLoginDisplayFile,
+		"RUNDOOR":     runLoginDoor,
+		"FASTLOGIN":   runFastLogin,
+		"NEWUSERVAL":  runNewUserValidation,
+		"WHOISONLINE": runLoginWhosOnline,
 	}
 
 	for i, item := range loginSequence {
@@ -4491,9 +4605,9 @@ func runListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	midTemplatePath := filepath.Join(e.MenuSetPath, "templates", "USERLIST.MID")
 	botTemplatePath := filepath.Join(e.MenuSetPath, "templates", "USERLIST.BOT")
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more USERLIST template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -7081,9 +7195,9 @@ func displayMessageAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 
 	// 1. Load templates
 	templateDir := filepath.Join(e.MenuSetPath, "templates")
-	topTemplateBytes, errTop := os.ReadFile(filepath.Join(templateDir, "MSGAREA.TOP"))
-	midTemplateBytes, errMid := os.ReadFile(filepath.Join(templateDir, "MSGAREA.MID"))
-	botTemplateBytes, errBot := os.ReadFile(filepath.Join(templateDir, "MSGAREA.BOT"))
+	topTemplateBytes, errTop := readTemplateFile(filepath.Join(templateDir, "MSGAREA.TOP"))
+	midTemplateBytes, errMid := readTemplateFile(filepath.Join(templateDir, "MSGAREA.MID"))
+	botTemplateBytes, errBot := readTemplateFile(filepath.Join(templateDir, "MSGAREA.BOT"))
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -7094,7 +7208,7 @@ func displayMessageAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 	}
 
 	// Conference header template (optional)
-	confHdrBytes, errConf := os.ReadFile(filepath.Join(templateDir, "MSGCONF.HDR"))
+	confHdrBytes, errConf := readTemplateFile(filepath.Join(templateDir, "MSGCONF.HDR"))
 	confHdrTemplate := ""
 	if errConf == nil {
 		confHdrTemplate = string(ansi.ReplacePipeCodes(confHdrBytes))
@@ -7540,9 +7654,9 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.T
 	midTemplatePath := filepath.Join(templateDir, midTemplateFilename)
 	botTemplatePath := filepath.Join(templateDir, botTemplateFilename) // Load BOT template
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath) // Load BOT template
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath) // Load BOT template
 
 	if errTop != nil || errMid != nil || errBot != nil { // Check BOT error too
 		log.Printf("ERROR: Node %d: Failed to load one or more MSGAREA template files for prompt: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -8045,6 +8159,79 @@ func scanDirectoryFiles(dir string) (map[string]int64, error) {
 	return files, nil
 }
 
+// isTelnetSession returns true when s was established over a raw telnet connection.
+func isTelnetSession(s ssh.Session) bool {
+	_, ok := s.(*telnetserver.TelnetSessionAdapter)
+	return ok
+}
+
+// selectTransferProtocol displays the available transfer protocols filtered for the
+// current connection type, then prompts the user to choose one by key.
+//
+// Rules:
+//   - Protocols with connection_type "" are shown on all connections.
+//   - Protocols with connection_type "ssh" are shown on SSH sessions only.
+//   - Protocols with connection_type "telnet" are shown on telnet sessions only.
+//   - Pressing Enter selects the default protocol.
+//   - Typing Q cancels. An unrecognised key re-prompts — no silent fallback.
+//
+// Returns (selected, true, nil) on selection, (zero, false, nil) on cancel,
+// or (zero, false, err) on I/O error.
+func (e *MenuExecutor) selectTransferProtocol(s ssh.Session, terminal *term.Terminal, outputMode ansi.OutputMode) (transfer.ProtocolConfig, bool, error) {
+	// Filter protocols for this connection type.
+	connType := transfer.ConnTypeSSH
+	if isTelnetSession(s) {
+		connType = transfer.ConnTypeTelnet
+	}
+	var available []transfer.ProtocolConfig
+	for _, p := range e.Protocols {
+		if p.ConnectionType == transfer.ConnTypeAny || p.ConnectionType == connType {
+			available = append(available, p)
+		}
+	}
+	if len(available) == 0 {
+		return transfer.ProtocolConfig{}, false, fmt.Errorf("no transfer protocols configured for this connection type")
+	}
+
+	defaultProto, _ := transfer.DefaultProtocol(available)
+
+	// Build the menu string once — reused on re-prompt.
+	var menu strings.Builder
+	menu.WriteString("\r\n|15Transfer Protocols:|07\r\n\r\n")
+	for _, p := range available {
+		if p.Default {
+			menu.WriteString(fmt.Sprintf("  |15[|14%-3s|15]|07 %-22s |08(default)|07\r\n", p.Key, p.Name))
+		} else {
+			menu.WriteString(fmt.Sprintf("  |15[|14%-3s|15]|07 %s\r\n", p.Key, p.Name))
+		}
+	}
+	menuBytes := ansi.ReplacePipeCodes([]byte(menu.String()))
+
+	for {
+		terminalio.WriteProcessedBytes(terminal, menuBytes, outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|07Select protocol |15[%s]|07, or |15Q|07 to cancel: ", defaultProto.Key))), outputMode)
+
+		input, err := readLineFromSessionIH(s, terminal)
+		if err != nil {
+			return transfer.ProtocolConfig{}, false, err
+		}
+		input = strings.TrimSpace(input)
+
+		if strings.ToUpper(input) == "Q" {
+			return transfer.ProtocolConfig{}, false, nil
+		}
+		if input == "" {
+			return defaultProto, true, nil
+		}
+
+		p, found := transfer.FindProtocol(available, input)
+		if found {
+			return p, true, nil
+		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|01Unknown protocol %q — please choose from the list above.|07\r\n", strings.ToUpper(input)))), outputMode)
+	}
+}
+
 // runUploadFile is the RunnableFunc wrapper for UPLOADFILE menu commands.
 func runUploadFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	if currentUser == nil {
@@ -8118,8 +8305,24 @@ func (e *MenuExecutor) runUploadFiles(
 		existingNames[strings.ToLower(f.Filename)] = true
 	}
 
-	// 5. Display instructions
-	msg := fmt.Sprintf("\r\n|15Uploading to: |14%s|07\r\n\r\n|11Start the ZMODEM send in your terminal.|07\r\n|07After transfer, you will be prompted for file descriptions.\r\n\r\n|07Press |15ENTER|07 to begin or |15Q|07 to cancel: ", area.Name)
+	// 5. Protocol selection
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|15Uploading to: |14%s|07\r\n", area.Name))), outputMode)
+	proto, ok, protoErr := e.selectTransferProtocol(s, terminal, outputMode)
+	if protoErr != nil {
+		if errors.Is(protoErr, io.EOF) {
+			return protoErr
+		}
+		log.Printf("ERROR: Node %d: Protocol selection error: %v", nodeNumber, protoErr)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error: No transfer protocols configured on this system.|07\r\n")), outputMode)
+		time.Sleep(2 * time.Second)
+		return nil
+	}
+	if !ok {
+		return nil // user cancelled
+	}
+
+	// 6. Display instructions
+	msg := fmt.Sprintf("\r\n|11Start the %s send in your terminal.|07\r\n|07After transfer, you will be prompted for file descriptions.\r\n\r\n|07Press |15ENTER|07 to begin or |15Q|07 to cancel: ", proto.Name)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
 	input, err := readLineFromSessionIH(s, terminal)
@@ -8133,7 +8336,7 @@ func (e *MenuExecutor) runUploadFiles(
 		return nil
 	}
 
-	// 6. Create temp directory for receiving uploads
+	// 7. Create temp directory for receiving uploads
 	incomingDir, err := os.MkdirTemp(targetDir, ".incoming-*")
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to create incoming directory: %v", nodeNumber, err)
@@ -8141,20 +8344,27 @@ func (e *MenuExecutor) runUploadFiles(
 	}
 	defer os.RemoveAll(incomingDir)
 
-	// 7. Execute ZMODEM receive into temp directory
-	msg = "\r\n|15Starting ZMODEM receive...|07\r\n"
+	// 8. Execute protocol receive into temp directory
+	msg = fmt.Sprintf("\r\n|15Starting %s receive...|07\r\n", proto.Name)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
-	transferErr := transfer.ExecuteZmodemReceive(s, incomingDir)
+	resetSessionIH(s)
+	transferErr := proto.ExecuteReceive(s, incomingDir)
+	time.Sleep(250 * time.Millisecond)
+	getSessionIH(s)
+	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 	if transferErr != nil {
-		log.Printf("ERROR: Node %d: ZMODEM receive failed: %v", nodeNumber, transferErr)
-		errMsg := "\r\n|01ZMODEM receive failed.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
-		time.Sleep(2 * time.Second)
-		return nil
+		if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
+			log.Printf("ERROR: Node %d: Transfer binary not found: %v", nodeNumber, transferErr)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+			return nil
+		}
+		log.Printf("WARN: Node %d: %q receive returned error: %v (checking for partial receives)", nodeNumber, proto.Name, transferErr)
 	}
 
-	// 8. Scan received files from temp directory
+	// 9. Scan received files from temp directory.
+	// Always scan even if transferErr != nil: rz exits non-zero when it times out
+	// waiting for ZFIN, but may have already received files successfully.
 	receivedFiles, err := scanDirectoryFiles(incomingDir)
 	if err != nil {
 		log.Printf("ERROR: Node %d: Failed to scan incoming directory: %v", nodeNumber, err)
@@ -8171,8 +8381,13 @@ func (e *MenuExecutor) runUploadFiles(
 	}
 
 	if len(newFiles) == 0 {
-		msg = "\r\n|07No new files detected.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		if transferErr != nil {
+			errMsg := "\r\n|01Transfer receive failed.|07\r\n"
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+		} else {
+			msg = "\r\n|07No new files detected.|07\r\n"
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		}
 		time.Sleep(2 * time.Second)
 		return nil
 	}
@@ -8265,14 +8480,14 @@ func (e *MenuExecutor) runUploadFiles(
 
 			descInput, err := readLineFromSessionIH(s, terminal)
 			if err != nil {
-				if errors.Is(err, io.EOF) {
-					return err
-				}
-				log.Printf("ERROR: Node %d: Failed to read description for %s: %v", nodeNumber, nf.name, err)
-				continue
+				// If the session died (e.g. SSH client disconnected during the
+				// transfer wait), preserve the upload with a default description
+				// rather than LOGOFFing the user mid-file-processing.
+				log.Printf("WARN: Node %d: Session lost during description prompt for %s (%v); using default description", nodeNumber, nf.name, err)
+				description = "No description"
+			} else {
+				description = sanitizeControlChars(strings.TrimSpace(descInput))
 			}
-
-			description = sanitizeControlChars(strings.TrimSpace(descInput))
 		}
 
 		if len([]rune(description)) > 60 {
@@ -8389,9 +8604,9 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	midTemplatePath := filepath.Join(e.MenuSetPath, "templates", "FILELIST.MID")
 	botTemplatePath := filepath.Join(e.MenuSetPath, "templates", "FILELIST.BOT")
 
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more FILELIST template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -8402,6 +8617,11 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading FILELIST templates")
 	}
+
+	// Apply common pipe tokens (|CFAN, |UH, etc.) before colour-code processing.
+	topTemplateBytes = e.applyCommonTemplateTokens(topTemplateBytes, currentUser, nodeNumber)
+	midTemplateBytes = e.applyCommonTemplateTokens(midTemplateBytes, currentUser, nodeNumber)
+	botTemplateBytes = e.applyCommonTemplateTokens(botTemplateBytes, currentUser, nodeNumber)
 
 	processedTopTemplate := ansi.ReplacePipeCodes(topTemplateBytes)
 	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
@@ -8691,98 +8911,120 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 				continue // Back to file list
 			}
 
-			// 3. Process downloads
-			log.Printf("INFO: Node %d: User %s starting download of %d files.", nodeNumber, currentUser.Handle, len(currentUser.TaggedFileIDs))
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Preparing download...\r\n")), outputMode)
-			time.Sleep(500 * time.Millisecond) // Small pause
+			// 3. Protocol selection
+			proto, protoOK, protoErr := e.selectTransferProtocol(s, terminal, outputMode)
+			if protoErr != nil {
+				if errors.Is(protoErr, io.EOF) {
+					return nil, "LOGOFF", protoErr
+				}
+				log.Printf("ERROR: Node %d: Protocol selection error: %v", nodeNumber, protoErr)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error: No transfer protocols configured on this system.|07\r\n")), outputMode)
+				time.Sleep(2 * time.Second)
+				continue
+			}
+			if !protoOK {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Download cancelled.|07\r\n")), outputMode)
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
 
-			successCount := 0
+			// 4. Resolve tagged files to paths; pre-count lookup failures.
+			type dlEntry struct {
+				id   uuid.UUID
+				path string
+				name string
+			}
+			var resolved []dlEntry
 			failCount := 0
-			filesToDownload := make([]string, 0, len(currentUser.TaggedFileIDs))
-			filenamesOnly := make([]string, 0, len(currentUser.TaggedFileIDs))
-
 			for _, fileID := range currentUser.TaggedFileIDs {
 				filePath, pathErr := e.FileMgr.GetFilePath(fileID)
 				if pathErr != nil {
 					log.Printf("ERROR: Node %d: Failed to get path for file ID %s: %v", nodeNumber, fileID, pathErr)
 					failCount++
-					continue // Skip this file
-				}
-				// Check if file exists before adding to list
-				if _, statErr := os.Stat(filePath); os.IsNotExist(statErr) {
-					log.Printf("ERROR: Node %d: File path %s for ID %s does not exist on server.", nodeNumber, filePath, fileID)
-					failCount++
 					continue
-				} else if statErr != nil {
-					log.Printf("ERROR: Node %d: Error stating file path %s for ID %s: %v", nodeNumber, filePath, fileID, statErr)
+				}
+				if _, statErr := os.Stat(filePath); statErr != nil {
+					log.Printf("ERROR: Node %d: File %s (ID %s) not on disk: %v", nodeNumber, filePath, fileID, statErr)
 					failCount++
 					continue
 				}
-				filesToDownload = append(filesToDownload, filePath)
-				filenamesOnly = append(filenamesOnly, filepath.Base(filePath))
+				resolved = append(resolved, dlEntry{id: fileID, path: filePath, name: filepath.Base(filePath)})
 			}
 
-			if len(filesToDownload) > 0 {
-				// **** Actual ZMODEM Transfer using sz ****
-				log.Printf("INFO: Node %d: Attempting ZMODEM transfer for files: %v", nodeNumber, filenamesOnly)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15Initiating ZMODEM transfer (sz)...\r\n")), outputMode)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the ZMODEM receive function in your terminal.\r\n")), outputMode)
+			successCount := 0
 
-				// 1. Find sz executable
-				szPath, err := exec.LookPath("sz")
-				if err != nil {
-					log.Printf("ERROR: Node %d: 'sz' command not found in PATH: %v", nodeNumber, err)
-					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Error: 'sz' command not found on server. Cannot start download.\r\n")), outputMode)
-					failCount = len(filesToDownload) // Mark all as failed
-				} else {
-					// 2. Prepare arguments - Re-add -e flag
-					args := []string{"-b", "-e"} // Binary, Escape control chars
-					args = append(args, filesToDownload...)
-					log.Printf("DEBUG: Node %d: Executing command: %s %v", nodeNumber, szPath, args)
+			if len(resolved) == 0 {
+				log.Printf("WARN: Node %d: No valid file paths found for tagged files.", nodeNumber)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Could not find any of the marked files on the server.|07\r\n")), outputMode)
+				failCount = len(currentUser.TaggedFileIDs)
+			} else if !proto.BatchSend || len(resolved) == 1 {
+				// Non-batch protocol or single file: send one at a time for per-file accounting.
+				log.Printf("INFO: Node %d: Sending %d file(s) one-at-a-time via %q", nodeNumber, len(resolved), proto.Name)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|15Initiating %s transfer (%d file(s), one at a time)...|07\r\n", proto.Name, len(resolved)))), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Prepare your terminal to receive each file.\r\n")), outputMode)
 
-					// 3. Create command and use PTY helper
-					cmd := exec.Command(szPath, args...)
-					// Note: Stdin/Stdout/Stderr are handled by runCommandWithPTY
-
-					log.Printf("INFO: Node %d: Executing Zmodem send via runCommandWithPTY: %s %v", nodeNumber, szPath, args)
-
-					// 4. Execute using the PTY helper from the transfer package
-					transferErr := transfer.RunCommandWithPTY(s, cmd) // Pass the ssh.Session and the command (Use exported name)
-
-					// 5. Handle Result
-					if transferErr != nil {
-						// sz likely exited with an error (transfer failed or cancelled)
-						log.Printf("ERROR: Node %d: 'sz' command execution failed: %v", nodeNumber, transferErr)
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01ZMODEM transfer failed or was cancelled.\r\n")), outputMode)
-						failCount = len(filesToDownload) // Assume all failed if sz returns error
-						successCount = 0
+				resetSessionIH(s)
+				for i, fe := range resolved {
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(resolved), fe.name))), outputMode)
+					if sendErr := proto.ExecuteSend(s, fe.path); sendErr != nil {
+						log.Printf("ERROR: Node %d: %q send failed for %s: %v", nodeNumber, proto.Name, fe.name, sendErr)
+						if errors.Is(sendErr, transfer.ErrBinaryNotFound) {
+							terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+							terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+							failCount += len(resolved) - i
+							break
+						}
+						terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 |14%s|07: |01FAILED|07\r\n", i+1, len(resolved), fe.name))), outputMode)
+						failCount++
 					} else {
-						// sz exited successfully (transfer presumed complete)
-						log.Printf("INFO: Node %d: 'sz' command completed successfully.", nodeNumber)
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07ZMODEM transfer complete.\r\n")), outputMode)
-						successCount = len(filesToDownload) // Assume all succeeded if sz exits cleanly
-						failCount = 0                       // Reset fail count determined earlier
-
-						// Increment download counts only on successful transfer completion
-						for _, fileID := range currentUser.TaggedFileIDs {
-							// Check again if we had a valid path originally
-							if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
-								if err := e.FileMgr.IncrementDownloadCount(fileID); err != nil {
-									log.Printf("WARN: Node %d: Failed to increment download count for file %s after successful sz: %v", nodeNumber, fileID, err)
-								}
-							}
+						log.Printf("INFO: Node %d: %q sent %s OK", nodeNumber, proto.Name, fe.name)
+						terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 |14%s|07: |02OK|07\r\n", i+1, len(resolved), fe.name))), outputMode)
+						successCount++
+						if err := e.FileMgr.IncrementDownloadCount(fe.id); err != nil {
+							log.Printf("WARN: Node %d: Failed to increment download count for %s: %v", nodeNumber, fe.id, err)
 						}
 					}
 				}
-				// Add a small delay after transfer attempt
-				time.Sleep(1 * time.Second)
-				// ---- End ZMODEM Transfer ----
-
+				getSessionIH(s)
 			} else {
-				log.Printf("WARN: Node %d: No valid file paths found for tagged files.", nodeNumber)
-				msg := "\r\n|01Could not find any of the marked files on the server.|07\r\n"
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-				failCount = len(currentUser.TaggedFileIDs) // Mark all as failed if none were found
+				// Batch protocol with multiple files: single transfer session, all-or-none.
+				paths := make([]string, len(resolved))
+				names := make([]string, len(resolved))
+				for i, fe := range resolved {
+					paths[i] = fe.path
+					names[i] = fe.name
+				}
+				log.Printf("INFO: Node %d: Batch sending %d file(s) via %q: %v", nodeNumber, len(resolved), proto.Name, names)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|15Initiating %s batch transfer (%d files)...|07\r\n", proto.Name, len(resolved)))), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
+
+				resetSessionIH(s)
+				transferErr := proto.ExecuteSend(s, paths...)
+				time.Sleep(250 * time.Millisecond)
+				getSessionIH(s)
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+
+				if transferErr != nil {
+					log.Printf("ERROR: Node %d: %q batch send failed: %v", nodeNumber, proto.Name, transferErr)
+					if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
+						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+					} else {
+						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Transfer failed or was cancelled.\r\n")), outputMode)
+					}
+					failCount += len(resolved)
+				} else {
+					log.Printf("INFO: Node %d: %q batch send completed successfully.", nodeNumber, proto.Name)
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Transfer complete.\r\n")), outputMode)
+					successCount += len(resolved)
+					for _, fe := range resolved {
+						if err := e.FileMgr.IncrementDownloadCount(fe.id); err != nil {
+							log.Printf("WARN: Node %d: Failed to increment download count for %s: %v", nodeNumber, fe.id, err)
+						}
+					}
+				}
+				time.Sleep(1 * time.Second)
 			}
 
 			// 4. Clear tags and save user state
@@ -8936,9 +9178,9 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal
 	botTemplatePath := filepath.Join(templateDir, botTemplateFilename)
 
 	// 2. Load Template Files
-	topTemplateBytes, errTop := os.ReadFile(topTemplatePath)
-	midTemplateBytes, errMid := os.ReadFile(midTemplatePath)
-	botTemplateBytes, errBot := os.ReadFile(botTemplatePath)
+	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
+	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
+	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load one or more FILEAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
@@ -8957,7 +9199,7 @@ func displayFileAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal
 	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
 
 	// Conference header template (optional)
-	confHdrBytes, errConf := os.ReadFile(filepath.Join(templateDir, "FILECONF.HDR"))
+	confHdrBytes, errConf := readTemplateFile(filepath.Join(templateDir, "FILECONF.HDR"))
 	confHdrTemplate := ""
 	if errConf == nil {
 		confHdrTemplate = string(ansi.ReplacePipeCodes(confHdrBytes))
@@ -9894,9 +10136,9 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	midPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.MID")
 	botPath := filepath.Join(e.MenuSetPath, "templates", "WHOONLN.BOT")
 
-	topBytes, errTop := os.ReadFile(topPath)
-	midBytes, errMid := os.ReadFile(midPath)
-	botBytes, errBot := os.ReadFile(botPath)
+	topBytes, errTop := readTemplateFile(topPath)
+	midBytes, errMid := readTemplateFile(midPath)
+	botBytes, errBot := readTemplateFile(botPath)
 
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load WHOONLN templates: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)

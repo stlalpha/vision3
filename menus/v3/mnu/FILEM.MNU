@@ -1,8 +1,8 @@
 {
   "CLR": true,
   "USEPROMPT": true,
-  "PROMPT1": "|08[|07|TIME|08] |08[|15Area:|07|CA|08] |15F|07i|08l|15e|07s|08:|15 |07 Command ->|08 ",
-  "PROMPT2": "",
+  "PROMPT1": " |08[|07Area|08] |11|CFAN|00 ",
+  "PROMPT2": " |08[|15Transfer Menu|08] |07Command |08->|15 ",
   "FALLBACK": "MAIN",
   "ACS": "",
   "PASS": ""

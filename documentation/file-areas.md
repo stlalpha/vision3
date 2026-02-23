@@ -109,7 +109,7 @@ The `LISTFILES` function shows files in current area:
 
 - **Browse**: Navigate paginated file listings
 - **Mark/Unmark**: Tag files for batch download using file numbers
-- **Download**: ZMODEM transfer using `sz` command
+- **Download**: ZModem 8k transfer using sexyz
 
 **In Development:**
 
@@ -282,15 +282,28 @@ For importing many files:
 
 ## File Transfer Protocols
 
+Protocol configurations are defined in `configs/protocols.json`. ViSiON/3 uses **sexyz** (Synchronet's ZModem 8k) as its file transfer engine, supporting both SSH and telnet connections.
+
+### Default Protocol
+
+**ZModem 8k via sexyz:**
+
+- Uses Synchronet's `sexyz` binary with 8k block ZModem
+- Works on both SSH and telnet connections
+- Operates on raw I/O pipes — no PTY required
+- Binary is included at `bin/sexyz`
+- Can be built from source — see [File Transfer Protocols](file-transfer-protocols.md)
+
+### Transfer Binary
+
+sexyz is included as a pre-built binary at `bin/sexyz`. If you need to build it for a different platform, see [File Transfer Protocols](file-transfer-protocols.md) for instructions.
+
+**Docker:** The sexyz binary is copied into the Docker image automatically if present at `bin/sexyz`.
+
 **Currently Implemented:**
 
-- **Zmodem**: Using external `sz` command for downloads
-
-**Planned:**
-
-- **Xmodem**: Fallback option
-- **Ymodem**: Batch transfers
-- **Upload support**: Using `rz` or similar
+- **ZModem 8k downloads**: Batch file sends via sexyz
+- **ZModem 8k uploads**: File receives via sexyz
 
 ## Troubleshooting
 

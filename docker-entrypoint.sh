@@ -35,10 +35,20 @@ if [ ! -f "/vision3/configs/ssh_host_ed25519_key" ]; then
     ssh-keygen -t ed25519 -f /vision3/configs/ssh_host_ed25519_key -N "" -q
 fi
 
-# Copy template configs if configs are missing
-if [ ! -f "/vision3/configs/config.json" ]; then
-    echo "Initializing config files from templates..."
-    cp -n /vision3/templates/configs/*.json /vision3/configs/ 2>/dev/null || true
+# Copy any missing template configs (runs on every start to pick up newly added files)
+for template_file in /vision3/templates/configs/*.json; do
+    target="/vision3/configs/$(basename "$template_file")"
+    if [ ! -f "$target" ]; then
+        echo "  Creating $(basename "$target") from template..."
+        cp "$template_file" "$target"
+    fi
+done
+
+# Ensure sexyz.ini is in bin/ (binary must be provided by user)
+mkdir -p /vision3/bin
+if [ ! -f "/vision3/bin/sexyz.ini" ] && [ -f "/vision3/templates/configs/sexyz.ini" ]; then
+    echo "Copying sexyz.ini to bin/..."
+    cp /vision3/templates/configs/sexyz.ini /vision3/bin/sexyz.ini
 fi
 
 exec "$@"

@@ -27,23 +27,25 @@ if [ ! -f "configs/ssh_host_rsa_key" ] || [ ! -f "data/users/users.json" ]; then
 fi
 
 echo "=== Building ViSiON/3 BBS ==="
-if ! go build -o vision3 ./cmd/vision3; then
-    echo "Build failed!"
-    exit 1
-fi
-if ! go build -o helper ./cmd/helper; then
-    echo "Build failed!"
-    exit 1
-fi
-if ! go build -o v3mail ./cmd/v3mail; then
-    echo "Build failed!"
-    exit 1
-fi
-if ! go build -o strings ./cmd/strings; then
-    echo "Build failed (strings editor)!"
-    exit 1
-fi
+BUILT=()
 
-echo "Build successful!"
+if ! go build -o vision3 ./cmd/vision3; then echo "Build failed (vision3)!"; exit 1; fi
+BUILT+=("  vision3   — BBS server")
+
+if ! go build -o helper ./cmd/helper; then echo "Build failed (helper)!"; exit 1; fi
+BUILT+=("  helper    — helper process")
+
+if ! go build -o v3mail ./cmd/v3mail; then echo "Build failed (v3mail)!"; exit 1; fi
+BUILT+=("  v3mail    — mail processor")
+
+if ! go build -o strings ./cmd/strings; then echo "Build failed (strings)!"; exit 1; fi
+BUILT+=("  strings   — strings editor")
+
+if ! go build -o ue ./cmd/ue; then echo "Build failed (ue)!"; exit 1; fi
+BUILT+=("  ue        — user editor")
+
 echo "============================="
+echo "Build successful!"
+echo
+for item in "${BUILT[@]}"; do echo "$item"; done
 echo

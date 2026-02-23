@@ -55,10 +55,30 @@
             * `Q`uit: Return to `LISTFILES`. (Not started).
 
 5. **Zmodem Implementation (`internal/transfer/zmodem.go` or similar):** `[TODO]`
-    * Requires `lrzsz` installed on the server.
+    * Requires `lrzsz` installed on the server (Linux: `sudo apt install lrzsz`, macOS: `brew install lrzsz`).
+    * Alternative: `sexyz` from Synchronet BBS builds (recommended for telnet; must be obtained from https://www.synchro.net).
+    * Protocol configurations are defined in `configs/protocols.json`.
     * Helper functions `executeZmodemSend(...)` and `executeZmodemReceive(...)`.
-    * These functions wrap `exec.Command("sz", ...)` / `exec.Command("rz", ...)`.
+    * These functions wrap `exec.Command("sz", ...)` / `exec.Command("rz", ...)` for lrzsz, or `exec.Command("sexyz", ...)` for Synchronet sexyz.
     * **Crucially:** Reuse/refactor PTY handling logic (raw mode, I/O piping) from the existing `DOOR:` handler in `executor.go`. (Not started).
+
+    ### Platform-Specific Dependencies
+
+    | Platform                  | lrzsz                                 | sexyz                              |
+    | ------------------------- | ------------------------------------- | ---------------------------------- |
+    | **Linux (Debian/Ubuntu)** | `sudo apt install lrzsz`              | Obtain from Synchronet builds      |
+    | **Linux (Fedora/RHEL)**   | `sudo dnf install lrzsz`              | Obtain from Synchronet builds      |
+    | **Linux (Alpine/Docker)** | Build from source (see Dockerfile)    | Obtain from Synchronet builds      |
+    | **macOS**                 | `brew install lrzsz`                  | Build from Synchronet source       |
+    | **Windows (WSL)**         | `sudo apt install lrzsz` (inside WSL) | Native .exe from Synchronet builds |
+    | **Windows (native)**      | MSYS2/Cygwin: `pacman -S lrzsz`       | Native .exe from Synchronet builds |
+
+    ### sexyz Notes
+    * sexyz is **not** available through standard package managers.
+    * Must be obtained from Synchronet BBS: https://www.synchro.net or https://gitlab.synchro.net
+    * Operates on raw sockets (no PTY required), making it ideal for telnet.
+    * Place the binary at `bin/sexyz` or ensure it's in the system `PATH`.
+    * Docker deployments: sexyz must be added to `bin/` and copied in the Dockerfile if desired.
 
 6. **Modern Options (Future):**
     * Protocol selection prompt in `DOWNLOADFILE`/`UPLOADFILE` can be extended (e.g., "(H)TTP Link").

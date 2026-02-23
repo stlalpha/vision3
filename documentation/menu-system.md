@@ -170,8 +170,10 @@ Dynamic content placeholders in prompts and ANSI files:
 
 - `|UH` - User handle
 - `|TL` - Time left (in minutes)
-- `|CA` - Current area (message or file area tag)
-- `|CAN` - Current area name (resolved display name)
+- `|CA` - Current message area tag
+- `|CAN` - Current message area name (resolved display name)
+- `|CFA` - Current file area tag
+- `|CFAN` - Current file area name (resolved display name)
 - `|DATE` - Current date (MM/DD/YY)
 - `|TIME` - Current time (HH:MM)
 - `|CALLS` - User's total calls
@@ -488,6 +490,38 @@ Functions available via `RUN:` command:
 - `SHOWVERSION` - Display BBS version
 - `TOGGLEALLOWNEWUSERS` - Toggle new user registration open/closed (SysOp only)
 
+## Template Files (.TOP / .MID / .BOT)
+
+Several built-in functions display content using a three-part template system:
+
+- `NAME.TOP` — Header, displayed once before any rows
+- `NAME.MID` — Row template, repeated for each data record
+- `NAME.BOT` — Footer, displayed once after all rows
+
+All template files live in `menus/v3/templates/`.
+
+### Encoding
+
+Template files are raw CP437/ANSI binary files. The `.gitattributes` in this repository marks them as binary to prevent line-ending or encoding conversion by git or editors.
+
+### `.ans` Extension Support
+
+Any template file can optionally be stored with a `.ans` suffix appended to its name (e.g. `ONELINER.TOP.ans` instead of `ONELINER.TOP`). The system tries the bare name first and falls back to the `.ans` variant automatically.
+
+This allows ANSI art editors (Moebius, PabloDraw, TheDraw, etc.) to recognise and open the file by extension without requiring a rename. The message header templates in `menus/v3/templates/message_headers/` already use `.ans` exclusively; this fallback extends that convention to all template files.
+
+**Workflow:**
+
+1. Rename `ONELINER.TOP` → `ONELINER.TOP.ans`
+2. Open and edit in your ANSI editor
+3. Save — the system finds it automatically
+
+### Common Notes
+
+- Pipe color delimiters are normalized; both `|` and broken-bar variants are accepted.
+- SAUCE metadata is stripped automatically before display.
+- `.TOP` and `.BOT` files contain raw ANSI/CP437 art. `.MID` files typically use pipe codes and placeholder tokens.
+
 ### Last Callers (`RUN:LASTCALLERS`)
 
 `LASTCALLERS` shows recent caller history using template files in `menus/v3/templates/`.
@@ -511,11 +545,6 @@ Template files:
 - `LASTCALL.TOP` - Header (displayed once)
 - `LASTCALL.MID` - Row template (displayed once per caller)
 - `LASTCALL.BOT` - Footer (displayed once)
-
-Notes:
-
-- Pipe color delimiters are normalized, so both `|` and broken-bar variants are accepted.
-- SAUCE metadata in template files is stripped automatically before display.
 
 Supported row tokens in `LASTCALL.MID` (`@CODE@` / `@CODE:width@`):
 

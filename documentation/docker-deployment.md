@@ -25,8 +25,8 @@ This guide covers deploying ViSiON/3 using Docker and Docker Compose.
    This will:
    - Build the Docker image with libssh support
    - Compile all Go binaries (ViSiON3, v3mail, helper, strings)
-   - Build lrzsz from source for zmodem file transfers
-   - Bundle binkd (FTN mailer) from `bin/binkd`
+   - Build lrzsz from source (legacy, may be removed in future)
+   - Bundle sexyz (Synchronet ZModem 8k) from `bin/sexyz`
    - Create necessary directories (`configs/`, `data/`, `menus/`, `temp/`)
    - Generate SSH host keys automatically
    - Initialize config files from templates
@@ -84,8 +84,10 @@ ViSiON/3 **requires libssh via CGO** for SSH server functionality. The Dockerfil
 - Installs `libssh-dev` during build
 - Includes `libssh` runtime library in the final image
 - Builds all Go binaries: `ViSiON3`, `v3mail`, `helper`, `strings`
-- Builds `lrzsz` from source for zmodem file transfers (`sz`/`rz`)
+- Copies `bin/sexyz` for ZModem 8k file transfers (works on both SSH and telnet)
 - Copies the static `binkd` binary for FTN mailer support
+
+> **Note:** The sexyz binary at `bin/sexyz` must match the container's architecture (typically linux/amd64). See [File Transfer Protocols](file-transfer-protocols.md) for build instructions.
 
 **Do not disable CGO** or the SSH server will not work.
 

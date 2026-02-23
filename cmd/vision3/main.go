@@ -33,9 +33,9 @@ import (
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/scheduler"
 	"github.com/stlalpha/vision3/internal/session"
-	"github.com/stlalpha/vision3/internal/sshserver"
 	"github.com/stlalpha/vision3/internal/telnetserver"
 	"github.com/stlalpha/vision3/internal/terminalio"
+	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/types"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -1210,6 +1210,7 @@ func sessionHandler(s ssh.Session) {
 
 	// --- Invisible Login Prompt (SysOp/CoSysOp only) ---
 	if authenticatedUser.AccessLevel >= menuExecutor.GetServerConfig().CoSysOpLevel {
+		terminal.Write([]byte("\x1b[2J\x1b[H"))
 		invisPrompt := loadedStrings.InvisibleLogonPrompt
 		if invisPrompt == "" {
 			invisPrompt = " |03Invisible Logon?|07"
@@ -1222,6 +1223,7 @@ func sessionHandler(s ssh.Session) {
 				log.Printf("Node %d: User disconnected during invisible logon prompt.", nodeID)
 				return
 			}
+			log.Printf("WARN: Node %d: Error during invisible logon prompt: %v", nodeID, invisErr)
 		}
 		if invisChoice {
 			bbsSession.Mutex.Lock()
@@ -1257,6 +1259,7 @@ func sessionHandler(s ssh.Session) {
 					log.Printf("Node %d: User disconnected during terminal size prompt.", nodeID)
 					return
 				}
+				log.Printf("WARN: Node %d: Error during terminal size prompt: %v", nodeID, promptErr)
 			}
 
 			if useNew {
@@ -1361,7 +1364,13 @@ func sessionHandler(s ssh.Session) {
 			terminal.Write([]byte("How many rows are available for BBS display? [\x1b[1m" + fmt.Sprintf("%d", detectedHeight) + "\x1b[0m]: "))
 
 			heightChoice, heightErr := terminal.ReadLine()
-			if heightErr == nil {
+			if heightErr != nil {
+				if errors.Is(heightErr, io.EOF) {
+					log.Printf("Node %d: User disconnected during height adjustment prompt.", nodeID)
+					return
+				}
+				log.Printf("WARN: Node %d: Error during height adjustment prompt: %v", nodeID, heightErr)
+			} else {
 				heightChoice = strings.TrimSpace(heightChoice)
 				if heightChoice != "" {
 					if adjustedHeight, parseErr := strconv.Atoi(heightChoice); parseErr == nil && adjustedHeight >= 20 && adjustedHeight <= detectedHeight {
@@ -1463,30 +1472,6 @@ func sessionHandler(s ssh.Session) {
 	}
 
 	log.Printf("Node %d: Session handler finished for %s.", nodeID, authenticatedUser.Handle)
-}
-
-// libsshSessionHandler adapts libssh sessions to the existing BBS session handler
-func libsshSessionHandler(sess *sshserver.Session) error {
-	// Create adapter that implements ssh.Session interface
-	adapter := sshserver.NewBBSSessionAdapter(sess)
-
-	// Atomically check limits and register connection
-	canAccept, reason := connectionTracker.TryAccept(adapter.RemoteAddr())
-	if !canAccept {
-		log.Printf("INFO: Rejecting SSH connection from %s: %s", adapter.RemoteAddr(), reason)
-		fmt.Fprintf(adapter, "\r\nConnection rejected: %s\r\n", reason)
-		fmt.Fprintf(adapter, "Please try again later.\r\n")
-		time.Sleep(2 * time.Second) // Brief delay before closing
-		return fmt.Errorf("connection limit exceeded: %s", reason)
-	}
-
-	// Connection is registered; ensure it's removed when done
-	defer connectionTracker.RemoveConnection(adapter.RemoteAddr())
-
-	// Call the existing session handler with the adapter
-	sessionHandler(adapter)
-
-	return nil
 }
 
 // telnetSessionHandler adapts telnet sessions to the existing BBS session handler
@@ -1671,8 +1656,18 @@ func main() {
 	// Initialize global chat room for teleconference
 	chatRoom := chat.NewChatRoom(100)
 
+	// Load transfer protocol configuration
+	var loadedProtocols []transfer.ProtocolConfig
+	protocolsPath := filepath.Join(rootConfigPath, "protocols.json")
+	if protocols, err := transfer.LoadProtocols(protocolsPath); err != nil {
+		log.Printf("WARN: Failed to load protocols.json: %v. File transfers will be unavailable.", err)
+	} else {
+		loadedProtocols = protocols
+		log.Printf("INFO: Loaded %d transfer protocol(s) from %s", len(loadedProtocols), protocolsPath)
+	}
+
 	// Initialize MenuExecutor with new paths, loaded theme, server config, message manager, and connection tracker
-	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence, sessionRegistry, chatRoom)
+	menuExecutor = menu.NewExecutor(menuSetPath, rootConfigPath, rootAssetsPath, oneliners, loadedDoors, loadedStrings, loadedTheme, serverConfig, messageMgr, fileMgr, confMgr, connectionTracker, loginSequence, sessionRegistry, chatRoom, loadedProtocols)
 
 	// Initialize configuration file watcher for hot reload
 	var serverConfigMu sync.RWMutex
@@ -1731,46 +1726,17 @@ func main() {
 	}
 
 	// Start SSH server if enabled
-	var server *sshserver.Server
 	if serverConfig.SSHEnabled {
-		sshPort := serverConfig.SSHPort
-		sshHost := serverConfig.SSHHost
-		log.Printf("INFO: Configuring libssh SSH server on %s:%d...", sshHost, sshPort)
-
-		var err error
-		server, err = sshserver.NewServer(sshserver.Config{
-			HostKeyPath:         hostKeyPath,
-			Port:                sshPort,
-			LegacySSHAlgorithms: serverConfig.LegacySSHAlgorithms,
-			SessionHandler:      libsshSessionHandler,
-			AuthPasswordFunc: func(username, password string) bool {
-				// If user exists in BBS database, validate password
-				u, found := userMgr.GetUser(username)
-				if !found {
-					// Unknown user — allow through to BBS login/new user flow
-					return true
-				}
-				// Existing user — verify bcrypt password
-				_, ok := userMgr.Authenticate(username, password)
-				if !ok {
-					log.Printf("WARN: SSH password auth failed for existing user: %s", username)
-				} else {
-					log.Printf("INFO: SSH password auth verified for user: %s (ID: %d)", username, u.ID)
-				}
-				return ok
-			},
-		})
+		cleanup, err := startSSHServer(
+			hostKeyPath,
+			serverConfig.SSHHost,
+			serverConfig.SSHPort,
+			serverConfig.LegacySSHAlgorithms,
+		)
 		if err != nil {
-			log.Fatalf("FATAL: Failed to create SSH server: %v", err)
+			log.Fatalf("FATAL: %v", err)
 		}
-		defer server.Close()
-		defer sshserver.Cleanup()
-
-		if err := server.Listen(); err != nil {
-			log.Fatalf("FATAL: Failed to start SSH server: %v", err)
-		}
-
-		log.Printf("INFO: SSH server ready - connect via: ssh <username>@%s -p %d", sshHost, sshPort)
+		defer cleanup()
 	} else {
 		log.Printf("INFO: SSH server disabled in config")
 	}
@@ -1802,19 +1768,10 @@ func main() {
 		log.Printf("INFO: Telnet server disabled in config")
 	}
 
-	// Main accept loop — SSH accepts if enabled, otherwise block on signal
-	if server != nil {
-		for {
-			if err := server.Accept(); err != nil {
-				log.Printf("ERROR: Failed to accept connection: %v", err)
-				time.Sleep(100 * time.Millisecond)
-			}
-		}
-	} else {
-		// Telnet-only mode: block until interrupted
-		log.Printf("INFO: Running in telnet-only mode")
-		select {}
-	}
+	// Block forever — SSH and telnet servers run in background goroutines.
+	// The process exits when the OS terminates it or log.Fatalf fires.
+	log.Printf("INFO: Vision/3 BBS running. Press Ctrl+C to stop.")
+	select {}
 
 }
 
