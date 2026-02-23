@@ -2884,15 +2884,26 @@ func normalizePipeCodeDelimiters(input []byte) []byte {
 	return normalized
 }
 
-// readTemplateFile reads a template file at path. If the file is not found,
-// it retries with ".ans" appended so templates can be stored as e.g.
-// "ONELINER.TOP.ans" and recognised by ANSI editors.
+// readTemplateFile reads a template file at path, trying the base path first,
+// then path+".ANS", then path+".ans", so files saved by ANSI editors (which
+// typically append the uppercase .ANS extension) are recognised automatically.
+// SAUCE metadata is stripped from the returned content.
 func readTemplateFile(path string) ([]byte, error) {
-	data, err := os.ReadFile(path)
-	if err != nil && os.IsNotExist(err) {
-		return os.ReadFile(path + ".ans")
+	var (
+		data []byte
+		err  error
+	)
+	for _, candidate := range []string{path, path + ".ANS", path + ".ans"} {
+		data, err = os.ReadFile(candidate)
+		if err == nil {
+			return stripSauceMetadata(data), nil
+		}
+		if !os.IsNotExist(err) {
+			// Real I/O error (permissions, etc.) — stop trying.
+			return nil, err
+		}
 	}
-	return data, err
+	return nil, err
 }
 
 func stripSauceMetadata(input []byte) []byte {
@@ -3143,6 +3154,49 @@ func (e *MenuExecutor) resolveCurrentFileAreaTokens(currentUser *user.User) (str
 	}
 
 	return areaTag, areaName
+}
+
+// applyCommonTemplateTokens replaces pipe-style tokens (|CFAN, |CFA, |CAN, |CA,
+// |UH, |NODE, |DATE, |TIME, etc.) in template bytes before ANSI pipe-code
+// processing.  This mirrors the substitution that displayMenuPrompt performs so
+// templates behave consistently with prompts.  Longer tokens are replaced first
+// to avoid prefix collisions (e.g. |CFAN before |CFA, |CAN before |CA).
+func (e *MenuExecutor) applyCommonTemplateTokens(data []byte, currentUser *user.User, nodeNumber int) []byte {
+	now := config.NowIn(e.ServerCfg.Timezone)
+	fileAreaTag, fileAreaName := e.resolveCurrentFileAreaTokens(currentUser)
+	msgAreaTag, msgAreaName := e.resolveCurrentAreaTokens(currentUser, "")
+
+	tokens := map[string]string{
+		"|NODE": strconv.Itoa(nodeNumber),
+		"|DATE": now.Format("01/02/06"),
+		"|TIME": now.Format("3:04 pm"),
+		"|CA":   msgAreaTag,
+		"|CAN":  msgAreaName,
+		"|CFA":  fileAreaTag,
+		"|CFAN": fileAreaName,
+		"|UH":   "Guest",
+		"|ALIAS":  "Guest",
+		"|HANDLE": "Guest",
+		"|LEVEL":  "0",
+	}
+	if currentUser != nil {
+		tokens["|UH"] = currentUser.Handle
+		tokens["|ALIAS"] = currentUser.Handle
+		tokens["|HANDLE"] = currentUser.Handle
+		tokens["|LEVEL"] = strconv.Itoa(currentUser.AccessLevel)
+	}
+
+	// Sort longest-key-first so |CFAN is replaced before |CFA, etc.
+	keys := make([]string, 0, len(tokens))
+	for k := range tokens {
+		keys = append(keys, k)
+	}
+	sort.SliceStable(keys, func(i, j int) bool { return len(keys[i]) > len(keys[j]) })
+	pairs := make([]string, 0, len(tokens)*2)
+	for _, k := range keys {
+		pairs = append(pairs, k, tokens[k])
+	}
+	return []byte(strings.NewReplacer(pairs...).Replace(string(data)))
 }
 
 // displayFile reads and displays an ANSI file from the MENU SET's ansi directory.
@@ -8563,6 +8617,11 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		time.Sleep(1 * time.Second)
 		return nil, "", fmt.Errorf("failed loading FILELIST templates")
 	}
+
+	// Apply common pipe tokens (|CFAN, |UH, etc.) before colour-code processing.
+	topTemplateBytes = e.applyCommonTemplateTokens(topTemplateBytes, currentUser, nodeNumber)
+	midTemplateBytes = e.applyCommonTemplateTokens(midTemplateBytes, currentUser, nodeNumber)
+	botTemplateBytes = e.applyCommonTemplateTokens(botTemplateBytes, currentUser, nodeNumber)
 
 	processedTopTemplate := ansi.ReplacePipeCodes(topTemplateBytes)
 	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
