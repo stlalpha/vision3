@@ -241,6 +241,10 @@ echo "Building helper..."
 go build -o helper ./cmd/helper
 echo "Building v3mail..."
 go build -o v3mail ./cmd/v3mail
+echo "Building strings..."
+go build -o strings ./cmd/strings
+echo "Building ue..."
+go build -o ue ./cmd/ue
 
 echo "Initializing JAM bases..."
 ./v3mail stats --all --config configs --data data > /dev/null

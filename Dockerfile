@@ -24,6 +24,7 @@ RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o /vision3/ViSiON3 ./cmd
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/v3mail   ./cmd/v3mail
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/helper   ./cmd/helper
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/strings  ./cmd/strings
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/ue       ./cmd/ue
 
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime image
@@ -46,6 +47,7 @@ COPY --from=builder /vision3/ViSiON3 .
 COPY --from=builder /vision3/v3mail  .
 COPY --from=builder /vision3/helper  .
 COPY --from=builder /vision3/strings .
+COPY --from=builder /vision3/ue      .
 
 # Copy sexyz.ini config (user must provide bin/sexyz binary for their platform)
 COPY bin/sexyz.ini ./bin/sexyz.ini
