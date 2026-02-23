@@ -131,12 +131,32 @@ func (s *Server) Close() error {
 // ssh_finalize in the old C libssh implementation).
 func Cleanup() {}
 
+// readResult holds the outcome of a background read from the SSH channel.
+type readResult struct {
+	data []byte
+	err  error
+}
+
 // BBSSession wraps a gliderlabs ssh.Session with SetReadInterrupt support.
 // Use WrapSession to create one.
+//
+// Design invariant: at most ONE goroutine reads from the underlying
+// ssh.Session at any time. When a read is interrupted, the orphaned
+// goroutine reference is kept in orphanCh so the next Read() call waits
+// for it to finish before issuing a new read. This prevents two
+// concurrent readers from racing for bytes and silently eating keypresses.
 type BBSSession struct {
 	ssh.Session
 	riMu          sync.Mutex
 	readInterrupt <-chan struct{}
+	// orphanCh is the result channel from a goroutine that was still
+	// blocked on s.Session.Read() when a read interrupt fired. The next
+	// Read() waits on this channel first, ensuring only one goroutine
+	// is ever reading from the underlying session.
+	orphanCh chan readResult
+	// pending holds leftover bytes when an orphan drain returned more
+	// data than the caller's buffer could hold.
+	pending *readResult
 }
 
 // WrapSession wraps a gliderlabs ssh.Session to add BBS-specific features
@@ -156,13 +176,70 @@ func (s *BBSSession) SetReadInterrupt(ch <-chan struct{}) {
 
 // Read reads from the underlying SSH channel. If a read interrupt is set
 // and fires before data arrives, ErrReadInterrupted is returned.
+//
+// When an interrupted Read() leaves an orphaned goroutine blocked on the
+// underlying session, the next Read() call waits for that goroutine to
+// finish first. This guarantees only one reader is active at a time and
+// prevents keypresses from being silently consumed by a stale goroutine.
 func (s *BBSSession) Read(p []byte) (int, error) {
+	s.riMu.Lock()
+
+	// 1. Drain any leftover bytes from a previous orphan drain that
+	//    returned more data than the caller's buffer could hold.
+	if s.pending != nil {
+		res := s.pending
+		s.pending = nil
+		s.riMu.Unlock()
+		if len(res.data) > 0 {
+			n := copy(p, res.data)
+			if n < len(res.data) {
+				s.riMu.Lock()
+				s.pending = &readResult{data: res.data[n:], err: res.err}
+				s.riMu.Unlock()
+				return n, nil
+			}
+			return n, res.err
+		}
+		return 0, res.err
+	}
+
+	// 2. If a previous Read() was interrupted and left an orphaned
+	//    goroutine reading from the session, wait for it to complete
+	//    before starting a new read. This is the key invariant: only
+	//    one goroutine reads from the underlying session at a time.
+	if s.orphanCh != nil {
+		ch := s.orphanCh
+		s.orphanCh = nil
+		s.riMu.Unlock()
+
+		// Block until the orphan completes (user presses a key or EOF).
+		// The caller is expecting to block for input anyway.
+		res := <-ch
+		if len(res.data) > 0 {
+			n := copy(p, res.data)
+			if n < len(res.data) {
+				s.riMu.Lock()
+				s.pending = &readResult{data: res.data[n:], err: res.err}
+				s.riMu.Unlock()
+				return n, nil
+			}
+			return n, res.err
+		}
+		if res.err != nil {
+			return 0, res.err
+		}
+		// Orphan returned 0 bytes, no error — fall through to normal read
+	} else {
+		s.riMu.Unlock()
+	}
+
+	// 3. Normal read path.
 	s.riMu.Lock()
 	interrupt := s.readInterrupt
 	s.riMu.Unlock()
 
 	if interrupt == nil {
-		// No interrupt — direct read (no goroutine overhead)
+		// No interrupt registered — direct read (no goroutine overhead)
 		return s.Session.Read(p)
 	}
 
@@ -173,21 +250,26 @@ func (s *BBSSession) Read(p []byte) (int, error) {
 	default:
 	}
 
-	// Race the read against the interrupt channel
-	type readResult struct {
-		n   int
-		err error
-	}
+	// Race the read against the interrupt channel.
+	// Use a private buffer so the orphaned goroutine doesn't write into
+	// the caller's (now-returned) slice.
+	buf := make([]byte, len(p))
 	ch := make(chan readResult, 1)
 	go func() {
-		n, err := s.Session.Read(p)
-		ch <- readResult{n, err}
+		n, err := s.Session.Read(buf)
+		ch <- readResult{data: buf[:n], err: err}
 	}()
 
 	select {
 	case res := <-ch:
-		return res.n, res.err
+		n := copy(p, res.data)
+		return n, res.err
 	case <-interrupt:
+		// Save the orphaned goroutine's channel so the next Read()
+		// waits for it instead of starting a competing reader.
+		s.riMu.Lock()
+		s.orphanCh = ch
+		s.riMu.Unlock()
 		return 0, ErrReadInterrupted
 	}
 }
