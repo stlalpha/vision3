@@ -10,7 +10,7 @@
 # 3. Build: Compiles the Go application from cmd/vision3 to the root directory
 # 4. Launch: Starts the BBS server if the build succeeds
 #
-# Usage: ./build-and-run.sh
+# Usage: ./build.sh
 # The server will continue running until stopped with Ctrl+C
 
 # Check if this is the first time building (setup needed)

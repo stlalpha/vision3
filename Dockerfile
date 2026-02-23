@@ -9,8 +9,8 @@
 # ---------------------------------------------------------------------------
 FROM golang:1.24-alpine AS builder
 
-# Install build dependencies including libssh-dev for CGO
-RUN apk add --no-cache git gcc musl-dev libssh-dev make
+# Install build dependencies
+RUN apk add --no-cache git
 
 WORKDIR /vision3
 
@@ -19,8 +19,7 @@ RUN go mod download
 
 COPY . .
 
-# Enable CGO for libssh support (required for SSH server)
-RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o /vision3/ViSiON3 ./cmd/vision3
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/ViSiON3 ./cmd/vision3
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/v3mail   ./cmd/v3mail
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/helper   ./cmd/helper
 RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/strings  ./cmd/strings
@@ -31,8 +30,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o /vision3/ue       ./cm
 # ---------------------------------------------------------------------------
 FROM alpine:latest
 
-# Install runtime dependencies (libssh required for SSH server)
-RUN apk --no-cache add openssh-keygen libssh ca-certificates
+# Install runtime dependencies
+RUN apk --no-cache add openssh-keygen ca-certificates
 
 # Create non-root user for running the BBS
 RUN addgroup -S vision3 && adduser -S vision3 -G vision3

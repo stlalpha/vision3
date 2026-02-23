@@ -6,7 +6,7 @@
 
 This project is a work-in-progress refactor and modernization of the classic ViSiON/2 BBS software, written in Go. The goal is to recreate the core functionality of the classic BBS experience using modern technologies.
 
-This version uses **libssh** for SSH server functionality, providing full compatibility with legacy BBS terminal software like SyncTerm while maintaining modern security standards.
+This version uses a **pure-Go SSH server** (`github.com/gliderlabs/ssh`) for SSH functionality, providing full compatibility with legacy BBS terminal software like SyncTerm while maintaining modern security standards. No C dependencies — builds with `CGO_ENABLED=0` and cross-compiles to all platforms.
 
 **Note:** This is currently under active development and is not yet feature-complete.
 
@@ -139,9 +139,8 @@ See `tasks/tasks.md` for development history and completed features.
 
 ## Technology Stack
 
-*   **Language:** Go 1.24+
-*   **SSH Server:** libssh - native C library for SSH protocol
-*   **SSH Framework:** `github.com/gliderlabs/ssh` — SSH server framework and types
+*   **Language:** Go 1.24+ (pure Go, no CGO, `CGO_ENABLED=0`)
+*   **SSH Server:** `github.com/gliderlabs/ssh` — pure-Go SSH server with legacy algorithm support (SyncTerm, NetRunner compatible)
 *   **TUI Framework:** Charmbracelet BubbleTea (`github.com/charmbracelet/bubbletea`) — full-screen terminal editors and admin tools
 *   **Event Scheduling:** `github.com/robfig/cron/v3` — cron-style event scheduler
 *   **Config Monitoring:** `github.com/fsnotify/fsnotify` — live configuration hot reload
@@ -162,9 +161,9 @@ Linux x86_64 is the primary development and testing platform. Support for additi
 | Linux    | ARM (32-bit)          | 📋 Planned | Raspberry Pi 3 and earlier         |
 | macOS    | Apple Silicon (ARM64) | 📋 Planned | M1/M2/M3/M4                        |
 | macOS    | Intel (x86_64)        | 📋 Planned |                                    |
-| Windows  | x86_64                | 📋 Planned | Requires libssh Windows build      |
+| Windows  | x86_64                | 📋 Planned |                                    |
 
-> **Note:** All platforms require the **libssh** development library. See [System Requirements](#system-requirements) for installation instructions.
+> **Note:** ViSiON/3 is pure Go with no C dependencies. Standard Go toolchain is all that's required to build for any supported platform.
 
 ## Project Structure
 
@@ -259,17 +258,11 @@ See [Docker Deployment Guide](documentation/docker-deployment.md) for detailed i
 
 #### System Requirements
 
-**libssh development library** is required for SSH server functionality:
+**Go 1.24+** is the only build requirement. No system libraries or C compiler needed.
 
 ```bash
-# Ubuntu/Debian
-sudo apt-get install libssh-dev
-
-# Fedora/RHEL
-sudo dnf install libssh-devel
-
-# macOS
-brew install libssh
+# Verify Go version
+go version
 ```
 
 ### Quick Setup
@@ -280,9 +273,7 @@ brew install libssh
     cd vision3
     ```
 
-2. **Install system dependencies** (see System Requirements above)
-
-3. **Run the setup script:**
+2. **Run the setup script:**
     ```bash
     ./setup.sh
     ```
@@ -310,9 +301,7 @@ brew install libssh
 
 If you prefer to set up manually:
 
-1. **Install libssh-dev** (see System Requirements above)
-
-2. **Copy configuration templates:**
+1. **Copy configuration templates:**
     ```bash
     cp templates/configs/*.json configs/
     # Edit configs/config.json with your BBS settings

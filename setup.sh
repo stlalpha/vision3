@@ -54,27 +54,6 @@ else
     MISSING_PREREQS=1
 fi
 
-# Check for pkg-config
-if command -v pkg-config &> /dev/null; then
-    echo -e "${GREEN}✓${NC} pkg-config"
-else
-    echo -e "${RED}✗${NC} pkg-config is not installed"
-    echo "  Install: sudo apt install pkg-config (Debian/Ubuntu) or brew install pkg-config (macOS)"
-    MISSING_PREREQS=1
-fi
-
-# Check for libssh using pkg-config
-if command -v pkg-config &> /dev/null && pkg-config --exists libssh; then
-    LIBSSH_VERSION=$(pkg-config --modversion libssh)
-    echo -e "${GREEN}✓${NC} libssh $LIBSSH_VERSION"
-else
-    echo -e "${RED}✗${NC} libssh is not installed or not found by pkg-config"
-    echo "  Install instructions:"
-    echo "    Debian/Ubuntu: sudo apt install libssh-dev pkg-config"
-    echo "    Fedora: sudo dnf install libssh-devel pkgconf-pkg-config"
-    echo "    macOS: brew install libssh pkg-config"
-    MISSING_PREREQS=1
-fi
 
 # Copy sexyz.ini to bin/ if not present
 if [ -f "templates/configs/sexyz.ini" ] && [ ! -f "bin/sexyz.ini" ]; then
@@ -256,8 +235,8 @@ echo "Default login: felonius / password"
 echo "IMPORTANT: Change the default password immediately!"
 echo
 echo "To start the BBS:"
-echo "  cd cmd/vision3 && ./vision3"
-echo "  or run ./build_and_run.sh to build and start in one step."
+echo "  ./vision3"
+echo "  or run ./build.sh to rebuild and then ./vision3 to start."
 echo
 echo "To connect:"
 echo "  ssh user@localhost -p 2222"
