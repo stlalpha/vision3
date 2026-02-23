@@ -195,8 +195,13 @@ func TestLoadConfig_ValidJSON(t *testing.T) {
 			},
 		},
 	}
-	data, _ := json.MarshalIndent(cfg, "", "  ")
-	os.WriteFile(filepath.Join(tmpDir, "archivers.json"), data, 0644)
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "archivers.json"), data, 0644); err != nil {
+		t.Fatalf("write archivers.json: %v", err)
+	}
 
 	loaded, err := LoadConfig(tmpDir)
 	if err != nil {
@@ -212,7 +217,9 @@ func TestLoadConfig_ValidJSON(t *testing.T) {
 
 func TestLoadConfig_InvalidJSON(t *testing.T) {
 	tmpDir := t.TempDir()
-	os.WriteFile(filepath.Join(tmpDir, "archivers.json"), []byte("{bad json}"), 0644)
+	if err := os.WriteFile(filepath.Join(tmpDir, "archivers.json"), []byte("{bad json}"), 0644); err != nil {
+		t.Fatalf("write archivers.json: %v", err)
+	}
 
 	_, err := LoadConfig(tmpDir)
 	if err == nil {
