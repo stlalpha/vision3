@@ -10,6 +10,12 @@ This version uses a **pure-Go SSH server** (`github.com/gliderlabs/ssh`) for SSH
 
 **Note:** This is currently under active development and is not yet feature-complete.
 
+## Community
+
+Join us on Discord to get involved, follow development and to connect with other contributors and BBS enthusiasts:
+
+👉 **[Join the ViSiON/3 Discord](https://discord.gg/trZ9VSsF3r)**
+
 ## STUFF WE NEED
 
 ### 🎯 Contributors - Yes, You
@@ -79,25 +85,16 @@ If you aren't old enough to have experienced it first-hand, have you read a weir
 
 **Areas where we need help:**
 
-- File transfer protocols (ZMODEM upload support, XMODEM, YMODEM)
-- File base management (tagging, batch downloads, upload processing)
+- File transfer protocols beyond Zmodem (XMODEM, YMODEM)
 - QWK networking support
-- TUI/console app creation for admin tools (user editor, system configuration)
 - Performance optimization and scalability
 - Terminal emulation improvements
 - Modern features while maintaining the classic feel
 - Testing, bug fixes, and code reviews
-- Documentation and examples
 
 Your reward? The satisfaction of knowing that somewhere, someone is reliving their misspent youth thanks to your code. Also, we'll put your handle in the credits. Not your real name though - this is a BBS, we have standards.
 
 **Please submit PRs!**
-
-### 💬 Discord Community Manager
-
-Do we need a Discord? Do you want to host it? Contact me!
-
-**spaceman@vision3bbs.com**
 
 ## Current Status
 
@@ -350,10 +347,9 @@ ssh felonius@localhost -p 2222
 
 ### SyncTerm and Retro Terminal Support
 
-ViSiON/3 fully supports **SyncTerm** and other classic BBS terminal emulators:
+ViSiON/3 fully supports **SyncTerm**, **Netrunner** and other classic BBS terminal emulators:
 - Automatic CP437 encoding for authentic ANSI graphics
-- Compatible with modern SSH algorithms (no legacy crypto needed)
-- SSH-authenticated users bypass the login screen
+- Compatible with modern SSH algorithms
 
 Download SyncTerm: https://syncterm.bbsdev.net/
 
@@ -368,29 +364,10 @@ Download SyncTerm: https://syncterm.bbsdev.net/
   - `utf8`: Force UTF-8 output
   - `cp437`: Force CP437 output for authentic DOS/BBS experience
 
-## Configuration
 
-Configuration files are located in the `configs/` directory:
+### Configuration
 
-### Core Configuration
-
-All configuration files are located in `configs/` and are generated from templates in `templates/configs/` during setup:
-
-- **`config.json`**: Main BBS configuration (BBS name, ports, paths, connection limits)
-  - **Note:** Not tracked in git. Copied from template during setup
-  - Includes connection security settings: `maxNodes` and `maxConnectionsPerIP`
-- **`theme.json`**: Color theme configuration (lightbar colors, prompt colors, ANSI codes)
-- **`strings.json`**: Customizable BBS prompts and messages
-
-### Message System
-
-- **`message_areas.json`**: Message area definitions (local, echomail, netmail areas)
-- **`conferences.json`**: Conference groupings for message and file areas
-- **`ftn.json`**: FidoNet/FTN network configuration (addresses, uplinks, packet passwords)
-
-### File System
-
-- **`file_areas.json`**: File area definitions (paths, descriptions, access levels)
+All configuration files are located in `configs/` and are generated from templates in `templates/configs/` during setup.
 
 ### External Programs
 
@@ -401,15 +378,6 @@ All configuration files are located in `configs/` and are generated from templat
 - **`ssh_host_rsa_key`**: SSH host key (auto-generated on first run if missing)
 
 All configuration files use JSON format and support comments for documentation.
-
-## Documentation
-
-- [Docker Deployment Guide](documentation/docker-deployment.md) - Deploy using Docker and Docker Compose
-- [Security Guide](documentation/security.md) - Connection security, IP filtering, and best practices
-- [Configuration Guide](documentation/configuration.md) - Detailed configuration options
-- [SSH Server Migration Guide](documentation/ssh-server-migration.md) - Details about the libssh implementation
-- [Developer Guide](documentation/developer-guide.md) - Guide for contributors
-- [Development Tasks](tasks/tasks.md) - Development history and completed features
 
 ## Contributing
 
