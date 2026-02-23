@@ -665,6 +665,7 @@ type ServerConfig struct {
 	Timezone            string `json:"timezone,omitempty"`
 	SysOpLevel          int    `json:"sysOpLevel"`
 	CoSysOpLevel        int    `json:"coSysOpLevel"`
+	InvisibleLevel      int    `json:"invisibleLevel"` // Access level for invisible logon prompt; 0 = use coSysOpLevel
 	RegularUserLevel    int    `json:"regularUserLevel"`
 	LogonLevel          int    `json:"logonLevel"`
 	AnonymousLevel      int    `json:"anonymousLevel"`
