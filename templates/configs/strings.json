@@ -375,5 +375,5 @@
   "execVersionString": "|15ViSiON/3 Go Edition - v0.1.0 (Pre-Alpha)|07",
   "termSizeNewDetectedPrompt": "\r\n|03New terminal size detected: |15%dx%d|07 (saved: |08%dx%d|07).\r\nUse it?",
   "termSizeUpdateDefaultsPrompt": "|03Update your defaults to this size?|07",
-  "invisibleLogonPrompt": " |03Invisible Logon?|07"
+  "invisibleLogonPrompt": "|03Add this login to Last Caller List?|07"
 }

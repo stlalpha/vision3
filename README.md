@@ -6,7 +6,7 @@
 
 This project is a work-in-progress refactor and modernization of the classic ViSiON/2 BBS software, written in Go. The goal is to recreate the core functionality of the classic BBS experience using modern technologies.
 
-This version uses **libssh** (via CGO) for SSH server functionality, providing full compatibility with legacy BBS terminal software like SyncTerm while maintaining modern security standards.
+This version uses **libssh** for SSH server functionality, providing full compatibility with legacy BBS terminal software like SyncTerm while maintaining modern security standards.
 
 **Note:** This is currently under active development and is not yet feature-complete.
 
@@ -48,7 +48,7 @@ Are you the kind of person who can wrangle a Go codebase while arguing about why
 - Turn it into a web app
 - Modernize away what makes it a BBS
 
-If this sounds like your particular flavor of madness, email: **robbiew at gmail.com**
+If this sounds like your particular flavor of madness, email: **spaceman@vision3bbs.com**
 
 ### 🎨 Period-Correct ANSI Artists & Art
 
@@ -97,80 +97,99 @@ Your reward? The satisfaction of knowing that somewhere, someone is reliving the
 
 Do we need a Discord? Do you want to host it? Contact me!
 
-**robbiew at gmail.com**
+**spaceman@vision3bbs.com**
 
 ## Current Status
 
-### Working Features
-
-*   SSH Server with PTY support (via libssh CGO wrapper)
-    *   Full SyncTerm and retro terminal compatibility
-    *   SSH authentication bypass (auto-login for SSH-authenticated users)
-    *   Modern SSH algorithms
-*   Telnet Server (because who doesn't want to telnet into their BBS insecurely in 2026?)
-*   User Signup and Authentication (bcrypt hashed passwords)
-*   User Persistence (`data/users/users.json`)
-*   Menu System Loading & Execution (`.MNU`, `.CFG`, `.ANS` files)
-*   Access Control System (ACS) Evaluation with basic operators (`!`, `&`, `|`, `()`)
-*   Menu Password Protection
-*   Message Areas: JAM format (echomail/netmail ready), conferences, full-screen reader with scrolling/lightbar menu, unlimited customizable header styles with lightbar selection, thread searching, replies with quoting, vi-style editor, newscan, last read tracking
-*   Private Mail: User-to-user private messaging with MSG_PRIVATE flag, send/read/list functions
-*   File Areas (basic implementation):
-    *   List files
-    *   List file areas
-    *   Select file area
-*   User Statistics Display
-*   Last Callers Display
-*   User Listing
-*   One-liner System
-*   Door/External Program Support (with dropfile generation)
-*   Call History Tracking
-*   Event Scheduler: Cron-style task scheduler for automated maintenance, FTN mail polling, and periodic operations
-
-### In Development / TODO
-
-*   File Transfer Protocols (ZMODEM upload/download)
-*   Message list view (titles/scan)
-*   Complete SysOp Tools (user editor, system configuration, TUI admin tools)
-*   Full File Base Implementation (tagging, batch downloads, upload processing)
-*   Comprehensive Testing
-*   Complete Documentation
+| Feature                       | Status        | Notes                                                                                                               |
+| ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------- |
+| **Networking**                |               |                                                                                                                     |
+| SSH Server                    | ✅ Working     | libssh, PTY support, SyncTerm compatible, modern algorithms, auto-login                                             |
+| Telnet Server                 | ✅ Working     | Full IAC negotiation, TERM_TYPE detection                                                                           |
+| **Users**                     |               |                                                                                                                     |
+| Signup & Authentication       | ✅ Working     | bcrypt hashed passwords, JSON persistence                                                                           |
+| User Listings & Stats         | ✅ Working     | Last callers, user listing, call history, stats display                                                             |
+| TUI User Editor (`ue`)        | ✅ Working     | Full-screen terminal user management                                                                                |
+| **Menus**                     |               |                                                                                                                     |
+| Menu System                   | ✅ Working     | `.MNU`, `.CFG`, `.ANS` files, ACS evaluation, password protection                                                   |
+| **Messaging**                 |               |                                                                                                                     |
+| Message Areas                 | ✅ Working     | JAM format, echomail/netmail, conferences, lightbar reader, threading, quoting, vi-style editor, newscan, last read |
+| Private Mail                  | ✅ Working     | User-to-user messaging, send/read/list                                                                              |
+| Message List View (scan)      | ✅ Working     | Title/subject scan view                                                                                             |
+| **Files**                     |               |                                                                                                                     |
+| File Areas (basic)            | ✅ Working     | List areas, list files, select area                                                                                 |
+| File Transfers                | ✅ Working     | ZMODEM working via `sexyz`                                                                                          |
+| Full File Base                | 📋 In Progress | Tagging, batch downloads, upload processing                                                                         |
+| **Doors**                     |               |                                                                                                                     |
+| Door/External Programs        | ✅ Working     | Dropfile generation, PTY passthrough                                                                                |
+| **Networking/FTN**            |               |                                                                                                                     |
+| FTN Echomail/Netmail          | ✅ Working     | JAM-backed, tosser, import/export, dupe checking                                                                    |
+| **Admin & Tools**             |               |                                                                                                                     |
+| Event Scheduler               | ✅ Working     | Cron-style, automated maintenance, FTN polling                                                                      |
+| One-liner System              | ✅ Working     | Retrograde-style                                                                                                    |
+| TUI String Editor (`strings`) | ✅ Working     | Full-screen BBS string customizations                                                                               |
+| Config Hot Reload             | ✅ Working     | Live reload via fsnotify, no restart required                                                                       |
+| Invisible SysOp Login         | ✅ Working     | SysOp/CoSysOp login without appearing in caller log                                                                 |
+| SysOp Config TUI              | 📋 Planned     | System configuration editor                                                                                         |
+| **Quality**                   |               |                                                                                                                     |
+| Comprehensive Testing         | 📋 Planned     |                                                                                                                     |
+| Complete Documentation        | 📋 Planned     |                                                                                                                     |
 
 See `tasks/tasks.md` for development history and completed features.
 
 ## Technology Stack
 
 *   **Language:** Go 1.24+
-*   **SSH Server:** libssh (via CGO) - native C library for SSH protocol
-*   **Interface Adapter:** `github.com/gliderlabs/ssh` (types only)
+*   **SSH Server:** libssh - native C library for SSH protocol
+*   **SSH Framework:** `github.com/gliderlabs/ssh` — SSH server framework and types
+*   **TUI Framework:** Charmbracelet BubbleTea (`github.com/charmbracelet/bubbletea`) — full-screen terminal editors and admin tools
+*   **Event Scheduling:** `github.com/robfig/cron/v3` — cron-style event scheduler
+*   **Config Monitoring:** `github.com/fsnotify/fsnotify` — live configuration hot reload
+*   **PTY Support:** `github.com/creack/pty` — PTY handling for door programs
 *   **Terminal Handling:** `golang.org/x/term`
 *   **Password Hashing:** `golang.org/x/crypto/bcrypt`
-*   **Message Base:** JAM format (echomail/netmail compatible)
+*   **Message Base:** JAM binary format (echomail/netmail compatible)
 *   **Data Format:** JSON (for users and configuration)
+
+## Platform Support
+
+Linux x86_64 is the primary development and testing platform. Support for additional platforms is planned — contributions welcome.
+
+| Platform | Architecture          | Status    | Notes                              |
+| -------- | --------------------- | --------- | ---------------------------------- |
+| Linux    | x86_64                | ✅ Tested  | Primary development platform       |
+| Linux    | ARM64                 | 📋 Planned | Includes Raspberry Pi 4/5 (64-bit) |
+| Linux    | ARM (32-bit)          | 📋 Planned | Raspberry Pi 3 and earlier         |
+| macOS    | Apple Silicon (ARM64) | 📋 Planned | M1/M2/M3/M4                        |
+| macOS    | Intel (x86_64)        | 📋 Planned |                                    |
+| Windows  | x86_64                | 📋 Planned | Requires libssh Windows build      |
+
+> **Note:** All platforms require the **libssh** development library. See [System Requirements](#system-requirements) for installation instructions.
 
 ## Project Structure
 
 ```
 vision3/
-├── bin/                    # Compiled binaries (not tracked in git)
-│   ├── vision3             # Main BBS server executable
-│   ├── helper              # FTN setup utility executable
-│   └── v3mail             # JAM message base utility executable
-├── scripts/                # Utility scripts
 ├── cmd/
 │   ├── ansitest/           # ANSI color test utility
 │   ├── helper/             # FTN setup utility (import echomail areas)
-│   ├── v3mail/            # JAM message base utility (stats, pack, purge, fix)
+│   ├── strings/            # TUI string configuration editor
+│   ├── ue/                 # TUI user editor
+│   ├── v3mail/             # JAM message base and FTN mail processor
 │   └── vision3/            # Main BBS server application
 ├── configs/                # Active configuration files (not tracked in git)
+│   ├── allowlist.txt       # IP allowlist for connection filtering
+│   ├── blocklist.txt       # IP blocklist for connection filtering
 │   ├── config.json         # Main BBS configuration
 │   ├── conferences.json    # Message/file conference definitions
 │   ├── doors.json          # Door/external program configurations
+│   ├── events.json         # Event scheduler (cron-style tasks)
 │   ├── file_areas.json     # File area definitions
-│   ├── message_areas.json  # Message area definitions
-│   ├── strings.json        # BBS string customizations
-│   ├── theme.json          # Color theme configuration
 │   ├── ftn.json            # FidoNet/FTN network configuration
+│   ├── login.json          # Login sequence flow definition
+│   ├── message_areas.json  # Message area definitions
+│   ├── protocols.json      # File transfer protocol configuration
+│   ├── strings.json        # BBS string customizations
 │   └── ssh_host_rsa_key    # SSH host key
 ├── templates/              # Configuration templates (tracked in git)
 │   └── configs/            # Template configuration files
@@ -184,27 +203,39 @@ vision3/
 │   └── logs/               # Application logs
 ├── internal/               # Internal packages
 │   ├── ansi/               # ANSI/pipe code processing
+│   ├── chat/               # Inter-node chat and sysop paging
 │   ├── config/             # Configuration loading
 │   ├── conference/         # Conference management
-│   ├── editor/             # Full-screen text editor
+│   ├── editor/             # Full-screen text editor (BubbleTea)
 │   ├── file/               # File area management
 │   ├── ftn/                # FidoNet/echomail support
 │   ├── jam/                # JAM message base format
 │   ├── menu/               # Menu system & lightbar UI
 │   ├── message/            # Message base management
+│   ├── scheduler/          # Cron-style event scheduler
 │   ├── session/            # Session management
-│   ├── sshserver/          # libssh CGO wrapper and adapter
-│   ├── telnet/             # Telnet server
+│   ├── sshserver/          # libssh wrapper and adapter
+│   ├── stringeditor/       # TUI string configuration editor
+│   ├── telnetserver/       # Telnet server
 │   ├── terminalio/         # Terminal I/O handling
+│   ├── tosser/             # FTN echomail tosser (import/export)
 │   ├── transfer/           # File transfer protocols
 │   ├── types/              # Shared types
-│   └── user/               # User management
+│   ├── user/               # User management
+│   ├── usereditor/         # TUI user editor
+│   ├── util/               # Utility functions
+│   ├── version/            # Version information
+│   └── ziplab/             # ZIP archive processing and viewer
 ├── menus/v3/               # Menu set files
 │   ├── ansi/               # ANSI art files
+│   ├── bar/                # Lightbar menu definitions
 │   ├── cfg/                # Menu configuration files
 │   ├── mnu/                # Menu definition files
 │   └── templates/          # Display templates
 │       └── message_headers/ # Customizable message header styles (unlimited, 14 included)
+├── bin/                    # External helper binaries (not tracked in git)
+├── output/                 # Output support files
+├── scripts/                # Utility scripts
 ├── docs/                   # GitHub Pages website (vision3bbs.com)
 ├── documentation/          # Project documentation
 └── tasks/                  # Development task tracking
@@ -217,7 +248,7 @@ vision3/
 The easiest way to run ViSiON/3 is using Docker:
 
 ```bash
-git clone https://github.com/robbiew/vision3.git
+git clone https://github.com/stlalpha/vision3.git
 cd vision3
 docker-compose up -d
 ```
@@ -245,7 +276,7 @@ brew install libssh
 
 1. **Clone the repository:**
     ```bash
-    git clone https://github.com/robbiew/vision3.git
+    git clone https://github.com/stlalpha/vision3.git
     cd vision3
     ```
 
@@ -269,9 +300,10 @@ brew install libssh
     nano configs/config.json
     ```
 
-5. **Run the BBS:**
+5. **Build and run the BBS:**
     ```bash
-    ./build-and-run.sh
+    ./build.sh
+    ./vision3
     ```
 
 ### Manual Setup
@@ -288,10 +320,9 @@ If you prefer to set up manually:
 
 3. **Build the application:**
     ```bash
-    cd cmd/vision3
-    go build -o ../../vision3
-    cd ../..
+    ./build.sh
     ```
+    This builds all binaries (`vision3`, `helper`, `v3mail`, `strings`, `ue`) to the root directory.
 
 4. **Generate SSH Host Key:**
     ```bash
