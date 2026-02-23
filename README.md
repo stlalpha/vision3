@@ -6,7 +6,7 @@
 
 This project is a work-in-progress refactor and modernization of the classic ViSiON/2 BBS software, written in Go. The goal is to recreate the core functionality of the classic BBS experience using modern technologies.
 
-This version uses a **pure-Go SSH server** (`github.com/gliderlabs/ssh`) for SSH functionality, providing full compatibility with legacy BBS terminal software like SyncTerm while maintaining modern security standards. No C dependencies — builds with `CGO_ENABLED=0` and cross-compiles to all platforms.
+This version uses a **pure-Go SSH server** (`github.com/gliderlabs/ssh`) for SSH functionality, providing full compatibility with legacy BBS terminal software like SyncTerm while maintaining modern security standards.
 
 **Note:** This is currently under active development and is not yet feature-complete.
 
@@ -104,7 +104,7 @@ Do we need a Discord? Do you want to host it? Contact me!
 | Feature                       | Status        | Notes                                                                                                               |
 | ----------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------- |
 | **Networking**                |               |                                                                                                                     |
-| SSH Server                    | ✅ Working     | libssh, PTY support, SyncTerm compatible, modern algorithms, auto-login                                             |
+| SSH Server                    | ✅ Working     | Pure-Go (gliderlabs/ssh), PTY support, SyncTerm compatible, legacy algorithms, auto-login                           |
 | Telnet Server                 | ✅ Working     | Full IAC negotiation, TERM_TYPE detection                                                                           |
 | **Users**                     |               |                                                                                                                     |
 | Signup & Authentication       | ✅ Working     | bcrypt hashed passwords, JSON persistence                                                                           |
@@ -139,7 +139,7 @@ See `tasks/tasks.md` for development history and completed features.
 
 ## Technology Stack
 
-*   **Language:** Go 1.24+ (pure Go, no CGO, `CGO_ENABLED=0`)
+*   **Language:** Go 1.24+
 *   **SSH Server:** `github.com/gliderlabs/ssh` — pure-Go SSH server with legacy algorithm support (SyncTerm, NetRunner compatible)
 *   **TUI Framework:** Charmbracelet BubbleTea (`github.com/charmbracelet/bubbletea`) — full-screen terminal editors and admin tools
 *   **Event Scheduling:** `github.com/robfig/cron/v3` — cron-style event scheduler
@@ -163,7 +163,7 @@ Linux x86_64 is the primary development and testing platform. Support for additi
 | macOS    | Intel (x86_64)        | 📋 Planned |                                    |
 | Windows  | x86_64                | 📋 Planned |                                    |
 
-> **Note:** ViSiON/3 is pure Go with no C dependencies. Standard Go toolchain is all that's required to build for any supported platform.
+> **Note:** ViSiON/3 is pure Go. The standard Go toolchain is all that's required to build for any supported platform.
 
 ## Project Structure
 
@@ -213,7 +213,7 @@ vision3/
 │   ├── message/            # Message base management
 │   ├── scheduler/          # Cron-style event scheduler
 │   ├── session/            # Session management
-│   ├── sshserver/          # libssh wrapper and adapter
+│   ├── sshserver/          # pure-Go SSH server (gliderlabs/ssh wrapper)
 │   ├── stringeditor/       # TUI string configuration editor
 │   ├── telnetserver/       # Telnet server
 │   ├── terminalio/         # Terminal I/O handling
@@ -258,7 +258,7 @@ See [Docker Deployment Guide](documentation/docker-deployment.md) for detailed i
 
 #### System Requirements
 
-**Go 1.24+** is the only build requirement. No system libraries or C compiler needed.
+**Go 1.24+** is the only build requirement.
 
 ```bash
 # Verify Go version
