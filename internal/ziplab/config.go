@@ -7,14 +7,16 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/stlalpha/vision3/internal/archiver"
 )
 
 // StepConfig holds the configuration for an individual ZipLab pipeline step.
 type StepConfig struct {
-	Enabled bool   `json:"enabled"`
-	Command string `json:"command,omitempty"` // External command path
-	Args    []string `json:"args,omitempty"`  // Command arguments (supports {FILE}, {WORKDIR} placeholders)
-	Timeout int    `json:"timeoutSeconds,omitempty"` // Timeout in seconds (0 = default 60s)
+	Enabled bool     `json:"enabled"`
+	Command string   `json:"command,omitempty"`        // External command path
+	Args    []string `json:"args,omitempty"`           // Command arguments (supports {FILE}, {WORKDIR} placeholders)
+	Timeout int      `json:"timeoutSeconds,omitempty"` // Timeout in seconds (0 = default 60s)
 }
 
 // RemoveAdsConfig extends StepConfig with a patterns file.
@@ -90,6 +92,8 @@ func DefaultConfig() Config {
 }
 
 // LoadConfig loads ZipLab configuration from ziplab.json in the given config directory.
+// It also loads the central archivers.json and merges enabled archiver definitions
+// into the ZipLab ArchiveTypes list, so the pipeline knows how to handle each format.
 // Returns defaults if the file doesn't exist.
 func LoadConfig(configPath string) (Config, error) {
 	filePath := filepath.Join(configPath, "ziplab.json")
@@ -101,28 +105,76 @@ func LoadConfig(configPath string) (Config, error) {
 	if err != nil {
 		if os.IsNotExist(err) {
 			log.Printf("INFO: ziplab.json not found at %s, using defaults", filePath)
-			return cfg, nil
+		} else {
+			return cfg, fmt.Errorf("failed to read ziplab config %s: %w", filePath, err)
 		}
-		return cfg, fmt.Errorf("failed to read ziplab config %s: %w", filePath, err)
+	} else {
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return Config{}, fmt.Errorf("failed to parse ziplab config %s: %w", filePath, err)
+		}
 	}
 
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, fmt.Errorf("failed to parse ziplab config %s: %w", filePath, err)
+	// Merge archive types from the central archivers.json config.
+	// This ensures all enabled archivers are available to the ZipLab pipeline.
+	arcCfg, arcErr := archiver.LoadConfig(configPath)
+	if arcErr != nil {
+		log.Printf("WARN: Failed to load archivers.json: %v, using ZipLab defaults", arcErr)
+	} else {
+		cfg.ArchiveTypes = archiverTypesFromConfig(arcCfg)
 	}
 
-	log.Printf("INFO: Loaded ZipLab config: enabled=%v, runOnUpload=%v, scanFailBehavior=%s",
-		cfg.Enabled, cfg.RunOnUpload, cfg.ScanFailBehavior)
+	log.Printf("INFO: Loaded ZipLab config: enabled=%v, runOnUpload=%v, scanFailBehavior=%s, archiveTypes=%d",
+		cfg.Enabled, cfg.RunOnUpload, cfg.ScanFailBehavior, len(cfg.ArchiveTypes))
 	return cfg, nil
 }
 
-// DefaultArchiveExtensions returns the list of archive extensions from the default config.
-func DefaultArchiveExtensions() []string {
-	cfg := DefaultConfig()
-	exts := make([]string, len(cfg.ArchiveTypes))
-	for i, at := range cfg.ArchiveTypes {
-		exts[i] = strings.ToLower(at.Extension)
+// archiverTypesFromConfig converts the central archiver.Config into ZipLab ArchiveType entries.
+func archiverTypesFromConfig(cfg archiver.Config) []ArchiveType {
+	var types []ArchiveType
+	for _, a := range cfg.EnabledArchivers() {
+		at := ArchiveType{
+			Extension:      a.Extension,
+			Native:         a.Native,
+			ExtractCommand: a.Unpack.Command,
+			ExtractArgs:    a.Unpack.Args,
+			TestCommand:    a.Test.Command,
+			TestArgs:       a.Test.Args,
+			AddCommand:     a.AddFile.Command,
+			AddArgs:        a.AddFile.Args,
+			CommentCommand: a.Comment.Command,
+			CommentArgs:    a.Comment.Args,
+		}
+		types = append(types, at)
+		// Also add additional extensions (e.g., .lzh for lha archiver)
+		for _, ext := range a.Extensions {
+			if strings.ToLower(ext) != strings.ToLower(a.Extension) {
+				extra := at
+				extra.Extension = ext
+				types = append(types, extra)
+			}
+		}
 	}
-	return exts
+	if len(types) == 0 {
+		// Fallback: always have native ZIP
+		types = []ArchiveType{{Extension: ".zip", Native: true}}
+	}
+	return types
+}
+
+// DefaultArchiveExtensions returns the list of archive extensions from the
+// default archiver config. This reads archivers.json from "configs/" relative
+// to the working directory, falling back to built-in defaults.
+func DefaultArchiveExtensions() []string {
+	// Try to load the central archiver config for the canonical list.
+	arcCfg, err := archiver.LoadConfig("configs")
+	if err == nil {
+		exts := arcCfg.SupportedExtensions()
+		if len(exts) > 0 {
+			return exts
+		}
+	}
+	// Fallback to built-in default.
+	return []string{".zip"}
 }
 
 // IsArchiveSupported checks if a filename matches a configured archive type.

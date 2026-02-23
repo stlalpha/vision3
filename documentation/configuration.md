@@ -15,6 +15,7 @@ Configuration files are split between two directories:
 - `conferences.json` - Conference grouping definitions
 - `events.json` - Event scheduler configuration
 - `config.json` - General BBS configuration
+- `archivers.json` - Archive format definitions (ZIP, 7z, RAR, ARJ, LHA)
 - SSH host keys (`ssh_host_rsa_key`, etc.)
 
 **In `menus/v3/` directory (menu set):**
@@ -137,6 +138,71 @@ Configures external door programs that can be launched from the BBS. The file co
 - `{USERID}` - User ID number
 - `{REALNAME}` - User's real name
 - `{LEVEL}` - Access level
+
+## archivers.json
+
+Defines archive formats and the external tools used to pack, unpack, test, and list them. This centralized configuration ensures all subsystems (ZipLab upload pipeline, file area management, archive viewing) use the same archiver definitions, and that different platforms can specify their preferred tool versions.
+
+This follows the classic BBS pattern where archiver definitions are configured once system-wide rather than hardcoded.
+
+### Default Configuration
+
+If `archivers.json` is missing, built-in defaults are used (ZIP native via Go stdlib).
+
+### Archiver Definition Structure
+
+```json
+{
+    "archivers": [
+        {
+            "id": "zip",
+            "name": "ZIP Archive",
+            "extension": ".zip",
+            "magic": "504B0304",
+            "native": true,
+            "enabled": true,
+            "pack":    { "command": "zip",   "args": ["-j", "{ARCHIVE}", "{FILES}"] },
+            "unpack":  { "command": "unzip", "args": ["-o", "{ARCHIVE}", "-d", "{OUTDIR}"] },
+            "test":    { "command": "unzip", "args": ["-t", "{ARCHIVE}"] },
+            "list":    { "command": "unzip", "args": ["-l", "{ARCHIVE}"] },
+            "comment": { "command": "zip",   "args": ["-z", "{ARCHIVE}"] },
+            "addFile": { "command": "zip",   "args": ["-j", "{ARCHIVE}", "{FILE}"] }
+        }
+    ]
+}
+```
+
+### Archiver Field Descriptions
+
+- `id` - Unique short identifier (e.g., "zip", "rar", "7z", "arj", "lha")
+- `name` - Human-readable display name
+- `extension` - Primary file extension including the dot (e.g., ".zip")
+- `extensions` - Additional file extensions for this format (e.g., `[".lzh"]` for LHA)
+- `magic` - Hex-encoded magic bytes at file offset 0 for format detection (e.g., "504B0304" for ZIP)
+- `native` - When `true`, Go's built-in `archive/zip` stdlib is used for core operations and external commands are ignored for basic pack/unpack. Currently only ZIP supports native mode.
+- `enabled` - Controls whether this archiver is active. Disabled archivers are skipped during detection and processing.
+- `pack` - Command to create an archive. Placeholders: `{ARCHIVE}`, `{FILES}`, `{WORKDIR}`
+- `unpack` - Command to extract an archive. Placeholders: `{ARCHIVE}`, `{OUTDIR}`
+- `test` - Command to verify archive integrity. Placeholder: `{ARCHIVE}`
+- `list` - Command to list archive contents. Placeholder: `{ARCHIVE}`
+- `comment` - Command to add a comment to an archive. Placeholders: `{ARCHIVE}`, `{FILE}`
+- `addFile` - Command to add a file to an existing archive. Placeholders: `{ARCHIVE}`, `{FILE}`
+
+### Built-in Archiver Definitions
+
+| ID    | Name            | Extension(s) | Magic Bytes    | Native | Default State |
+| ----- | --------------- | ------------ | -------------- | ------ | ------------- |
+| `zip` | ZIP Archive     | .zip         | `504B0304`     | Yes    | Enabled       |
+| `7z`  | 7-Zip Archive   | .7z          | `377ABCAF271C` | No     | Disabled      |
+| `rar` | RAR Archive     | .rar         | `526172211A07` | No     | Disabled      |
+| `arj` | ARJ Archive     | .arj         | `60EA`         | No     | Disabled      |
+| `lha` | LHA/LZH Archive | .lha, .lzh   | —              | No     | Disabled      |
+
+To enable additional archive formats, set `"enabled": true` and ensure the corresponding external tool is installed on the system.
+
+### FTN Bundle Note
+
+FTN echomail bundles always use ZIP format (per FidoNet standard practice) and are handled natively by Go's `archive/zip` regardless of this configuration. This config applies to user-facing archive operations: file area uploads, archive viewing, ZipLab pipeline, etc.
 
 ## file_areas.json
 
