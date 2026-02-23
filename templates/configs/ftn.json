@@ -5,7 +5,7 @@
         "fsxnet": {
             "_comment": "Example: FSXNet configuration. Replace addresses, paths, and echo areas for your system.",
             "internal_tosser_enabled": true,
-            "own_address": "21:4/999.1",
+            "own_address": "21:4/999",
             "inbound_path": "data/ftn/in",
             "secure_inbound_path": "data/ftn/secure_in",
             "outbound_path": "data/ftn/temp_out",
@@ -18,13 +18,12 @@
             "dupe_area_tag": "DUPE",
             "links": [
                 {
-                    "address": "21:4/158",
+                    "address": "21:4/100",
                     "password": "",
-                    "name": "FSXNet Hub",
+                    "name": "FSXNet Region 4 Hub",
                     "flavour": "Crash",
                     "echo_areas": [
-                        "FSX_GEN",
-                        "FSX_BBS"
+                        "FSX_GEN"
                     ]
                 }
             ]

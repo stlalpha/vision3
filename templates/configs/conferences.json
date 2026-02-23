@@ -10,14 +10,8 @@
         "id": 2,
         "tag": "FSXNET",
         "name": "fsxNet",
-        "description": "fsxNet message areas",
-        "acs": "s10"
-    },
-    {
-        "id": 3,
-        "tag": "TQWNET",
-        "name": "tqwNet",
-        "description": "tqwNet message areas",
+        "description": "fsxNet echomail message areas",
         "acs": "s10"
     }
+  
 ]

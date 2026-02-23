@@ -9,5 +9,16 @@
         "acs_upload": "s50",
         "acs_download": "s50",
         "conference_id": 1
+    },
+    {
+        "id": 2,
+        "tag": "UPLOADS",
+        "name": "Upload Queue",
+        "description": "Upload files for sysop processing; downloads disabled",
+        "path": "uploads",
+        "acs_list": "s50",
+        "acs_upload": "s50",
+        "acs_download": "s250",
+        "conference_id": 1
     }
 ]
