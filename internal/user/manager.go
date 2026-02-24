@@ -31,6 +31,15 @@ const (
 	adminLogLimit    = 1000                // Max number of admin log entries to keep
 )
 
+// StripUTF8BOM returns data with UTF-8 BOM (EF BB BF) removed if present.
+// PowerShell and some editors write JSON with BOM; Go's json package does not accept it.
+func StripUTF8BOM(data []byte) []byte {
+	if len(data) >= 3 && data[0] == 0xEF && data[1] == 0xBB && data[2] == 0xBF {
+		return data[3:]
+	}
+	return data
+}
+
 // UserMgr manages user data (Renamed from UserManager)
 type UserMgr struct {
 	users    map[string]*User
@@ -113,6 +122,7 @@ func (um *UserMgr) loadUsers() error { // Receiver uses renamed type
 	if err != nil {
 		return err // Return error to NewUserManager to handle
 	}
+	data = StripUTF8BOM(data)
 
 	// Temporary slice to hold users from JSON array
 	// We load into a slice because the JSON is an array.
@@ -182,6 +192,7 @@ func (um *UserMgr) loadCallHistory() error {
 	if len(data) == 0 {
 		return nil // Empty file is okay
 	}
+	data = StripUTF8BOM(data)
 
 	um.mu.Lock() // Lock before modifying internal slice
 	defer um.mu.Unlock()
@@ -218,6 +229,7 @@ func (um *UserMgr) loadNextCallNumber() error {
 		log.Printf("WARN: %s is empty, starting call numbers from 1.", callNumberFile)
 		return nil // Empty file, use default
 	}
+	data = StripUTF8BOM(data)
 
 	um.mu.Lock() // Lock before modifying
 	defer um.mu.Unlock()
@@ -337,6 +349,7 @@ func (um *UserMgr) LogAdminActivity(logEntry AdminActivityLog) error {
 
 	// Try to load existing logs
 	if data, err := os.ReadFile(logPath); err == nil {
+		data = StripUTF8BOM(data)
 		_ = json.Unmarshal(data, &logs) // Ignore errors, start fresh if corrupt
 	}
 

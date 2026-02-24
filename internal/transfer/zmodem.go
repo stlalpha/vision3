@@ -2,6 +2,7 @@ package transfer
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -28,7 +29,14 @@ type readInterrupter interface {
 // piped directly to the SSH session — no PTY allocated. This is essential for
 // binary file-transfer protocols (ZMODEM, YMODEM, XMODEM) where a PTY's line
 // discipline would corrupt the data stream.
-func RunCommandDirect(s ssh.Session, cmd *exec.Cmd) error {
+//
+// ctx controls cancellation and timeout: when ctx.Done() fires, the process is
+// killed and the function returns ctx.Err(). Pass context.Background() for
+// no timeout. Callers should use context.WithTimeout for transfer timeouts.
+func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	log.Printf("DEBUG: Starting command '%s' in DIRECT (no-PTY) mode", cmd.Path)
 
 	stdinPipe, err := cmd.StdinPipe()
@@ -68,11 +76,26 @@ func RunCommandDirect(s ssh.Session, cmd *exec.Cmd) error {
 		log.Printf("DEBUG: (%s) direct stdout copy finished. Bytes: %d, Error: %v", cmd.Path, n, cpErr)
 	}()
 
-	// Wait for output to finish (command closed its stdout).
-	<-outputDone
+	// Race: ctx cancellation vs normal completion (outputDone then cmd.Wait).
+	cmdDone := make(chan error, 1)
+	go func() {
+		<-outputDone
+		cmdDone <- cmd.Wait()
+	}()
 
-	// Wait for the command to exit.
-	cmdErr := cmd.Wait()
+	var cmdErr error
+	select {
+	case <-ctx.Done():
+		log.Printf("DEBUG: (%s) transfer cancelled or timed out, killing process", cmd.Path)
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		_ = stdinPipe.Close()
+		<-cmdDone // Wait for goroutine to finish
+		cmdErr = ctx.Err()
+	case err := <-cmdDone:
+		cmdErr = err
+	}
 	log.Printf("DEBUG: (%s) command finished (direct). Error: %v", cmd.Path, cmdErr)
 
 	// Log stderr output from the external transfer program.
@@ -162,11 +185,18 @@ func drainSessionInput(s ssh.Session, duration time.Duration) {
 
 // RunCommandWithPTY executes an external command attached to the user's SSH
 // session using a PTY. It handles setting raw mode, resizing, and copying I/O.
-func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
+//
+// ctx controls cancellation and timeout: when ctx.Done() fires, the process is
+// killed and the function returns ctx.Err(). Pass context.Background() for
+// no timeout.
+func RunCommandWithPTY(ctx context.Context, s ssh.Session, cmd *exec.Cmd) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	ptyReq, winCh, isPty := s.Pty()
 	if !isPty {
 		log.Printf("WARN: No PTY available for session. Falling back to direct mode for %s.", cmd.Path)
-		return RunCommandDirect(s, cmd)
+		return RunCommandDirect(ctx, s, cmd)
 	}
 
 	log.Printf("DEBUG: Starting command '%s' with PTY", cmd.Path)
@@ -237,9 +267,22 @@ func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 		}
 	}()
 
-	// Wait for command to complete, then clean shutdown
+	// Race: ctx cancellation vs normal completion
 	log.Printf("DEBUG: (%s) Waiting for command completion...", cmd.Path)
-	cmdErr := cmd.Wait()
+	cmdDoneCh := make(chan error, 1)
+	go func() { cmdDoneCh <- cmd.Wait() }()
+
+	var cmdErr error
+	select {
+	case <-ctx.Done():
+		log.Printf("DEBUG: (%s) transfer cancelled or timed out, killing process", cmd.Path)
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		cmdErr = ctx.Err()
+		<-cmdDoneCh
+	case cmdErr = <-cmdDoneCh:
+	}
 	log.Printf("DEBUG: (%s) Command finished. Error: %v", cmd.Path, cmdErr)
 
 	// Interrupt the input goroutine's blocked Read() so it exits without
@@ -262,10 +305,11 @@ func RunCommandWithPTY(s ssh.Session, cmd *exec.Cmd) error {
 	return cmdErr
 }
 
-// executeZmodemSend initiates a Zmodem send (sz) of one or more files using a PTY.
+// ExecuteZmodemSend initiates a Zmodem send (sz) of one or more files using a PTY.
 // It requires the 'sz' command to be available on the system path.
 // filePaths should be absolute paths to the files being sent.
-func ExecuteZmodemSend(s ssh.Session, filePaths ...string) error {
+// ctx controls cancellation and timeout; pass nil for no timeout.
+func ExecuteZmodemSend(ctx context.Context, s ssh.Session, filePaths ...string) error {
 	log.Printf("DEBUG: executeZmodemSend called with files: %v", filePaths)
 
 	if len(filePaths) == 0 {
@@ -282,12 +326,14 @@ func ExecuteZmodemSend(s ssh.Session, filePaths ...string) error {
 
 	// Construct command: sz [-b] <files...>
 	args := append([]string{"-b"}, filePaths...)
-	cmd := exec.Command(szPath, args...)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, szPath, args...)
 
 	log.Printf("INFO: Executing Zmodem send: %s %v", szPath, args)
-
 	// Execute using the PTY helper
-	err = RunCommandWithPTY(s, cmd)
+	err = RunCommandWithPTY(ctx, s, cmd)
 	if err != nil {
 		log.Printf("ERROR: Zmodem send command ('%s') failed: %v", szPath, err)
 		return fmt.Errorf("Zmodem send failed: %w", err)
@@ -297,10 +343,11 @@ func ExecuteZmodemSend(s ssh.Session, filePaths ...string) error {
 	return nil
 }
 
-// executeZmodemReceive initiates a Zmodem receive (rz) into a specified directory using a PTY.
+// ExecuteZmodemReceive initiates a Zmodem receive (rz) into a specified directory using a PTY.
 // It requires the 'rz' command to be available on the system path.
 // targetDir should be the absolute path to the directory where received files will be stored.
-func ExecuteZmodemReceive(s ssh.Session, targetDir string) error {
+// ctx controls cancellation and timeout; pass nil for no timeout.
+func ExecuteZmodemReceive(ctx context.Context, s ssh.Session, targetDir string) error {
 	log.Printf("DEBUG: executeZmodemReceive called for target directory: %s", targetDir)
 
 	// 1. Validate and ensure target directory exists
@@ -327,13 +374,15 @@ func ExecuteZmodemReceive(s ssh.Session, targetDir string) error {
 
 	// 3. Construct command: rz -b -r
 	args := []string{"-b", "-r"} // Binary mode, Restricted mode (prevents path traversal)
-	cmd := exec.Command(rzPath, args...)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, rzPath, args...)
 	cmd.Dir = absTargetDir // Run rz in the target directory
 
 	log.Printf("INFO: Executing Zmodem receive in directory '%s': %s %v", absTargetDir, rzPath, args)
-
 	// 4. Execute using the PTY helper
-	err = RunCommandWithPTY(s, cmd)
+	err = RunCommandWithPTY(ctx, s, cmd)
 	if err != nil {
 		log.Printf("ERROR: Zmodem receive command ('%s') failed: %v", rzPath, err)
 		return fmt.Errorf("Zmodem receive failed: %w", err)
