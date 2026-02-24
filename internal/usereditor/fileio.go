@@ -24,6 +24,7 @@ func LoadUsers(path string) ([]*user.User, time.Time, error) {
 	if err != nil {
 		return nil, time.Time{}, fmt.Errorf("read %s: %w", path, err)
 	}
+	data = user.StripUTF8BOM(data)
 
 	var users []*user.User
 	if err := json.Unmarshal(data, &users); err != nil {
