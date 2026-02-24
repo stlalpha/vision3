@@ -62,10 +62,11 @@ type User struct {
 	MsgHdr            int    `json:"msgHdr,omitempty"`            // Selected message header style (1-14, 0=unset)
 
 	// User Configuration Preferences
-	HotKeys          bool   `json:"hotKeys,omitempty"`
-	MorePrompts      bool   `json:"morePrompts,omitempty"`
-CustomPrompt     string `json:"customPrompt,omitempty"`
-	OutputMode       string `json:"outputMode,omitempty"`
+	HotKeys         bool   `json:"hotKeys,omitempty"`
+	MorePrompts     bool   `json:"morePrompts,omitempty"`
+	CustomPrompt    string `json:"customPrompt,omitempty"`
+	OutputMode      string `json:"outputMode,omitempty"`
+	FileListingMode string `json:"fileListingMode,omitempty"` // "lightbar" or "classic" (empty = server default)
 	Colors           [7]int `json:"colors,omitempty"`
 
 	// Soft Delete (user marked as deleted but data preserved)

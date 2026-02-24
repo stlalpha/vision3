@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
-	"github.com/stlalpha/vision3/internal/ziplab"
+	"github.com/stlalpha/vision3/internal/archiver"
 )
 
 // FileManager manages file areas and their associated file records.
@@ -566,13 +566,13 @@ func (fm *FileManager) GetAreaUploadPath(areaID int) (string, error) {
 }
 
 // IsSupportedArchive checks if the filename suggests a supported archive type.
-// Uses the ZipLab default archive extensions to stay in sync.
+// Uses the central archivers.json configuration to determine supported formats.
 func (fm *FileManager) IsSupportedArchive(filename string) bool {
-	lowerFilename := strings.ToLower(filename)
-	for _, ext := range ziplab.DefaultArchiveExtensions() {
-		if strings.HasSuffix(lowerFilename, ext) {
-			return true
-		}
+	// Load the central archiver config. Defaults are used if archivers.json is missing.
+	arcCfg, err := archiver.LoadConfig("configs")
+	if err != nil {
+		log.Printf("WARN: Failed to load archivers config: %v, falling back to .zip only", err)
+		return strings.HasSuffix(strings.ToLower(filename), ".zip")
 	}
-	return false
+	return arcCfg.IsSupported(filename)
 }

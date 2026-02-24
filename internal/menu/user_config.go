@@ -21,6 +21,15 @@ import (
 	"github.com/stlalpha/vision3/internal/user"
 )
 
+func fileListModeDisplay(mode string) string {
+	switch strings.ToLower(mode) {
+	case "classic":
+		return "Classic"
+	default:
+		return "Lightbar"
+	}
+}
+
 // runCfgToggle is a generic toggle handler for boolean user preferences.
 func runCfgToggle(
 	e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
@@ -438,6 +447,7 @@ func runCfgViewConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, u
 		fmt.Sprintf(e.LoadedStrings.CfgViewTermType, strings.ToUpper(outMode)),
 fmt.Sprintf(e.LoadedStrings.CfgViewHotKeys, boolStr(currentUser.HotKeys)),
 		fmt.Sprintf(e.LoadedStrings.CfgViewMorePrompts, boolStr(currentUser.MorePrompts)),
+		fmt.Sprintf(e.LoadedStrings.CfgViewFileListMode, fileListModeDisplay(currentUser.FileListingMode)),
 		fmt.Sprintf(e.LoadedStrings.CfgViewMsgHeader, currentUser.MsgHdr),
 		fmt.Sprintf(e.LoadedStrings.CfgViewCustomPrompt, currentUser.CustomPrompt),
 		"",
@@ -474,6 +484,30 @@ fmt.Sprintf(e.LoadedStrings.CfgViewHotKeys, boolStr(currentUser.HotKeys)),
 		}
 	}
 
+	return currentUser, "", nil
+}
+
+func runCfgFileListMode(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	if currentUser == nil {
+		return nil, "", nil
+	}
+
+	originalMode := currentUser.FileListingMode
+	if strings.ToLower(originalMode) != "classic" {
+		currentUser.FileListingMode = "classic"
+	} else {
+		currentUser.FileListingMode = "lightbar"
+	}
+
+	if err := userManager.UpdateUser(currentUser); err != nil {
+		currentUser.FileListingMode = originalMode
+		log.Printf("ERROR: Node %d: Failed to save file listing mode: %v", nodeNumber, err)
+		return currentUser, "", nil
+	}
+
+	msg := fmt.Sprintf(e.LoadedStrings.CfgFileListModeSet, fileListModeDisplay(currentUser.FileListingMode))
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
 }
 

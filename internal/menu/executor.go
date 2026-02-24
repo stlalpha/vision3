@@ -525,6 +525,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["CFG_CUSTOMPROMPT"] = runCfgCustomPrompt
 	registry["CFG_COLOR"] = runCfgColor
 	registry["CFG_PASSWORD"] = runCfgPassword
+	registry["CFG_FILELISTMODE"] = runCfgFileListMode
 	registry["CFG_VIEWCONFIG"] = runCfgViewConfig
 	registry["CHAT"] = runChat
 	registry["PAGE"] = runPage
@@ -1555,7 +1556,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|NEWUSERS"), []byte(newUsersVal))
 			currentAreaTag, currentAreaDisplayName := e.resolveCurrentAreaTokens(currentUser, currentAreaName)
 			currentFileAreaTag, currentFileAreaDisplayName := e.resolveCurrentFileAreaTokens(currentUser)
-			// Replace longer tokens first to avoid partial replacement conflicts (e.g. |CFAN vs |CFA vs |CAN vs |CA).
+			// Replace longer tokens first to avoid partial replacement conflicts (e.g. |FCONFPATH, |CFAN vs |CFA vs |CAN vs |CA).
+			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|FCONFPATH"), []byte(e.resolveFileConferencePath(currentUser)))
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CFAN"), []byte(currentFileAreaDisplayName))
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CFA"), []byte(currentFileAreaTag))
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CAN"), []byte(currentAreaDisplayName))
@@ -3128,6 +3130,29 @@ func (e *MenuExecutor) resolveCurrentAreaTokens(currentUser *user.User, currentA
 	return areaTag, areaName
 }
 
+// resolveFileConferencePath returns "Conference > File Area Name" as plain text.
+// Colors should be applied in the template surrounding the placeholder.
+func (e *MenuExecutor) resolveFileConferencePath(currentUser *user.User) string {
+	confName := "Local"
+	areaName := "None"
+	if currentUser == nil || e.FileMgr == nil {
+		return confName + " > " + areaName
+	}
+	if currentUser.CurrentFileAreaID > 0 {
+		if area, found := e.FileMgr.GetAreaByID(currentUser.CurrentFileAreaID); found {
+			if strings.TrimSpace(area.Name) != "" {
+				areaName = area.Name
+			}
+			if area.ConferenceID != 0 && e.ConferenceMgr != nil {
+				if conf, found := e.ConferenceMgr.GetByID(area.ConferenceID); found && strings.TrimSpace(conf.Name) != "" {
+					confName = conf.Name
+				}
+			}
+		}
+	}
+	return confName + " > " + areaName
+}
+
 // resolveCurrentFileAreaTokens returns the tag and display name for the user's
 // current file area. If no file area is set or the area cannot be found, it
 // returns "None" for both values.
@@ -3167,14 +3192,15 @@ func (e *MenuExecutor) applyCommonTemplateTokens(data []byte, currentUser *user.
 	msgAreaTag, msgAreaName := e.resolveCurrentAreaTokens(currentUser, "")
 
 	tokens := map[string]string{
-		"|NODE": strconv.Itoa(nodeNumber),
-		"|DATE": now.Format("01/02/06"),
-		"|TIME": now.Format("3:04 pm"),
-		"|CA":   msgAreaTag,
-		"|CAN":  msgAreaName,
-		"|CFA":  fileAreaTag,
-		"|CFAN": fileAreaName,
-		"|UH":   "Guest",
+		"|NODE":      strconv.Itoa(nodeNumber),
+		"|DATE":      now.Format("01/02/06"),
+		"|TIME":      now.Format("3:04 pm"),
+		"|CA":        msgAreaTag,
+		"|CAN":       msgAreaName,
+		"|CFA":       fileAreaTag,
+		"|CFAN":      fileAreaName,
+		"|FCONFPATH": e.resolveFileConferencePath(currentUser),
+		"|UH":        "Guest",
 		"|ALIAS":  "Guest",
 		"|HANDLE": "Guest",
 		"|LEVEL":  "0",
@@ -8466,7 +8492,7 @@ func (e *MenuExecutor) runUploadFiles(
 			}
 
 			if result.Description != "" {
-				description = sanitizeControlChars(strings.TrimSpace(result.Description))
+				description = sanitizeControlChars(strings.TrimRight(result.Description, " \t\r\n"))
 				log.Printf("INFO: Node %d: Using FILE_ID.DIZ description for %s: %q", nodeNumber, nf.name, description)
 			}
 		}
@@ -8488,10 +8514,9 @@ func (e *MenuExecutor) runUploadFiles(
 			} else {
 				description = sanitizeControlChars(strings.TrimSpace(descInput))
 			}
-		}
-
-		if len([]rune(description)) > 60 {
-			description = string([]rune(description)[:60])
+			if len([]rune(description)) > 60 {
+				description = string([]rune(description)[:60])
+			}
 		}
 		if description == "" {
 			description = "No description"
@@ -8607,9 +8632,22 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
 	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
 	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
+	if errBot != nil {
+		if os.IsNotExist(errBot) {
+			botTemplateBytes = nil
+		} else {
+			log.Printf("ERROR: Node %d: Failed to load FILELIST.BOT template: %v", nodeNumber, errBot)
+			msg := "\r\n|01Error loading File List screen templates.|07\r\n"
+			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			if wErr != nil { /* Log? */
+			}
+			time.Sleep(1 * time.Second)
+			return nil, "", fmt.Errorf("failed loading FILELIST templates")
+		}
+	}
 
-	if errTop != nil || errMid != nil || errBot != nil {
-		log.Printf("ERROR: Node %d: Failed to load one or more FILELIST template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
+	if errTop != nil || errMid != nil {
+		log.Printf("ERROR: Node %d: Failed to load FILELIST template files: TOP(%v), MID(%v)", nodeNumber, errTop, errMid)
 		msg := "\r\n|01Error loading File List screen templates.|07\r\n"
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil { /* Log? */
@@ -8710,35 +8748,37 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		log.Printf("WARN: Node %d: Failed to load FILELISTHI.BAR: %v", nodeNumber, hiBarErr)
 	}
 
-	// 4. Dispatch based on file listing mode
-	if !strings.EqualFold(e.ServerCfg.FileListingMode, "classic") {
+	// 4. Dispatch based on file listing mode (user pref overrides server default)
+	fileListMode := currentUser.FileListingMode
+	if fileListMode == "" {
+		fileListMode = e.ServerCfg.FileListingMode
+	}
+	if !strings.EqualFold(fileListMode, "classic") {
 		return runListFilesLightbar(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime,
 			currentAreaID, currentAreaTag, area,
-			processedTopTemplate, processedMidTemplate, processedBotTemplate,
+			topTemplateBytes, processedMidTemplate, processedBotTemplate,
 			filesPerPage, totalFiles, totalPages,
 			cmdBarOptions, hiBarOptions, outputMode)
 	}
 
 	// Classic display loop
+	fconfpath := e.resolveFileConferencePath(currentUser)
 	for {
 		// 4.1 Clear Screen
 		writeErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 		if writeErr != nil {
 			log.Printf("ERROR: Node %d: Failed clearing screen for LISTFILES: %v", nodeNumber, writeErr)
-			// Potentially return error or try to continue
 		}
 
-		// 4.2 Display Top Template
-		wErr := terminalio.WriteProcessedBytes(terminal, processedTopTemplate, outputMode)
+		// 4.2 Display Top Template (process @FCONFPATH@, @FTOTAL@, @FPAGE@ placeholders per page)
+		topRendered := ansi.ReplacePipeCodes(processFileListPlaceholders(topTemplateBytes, currentPage, totalPages, totalFiles, fconfpath))
+		wErr := terminalio.WriteProcessedBytes(terminal, topRendered, outputMode)
 		if wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing LISTFILES top template: %v", nodeNumber, wErr)
-			// Handle error
 		}
-		// Add CRLF after TOP template before listing files
 		wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		if wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing CRLF after LISTFILES top template: %v", nodeNumber, wErr)
-			// Handle error
 		}
 
 		// 4.3 Display Files on Current Page (using MID template)
@@ -8752,27 +8792,31 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		} else {
 			for i, fileRec := range filesOnPage {
 				line := processedMidTemplate
-				// Calculate display number for the file on the current page
 				fileNumOnPage := (currentPage-1)*filesPerPage + i + 1
 
-				// Populate placeholders (^MARK, ^NUM, ^NAME, ^DATE, ^SIZE, ^DESC) from fileRec
 				fileNumStr := strconv.Itoa(fileNumOnPage)
-				// Truncate filename and description if needed based on termWidth
-				fileNameStr := fileRec.Filename                  // TODO: Truncate
-				dateStr := fileRec.UploadedAt.Format("01/02/06") // Example date format
-				sizeStr := fmt.Sprintf("%dk", fileRec.Size/1024) // Example size in K
-				descStr := fileRec.Description                   // TODO: Truncate
+				fileNameStr := fileRec.Filename
+				if len(fileNameStr) > 12 {
+					fileNameStr = fileNameStr[:12]
+				}
+				fileNameStr = fmt.Sprintf("%-12s", fileNameStr)
+				dateStr := fileRec.UploadedAt.Format("01/02/06")
+				sizeStr := fmt.Sprintf("%7s", fmt.Sprintf("%dk", fileRec.Size/1024))
 
-				// Check if file is marked for download
-				markStr := " " // Default to blank
-				// Assumes currentUser.TaggedFileIDs is a slice of uuid.UUID
+				markStr := " "
 				if currentUser.TaggedFileIDs != nil {
 					for _, taggedID := range currentUser.TaggedFileIDs {
 						if taggedID == fileRec.ID {
-							markStr = "*" // Or use a configured marker string
+							markStr = "*"
 							break
 						}
 					}
+				}
+
+				dizLines := formatDIZLines(fileRec.Description, dizMaxWidth, dizMaxLines)
+				firstDesc := ""
+				if len(dizLines) > 0 {
+					firstDesc = dizLines[0]
 				}
 
 				line = strings.ReplaceAll(line, "^MARK", markStr)
@@ -8780,25 +8824,42 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 				line = strings.ReplaceAll(line, "^NAME", fileNameStr)
 				line = strings.ReplaceAll(line, "^DATE", dateStr)
 				line = strings.ReplaceAll(line, "^SIZE", sizeStr)
-				line = strings.ReplaceAll(line, "^DESC", descStr)
+				line = strings.ReplaceAll(line, "^DESC", firstDesc)
 
-				// Write line using manual encoding helper in case of CP437 chars in data
 				wErr = writeProcessedStringWithManualEncoding(terminal, []byte(line), outputMode)
 				if wErr != nil {
 					log.Printf("ERROR: Node %d: Failed writing file list line %d: %v", nodeNumber, i, wErr)
-					// Handle error (e.g., break loop, return error?)
 				}
-				// Add CRLF after writing the line
 				wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 				if wErr != nil {
 					log.Printf("ERROR: Node %d: Failed writing CRLF after file list line %d: %v", nodeNumber, i, wErr)
-					// Handle error
 				}
+
+				prefixLine := processedMidTemplate
+				prefixLine = strings.ReplaceAll(prefixLine, "^MARK", " ")
+				prefixLine = strings.ReplaceAll(prefixLine, "^NUM", "   ")
+				prefixLine = strings.ReplaceAll(prefixLine, "^NAME", strings.Repeat(" ", 12))
+				prefixLine = strings.ReplaceAll(prefixLine, "^DATE", strings.Repeat(" ", 8))
+				prefixLine = strings.ReplaceAll(prefixLine, "^SIZE", strings.Repeat(" ", 7))
+				prefixLine = strings.ReplaceAll(prefixLine, "^DESC", "")
+				processedPrefix := string(ansi.ReplacePipeCodes([]byte(prefixLine)))
+				prefixLen := ansi.VisibleLength(processedPrefix)
+				descIndent := strings.Repeat(" ", prefixLen)
+				for j := 1; j < len(dizLines); j++ {
+					contLine := "|07" + descIndent + dizLines[j]
+					wErr = writeProcessedStringWithManualEncoding(terminal, ansi.ReplacePipeCodes([]byte(contLine)), outputMode)
+					if wErr != nil {
+						break
+					}
+					_ = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+				}
+
 			}
 		}
 
 		// 4.4 Display Bottom Template (with pagination info)
-		bottomLine := string(processedBotTemplate)
+		botRendered := processFileListPlaceholders(botTemplateBytes, currentPage, totalPages, totalFiles, fconfpath)
+		bottomLine := string(ansi.ReplacePipeCodes(botRendered))
 		bottomLine = strings.ReplaceAll(bottomLine, "^PAGE", strconv.Itoa(currentPage))
 		bottomLine = strings.ReplaceAll(bottomLine, "^TOTALPAGES", strconv.Itoa(totalPages))
 		wErr = terminalio.WriteProcessedBytes(terminal, []byte(bottomLine), outputMode)

@@ -282,6 +282,8 @@ CfgViewHotKeys         string `json:"cfgViewHotKeys"`
 	CfgViewRealName        string `json:"cfgViewRealName"`
 	CfgViewPhone           string `json:"cfgViewPhone"`
 	CfgViewNote            string `json:"cfgViewNote"`
+	CfgViewFileListMode    string `json:"cfgViewFileListMode"`
+	CfgFileListModeSet     string `json:"cfgFileListModeSet"`
 
 	// Message reader strings (V3-specific)
 	MsgEndOfMessages     string `json:"msgEndOfMessages"`
@@ -665,6 +667,7 @@ type ServerConfig struct {
 	Timezone            string `json:"timezone,omitempty"`
 	SysOpLevel          int    `json:"sysOpLevel"`
 	CoSysOpLevel        int    `json:"coSysOpLevel"`
+	InvisibleLevel      int    `json:"invisibleLevel"` // Access level for invisible logon prompt; 0 = use coSysOpLevel
 	RegularUserLevel    int    `json:"regularUserLevel"`
 	LogonLevel          int    `json:"logonLevel"`
 	AnonymousLevel      int    `json:"anonymousLevel"`

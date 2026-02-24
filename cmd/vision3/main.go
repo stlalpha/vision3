@@ -1208,8 +1208,13 @@ func sessionHandler(s ssh.Session) {
 	}
 	log.Printf("Node %d: Entering main loop for authenticated user: %s", nodeID, authenticatedUser.Handle)
 
-	// --- Invisible Login Prompt (SysOp/CoSysOp only) ---
-	if authenticatedUser.AccessLevel >= menuExecutor.GetServerConfig().CoSysOpLevel {
+	// --- Invisible Login Prompt (users at or above invisibleLevel) ---
+	cfg := menuExecutor.GetServerConfig()
+	invLevel := cfg.InvisibleLevel
+	if invLevel == 0 {
+		invLevel = cfg.CoSysOpLevel // backward compat: missing config uses coSysOpLevel
+	}
+	if authenticatedUser.AccessLevel >= invLevel {
 		terminal.Write([]byte("\x1b[2J\x1b[H"))
 		invisPrompt := loadedStrings.InvisibleLogonPrompt
 		if invisPrompt == "" {
@@ -1225,7 +1230,8 @@ func sessionHandler(s ssh.Session) {
 			}
 			log.Printf("WARN: Node %d: Error during invisible logon prompt: %v", nodeID, invisErr)
 		}
-		if invisChoice {
+		// Prompt is "Add this login to Last Caller List?" — Yeah = add (visible), Nah = don't add (invisible).
+		if !invisChoice {
 			bbsSession.Mutex.Lock()
 			bbsSession.Invisible = true
 			bbsSession.Mutex.Unlock()

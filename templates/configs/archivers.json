@@ -1,0 +1,128 @@
+{
+    "archivers": [
+        {
+            "id": "zip",
+            "name": "ZIP Archive",
+            "extension": ".zip",
+            "magic": "504B0304",
+            "native": true,
+            "enabled": true,
+            "pack": {
+                "command": "zip",
+                "args": ["-j", "{ARCHIVE}", "{FILES}"]
+            },
+            "unpack": {
+                "command": "unzip",
+                "args": ["-o", "{ARCHIVE}", "-d", "{OUTDIR}"]
+            },
+            "test": {
+                "command": "unzip",
+                "args": ["-t", "{ARCHIVE}"]
+            },
+            "list": {
+                "command": "unzip",
+                "args": ["-l", "{ARCHIVE}"]
+            },
+            "comment": {
+                "command": "zip",
+                "args": ["-z", "{ARCHIVE}"]
+            },
+            "addFile": {
+                "command": "zip",
+                "args": ["-j", "{ARCHIVE}", "{FILE}"]
+            }
+        },
+        {
+            "id": "7z",
+            "name": "7-Zip Archive",
+            "extension": ".7z",
+            "magic": "377ABCAF271C",
+            "native": false,
+            "enabled": false,
+            "pack": {
+                "command": "7z",
+                "args": ["a", "{ARCHIVE}", "{FILES}"]
+            },
+            "unpack": {
+                "command": "7z",
+                "args": ["x", "-o{OUTDIR}", "{ARCHIVE}"]
+            },
+            "test": {
+                "command": "7z",
+                "args": ["t", "{ARCHIVE}"]
+            },
+            "list": {
+                "command": "7z",
+                "args": ["l", "{ARCHIVE}"]
+            }
+        },
+        {
+            "id": "rar",
+            "name": "RAR Archive",
+            "extension": ".rar",
+            "magic": "526172211A07",
+            "native": false,
+            "enabled": false,
+            "unpack": {
+                "command": "unrar",
+                "args": ["x", "-o+", "{ARCHIVE}", "{OUTDIR}"]
+            },
+            "test": {
+                "command": "unrar",
+                "args": ["t", "{ARCHIVE}"]
+            },
+            "list": {
+                "command": "unrar",
+                "args": ["l", "{ARCHIVE}"]
+            }
+        },
+        {
+            "id": "arj",
+            "name": "ARJ Archive",
+            "extension": ".arj",
+            "magic": "60EA",
+            "native": false,
+            "enabled": false,
+            "pack": {
+                "command": "arj",
+                "args": ["a", "{ARCHIVE}", "{FILES}"]
+            },
+            "unpack": {
+                "command": "arj",
+                "args": ["x", "-y", "{ARCHIVE}", "{OUTDIR}"]
+            },
+            "test": {
+                "command": "arj",
+                "args": ["t", "{ARCHIVE}"]
+            },
+            "list": {
+                "command": "arj",
+                "args": ["l", "{ARCHIVE}"]
+            }
+        },
+        {
+            "id": "lha",
+            "name": "LHA/LZH Archive",
+            "extension": ".lha",
+            "extensions": [".lzh"],
+            "native": false,
+            "enabled": false,
+            "pack": {
+                "command": "lha",
+                "args": ["a", "{ARCHIVE}", "{FILES}"]
+            },
+            "unpack": {
+                "command": "lha",
+                "args": ["x", "{ARCHIVE}", "{OUTDIR}"]
+            },
+            "test": {
+                "command": "lha",
+                "args": ["t", "{ARCHIVE}"]
+            },
+            "list": {
+                "command": "lha",
+                "args": ["l", "{ARCHIVE}"]
+            }
+        }
+    ]
+}
