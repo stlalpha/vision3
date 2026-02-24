@@ -282,6 +282,8 @@ CfgViewHotKeys         string `json:"cfgViewHotKeys"`
 	CfgViewRealName        string `json:"cfgViewRealName"`
 	CfgViewPhone           string `json:"cfgViewPhone"`
 	CfgViewNote            string `json:"cfgViewNote"`
+	CfgViewFileListMode    string `json:"cfgViewFileListMode"`
+	CfgFileListModeSet     string `json:"cfgFileListModeSet"`
 
 	// Message reader strings (V3-specific)
 	MsgEndOfMessages     string `json:"msgEndOfMessages"`
@@ -665,6 +667,7 @@ type ServerConfig struct {
 	Timezone            string `json:"timezone,omitempty"`
 	SysOpLevel          int    `json:"sysOpLevel"`
 	CoSysOpLevel        int    `json:"coSysOpLevel"`
+	InvisibleLevel      int    `json:"invisibleLevel"` // Access level for invisible logon prompt; 0 = use coSysOpLevel
 	RegularUserLevel    int    `json:"regularUserLevel"`
 	LogonLevel          int    `json:"logonLevel"`
 	AnonymousLevel      int    `json:"anonymousLevel"`
@@ -687,6 +690,10 @@ type ServerConfig struct {
 	// Idle timeout (0 = disabled). Applied across the entire app; any input loop
 	// that calls ReadKeyWithTimeout uses this value.
 	SessionIdleTimeoutMinutes int `json:"sessionIdleTimeoutMinutes"`
+
+	// Transfer timeout in minutes for file transfers (ZModem, etc.). 0 = no timeout.
+	// When exceeded, the transfer process is killed and the session returns to the BBS.
+	TransferTimeoutMinutes int `json:"transferTimeoutMinutes"`
 
 	// Number of days to retain soft-deleted user accounts before they are eligible
 	// for permanent purge. 0 = purge immediately; -1 = never purge automatically.
@@ -742,6 +749,7 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		LockoutMinutes:            30,
 		AllowNewUsers:             true,
 		SessionIdleTimeoutMinutes: 5,
+		TransferTimeoutMinutes:    30,
 		LegacySSHAlgorithms:       true,
 		DeletedUserRetentionDays:  30,
 	}

@@ -12,7 +12,7 @@
 |15 Display                       |07 [|15I|07] Prompt Color
 |08 -------                       |07 [|15J|07] Input Color
 |07 [|15G|07] Custom Prompt             |07 [|15K|07] Text Color
-                               |07 [|15L|07] Stat Color
+|07 [|15H|07] File Listing Mode         |07 [|15L|07] Stat Color
 |07 [|15V|07] View Current Config
 
 |07 [|15Q|07] Return to Main Menu

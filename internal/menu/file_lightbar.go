@@ -6,8 +6,8 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +19,6 @@ import (
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/terminalio"
-	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/user"
 	"github.com/stlalpha/vision3/internal/ziplab"
 )
@@ -56,10 +55,76 @@ func readKeySequenceIH(ih *editor.InputHandler) (string, error) {
 	}
 }
 
+// fileListPlaceholderRegex matches @FPAGE@, @FTOTAL@, @FCONFPATH@ with optional alignment and width.
+// Modifier: | (0x7C) or │ (CP437 0xB3, common in ANSI art) followed by L/R/C — matches message-header format.
+// Groups: 1=code (FPAGE|FTOTAL|FCONFPATH), 2=modifier (L|R|C), 3=:N digits, 4=# sequence
+var fileListPlaceholderRegex = regexp.MustCompile(`@(FPAGE|FTOTAL|FCONFPATH)(?:[\x7C\xB3]([LRC]))?(?::(\d+)|(#+))?@`)
+
+// processFileListPlaceholders replaces file-list-specific pipe codes and @-placeholders
+// with current page, total pages, total file count, and conference path. Use in FILELIST.TOP and FILELIST.BOT.
+// Pipe codes: |FPAGE ("Page X of Y"), |FTOTAL (total file count), |FCONFPATH (Conference > File Area).
+// Placeholders support alignment modifiers: @FPAGE|R###@, @FTOTAL|C:5@, @FCONFPATH|R############@
+// fconfpath is the pre-formatted "Conference > Area" string with pipe codes (from resolveFileConferencePath).
+func processFileListPlaceholders(data []byte, currentPage, totalPages, totalFiles int, fconfpath string) []byte {
+	s := string(data)
+	pageStr := fmt.Sprintf("Page %d of %d", currentPage, totalPages)
+	totalStr := strconv.Itoa(totalFiles)
+
+	// Process @-placeholders FIRST so |FPAGE inside @FPAGE|R#####@ isn't consumed by pipe codes.
+	// @CODE@ placeholders with optional alignment modifier (|L, |R, |C) and width (:N or ###)
+	// For ###: width = total placeholder length (entire token) so replacement preserves ANSI layout.
+	// E.g. @FPAGE|R###########@ is 20 cols — output is padded/truncated to 20 visible chars.
+	s = fileListPlaceholderRegex.ReplaceAllStringFunc(s, func(match string) string {
+		subs := fileListPlaceholderRegex.FindStringSubmatch(match)
+		if len(subs) < 2 {
+			return match
+		}
+		code := subs[1]
+		modifier := ""
+		if len(subs) > 2 {
+			modifier = subs[2]
+		}
+		width := 0
+		if len(subs) > 3 && subs[3] != "" {
+			width, _ = strconv.Atoi(subs[3])
+		} else if len(subs) > 4 && subs[4] != "" {
+			// Visual width: entire placeholder length (matches message-header / editor placeholder behavior)
+			width = len(match)
+		}
+		align := ansi.AlignLeft
+		if modifier != "" {
+			align = ansi.ParseAlignment(modifier)
+		}
+
+		var value string
+		switch code {
+		case "FPAGE":
+			value = pageStr
+		case "FTOTAL":
+			value = totalStr
+		case "FCONFPATH":
+			value = fconfpath
+		default:
+			return match
+		}
+		if width <= 0 {
+			return value
+		}
+		return ansi.ApplyWidthConstraintAligned(value, width, align)
+	})
+
+	// Pipe codes AFTER @-placeholders so |FPAGE inside @FPAGE|R#####@ isn't destroyed.
+	s = strings.ReplaceAll(s, "|FPAGE", pageStr)
+	s = strings.ReplaceAll(s, "|FTOTAL", totalStr)
+	s = strings.ReplaceAll(s, "|FCONFPATH", fconfpath)
+
+	return []byte(s)
+}
+
 func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time,
 	currentAreaID int, currentAreaTag string, area *file.FileArea,
-	processedTopTemplate []byte, processedMidTemplate string, processedBotTemplate []byte,
+	topTemplateBytes []byte, processedMidTemplate string, processedBotTemplate []byte,
 	filesPerPage int, totalFiles int, totalPages int,
 	cmdBarOptions []LightbarOption, hiBarOptions []LightbarOption,
 	outputMode ansi.OutputMode) (*user.User, string, error) {
@@ -135,18 +200,30 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 	}
 
-	// Count header lines from top template (each CRLF-terminated line).
-	headerLines := strings.Count(string(processedTopTemplate), "\n")
+	// Count header lines from top template (line count is invariant to page/file counts).
+	fconfpath := e.resolveFileConferencePath(currentUser)
+	processedTopSample := ansi.ReplacePipeCodes(processFileListPlaceholders(topTemplateBytes, 1, 1, totalFiles, fconfpath))
+	headerLines := strings.Count(string(processedTopSample), "\n")
 	if headerLines < 1 {
 		headerLines = 1
 	}
 
-	// Reserve the last 2 rows for the command bar (row termHeight-1) and BOT (row termHeight).
-	// Both are rendered with absolute cursor positioning so the row count is exact.
-	// File area occupies rows (headerLines+2) through (termHeight-2):
-	//   visibleRows = (termHeight-2) - (headerLines+2) + 1 = termHeight - headerLines - 3
+	// Reserve rows for the separator, command bar, and optional BOT template.
+	// Derive botLineCount from the expanded string (after placeholder + pipe-code
+	// processing) so it matches what renderPageIndicator actually renders.
 	botContent := strings.TrimRight(string(processedBotTemplate), "\r\n")
-	visibleRows := termHeight - headerLines - 3
+	botLineCount := 0
+	if len(botContent) > 0 {
+		expandedBotSample := string(ansi.ReplacePipeCodes(processFileListPlaceholders([]byte(botContent), 1, 1, totalFiles, fconfpath)))
+		expandedBotSample = strings.ReplaceAll(expandedBotSample, "^PAGE", "1")
+		expandedBotSample = strings.ReplaceAll(expandedBotSample, "^TOTALPAGES", "1")
+		botLineCount = len(strings.Split(expandedBotSample, "\n"))
+	}
+	reservedBottom := 2 // separator + command bar
+	if botLineCount > 0 {
+		reservedBottom = 2 + botLineCount // separator + command bar + BOT lines
+	}
+	visibleRows := termHeight - headerLines - reservedBottom - 1
 	if visibleRows < 3 {
 		visibleRows = 3
 	}
@@ -173,83 +250,99 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		return ansiRe.ReplaceAllString(s, "")
 	}
 
-	// wrapText splits text into lines of at most maxWidth characters.
-	wrapText := func(text string, maxWidth int, maxLines int) []string {
-		// Normalize whitespace: replace newlines with spaces.
-		text = strings.ReplaceAll(text, "\r", "")
-		text = strings.ReplaceAll(text, "\n", " ")
-		text = strings.TrimSpace(text)
+	// Description widths used below are calculated dynamically from the MID
+	// template; the DIZ-level constraints (45 cols, 11 lines) are applied by
+	// formatDIZLines before the display-width pass.
 
-		var lines []string
-		for len(text) > 0 && len(lines) < maxLines {
-			if len(text) <= maxWidth {
-				lines = append(lines, text)
-				break
-			}
-			// Find last space within maxWidth for word wrap.
-			cut := maxWidth
-			if idx := strings.LastIndex(text[:maxWidth], " "); idx > 0 {
-				cut = idx
-			}
-			lines = append(lines, text[:cut])
-			text = strings.TrimSpace(text[cut:])
-		}
-		return lines
-	}
+	// Description is rendered on separate continuation lines below the
+	// metadata row; the DIZ-level constraints (45 cols, 11 lines) are
+	// applied by formatDIZLines before any display-width truncation.
 
-	// Compute the constant prefix length from the MID template so we can
-	// calculate how many screen lines each file entry occupies (description
-	// wrapping).  All substitution fields have fixed widths, so the prefix
-	// length is the same for every file entry.
-	sampleLine := processedMidTemplate
-	sampleLine = strings.ReplaceAll(sampleLine, "^MARK", " ")
-	sampleLine = strings.ReplaceAll(sampleLine, "^NUM", "  1")
-	sampleLine = strings.ReplaceAll(sampleLine, "^NAME", fmt.Sprintf("%-18s", "x"))
-	sampleLine = strings.ReplaceAll(sampleLine, "^DATE", "01/01/01")
-	sampleLine = strings.ReplaceAll(sampleLine, "^SIZE", fmt.Sprintf("%7s", "0B"))
-	sampleNoDesc := strings.ReplaceAll(sampleLine, "^DESC", "")
-	midPrefixLen := len(stripAnsi(string(ansi.ReplacePipeCodes([]byte(sampleNoDesc)))))
-	firstDescWidth := termWidth - midPrefixLen - 1
-	if firstDescWidth < 10 {
-		firstDescWidth = 10
-	}
-	contDescWidth := termWidth - midPrefixLen - 1
-	if contDescWidth < 20 {
-		contDescWidth = 20
-	}
-
-	// fileEntryHeight returns the number of screen lines a file at idx takes,
-	// accounting for description word-wrapping (matches the render logic).
+	// fileEntryHeight returns the number of screen lines a file at idx takes:
+	// first line (metadata + first DIZ line) + continuation DIZ lines.
 	fileEntryHeight := func(idx int) int {
 		if idx < 0 || idx >= len(allFiles) {
 			return 1
 		}
-		desc := strings.ReplaceAll(allFiles[idx].Description, "\r", "")
-		desc = strings.ReplaceAll(desc, "\n", " ")
-		desc = strings.TrimSpace(desc)
-		if len(desc) <= firstDescWidth {
+		dizCount := len(formatDIZLines(allFiles[idx].Description, dizMaxWidth, dizMaxLines))
+		if dizCount < 1 {
 			return 1
 		}
-		// First-line word wrap cut.
-		cut := firstDescWidth
-		if spIdx := strings.LastIndex(desc[:firstDescWidth], " "); spIdx > 0 {
-			cut = spIdx
-		}
-		remainder := strings.TrimSpace(desc[cut:])
-		lines := 1
-		for remainder != "" && lines < 11 { // up to 10 continuation lines (FILE_ID.DIZ spec)
-			if len(remainder) <= contDescWidth {
-				lines++
+		return dizCount
+	}
+
+	// filesVisibleFrom counts how many files fit in visibleRows starting from startIdx,
+	// accounting for each entry's variable height (DIZ lines).
+	filesVisibleFrom := func(startIdx int) int {
+		usedLines := 0
+		count := 0
+		for idx := startIdx; idx < len(allFiles) && usedLines < visibleRows; idx++ {
+			h := fileEntryHeight(idx)
+			if usedLines+1 > visibleRows {
 				break
 			}
-			cut = contDescWidth
-			if spIdx := strings.LastIndex(remainder[:contDescWidth], " "); spIdx > 0 {
-				cut = spIdx
+			if usedLines+h > visibleRows {
+				h = 1 // truncate DIZ, first line still fits
 			}
-			remainder = strings.TrimSpace(remainder[cut:])
-			lines++
+			usedLines += h
+			count++
 		}
-		return lines
+		return count
+	}
+
+	// topIndexForPrevPage walks backward from the current topIndex to find where
+	// the previous page should start, filling visibleRows from bottom to top.
+	topIndexForPrevPage := func() int {
+		if topIndex <= 0 {
+			return 0
+		}
+		usedLines := 0
+		newTop := topIndex
+		for idx := topIndex - 1; idx >= 0; idx-- {
+			h := fileEntryHeight(idx)
+			if usedLines+h > visibleRows {
+				break
+			}
+			usedLines += h
+			newTop = idx
+		}
+		return newTop
+	}
+
+	// calculatePageInfo walks all files with variable heights to determine
+	// which page topIndex falls on and how many total pages exist.
+	calculatePageInfo := func() (currentPage int, totalPagesCalc int) {
+		if len(allFiles) == 0 {
+			return 1, 1
+		}
+		page := 0
+		idx := 0
+		foundCurrent := false
+		for idx < len(allFiles) {
+			page++
+			usedLines := 0
+			pageStart := idx
+			for idx < len(allFiles) && usedLines < visibleRows {
+				h := fileEntryHeight(idx)
+				if usedLines+1 > visibleRows {
+					break
+				}
+				if usedLines+h > visibleRows {
+					h = 1
+				}
+				usedLines += h
+				idx++
+			}
+			if !foundCurrent && topIndex >= pageStart && topIndex < idx {
+				currentPage = page
+				foundCurrent = true
+			}
+		}
+		if !foundCurrent {
+			currentPage = page
+		}
+		totalPagesCalc = page
+		return currentPage, totalPagesCalc
 	}
 
 	clampSelection := func() {
@@ -315,16 +408,14 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 		fileNumStr := fmt.Sprintf("%3d", idx+1)
 		name := fileRec.Filename
-		if len(name) > 18 {
-			name = name[:18]
+		if len(name) > 12 {
+			name = name[:12]
 		}
-		fileNameStr := fmt.Sprintf("%-18s", name)
+		fileNameStr := fmt.Sprintf("%-12s", name)
 		dateStr := fileRec.UploadedAt.Format("01/02/06")
 		sizeStr := fmt.Sprintf("%7s", formatSize(fileRec.Size))
 
-		fullDesc := strings.ReplaceAll(fileRec.Description, "\r", "")
-		fullDesc = strings.ReplaceAll(fullDesc, "\n", " ")
-		fullDesc = strings.TrimSpace(fullDesc)
+		dizLines := formatDIZLines(fileRec.Description, dizMaxWidth, dizMaxLines)
 
 		markStr := " "
 		if isFileTagged(fileRec.ID) {
@@ -338,72 +429,52 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		line = strings.ReplaceAll(line, "^DATE", dateStr)
 		line = strings.ReplaceAll(line, "^SIZE", sizeStr)
 
-		lineWithoutDesc := strings.ReplaceAll(line, "^DESC", "")
-		processedNoDesc := string(ansi.ReplacePipeCodes([]byte(lineWithoutDesc)))
-		prefixLen := len(stripAnsi(processedNoDesc))
-		flDescWidth := termWidth - prefixLen - 1
-		if flDescWidth < 10 {
-			flDescWidth = 10
-		}
+		// Build prefix (everything except desc) for highlight and indent calc.
+		prefixLine := strings.ReplaceAll(line, "^DESC", "")
+		processedPrefix := string(ansi.ReplacePipeCodes([]byte(prefixLine)))
+		prefixLen := len(stripAnsi(processedPrefix))
 		descIndent := strings.Repeat(" ", prefixLen)
-		dcWidth := termWidth - prefixLen - 1
-		if dcWidth < 20 {
-			dcWidth = 20
+		descWidth := termWidth - prefixLen - 1
+		if descWidth < 20 {
+			descWidth = 20
 		}
 
-		firstDesc := fullDesc
-		remainDesc := ""
-		if len(fullDesc) > flDescWidth {
-			cut := flDescWidth
-			if spIdx := strings.LastIndex(fullDesc[:flDescWidth], " "); spIdx > 0 {
-				cut = spIdx
+		firstDesc := ""
+		if len(dizLines) > 0 {
+			firstDesc = dizLines[0]
+			if ansi.VisibleLength(firstDesc) > descWidth {
+				firstDesc = ansi.TruncateVisible(firstDesc, descWidth)
 			}
-			firstDesc = fullDesc[:cut]
-			remainDesc = strings.TrimSpace(fullDesc[cut:])
 		}
-
-		line = strings.ReplaceAll(line, "^DESC", firstDesc)
-		processed := string(ansi.ReplacePipeCodes([]byte(line)))
 
 		var contLines []string
-		rem := remainDesc
-		for rem != "" && len(contLines) < 10 {
-			cl := rem
-			if len(cl) > dcWidth {
-				cut := dcWidth
-				if spIdx := strings.LastIndex(rem[:dcWidth], " "); spIdx > 0 {
-					cut = spIdx
-				}
-				cl = rem[:cut]
-				rem = strings.TrimSpace(rem[cut:])
-			} else {
-				rem = ""
+		for i := 1; i < len(dizLines); i++ {
+			cl := dizLines[i]
+			if ansi.VisibleLength(cl) > descWidth {
+				cl = ansi.TruncateVisible(cl, descWidth)
 			}
 			contLines = append(contLines, cl)
 		}
 
-		// Truncate continuation lines to fit maxLines.
 		if 1+len(contLines) > maxLines {
 			contLines = nil
 		}
 
 		var result []string
 
-		// First line: highlighted or normal.
 		if highlighted {
-			plain := stripAnsi(processed)
-			padWidth := termWidth - 1
-			if len(plain) < padWidth {
-				plain += strings.Repeat(" ", padWidth-len(plain))
-			}
-			result = append(result, hiColorSeq+plain+"\x1b[0m")
+			plainPrefix := stripAnsi(processedPrefix)
+			result = append(result, hiColorSeq+plainPrefix+"\x1b[0m"+firstDesc)
 		} else {
+			fullLine := strings.ReplaceAll(line, "^DESC", firstDesc)
+			processed := string(ansi.ReplacePipeCodes([]byte(fullLine)))
 			result = append(result, processed)
 		}
 
 		for _, cl := range contLines {
 			result = append(result, string(ansi.ReplacePipeCodes([]byte("|07"+descIndent+cl))))
 		}
+
 		return result
 	}
 
@@ -511,9 +582,21 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		return nil
 	}
 
+	// Layout: separator row, then command bar, then optional BOT.
+	cmdBarRow := max(1, termHeight-botLineCount)
+	separatorRow := max(1, cmdBarRow-1)
+
+	// renderSeparator draws the separator line above the command bar.
+	// Uses CP437 0xFA (·) and 0xC4 (─) to match the header separator style.
+	renderSeparator := func() error {
+		sep := "\xfa" + strings.Repeat("\xc4", termWidth-2) + "\xfa"
+		sepLine := ansi.MoveCursor(separatorRow, 1) + "\x1b[2K" + string(ansi.ReplacePipeCodes([]byte("|08"+sep+"|07")))
+		return terminalio.WriteProcessedBytes(terminal, []byte(sepLine), outputMode)
+	}
+
 	// renderCmdBar redraws only the horizontal command bar.
 	renderCmdBar := func() error {
-		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(termHeight-1, 1)+"\x1b[2K"), outputMode); err != nil {
+		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(cmdBarRow, 1)+"\x1b[2K"), outputMode); err != nil {
 			return err
 		}
 		barWidth := 0
@@ -543,20 +626,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 	// renderPageIndicator redraws only the page/bot indicator row(s).
 	renderPageIndicator := func() error {
-		currentPage := 1
-		if len(allFiles) > 0 && visibleRows > 0 {
-			currentPage = (topIndex / visibleRows) + 1
-			// More accurately: count how many viewports topIndex has scrolled past.
-			// But use selectedIndex-based page for user-facing consistency.
-			currentPage = (selectedIndex / visibleRows) + 1
-		}
-		calcTotalPages := 1
-		if len(allFiles) > 0 && visibleRows > 0 {
-			calcTotalPages = (len(allFiles) + visibleRows - 1) / visibleRows
-		}
+		currentPage, calcTotalPages := calculatePageInfo()
 
 		if len(botContent) > 0 {
-			pageStr := botContent
+			// Replace ^PAGE/^TOTALPAGES (legacy) and |FPAGE/|FTOTAL/@FPAGE@/@FTOTAL@ (new).
+			pageStr := string(processFileListPlaceholders([]byte(botContent), currentPage, calcTotalPages, len(allFiles), fconfpath))
 			pageStr = strings.ReplaceAll(pageStr, "^PAGE", fmt.Sprintf("%d", currentPage))
 			pageStr = strings.ReplaceAll(pageStr, "^TOTALPAGES", fmt.Sprintf("%d", calcTotalPages))
 			processedPage := string(ansi.ReplacePipeCodes([]byte(pageStr)))
@@ -577,18 +651,18 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 					return err
 				}
 			}
-		} else {
-			pageText := fmt.Sprintf("Page %d of %d", currentPage, calcTotalPages)
-			pagePad := (termWidth - len(pageText)) / 2
-			if pagePad < 0 {
-				pagePad = 0
-			}
-			pageLine := ansi.MoveCursor(termHeight, 1) + "\x1b[2K" + strings.Repeat(" ", pagePad) + "|08" + pageText + "|07"
-			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(pageLine)), outputMode); err != nil {
-				return err
-			}
 		}
 		return nil
+	}
+
+	// renderTop writes the TOP template with |FPAGE, |FTOTAL, @FPAGE@, @FTOTAL@ substituted.
+	renderTop := func() error {
+		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(1, 1)), outputMode); err != nil {
+			return err
+		}
+		curPage, calcTotalPages := calculatePageInfo()
+		processed := ansi.ReplacePipeCodes(processFileListPlaceholders(topTemplateBytes, curPage, calcTotalPages, len(allFiles), fconfpath))
+		return terminalio.WriteProcessedBytes(terminal, processed, outputMode)
 	}
 
 	// renderFull performs a complete screen redraw (used on first display and
@@ -597,10 +671,13 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode); err != nil {
 			return err
 		}
-		if err := terminalio.WriteProcessedBytes(terminal, processedTopTemplate, outputMode); err != nil {
+		if err := renderTop(); err != nil {
 			return err
 		}
 		if err := renderFileArea(); err != nil {
+			return err
+		}
+		if err := renderSeparator(); err != nil {
 			return err
 		}
 		if err := renderCmdBar(); err != nil {
@@ -613,6 +690,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	prevSelectedIndex := -1
 	prevTopIndex := -1
 	prevCmdIndex := -1
+	prevPage := -1
 	needFullRedraw := true
 
 	for {
@@ -624,15 +702,30 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 			needFullRedraw = false
 		} else if topIndex != prevTopIndex {
-			// Viewport scrolled — redraw file area + page indicator.
+			// Viewport scrolled — full redraw of all regions to prevent overlap.
+			if err := renderTop(); err != nil {
+				return nil, "", err
+			}
 			if err := renderFileArea(); err != nil {
+				return nil, "", err
+			}
+			if err := renderSeparator(); err != nil {
+				return nil, "", err
+			}
+			if err := renderCmdBar(); err != nil {
 				return nil, "", err
 			}
 			if err := renderPageIndicator(); err != nil {
 				return nil, "", err
 			}
 		} else if selectedIndex != prevSelectedIndex {
-			// Same viewport, selection changed — redraw only old and new rows.
+			// Same viewport, selection changed — redraw old/new rows; redraw TOP if page changed.
+			curPage, _ := calculatePageInfo()
+			if curPage != prevPage {
+				if err := renderTop(); err != nil {
+					return nil, "", err
+				}
+			}
 			if prevSelectedIndex >= 0 && prevSelectedIndex < len(allFiles) {
 				if row, h := screenRowForFile(prevSelectedIndex); row >= 0 {
 					if err := writeFileRow(row, prevSelectedIndex, false, h); err != nil {
@@ -655,6 +748,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		prevSelectedIndex = selectedIndex
 		prevTopIndex = topIndex
 		prevCmdIndex = cmdIndex
+		prevPage, _ = calculatePageInfo()
 
 		key, err := readKeySequenceIH(ih)
 		if err != nil {
@@ -685,10 +779,21 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 			continue
 		case "\x1b[5~": // Page Up
-			selectedIndex -= visibleRows
+			newTop := topIndexForPrevPage()
+			topIndex = newTop
+			selectedIndex = newTop
 			continue
 		case "\x1b[6~": // Page Down
-			selectedIndex += visibleRows
+			count := filesVisibleFrom(topIndex)
+			nextTop := topIndex + count
+			if nextTop >= len(allFiles) {
+				if len(allFiles) > 0 {
+					selectedIndex = len(allFiles) - 1
+				}
+			} else {
+				topIndex = nextTop
+				selectedIndex = nextTop
+			}
 			continue
 		case "\x1b[H", "\x1b[1~": // Home
 			selectedIndex = 0
@@ -737,9 +842,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		case "i": // Info: show file detail overlay
 			if len(allFiles) > 0 {
 				sel := allFiles[selectedIndex]
-				descWidth := termWidth - 14
-				descMaxLines := 10
-				descLines := wrapText(sel.Description, descWidth, descMaxLines)
+				descLines := formatDIZLines(sel.Description, dizMaxWidth, dizMaxLines)
 
 				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 
@@ -784,7 +887,9 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				// Show cursor for the viewer.
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 				if e.FileMgr.IsSupportedArchive(sel.Filename) {
-					ziplab.RunZipLabView(s, terminal, filePath, sel.Filename, outputMode)
+					ctx, cancel := e.transferContext()
+					defer cancel()
+					ziplab.RunZipLabView(ctx, s, terminal, filePath, sel.Filename, outputMode)
 				} else {
 					termWidth, termHeight := getTerminalSize(s)
 					viewFileByRecord(e, s, terminal, sel, outputMode, termWidth, termHeight)
@@ -834,7 +939,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			successCount := 0
 			failCount := 0
 			filesToDownload := make([]string, 0, len(currentUser.TaggedFileIDs))
-			filenamesOnly := make([]string, 0, len(currentUser.TaggedFileIDs))
+			fileIDsToDownload := make([]uuid.UUID, 0, len(currentUser.TaggedFileIDs))
 
 			for _, fileID := range currentUser.TaggedFileIDs {
 				fp, pathErr := e.FileMgr.GetFilePath(fileID)
@@ -853,11 +958,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 					continue
 				}
 				filesToDownload = append(filesToDownload, fp)
-				filenamesOnly = append(filenamesOnly, filepath.Base(fp))
+				fileIDsToDownload = append(fileIDsToDownload, fileID)
 			}
 
 			if len(filesToDownload) > 0 {
-				log.Printf("INFO: Node %d: Initiating transfer for files: %v", nodeNumber, filenamesOnly)
+				log.Printf("INFO: Node %d: Initiating transfer for %d file(s)", nodeNumber, len(filesToDownload))
 
 				// Use protocol selection (respects connection type - SSH vs Telnet)
 				proto, protoOK, protoErr := e.selectTransferProtocol(s, terminal, outputMode)
@@ -871,61 +976,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				} else if !protoOK {
 					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Download cancelled.|07\r\n")), outputMode)
 				} else {
-					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15Initiating %s transfer...\r\n", proto.Name))), outputMode)
-					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
-
-					log.Printf("INFO: Node %d: Executing %s send: %v", nodeNumber, proto.Name, filenamesOnly)
-
-					resetSessionIH(s)
-					if proto.BatchSend && len(filesToDownload) > 1 {
-						transferErr := proto.ExecuteSend(s, filesToDownload...)
-						if transferErr != nil {
-							log.Printf("ERROR: Node %d: %s batch send failed: %v", nodeNumber, proto.Name, transferErr)
-							if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
-								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
-							} else {
-								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|01%s transfer failed or was cancelled.\r\n", proto.Name))), outputMode)
-							}
-							failCount = len(filesToDownload)
-							successCount = 0
-						} else {
-							log.Printf("INFO: Node %d: %s batch send completed successfully.", nodeNumber, proto.Name)
-							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|07%s transfer complete.\r\n", proto.Name))), outputMode)
-							successCount = len(filesToDownload)
-							failCount = 0
-							for _, fileID := range currentUser.TaggedFileIDs {
-								if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
-									if incErr := e.FileMgr.IncrementDownloadCount(fileID); incErr != nil {
-										log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, fileID, incErr)
-									}
-								}
-							}
-						}
-					} else {
-						for i, fp := range filesToDownload {
-							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(filesToDownload), filenamesOnly[i]))), outputMode)
-							if sendErr := proto.ExecuteSend(s, fp); sendErr != nil {
-								log.Printf("ERROR: Node %d: %s send failed for %s: %v", nodeNumber, proto.Name, filenamesOnly[i], sendErr)
-								if errors.Is(sendErr, transfer.ErrBinaryNotFound) {
-									_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
-									failCount += len(filesToDownload) - i
-									break
-								}
-								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(" |01FAILED|07\r\n")), outputMode)
-								failCount++
-							} else {
-								log.Printf("INFO: Node %d: %s sent %s OK", nodeNumber, proto.Name, filenamesOnly[i])
-								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(" |02OK|07\r\n")), outputMode)
-								successCount++
-								if _, pathErr := e.FileMgr.GetFilePath(currentUser.TaggedFileIDs[i]); pathErr == nil {
-									if incErr := e.FileMgr.IncrementDownloadCount(currentUser.TaggedFileIDs[i]); incErr != nil {
-										log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, currentUser.TaggedFileIDs[i], incErr)
-									}
-								}
-							}
-						}
-					}
-					time.Sleep(250 * time.Millisecond)
+					successCount, failCount = e.runTransferSend(s, terminal, proto, filesToDownload, fileIDsToDownload, outputMode, nodeNumber)
 					ih = getSessionIH(s)
 				}
 				time.Sleep(1 * time.Second)
@@ -971,4 +1022,41 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			needFullRedraw = true
 		}
 	}
+}
+
+const (
+	dizMaxWidth = 45
+	dizMaxLines = 11
+)
+
+// formatDIZLines splits FILE_ID.DIZ content into display-ready lines.
+// Each line is truncated to maxWidth visible characters (ANSI-aware).
+// Returns at most maxLines lines, with trailing blank lines trimmed.
+func formatDIZLines(content string, maxWidth, maxLines int) []string {
+	if content == "" {
+		return nil
+	}
+
+	content = strings.ReplaceAll(content, "\r\n", "\n")
+	content = strings.ReplaceAll(content, "\r", "\n")
+
+	rawLines := strings.Split(content, "\n")
+
+	var lines []string
+	for _, line := range rawLines {
+		if len(lines) >= maxLines {
+			break
+		}
+		line = strings.TrimRight(line, " \t")
+		if ansi.VisibleLength(line) > maxWidth {
+			line = ansi.TruncateVisible(line, maxWidth)
+		}
+		lines = append(lines, line)
+	}
+
+	for len(lines) > 0 && strings.TrimSpace(lines[len(lines)-1]) == "" {
+		lines = lines[:len(lines)-1]
+	}
+
+	return lines
 }

@@ -252,6 +252,8 @@
   "cfgViewRealName": " |07Real Name:     |15%s",
   "cfgViewPhone": " |07Phone:         |15%s",
   "cfgViewNote": " |07Note:          |15%s",
+  "cfgViewFileListMode": " |07File Listing:        |15%s",
+  "cfgFileListModeSet": "\r\n|07File Listing Mode: |15%s|07\r\n",
   "msgEndOfMessages": "\r\n|07End of messages.|07",
   "msgFirstMessage": "\r\n|07Already at first message.|07",
   "msgMailReplyDeferred": "\r\n|07Mail reply not yet implemented.|07",

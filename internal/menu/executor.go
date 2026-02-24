@@ -3,6 +3,7 @@ package menu
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -310,6 +311,18 @@ func (e *MenuExecutor) idleTimeout(u *user.User) time.Duration {
 	return time.Duration(cfg.SessionIdleTimeoutMinutes) * time.Minute
 }
 
+// transferContext returns a context for file transfers. If TransferTimeoutMinutes > 0,
+// returns a context with that timeout and its cancel function; otherwise returns
+// context.Background() and a no-op cancel. Callers must invoke the cancel function
+// when done (e.g. via defer cancel()).
+func (e *MenuExecutor) transferContext() (context.Context, context.CancelFunc) {
+	cfg := e.GetServerConfig()
+	if cfg.TransferTimeoutMinutes <= 0 {
+		return context.Background(), func() {}
+	}
+	return context.WithTimeout(context.Background(), time.Duration(cfg.TransferTimeoutMinutes)*time.Minute)
+}
+
 // isCoSysOpOrAbove returns true if the user has CoSysOp or SysOp access level.
 func (e *MenuExecutor) isCoSysOpOrAbove(u *user.User) bool {
 	return u != nil && u.AccessLevel >= e.ServerCfg.CoSysOpLevel
@@ -525,6 +538,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["CFG_CUSTOMPROMPT"] = runCfgCustomPrompt
 	registry["CFG_COLOR"] = runCfgColor
 	registry["CFG_PASSWORD"] = runCfgPassword
+	registry["CFG_FILELISTMODE"] = runCfgFileListMode
 	registry["CFG_VIEWCONFIG"] = runCfgViewConfig
 	registry["CHAT"] = runChat
 	registry["PAGE"] = runPage
@@ -1555,7 +1569,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|NEWUSERS"), []byte(newUsersVal))
 			currentAreaTag, currentAreaDisplayName := e.resolveCurrentAreaTokens(currentUser, currentAreaName)
 			currentFileAreaTag, currentFileAreaDisplayName := e.resolveCurrentFileAreaTokens(currentUser)
-			// Replace longer tokens first to avoid partial replacement conflicts (e.g. |CFAN vs |CFA vs |CAN vs |CA).
+			// Replace longer tokens first to avoid partial replacement conflicts (e.g. |FCONFPATH, |CFAN vs |CFA vs |CAN vs |CA).
+			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|FCONFPATH"), []byte(e.resolveFileConferencePath(currentUser)))
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CFAN"), []byte(currentFileAreaDisplayName))
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CFA"), []byte(currentFileAreaTag))
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CAN"), []byte(currentAreaDisplayName))
@@ -3128,6 +3143,29 @@ func (e *MenuExecutor) resolveCurrentAreaTokens(currentUser *user.User, currentA
 	return areaTag, areaName
 }
 
+// resolveFileConferencePath returns "Conference > File Area Name" as plain text.
+// Colors should be applied in the template surrounding the placeholder.
+func (e *MenuExecutor) resolveFileConferencePath(currentUser *user.User) string {
+	confName := "Local"
+	areaName := "None"
+	if currentUser == nil || e.FileMgr == nil {
+		return confName + " > " + areaName
+	}
+	if currentUser.CurrentFileAreaID > 0 {
+		if area, found := e.FileMgr.GetAreaByID(currentUser.CurrentFileAreaID); found {
+			if strings.TrimSpace(area.Name) != "" {
+				areaName = area.Name
+			}
+			if area.ConferenceID != 0 && e.ConferenceMgr != nil {
+				if conf, found := e.ConferenceMgr.GetByID(area.ConferenceID); found && strings.TrimSpace(conf.Name) != "" {
+					confName = conf.Name
+				}
+			}
+		}
+	}
+	return confName + " > " + areaName
+}
+
 // resolveCurrentFileAreaTokens returns the tag and display name for the user's
 // current file area. If no file area is set or the area cannot be found, it
 // returns "None" for both values.
@@ -3167,14 +3205,15 @@ func (e *MenuExecutor) applyCommonTemplateTokens(data []byte, currentUser *user.
 	msgAreaTag, msgAreaName := e.resolveCurrentAreaTokens(currentUser, "")
 
 	tokens := map[string]string{
-		"|NODE": strconv.Itoa(nodeNumber),
-		"|DATE": now.Format("01/02/06"),
-		"|TIME": now.Format("3:04 pm"),
-		"|CA":   msgAreaTag,
-		"|CAN":  msgAreaName,
-		"|CFA":  fileAreaTag,
-		"|CFAN": fileAreaName,
-		"|UH":   "Guest",
+		"|NODE":      strconv.Itoa(nodeNumber),
+		"|DATE":      now.Format("01/02/06"),
+		"|TIME":      now.Format("3:04 pm"),
+		"|CA":        msgAreaTag,
+		"|CAN":       msgAreaName,
+		"|CFA":       fileAreaTag,
+		"|CFAN":      fileAreaName,
+		"|FCONFPATH": e.resolveFileConferencePath(currentUser),
+		"|UH":        "Guest",
 		"|ALIAS":  "Guest",
 		"|HANDLE": "Guest",
 		"|LEVEL":  "0",
@@ -8232,6 +8271,94 @@ func (e *MenuExecutor) selectTransferProtocol(s ssh.Session, terminal *term.Term
 	}
 }
 
+// runTransferSend executes a protocol send for the given file paths. It handles
+// resetSessionIH/getSessionIH, batch vs one-at-a-time logic, ExecuteSend, error
+// handling (including ErrBinaryNotFound), and IncrementDownloadCount.
+// fileIDs must match paths in order (paths[i] corresponds to fileIDs[i]).
+// Returns successCount and failCount.
+func (e *MenuExecutor) runTransferSend(s ssh.Session, terminal *term.Terminal, proto transfer.ProtocolConfig, paths []string, fileIDs []uuid.UUID, outputMode ansi.OutputMode, nodeNumber int) (successCount, failCount int) {
+	if len(paths) == 0 {
+		return 0, 0
+	}
+
+	names := make([]string, len(paths))
+	for i, p := range paths {
+		names[i] = filepath.Base(p)
+	}
+
+	resetSessionIH(s)
+	defer func() {
+		time.Sleep(250 * time.Millisecond)
+		getSessionIH(s)
+	}()
+
+	if proto.BatchSend && len(paths) > 1 {
+		// Batch: single transfer session
+		log.Printf("INFO: Node %d: Batch sending %d file(s) via %q: %v", nodeNumber, len(paths), proto.Name, names)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|15Initiating %s batch transfer (%d files)...|07\r\n", proto.Name, len(paths)))), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
+
+		ctx, cancel := e.transferContext()
+		defer cancel()
+		transferErr := proto.ExecuteSend(ctx, s, paths...)
+		if transferErr != nil {
+			log.Printf("ERROR: Node %d: %q batch send failed: %v", nodeNumber, proto.Name, transferErr)
+			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+			if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+			} else {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Transfer failed or was cancelled.\r\n")), outputMode)
+			}
+			return 0, len(paths)
+		}
+		log.Printf("INFO: Node %d: %q batch send completed successfully.", nodeNumber, proto.Name)
+		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Transfer complete.\r\n")), outputMode)
+		for _, id := range fileIDs {
+			if id != uuid.Nil {
+				if err := e.FileMgr.IncrementDownloadCount(id); err != nil {
+					log.Printf("WARN: Node %d: Failed to increment download count for %s: %v", nodeNumber, id, err)
+				}
+			}
+		}
+		return len(paths), 0
+	}
+
+	// One-at-a-time
+	log.Printf("INFO: Node %d: Sending %d file(s) one-at-a-time via %q", nodeNumber, len(paths), proto.Name)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|15Initiating %s transfer (%d file(s), one at a time)...|07\r\n", proto.Name, len(paths)))), outputMode)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Prepare your terminal to receive each file.\r\n")), outputMode)
+
+	for i, p := range paths {
+		ctx, cancel := e.transferContext()
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(paths), names[i]))), outputMode)
+		sendErr := proto.ExecuteSend(ctx, s, p)
+		cancel()
+		if sendErr != nil {
+			log.Printf("ERROR: Node %d: %q send failed for %s: %v", nodeNumber, proto.Name, names[i], sendErr)
+			if errors.Is(sendErr, transfer.ErrBinaryNotFound) {
+				terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+				return successCount, failCount + (len(paths) - i)
+			}
+			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 |14%s|07: |01FAILED|07\r\n", i+1, len(paths), names[i]))), outputMode)
+			failCount++
+			continue
+		}
+		log.Printf("INFO: Node %d: %q sent %s OK", nodeNumber, proto.Name, names[i])
+		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 |14%s|07: |02OK|07\r\n", i+1, len(paths), names[i]))), outputMode)
+		successCount++
+		if i < len(fileIDs) && fileIDs[i] != uuid.Nil {
+			if err := e.FileMgr.IncrementDownloadCount(fileIDs[i]); err != nil {
+				log.Printf("WARN: Node %d: Failed to increment download count for %s: %v", nodeNumber, fileIDs[i], err)
+			}
+		}
+	}
+	return successCount, failCount
+}
+
 // runUploadFile is the RunnableFunc wrapper for UPLOADFILE menu commands.
 func runUploadFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	if currentUser == nil {
@@ -8349,7 +8476,9 @@ func (e *MenuExecutor) runUploadFiles(
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
 	resetSessionIH(s)
-	transferErr := proto.ExecuteReceive(s, incomingDir)
+	ctx, cancel := e.transferContext()
+	defer cancel()
+	transferErr := proto.ExecuteReceive(ctx, s, incomingDir)
 	time.Sleep(250 * time.Millisecond)
 	getSessionIH(s)
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
@@ -8466,7 +8595,7 @@ func (e *MenuExecutor) runUploadFiles(
 			}
 
 			if result.Description != "" {
-				description = sanitizeControlChars(strings.TrimSpace(result.Description))
+				description = sanitizeControlChars(strings.TrimRight(result.Description, " \t\r\n"))
 				log.Printf("INFO: Node %d: Using FILE_ID.DIZ description for %s: %q", nodeNumber, nf.name, description)
 			}
 		}
@@ -8488,10 +8617,9 @@ func (e *MenuExecutor) runUploadFiles(
 			} else {
 				description = sanitizeControlChars(strings.TrimSpace(descInput))
 			}
-		}
-
-		if len([]rune(description)) > 60 {
-			description = string([]rune(description)[:60])
+			if len([]rune(description)) > 60 {
+				description = string([]rune(description)[:60])
+			}
 		}
 		if description == "" {
 			description = "No description"
@@ -8607,9 +8735,22 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	topTemplateBytes, errTop := readTemplateFile(topTemplatePath)
 	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
 	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
+	if errBot != nil {
+		if os.IsNotExist(errBot) {
+			botTemplateBytes = nil
+		} else {
+			log.Printf("ERROR: Node %d: Failed to load FILELIST.BOT template: %v", nodeNumber, errBot)
+			msg := "\r\n|01Error loading File List screen templates.|07\r\n"
+			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			if wErr != nil { /* Log? */
+			}
+			time.Sleep(1 * time.Second)
+			return nil, "", fmt.Errorf("failed loading FILELIST templates")
+		}
+	}
 
-	if errTop != nil || errMid != nil || errBot != nil {
-		log.Printf("ERROR: Node %d: Failed to load one or more FILELIST template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
+	if errTop != nil || errMid != nil {
+		log.Printf("ERROR: Node %d: Failed to load FILELIST template files: TOP(%v), MID(%v)", nodeNumber, errTop, errMid)
 		msg := "\r\n|01Error loading File List screen templates.|07\r\n"
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		if wErr != nil { /* Log? */
@@ -8710,35 +8851,37 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		log.Printf("WARN: Node %d: Failed to load FILELISTHI.BAR: %v", nodeNumber, hiBarErr)
 	}
 
-	// 4. Dispatch based on file listing mode
-	if !strings.EqualFold(e.ServerCfg.FileListingMode, "classic") {
+	// 4. Dispatch based on file listing mode (user pref overrides server default)
+	fileListMode := currentUser.FileListingMode
+	if fileListMode == "" {
+		fileListMode = e.ServerCfg.FileListingMode
+	}
+	if !strings.EqualFold(fileListMode, "classic") {
 		return runListFilesLightbar(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime,
 			currentAreaID, currentAreaTag, area,
-			processedTopTemplate, processedMidTemplate, processedBotTemplate,
+			topTemplateBytes, processedMidTemplate, processedBotTemplate,
 			filesPerPage, totalFiles, totalPages,
 			cmdBarOptions, hiBarOptions, outputMode)
 	}
 
 	// Classic display loop
+	fconfpath := e.resolveFileConferencePath(currentUser)
 	for {
 		// 4.1 Clear Screen
 		writeErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 		if writeErr != nil {
 			log.Printf("ERROR: Node %d: Failed clearing screen for LISTFILES: %v", nodeNumber, writeErr)
-			// Potentially return error or try to continue
 		}
 
-		// 4.2 Display Top Template
-		wErr := terminalio.WriteProcessedBytes(terminal, processedTopTemplate, outputMode)
+		// 4.2 Display Top Template (process @FCONFPATH@, @FTOTAL@, @FPAGE@ placeholders per page)
+		topRendered := ansi.ReplacePipeCodes(processFileListPlaceholders(topTemplateBytes, currentPage, totalPages, totalFiles, fconfpath))
+		wErr := terminalio.WriteProcessedBytes(terminal, topRendered, outputMode)
 		if wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing LISTFILES top template: %v", nodeNumber, wErr)
-			// Handle error
 		}
-		// Add CRLF after TOP template before listing files
 		wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		if wErr != nil {
 			log.Printf("ERROR: Node %d: Failed writing CRLF after LISTFILES top template: %v", nodeNumber, wErr)
-			// Handle error
 		}
 
 		// 4.3 Display Files on Current Page (using MID template)
@@ -8752,27 +8895,31 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		} else {
 			for i, fileRec := range filesOnPage {
 				line := processedMidTemplate
-				// Calculate display number for the file on the current page
 				fileNumOnPage := (currentPage-1)*filesPerPage + i + 1
 
-				// Populate placeholders (^MARK, ^NUM, ^NAME, ^DATE, ^SIZE, ^DESC) from fileRec
 				fileNumStr := strconv.Itoa(fileNumOnPage)
-				// Truncate filename and description if needed based on termWidth
-				fileNameStr := fileRec.Filename                  // TODO: Truncate
-				dateStr := fileRec.UploadedAt.Format("01/02/06") // Example date format
-				sizeStr := fmt.Sprintf("%dk", fileRec.Size/1024) // Example size in K
-				descStr := fileRec.Description                   // TODO: Truncate
+				fileNameStr := fileRec.Filename
+				if len(fileNameStr) > 12 {
+					fileNameStr = fileNameStr[:12]
+				}
+				fileNameStr = fmt.Sprintf("%-12s", fileNameStr)
+				dateStr := fileRec.UploadedAt.Format("01/02/06")
+				sizeStr := fmt.Sprintf("%7s", fmt.Sprintf("%dk", fileRec.Size/1024))
 
-				// Check if file is marked for download
-				markStr := " " // Default to blank
-				// Assumes currentUser.TaggedFileIDs is a slice of uuid.UUID
+				markStr := " "
 				if currentUser.TaggedFileIDs != nil {
 					for _, taggedID := range currentUser.TaggedFileIDs {
 						if taggedID == fileRec.ID {
-							markStr = "*" // Or use a configured marker string
+							markStr = "*"
 							break
 						}
 					}
+				}
+
+				dizLines := formatDIZLines(fileRec.Description, dizMaxWidth, dizMaxLines)
+				firstDesc := ""
+				if len(dizLines) > 0 {
+					firstDesc = dizLines[0]
 				}
 
 				line = strings.ReplaceAll(line, "^MARK", markStr)
@@ -8780,25 +8927,42 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 				line = strings.ReplaceAll(line, "^NAME", fileNameStr)
 				line = strings.ReplaceAll(line, "^DATE", dateStr)
 				line = strings.ReplaceAll(line, "^SIZE", sizeStr)
-				line = strings.ReplaceAll(line, "^DESC", descStr)
+				line = strings.ReplaceAll(line, "^DESC", firstDesc)
 
-				// Write line using manual encoding helper in case of CP437 chars in data
 				wErr = writeProcessedStringWithManualEncoding(terminal, []byte(line), outputMode)
 				if wErr != nil {
 					log.Printf("ERROR: Node %d: Failed writing file list line %d: %v", nodeNumber, i, wErr)
-					// Handle error (e.g., break loop, return error?)
 				}
-				// Add CRLF after writing the line
 				wErr = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 				if wErr != nil {
 					log.Printf("ERROR: Node %d: Failed writing CRLF after file list line %d: %v", nodeNumber, i, wErr)
-					// Handle error
 				}
+
+				prefixLine := processedMidTemplate
+				prefixLine = strings.ReplaceAll(prefixLine, "^MARK", " ")
+				prefixLine = strings.ReplaceAll(prefixLine, "^NUM", "   ")
+				prefixLine = strings.ReplaceAll(prefixLine, "^NAME", strings.Repeat(" ", 12))
+				prefixLine = strings.ReplaceAll(prefixLine, "^DATE", strings.Repeat(" ", 8))
+				prefixLine = strings.ReplaceAll(prefixLine, "^SIZE", strings.Repeat(" ", 7))
+				prefixLine = strings.ReplaceAll(prefixLine, "^DESC", "")
+				processedPrefix := string(ansi.ReplacePipeCodes([]byte(prefixLine)))
+				prefixLen := ansi.VisibleLength(processedPrefix)
+				descIndent := strings.Repeat(" ", prefixLen)
+				for j := 1; j < len(dizLines); j++ {
+					contLine := "|07" + descIndent + dizLines[j]
+					wErr = writeProcessedStringWithManualEncoding(terminal, ansi.ReplacePipeCodes([]byte(contLine)), outputMode)
+					if wErr != nil {
+						break
+					}
+					_ = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+				}
+
 			}
 		}
 
 		// 4.4 Display Bottom Template (with pagination info)
-		bottomLine := string(processedBotTemplate)
+		botRendered := processFileListPlaceholders(botTemplateBytes, currentPage, totalPages, totalFiles, fconfpath)
+		bottomLine := string(ansi.ReplacePipeCodes(botRendered))
 		bottomLine = strings.ReplaceAll(bottomLine, "^PAGE", strconv.Itoa(currentPage))
 		bottomLine = strings.ReplaceAll(bottomLine, "^TOTALPAGES", strconv.Itoa(totalPages))
 		wErr = terminalio.WriteProcessedBytes(terminal, []byte(bottomLine), outputMode)
@@ -8935,7 +9099,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 				name string
 			}
 			var resolved []dlEntry
-			failCount := 0
+			var successCount, failCount int
 			for _, fileID := range currentUser.TaggedFileIDs {
 				filePath, pathErr := e.FileMgr.GetFilePath(fileID)
 				if pathErr != nil {
@@ -8951,79 +9115,18 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 				resolved = append(resolved, dlEntry{id: fileID, path: filePath, name: filepath.Base(filePath)})
 			}
 
-			successCount := 0
-
 			if len(resolved) == 0 {
 				log.Printf("WARN: Node %d: No valid file paths found for tagged files.", nodeNumber)
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Could not find any of the marked files on the server.|07\r\n")), outputMode)
 				failCount = len(currentUser.TaggedFileIDs)
-			} else if !proto.BatchSend || len(resolved) == 1 {
-				// Non-batch protocol or single file: send one at a time for per-file accounting.
-				log.Printf("INFO: Node %d: Sending %d file(s) one-at-a-time via %q", nodeNumber, len(resolved), proto.Name)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|15Initiating %s transfer (%d file(s), one at a time)...|07\r\n", proto.Name, len(resolved)))), outputMode)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Prepare your terminal to receive each file.\r\n")), outputMode)
-
-				resetSessionIH(s)
-				for i, fe := range resolved {
-					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(resolved), fe.name))), outputMode)
-					if sendErr := proto.ExecuteSend(s, fe.path); sendErr != nil {
-						log.Printf("ERROR: Node %d: %q send failed for %s: %v", nodeNumber, proto.Name, fe.name, sendErr)
-						if errors.Is(sendErr, transfer.ErrBinaryNotFound) {
-							terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-							terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
-							failCount += len(resolved) - i
-							break
-						}
-						terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 |14%s|07: |01FAILED|07\r\n", i+1, len(resolved), fe.name))), outputMode)
-						failCount++
-					} else {
-						log.Printf("INFO: Node %d: %q sent %s OK", nodeNumber, proto.Name, fe.name)
-						terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 |14%s|07: |02OK|07\r\n", i+1, len(resolved), fe.name))), outputMode)
-						successCount++
-						if err := e.FileMgr.IncrementDownloadCount(fe.id); err != nil {
-							log.Printf("WARN: Node %d: Failed to increment download count for %s: %v", nodeNumber, fe.id, err)
-						}
-					}
-				}
-				getSessionIH(s)
 			} else {
-				// Batch protocol with multiple files: single transfer session, all-or-none.
 				paths := make([]string, len(resolved))
-				names := make([]string, len(resolved))
+				fileIDs := make([]uuid.UUID, len(resolved))
 				for i, fe := range resolved {
 					paths[i] = fe.path
-					names[i] = fe.name
+					fileIDs[i] = fe.id
 				}
-				log.Printf("INFO: Node %d: Batch sending %d file(s) via %q: %v", nodeNumber, len(resolved), proto.Name, names)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|15Initiating %s batch transfer (%d files)...|07\r\n", proto.Name, len(resolved)))), outputMode)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
-
-				resetSessionIH(s)
-				transferErr := proto.ExecuteSend(s, paths...)
-				time.Sleep(250 * time.Millisecond)
-				getSessionIH(s)
-				terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-
-				if transferErr != nil {
-					log.Printf("ERROR: Node %d: %q batch send failed: %v", nodeNumber, proto.Name, transferErr)
-					if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
-					} else {
-						terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Transfer failed or was cancelled.\r\n")), outputMode)
-					}
-					failCount += len(resolved)
-				} else {
-					log.Printf("INFO: Node %d: %q batch send completed successfully.", nodeNumber, proto.Name)
-					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Transfer complete.\r\n")), outputMode)
-					successCount += len(resolved)
-					for _, fe := range resolved {
-						if err := e.FileMgr.IncrementDownloadCount(fe.id); err != nil {
-							log.Printf("WARN: Node %d: Failed to increment download count for %s: %v", nodeNumber, fe.id, err)
-						}
-					}
-				}
+				successCount, failCount = e.runTransferSend(s, terminal, proto, paths, fileIDs, outputMode, nodeNumber)
 				time.Sleep(1 * time.Second)
 			}
 
@@ -9104,7 +9207,9 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error locating file.|07\r\n")), outputMode)
 					time.Sleep(1 * time.Second)
 				} else {
-					ziplab.RunZipLabView(s, terminal, viewFilePath, fileToView.Filename, outputMode)
+					ctx, cancel := e.transferContext()
+					ziplab.RunZipLabView(ctx, s, terminal, viewFilePath, fileToView.Filename, outputMode)
+					cancel()
 				}
 			} else {
 				viewFileByRecord(e, s, terminal, &fileToView, outputMode, termWidth, termHeight)

@@ -274,7 +274,8 @@ go version
 
 2. **Run the setup script:**
     ```bash
-    ./setup.sh
+    ./setup.sh          # Linux/macOS
+    .\setup.ps1         # Windows (PowerShell), or double-click setup.cmd
     ```
 
    This will:
@@ -292,8 +293,10 @@ go version
 
 5. **Build and run the BBS:**
     ```bash
-    ./build.sh
-    ./vision3
+    ./build.sh          # Linux/macOS
+    .\build.ps1         # Windows (PowerShell), or double-click build.cmd
+    ./vision3           # Linux/macOS
+    .\vision3.exe       # Windows
     ```
 
 ### Manual Setup

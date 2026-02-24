@@ -1,6 +1,7 @@
 package transfer
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -101,7 +102,9 @@ func DefaultProtocol(protocols []ProtocolConfig) (ProtocolConfig, bool) {
 
 // ExecuteSend runs this protocol's send command to transfer files to the user.
 // filePaths must be absolute paths to the files being sent.
-func (p *ProtocolConfig) ExecuteSend(s ssh.Session, filePaths ...string) error {
+// ctx controls cancellation and timeout; when ctx.Done() fires, the transfer is aborted.
+// Pass a context with timeout (e.g. context.WithTimeout) for transfer time limits.
+func (p *ProtocolConfig) ExecuteSend(ctx context.Context, s ssh.Session, filePaths ...string) error {
 	if len(filePaths) == 0 {
 		return fmt.Errorf("no files provided for send via protocol %q", p.Name)
 	}
@@ -128,18 +131,22 @@ func (p *ProtocolConfig) ExecuteSend(s ssh.Session, filePaths ...string) error {
 	if listFile != "" {
 		defer os.Remove(listFile)
 	}
-	cmd := exec.Command(cmdPath, args...)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, cmdPath, args...)
 
 	log.Printf("INFO: Protocol %q send: %s %v (pty=%v)", p.Name, cmdPath, args, p.UsePTY)
 	if p.UsePTY {
-		return RunCommandWithPTY(s, cmd)
+		return RunCommandWithPTY(ctx, s, cmd)
 	}
-	return RunCommandDirect(s, cmd)
+	return RunCommandDirect(ctx, s, cmd)
 }
 
 // ExecuteReceive runs this protocol's receive command to accept files from the user.
 // targetDir must be an absolute path to the directory where received files will be stored.
-func (p *ProtocolConfig) ExecuteReceive(s ssh.Session, targetDir string) error {
+// ctx controls cancellation and timeout; when ctx.Done() fires, the transfer is aborted.
+func (p *ProtocolConfig) ExecuteReceive(ctx context.Context, s ssh.Session, targetDir string) error {
 	if targetDir == "" {
 		return fmt.Errorf("target directory cannot be empty for receive via protocol %q", p.Name)
 	}
@@ -163,14 +170,17 @@ func (p *ProtocolConfig) ExecuteReceive(s ssh.Session, targetDir string) error {
 	if listFile != "" {
 		defer os.Remove(listFile)
 	}
-	cmd := exec.Command(cmdPath, args...)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, cmdPath, args...)
 	cmd.Dir = targetDir
 
 	log.Printf("INFO: Protocol %q receive in %s: %s %v (pty=%v)", p.Name, targetDir, cmdPath, args, p.UsePTY)
 	if p.UsePTY {
-		return RunCommandWithPTY(s, cmd)
+		return RunCommandWithPTY(ctx, s, cmd)
 	}
-	return RunCommandDirect(s, cmd)
+	return RunCommandDirect(ctx, s, cmd)
 }
 
 // expandArgs substitutes placeholders in a command argument template.

@@ -11,6 +11,11 @@ import (
 )
 
 // zipMagic is the 4-byte magic number for ZIP archives (PK\x03\x04).
+// FTN echomail bundles are always ZIP format per standard practice.
+// For user-facing archive operations (file areas, uploads, etc.), the
+// central archiver configuration (configs/archivers.json) defines
+// supported formats and their tools. FTN bundles use Go's native
+// archive/zip since ZIP is the universal FTN bundle format.
 var zipMagic = []byte{0x50, 0x4B, 0x03, 0x04}
 
 // BundleExtension reports whether a filename looks like an FTN echomail bundle

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gliderlabs/ssh"
 	"golang.org/x/term"
@@ -138,7 +140,8 @@ func extractSingleEntry(zipPath string, entryNum int) (string, func(), error) {
 
 // RunZipLabView presents an interactive archive viewer that lets the user
 // browse entries and extract individual files via ZMODEM.
-func RunZipLabView(s ssh.Session, terminal *term.Terminal, filePath string, filename string, outputMode ansi.OutputMode) {
+// ctx controls transfer timeout; pass nil for default 30-minute timeout.
+func RunZipLabView(ctx context.Context, s ssh.Session, terminal *term.Terminal, filePath string, filename string, outputMode ansi.OutputMode) {
 	// Build the listing into a buffer to get the file count.
 	var buf bytes.Buffer
 	fileCount, err := formatArchiveListing(&buf, filePath, filename, 24)
@@ -197,8 +200,20 @@ func RunZipLabView(s ssh.Session, terminal *term.Terminal, filePath string, file
 		sendMsg := fmt.Sprintf("\r\n|07Sending |15%s|07 via ZMODEM...\r\n", baseName)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(sendMsg)), outputMode)
 
-		if err := transfer.ExecuteZmodemSend(s, extractedPath); err != nil {
-			log.Printf("ziplab: zmodem send failed: %v", err)
+		sendCtx := ctx
+		if sendCtx == nil {
+			sendCtx = context.Background()
+		}
+		var cancel context.CancelFunc
+		if _, hasDeadline := sendCtx.Deadline(); !hasDeadline {
+			sendCtx, cancel = context.WithTimeout(sendCtx, 30*time.Minute)
+		}
+		sendErr := transfer.ExecuteZmodemSend(sendCtx, s, extractedPath)
+		if cancel != nil {
+			cancel()
+		}
+		if sendErr != nil {
+			log.Printf("ziplab: zmodem send failed: %v", sendErr)
 			msg := "\r\n|01Transfer failed.|07\r\n"
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		} else {

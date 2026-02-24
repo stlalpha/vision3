@@ -3,6 +3,7 @@
   "timezone": "America/Chicago",
   "sysOpLevel": 255,
   "coSysOpLevel": 250,
+  "invisibleLevel": 250,
   "regularUserLevel": 10,
   "logonLevel": 50,
   "anonymousLevel": 60,
@@ -21,5 +22,6 @@
   "fileListingMode": "lightbar",
   "legacySSHAlgorithms": true,
   "allowNewUsers": true,
-  "sessionIdleTimeoutMinutes": 5
+  "sessionIdleTimeoutMinutes": 5,
+  "transferTimeoutMinutes": 30
 }
