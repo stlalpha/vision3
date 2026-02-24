@@ -211,10 +211,15 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	}
 
 	// Reserve rows for the separator, command bar, and optional BOT template.
+	// Derive botLineCount from the expanded string (after placeholder + pipe-code
+	// processing) so it matches what renderPageIndicator actually renders.
 	botContent := strings.TrimRight(string(processedBotTemplate), "\r\n")
 	botLineCount := 0
 	if len(botContent) > 0 {
-		botLineCount = len(strings.Split(botContent, "\n"))
+		expandedBotSample := string(ansi.ReplacePipeCodes(processFileListPlaceholders([]byte(botContent), 1, 1, totalFiles, fconfpath)))
+		expandedBotSample = strings.ReplaceAll(expandedBotSample, "^PAGE", "1")
+		expandedBotSample = strings.ReplaceAll(expandedBotSample, "^TOTALPAGES", "1")
+		botLineCount = len(strings.Split(expandedBotSample, "\n"))
 	}
 	reservedBottom := 2 // separator + command bar
 	if botLineCount > 0 {
@@ -580,8 +585,8 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	}
 
 	// Layout: separator row, then command bar, then optional BOT.
-	cmdBarRow := termHeight - botLineCount
-	separatorRow := cmdBarRow - 1
+	cmdBarRow := max(1, termHeight-botLineCount)
+	separatorRow := max(1, cmdBarRow-1)
 
 	// renderSeparator draws the separator line above the command bar.
 	// Uses CP437 0xFA (·) and 0xC4 (─) to match the header separator style.

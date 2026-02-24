@@ -297,10 +297,14 @@ func saveMetadata(areaDir string, records []file.FileRecord) error {
 	}
 	if err := os.Rename(tmp, path); err != nil {
 		if cpErr := copyFile(tmp, path); cpErr != nil {
-			os.Remove(tmp)
-			return err
+			if rmErr := os.Remove(tmp); rmErr != nil {
+				return fmt.Errorf("rename %v; copy fallback %v; cleanup %v", err, cpErr, rmErr)
+			}
+			return fmt.Errorf("rename %v; copy fallback %v", err, cpErr)
 		}
-		os.Remove(tmp)
+		if rmErr := os.Remove(tmp); rmErr != nil {
+			return fmt.Errorf("removing temp file after copy: %w", rmErr)
+		}
 	}
 	return nil
 }
