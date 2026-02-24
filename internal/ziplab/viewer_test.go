@@ -3,6 +3,7 @@ package ziplab
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -267,7 +268,7 @@ func TestFormatArchiveListing_ManyFiles(t *testing.T) {
 }
 
 func TestRunZipLabView_Exists(t *testing.T) {
-	var fn func(ssh.Session, *term.Terminal, string, string, ansi.OutputMode)
+	var fn func(context.Context, ssh.Session, *term.Terminal, string, string, ansi.OutputMode)
 	fn = RunZipLabView
 	_ = fn
 }

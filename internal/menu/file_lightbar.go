@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -20,7 +19,6 @@ import (
 	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/file"
 	"github.com/stlalpha/vision3/internal/terminalio"
-	"github.com/stlalpha/vision3/internal/transfer"
 	"github.com/stlalpha/vision3/internal/user"
 	"github.com/stlalpha/vision3/internal/ziplab"
 )
@@ -889,7 +887,9 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				// Show cursor for the viewer.
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 				if e.FileMgr.IsSupportedArchive(sel.Filename) {
-					ziplab.RunZipLabView(s, terminal, filePath, sel.Filename, outputMode)
+					ctx, cancel := e.transferContext()
+					defer cancel()
+					ziplab.RunZipLabView(ctx, s, terminal, filePath, sel.Filename, outputMode)
 				} else {
 					termWidth, termHeight := getTerminalSize(s)
 					viewFileByRecord(e, s, terminal, sel, outputMode, termWidth, termHeight)
@@ -939,7 +939,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			successCount := 0
 			failCount := 0
 			filesToDownload := make([]string, 0, len(currentUser.TaggedFileIDs))
-			filenamesOnly := make([]string, 0, len(currentUser.TaggedFileIDs))
+			fileIDsToDownload := make([]uuid.UUID, 0, len(currentUser.TaggedFileIDs))
 
 			for _, fileID := range currentUser.TaggedFileIDs {
 				fp, pathErr := e.FileMgr.GetFilePath(fileID)
@@ -958,11 +958,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 					continue
 				}
 				filesToDownload = append(filesToDownload, fp)
-				filenamesOnly = append(filenamesOnly, filepath.Base(fp))
+				fileIDsToDownload = append(fileIDsToDownload, fileID)
 			}
 
 			if len(filesToDownload) > 0 {
-				log.Printf("INFO: Node %d: Initiating transfer for files: %v", nodeNumber, filenamesOnly)
+				log.Printf("INFO: Node %d: Initiating transfer for %d file(s)", nodeNumber, len(filesToDownload))
 
 				// Use protocol selection (respects connection type - SSH vs Telnet)
 				proto, protoOK, protoErr := e.selectTransferProtocol(s, terminal, outputMode)
@@ -976,61 +976,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				} else if !protoOK {
 					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Download cancelled.|07\r\n")), outputMode)
 				} else {
-					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15Initiating %s transfer...\r\n", proto.Name))), outputMode)
-					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
-
-					log.Printf("INFO: Node %d: Executing %s send: %v", nodeNumber, proto.Name, filenamesOnly)
-
-					resetSessionIH(s)
-					if proto.BatchSend && len(filesToDownload) > 1 {
-						transferErr := proto.ExecuteSend(s, filesToDownload...)
-						if transferErr != nil {
-							log.Printf("ERROR: Node %d: %s batch send failed: %v", nodeNumber, proto.Name, transferErr)
-							if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
-								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
-							} else {
-								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|01%s transfer failed or was cancelled.\r\n", proto.Name))), outputMode)
-							}
-							failCount = len(filesToDownload)
-							successCount = 0
-						} else {
-							log.Printf("INFO: Node %d: %s batch send completed successfully.", nodeNumber, proto.Name)
-							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|07%s transfer complete.\r\n", proto.Name))), outputMode)
-							successCount = len(filesToDownload)
-							failCount = 0
-							for _, fileID := range currentUser.TaggedFileIDs {
-								if _, pathErr := e.FileMgr.GetFilePath(fileID); pathErr == nil {
-									if incErr := e.FileMgr.IncrementDownloadCount(fileID); incErr != nil {
-										log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, fileID, incErr)
-									}
-								}
-							}
-						}
-					} else {
-						for i, fp := range filesToDownload {
-							_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(filesToDownload), filenamesOnly[i]))), outputMode)
-							if sendErr := proto.ExecuteSend(s, fp); sendErr != nil {
-								log.Printf("ERROR: Node %d: %s send failed for %s: %v", nodeNumber, proto.Name, filenamesOnly[i], sendErr)
-								if errors.Is(sendErr, transfer.ErrBinaryNotFound) {
-									_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
-									failCount += len(filesToDownload) - i
-									break
-								}
-								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(" |01FAILED|07\r\n")), outputMode)
-								failCount++
-							} else {
-								log.Printf("INFO: Node %d: %s sent %s OK", nodeNumber, proto.Name, filenamesOnly[i])
-								_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(" |02OK|07\r\n")), outputMode)
-								successCount++
-								if _, pathErr := e.FileMgr.GetFilePath(currentUser.TaggedFileIDs[i]); pathErr == nil {
-									if incErr := e.FileMgr.IncrementDownloadCount(currentUser.TaggedFileIDs[i]); incErr != nil {
-										log.Printf("WARN: Node %d: Failed to increment download count for file %s: %v", nodeNumber, currentUser.TaggedFileIDs[i], incErr)
-									}
-								}
-							}
-						}
-					}
-					time.Sleep(250 * time.Millisecond)
+					successCount, failCount = e.runTransferSend(s, terminal, proto, filesToDownload, fileIDsToDownload, outputMode, nodeNumber)
 					ih = getSessionIH(s)
 				}
 				time.Sleep(1 * time.Second)

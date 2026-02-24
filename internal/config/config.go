@@ -691,6 +691,10 @@ type ServerConfig struct {
 	// that calls ReadKeyWithTimeout uses this value.
 	SessionIdleTimeoutMinutes int `json:"sessionIdleTimeoutMinutes"`
 
+	// Transfer timeout in minutes for file transfers (ZModem, etc.). 0 = no timeout.
+	// When exceeded, the transfer process is killed and the session returns to the BBS.
+	TransferTimeoutMinutes int `json:"transferTimeoutMinutes"`
+
 	// Number of days to retain soft-deleted user accounts before they are eligible
 	// for permanent purge. 0 = purge immediately; -1 = never purge automatically.
 	DeletedUserRetentionDays int `json:"deletedUserRetentionDays"`
@@ -745,6 +749,7 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		LockoutMinutes:            30,
 		AllowNewUsers:             true,
 		SessionIdleTimeoutMinutes: 5,
+		TransferTimeoutMinutes:    30,
 		LegacySSHAlgorithms:       true,
 		DeletedUserRetentionDays:  30,
 	}

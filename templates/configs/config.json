@@ -22,5 +22,6 @@
   "fileListingMode": "lightbar",
   "legacySSHAlgorithms": true,
   "allowNewUsers": true,
-  "sessionIdleTimeoutMinutes": 5
+  "sessionIdleTimeoutMinutes": 5,
+  "transferTimeoutMinutes": 30
 }
