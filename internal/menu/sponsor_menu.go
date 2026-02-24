@@ -239,7 +239,14 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			showFields()
 
 		case int('q'), int('Q'): // Q = save and quit
-			*area = edited
+			if updateErr := e.MessageMgr.UpdateAreaByID(edited.ID, edited); updateErr != nil {
+				log.Printf("ERROR: Node %d: Failed to update area: %v", nodeNumber, updateErr)
+				msg := "|01Error updating area — changes may be lost.|07\r\n"
+				_ = terminalio.WriteProcessedBytes(terminal,
+					ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				time.Sleep(2 * time.Second)
+				return currentUser, "", nil
+			}
 			if saveErr := e.MessageMgr.SaveAreas(); saveErr != nil {
 				log.Printf("ERROR: Node %d: Failed to save areas: %v", nodeNumber, saveErr)
 				msg := "|01Error saving area — changes may be lost.|07\r\n"

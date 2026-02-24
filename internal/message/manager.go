@@ -208,6 +208,31 @@ func (mm *MessageManager) GetAreaByTag(tag string) (*MessageArea, bool) {
 	return area, exists
 }
 
+// UpdateAreaByID replaces the message area with the given ID with a copy of updated.
+// Callers must not modify areas by writing through pointers returned from GetAreaByID;
+// use this method so the update is performed under the manager's lock and avoids races.
+// Returns ErrAreaNotFound if no area has the given ID. The updated area's ID must match id.
+func (mm *MessageManager) UpdateAreaByID(id int, updated MessageArea) error {
+	if updated.ID != id {
+		return fmt.Errorf("message area ID mismatch: got %d, want %d", updated.ID, id)
+	}
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
+	old, exists := mm.areasByID[id]
+	if !exists {
+		return ErrAreaNotFound
+	}
+	oldTag := old.Tag
+	replacement := new(MessageArea)
+	*replacement = updated
+	if oldTag != updated.Tag {
+		delete(mm.areasByTag, oldTag)
+	}
+	mm.areasByID[id] = replacement
+	mm.areasByTag[updated.Tag] = replacement
+	return nil
+}
+
 // SaveAreas persists all message areas to message_areas.json atomically.
 // The file is written to a temp file alongside the target and then renamed
 // to avoid partial-write corruption.
