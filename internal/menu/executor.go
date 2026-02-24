@@ -8331,9 +8331,9 @@ func (e *MenuExecutor) runTransferSend(s ssh.Session, terminal *term.Terminal, p
 
 	for i, p := range paths {
 		ctx, cancel := e.transferContext()
-		defer cancel()
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(paths), names[i]))), outputMode)
 		sendErr := proto.ExecuteSend(ctx, s, p)
+		cancel()
 		if sendErr != nil {
 			log.Printf("ERROR: Node %d: %q send failed for %s: %v", nodeNumber, proto.Name, names[i], sendErr)
 			if errors.Is(sendErr, transfer.ErrBinaryNotFound) {
@@ -9208,8 +9208,8 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 					time.Sleep(1 * time.Second)
 				} else {
 					ctx, cancel := e.transferContext()
-					defer cancel()
 					ziplab.RunZipLabView(ctx, s, terminal, viewFilePath, fileToView.Filename, outputMode)
+					cancel()
 				}
 			} else {
 				viewFileByRecord(e, s, terminal, &fileToView, outputMode, termWidth, termHeight)
