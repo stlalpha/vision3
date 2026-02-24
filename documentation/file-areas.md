@@ -240,7 +240,7 @@ File listings use templates in `menus/v3/templates/`:
 
 **Example FILELIST.TOP:**
 
-```
+```text
 ■ |04@FCONFPATH################################@|07 Files: |15@FTOTAL|R#@|07 @FPAGE|R#####@
 ```
 

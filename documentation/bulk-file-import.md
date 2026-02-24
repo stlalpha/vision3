@@ -18,7 +18,7 @@ Run it from the ViSiON/3 root directory (where `configs/` and `data/` are locate
 
 Import all files from a source directory into a file area. Automatically extracts FILE_ID.DIZ descriptions from supported archives.
 
-```
+```text
 Usage: helper files import [options]
 
 Options:
@@ -81,7 +81,7 @@ Import and move files from a staging directory:
 
 #### Output Format
 
-```
+```text
 Import to: General Files (GENERAL)
 Area path: data/files/general
 Source:    /mnt/cdrom/files
@@ -108,7 +108,7 @@ Status codes:
 
 Re-scan existing files in one or all areas and update descriptions from FILE_ID.DIZ content found in archives. Useful after a bulk import with `--no-diz`, or when DIZ extraction has been improved.
 
-```
+```text
 Usage: helper files reextractdiz [options]
 
 Options:

@@ -46,7 +46,11 @@ func cmdFilesReextractDIZ(args []string) {
 		areas = append(areas, *area)
 	}
 
-	arcCfg, _ := archiver.LoadConfig(*configDir)
+	arcCfg, err := archiver.LoadConfig(*configDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: failed to load archiver config from %s: %v\n", *configDir, err)
+		os.Exit(1)
+	}
 
 	totalUpdated := 0
 	totalScanned := 0

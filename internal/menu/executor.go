@@ -8633,7 +8633,17 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	midTemplateBytes, errMid := readTemplateFile(midTemplatePath)
 	botTemplateBytes, errBot := readTemplateFile(botTemplatePath)
 	if errBot != nil {
-		botTemplateBytes = nil // BOT is optional
+		if os.IsNotExist(errBot) {
+			botTemplateBytes = nil
+		} else {
+			log.Printf("ERROR: Node %d: Failed to load FILELIST.BOT template: %v", nodeNumber, errBot)
+			msg := "\r\n|01Error loading File List screen templates.|07\r\n"
+			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			if wErr != nil { /* Log? */
+			}
+			time.Sleep(1 * time.Second)
+			return nil, "", fmt.Errorf("failed loading FILELIST templates")
+		}
 	}
 
 	if errTop != nil || errMid != nil {

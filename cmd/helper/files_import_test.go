@@ -99,8 +99,13 @@ func TestLoadFileAreas(t *testing.T) {
 	areas := []file.FileArea{
 		{ID: 1, Tag: "TEST", Name: "Test Area", Path: "test"},
 	}
-	data, _ := json.MarshalIndent(areas, "", "  ")
-	os.WriteFile(filepath.Join(tmpDir, "file_areas.json"), data, 0644)
+	data, err := json.MarshalIndent(areas, "", "  ")
+	if err != nil {
+		t.Fatalf("json.MarshalIndent: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, "file_areas.json"), data, 0644); err != nil {
+		t.Fatalf("os.WriteFile: %v", err)
+	}
 
 	loaded, err := loadFileAreas(tmpDir)
 	if err != nil {

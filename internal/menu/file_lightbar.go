@@ -212,9 +212,13 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 	// Reserve rows for the separator, command bar, and optional BOT template.
 	botContent := strings.TrimRight(string(processedBotTemplate), "\r\n")
-	reservedBottom := 2 // separator + command bar
+	botLineCount := 0
 	if len(botContent) > 0 {
-		reservedBottom = 3 // separator + command bar + BOT row
+		botLineCount = len(strings.Split(botContent, "\n"))
+	}
+	reservedBottom := 2 // separator + command bar
+	if botLineCount > 0 {
+		reservedBottom = 2 + botLineCount // separator + command bar + BOT lines
 	}
 	visibleRows := termHeight - headerLines - reservedBottom - 1
 	if visibleRows < 3 {
@@ -576,12 +580,8 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	}
 
 	// Layout: separator row, then command bar, then optional BOT.
-	cmdBarRow := termHeight
-	separatorRow := termHeight - 1
-	if len(botContent) > 0 {
-		cmdBarRow = termHeight - 1
-		separatorRow = termHeight - 2
-	}
+	cmdBarRow := termHeight - botLineCount
+	separatorRow := cmdBarRow - 1
 
 	// renderSeparator draws the separator line above the command bar.
 	// Uses CP437 0xFA (·) and 0xC4 (─) to match the header separator style.
@@ -719,7 +719,9 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			// Same viewport, selection changed — redraw old/new rows; redraw TOP if page changed.
 			curPage, _ := calculatePageInfo()
 			if curPage != prevPage {
-				_ = renderTop()
+				if err := renderTop(); err != nil {
+					return nil, "", err
+				}
 			}
 			if prevSelectedIndex >= 0 && prevSelectedIndex < len(allFiles) {
 				if row, h := screenRowForFile(prevSelectedIndex); row >= 0 {

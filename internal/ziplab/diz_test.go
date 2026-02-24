@@ -103,7 +103,9 @@ func TestExtractDIZFromZip_NestedDIZ(t *testing.T) {
 func TestExtractDIZFromZip_InvalidFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	badPath := filepath.Join(tmpDir, "notazip.zip")
-	os.WriteFile(badPath, []byte("not a zip"), 0644)
+	if err := os.WriteFile(badPath, []byte("not a zip"), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
 
 	_, err := ExtractDIZFromZip(badPath)
 	if err == nil {

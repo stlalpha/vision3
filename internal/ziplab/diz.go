@@ -3,6 +3,7 @@ package ziplab
 import (
 	"archive/zip"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,9 +35,11 @@ func ExtractDIZFromZip(archivePath string) (string, error) {
 			}
 			defer rc.Close()
 
-			data := make([]byte, 10*1024)
-			n, _ := rc.Read(data)
-			return cleanDIZ(string(data[:n])), nil
+			data, readErr := io.ReadAll(io.LimitReader(rc, 10*1024))
+			if readErr != nil {
+				return "", fmt.Errorf("failed to read FILE_ID.DIZ from %s: %w", archivePath, readErr)
+			}
+			return cleanDIZ(string(data)), nil
 		}
 	}
 	return "", nil

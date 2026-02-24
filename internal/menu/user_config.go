@@ -492,14 +492,15 @@ func runCfgFileListMode(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
-	current := strings.ToLower(currentUser.FileListingMode)
-	if current != "classic" {
+	originalMode := currentUser.FileListingMode
+	if strings.ToLower(originalMode) != "classic" {
 		currentUser.FileListingMode = "classic"
 	} else {
 		currentUser.FileListingMode = "lightbar"
 	}
 
 	if err := userManager.UpdateUser(currentUser); err != nil {
+		currentUser.FileListingMode = originalMode
 		log.Printf("ERROR: Node %d: Failed to save file listing mode: %v", nodeNumber, err)
 		return currentUser, "", nil
 	}

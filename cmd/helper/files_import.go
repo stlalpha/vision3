@@ -53,8 +53,12 @@ func cmdFilesImport(args []string) {
 	}
 
 	srcInfo, err := os.Stat(*dir)
-	if err != nil || !srcInfo.IsDir() {
-		fmt.Fprintf(os.Stderr, "Error: %s is not a valid directory\n", *dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %s: %v\n", *dir, err)
+		os.Exit(1)
+	}
+	if !srcInfo.IsDir() {
+		fmt.Fprintf(os.Stderr, "Error: %s is not a directory\n", *dir)
 		os.Exit(1)
 	}
 
@@ -114,7 +118,10 @@ func cmdFilesImport(args []string) {
 		return
 	}
 
-	arcCfg, _ := archiver.LoadConfig(*configDir)
+	arcCfg, err := archiver.LoadConfig(*configDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load archiver config from %s: %v (using defaults)\n", *configDir, err)
+	}
 
 	fmt.Printf("Import to: %s (%s)\n", area.Name, area.Tag)
 	fmt.Printf("Area path: %s\n", areaDir)
@@ -288,7 +295,14 @@ func saveMetadata(areaDir string, records []file.FileRecord) error {
 	if err := os.WriteFile(tmp, data, 0644); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		if cpErr := copyFile(tmp, path); cpErr != nil {
+			os.Remove(tmp)
+			return err
+		}
+		os.Remove(tmp)
+	}
+	return nil
 }
 
 func copyFile(src, dst string) error {
