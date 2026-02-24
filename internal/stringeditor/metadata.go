@@ -304,6 +304,8 @@ func StringEntries() []StringEntry {
 		{Label: "Cfg: View RealName", Key: "cfgViewRealName", Description: "Display format for real name"},
 		{Label: "Cfg: View Phone", Key: "cfgViewPhone", Description: "Display format for phone number"},
 		{Label: "Cfg: View Note", Key: "cfgViewNote", Description: "Display format for user note"},
+		{Label: "Cfg: View FileList", Key: "cfgViewFileListMode", Description: "Display format for file listing mode"},
+		{Label: "Cfg: FileList Set", Key: "cfgFileListModeSet", Description: "Shown after changing file listing mode (%s=mode)"},
 
 		// Message Reader (V3)
 		{Label: "Msg: End of Messages", Key: "msgEndOfMessages", Description: "Shown at end of message list"},

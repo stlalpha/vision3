@@ -208,6 +208,44 @@ File listings use templates in `menus/v3/templates/`:
 |07Page ^PAGE of ^TOTALPAGES
 ```
 
+**File List Pipe Codes & Placeholders** (usable in FILELIST.TOP and FILELIST.BOT):
+
+| Code | Description |
+| ---- | ----------- |
+| `\|FCONFPATH` | Plain-text path "Conference > File Area Name" (e.g. `Local > General Files`). Colors should be applied in the template around the placeholder. Also available in menu ANSI files. |
+| `\|FPAGE` | Current page text, e.g. `Page 1 of 3` |
+| `\|FTOTAL` | Total file count in the current area |
+
+**@-placeholder formats** (visual-width preserves ANSI art layout):
+
+| Placeholder | Description |
+| ----------- | ----------- |
+| `@FCONFPATH@` | Conference path, value as-is (no width constraint) |
+| `@FCONFPATH################################@` | Conference path padded/truncated to placeholder length (34 cols in this example) |
+| `@FPAGE@` | Page text, value as-is |
+| `@FPAGE###########@` | Page text in fixed-width field (17 cols in this example) |
+| `@FTOTAL@` | File count, value as-is |
+| `@FTOTAL######@` | File count in fixed-width field (12 cols in this example) |
+
+**Alignment modifiers** (`|L` left, `|R` right, `|C` center) — same syntax as [message header placeholders](message-header-placeholders.md):
+
+| Placeholder | Description |
+| ----------- | ----------- |
+| `@FPAGE\|R#####@` | Right-justify page text (entire placeholder length = field width) |
+| `@FTOTAL\|R#@` | Right-justify file count |
+| `@FTOTAL\|C:5@` | Center file count in 5-char field (explicit `:N` width) |
+| `@FCONFPATH\|C################################@` | Center conference path |
+
+**Important:** `@-placeholders` are processed before `|pipe` codes, so `@FPAGE|R#####@` works correctly — the `|R` modifier is not consumed as a pipe code.
+
+**Example FILELIST.TOP:**
+
+```
+■ |04@FCONFPATH################################@|07 Files: |15@FTOTAL|R#@|07 @FPAGE|R#####@
+```
+
+This produces: `■ Local > General Files          Files:  1    Page 1 of 1` with colors applied by the surrounding pipe codes (`|04`, `|07`, `|15`).
+
 ### Template Variables
 
 **Area Templates:**
@@ -266,11 +304,13 @@ rm data/files/general/oldfile.zip
 
 ### Batch Import
 
-For importing many files:
+Use the `helper files import` command to bulk import files from a directory:
 
-1. Copy files to area directory
-2. Create script to generate metadata entries with UUIDs
-3. Append to existing `metadata.json`
+```bash
+./helper files import --dir /path/to/files --area GENERAL --preserve-dates
+```
+
+This automatically copies files, extracts FILE_ID.DIZ descriptions from archives, generates UUIDs, and updates `metadata.json`. See [Bulk File Import](bulk-file-import.md) for full documentation.
 
 ## Best Practices
 

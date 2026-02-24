@@ -13,6 +13,7 @@ import (
 
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/user"
+	"github.com/stlalpha/vision3/internal/version"
 )
 
 // --- NA file types ---
@@ -54,50 +55,119 @@ type ftnConfig = config.FTNConfig
 type ftnNetworkConfig = config.FTNNetworkConfig
 type linkConfig = config.FTNLinkConfig
 
+const (
+	clrReset   = "\033[0m"
+	clrCyan    = "\033[36m"
+	clrMagenta = "\033[35m"
+	clrBold    = "\033[1m"
+	separator  = "────────────────────────────────────────────────────────────────────────────"
+)
+
+func printHeader() {
+	fmt.Fprintf(os.Stderr, "%sViSiON/3 Helper Utility v%s  ·  MIT License%s\n",
+		clrBold, version.Number, clrReset)
+	fmt.Fprintln(os.Stderr, separator)
+}
+
+func bullet(msg string) string {
+	return fmt.Sprintf("%s\u25a0%s  %s%s%s", clrMagenta, clrReset, clrCyan, msg, clrReset)
+}
+
+func helpcmd(name, desc string) string {
+	return fmt.Sprintf("  %s%-20s%s - %s%s%s",
+		clrCyan, name, clrReset, clrCyan, desc, clrReset)
+}
+
+func helpopt(flag, desc string) string {
+	return fmt.Sprintf("  %s%-18s%s %s%s%s",
+		clrCyan, flag, clrReset, clrCyan, desc, clrReset)
+}
+
 func main() {
 	if len(os.Args) < 2 {
-		printUsage()
+		printUsage("")
 		os.Exit(1)
 	}
 
 	cmd := os.Args[1]
+	if cmd == "--version" || cmd == "-version" {
+		printHeader()
+		return
+	}
+	if cmd == "--help" || cmd == "-h" || cmd == "help" {
+		printUsage("")
+		return
+	}
+
 	switch cmd {
 	case "ftnsetup":
 		cmdFTNSetup(os.Args[2:])
 	case "users":
 		cmdUsers(os.Args[2:])
-	case "help", "--help", "-h":
-		printUsage()
+	case "files":
+		cmdFiles(os.Args[2:])
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown command: %s\n\n", cmd)
-		printUsage()
+		printUsage(fmt.Sprintf("Unknown command: %s", cmd))
 		os.Exit(1)
 	}
 }
 
-func printUsage() {
-	fmt.Fprintf(os.Stderr, `Usage: helper <command> [options]
-
-Commands:
-  ftnsetup    Import FTN echo areas from a FIDONET.NA file
-  users       Manage user accounts (purge, list)
-
-Run 'helper <command> --help' for command-specific options.
-`)
+func printUsage(errMsg string) {
+	w := os.Stderr
+	printHeader()
+	fmt.Fprintln(w)
+	if errMsg != "" {
+		fmt.Fprintln(w, bullet(errMsg))
+	}
+	fmt.Fprintln(w, bullet("helper needs a little more information!"))
+	fmt.Fprintln(w, bullet("Required Format: helper <command> [options]"))
+	fmt.Fprintln(w, bullet("Valid Commands Are As Follows..."))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sFTN Commands:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, helpcmd("FTNSETUP", "Import FTN echo areas from a FIDONET.NA file"))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sUser Commands:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, helpcmd("USERS PURGE", "Permanently remove soft-deleted users past retention"))
+	fmt.Fprintln(w, helpcmd("USERS LIST", "List user accounts"))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sFile Commands:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, helpcmd("FILES IMPORT", "Bulk import files from a directory into a file area"))
+	fmt.Fprintln(w, helpcmd("FILES REEXTRACTDIZ", "Re-extract FILE_ID.DIZ and update descriptions"))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sGlobal Options:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, helpopt("--config DIR", "Config directory (default: configs)"))
+	fmt.Fprintln(w, helpopt("--data DIR", "Data directory (default: data)"))
+	fmt.Fprintln(w)
 }
 
 // --- users command group ---
 
+func printUsersHelp(errMsg string) {
+	w := os.Stderr
+	printHeader()
+	fmt.Fprintln(w)
+	if errMsg != "" {
+		fmt.Fprintln(w, bullet(errMsg))
+	}
+	fmt.Fprintln(w, bullet("Required Format: helper users <subcommand> [options]"))
+	fmt.Fprintln(w, bullet("Valid Subcommands Are As Follows..."))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sUser Subcommands:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, helpcmd("PURGE", "Permanently remove soft-deleted users past retention"))
+	fmt.Fprintln(w, helpcmd("LIST", "List user accounts (optionally filtered to deleted)"))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sOptions:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, helpopt("--config DIR", "Config directory (default: configs)"))
+	fmt.Fprintln(w, helpopt("--data DIR", "Data directory (default: data/users)"))
+	fmt.Fprintln(w, helpopt("--days N", "Retention days override (purge)"))
+	fmt.Fprintln(w, helpopt("--dry-run", "Show what would happen without making changes"))
+	fmt.Fprintln(w, helpopt("--deleted", "Show only soft-deleted accounts (list)"))
+	fmt.Fprintln(w)
+}
+
 func cmdUsers(args []string) {
 	if len(args) < 1 {
-		fmt.Fprintf(os.Stderr, `Usage: helper users <subcommand> [options]
-
-Subcommands:
-  purge    Permanently remove soft-deleted users past the retention period
-  list     List users (optionally filtered to deleted accounts)
-
-Run 'helper users <subcommand> --help' for subcommand-specific options.
-`)
+		printUsersHelp("")
 		os.Exit(1)
 	}
 
@@ -108,14 +178,60 @@ Run 'helper users <subcommand> --help' for subcommand-specific options.
 	case "list":
 		cmdUsersList(args[1:])
 	case "help", "--help", "-h":
-		fmt.Fprintf(os.Stderr, `Usage: helper users <subcommand> [options]
-
-Subcommands:
-  purge    Permanently remove soft-deleted users past the retention period
-  list     List users (optionally filtered to deleted accounts)
-`)
+		printUsersHelp("")
 	default:
-		fmt.Fprintf(os.Stderr, "Unknown users subcommand: %s\n\n", sub)
+		printUsersHelp(fmt.Sprintf("Unknown subcommand: %s", sub))
+		os.Exit(1)
+	}
+}
+
+// --- files command group ---
+
+func printFilesHelp(errMsg string) {
+	w := os.Stderr
+	printHeader()
+	fmt.Fprintln(w)
+	if errMsg != "" {
+		fmt.Fprintln(w, bullet(errMsg))
+	}
+	fmt.Fprintln(w, bullet("Required Format: helper files <subcommand> [options]"))
+	fmt.Fprintln(w, bullet("Valid Subcommands Are As Follows..."))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sFile Subcommands:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, helpcmd("IMPORT", "Bulk import files from a directory into a file area"))
+	fmt.Fprintln(w, helpcmd("REEXTRACTDIZ", "Re-extract FILE_ID.DIZ and update descriptions"))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sImport Options:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, helpopt("--dir DIR", "Source directory containing files (required)"))
+	fmt.Fprintln(w, helpopt("--area TAG", "Target file area tag (required)"))
+	fmt.Fprintln(w, helpopt("--uploader NAME", "Uploader handle (default: Sysop)"))
+	fmt.Fprintln(w, helpopt("--move", "Move files instead of copying"))
+	fmt.Fprintln(w, helpopt("--preserve-dates", "Use file modification time as upload date"))
+	fmt.Fprintln(w, helpopt("--no-diz", "Skip FILE_ID.DIZ extraction from archives"))
+	fmt.Fprintln(w, helpopt("--dry-run", "Show what would happen without making changes"))
+	fmt.Fprintln(w)
+	fmt.Fprintf(w, "  %sGlobal Options:%s\n", clrBold, clrReset)
+	fmt.Fprintln(w, helpopt("--config DIR", "Config directory (default: configs)"))
+	fmt.Fprintln(w, helpopt("--data DIR", "Data directory (default: data)"))
+	fmt.Fprintln(w)
+}
+
+func cmdFiles(args []string) {
+	if len(args) < 1 {
+		printFilesHelp("")
+		os.Exit(1)
+	}
+
+	sub := args[0]
+	switch sub {
+	case "import":
+		cmdFilesImport(args[1:])
+	case "reextractdiz":
+		cmdFilesReextractDIZ(args[1:])
+	case "help", "--help", "-h":
+		printFilesHelp("")
+	default:
+		printFilesHelp(fmt.Sprintf("Unknown subcommand: %s", sub))
 		os.Exit(1)
 	}
 }

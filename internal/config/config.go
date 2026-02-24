@@ -282,6 +282,8 @@ CfgViewHotKeys         string `json:"cfgViewHotKeys"`
 	CfgViewRealName        string `json:"cfgViewRealName"`
 	CfgViewPhone           string `json:"cfgViewPhone"`
 	CfgViewNote            string `json:"cfgViewNote"`
+	CfgViewFileListMode    string `json:"cfgViewFileListMode"`
+	CfgFileListModeSet     string `json:"cfgFileListModeSet"`
 
 	// Message reader strings (V3-specific)
 	MsgEndOfMessages     string `json:"msgEndOfMessages"`

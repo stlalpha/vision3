@@ -310,7 +310,7 @@ func (p *Processor) findAndReadDIZ(workDir string) string {
 				log.Printf("WARN: found FILE_ID.DIZ but failed to read: %v", readErr)
 				return nil
 			}
-			found = strings.TrimSpace(string(data))
+			found = cleanDIZ(string(data))
 			return filepath.SkipAll
 		}
 		return nil
