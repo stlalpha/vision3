@@ -6,6 +6,7 @@ import (
 	"io"
 	"log"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -86,7 +88,7 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				log.Printf("WARN: Node %d: displayPrompt failed for SPONSORM: %v", nodeNumber, err)
 			}
 		} else {
-			prompt := fmt.Sprintf("\r\n|15[|14%s|15] Sponsor: |11E|07=Edit Area  |11Q|07=Quit: ", area.Tag)
+			prompt := fmt.Sprintf("\r\n|15[|14%s|15] Sponsor: |11E|07=Edit Area  |11[|07/|11]|07=Prev/Next Area  |11Q|07=Quit: ", area.Tag)
 			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 		}
 
@@ -123,6 +125,41 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 			if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
 				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
+			}
+
+		case int('['), int(']'):
+			forward := key == int(']')
+			sponsorAreas := getSponsorableAreasInConference(e, currentUser)
+			if len(sponsorAreas) > 1 {
+				currentIdx := -1
+				for i, a := range sponsorAreas {
+					if a.ID == currentUser.CurrentMessageAreaID {
+						currentIdx = i
+						break
+					}
+				}
+				var newIdx int
+				if currentIdx == -1 {
+					newIdx = 0
+				} else if forward {
+					newIdx = (currentIdx + 1) % len(sponsorAreas)
+				} else {
+					newIdx = (currentIdx - 1 + len(sponsorAreas)) % len(sponsorAreas)
+				}
+				newArea := sponsorAreas[newIdx]
+				currentUser.CurrentMessageAreaID = newArea.ID
+				currentUser.CurrentMessageAreaTag = newArea.Tag
+				if err := userManager.UpdateUser(currentUser); err != nil {
+					log.Printf("ERROR: Node %d: Failed to save user after sponsor area nav: %v", nodeNumber, err)
+				}
+				area = newArea
+				log.Printf("INFO: Node %d: User %s sponsor-navigated to area %d (%s)", nodeNumber, currentUser.Handle, newArea.ID, newArea.Tag)
+				if menuRec != nil && menuRec.GetClrScrBefore() {
+					_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+				}
+				if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
+					log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
+				}
 			}
 
 		case int('q'), int('Q'), 27: // ESC — clear before fallback menu loads
@@ -460,6 +497,27 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			return currentUser, "", nil
 		}
 	}
+}
+
+// getSponsorableAreasInConference returns all areas in the user's current
+// conference where the user has sponsor menu access (sysop, co-sysop, or
+// named sponsor), sorted by ID.
+func getSponsorableAreasInConference(e *MenuExecutor, currentUser *user.User) []*message.MessageArea {
+	cfg := e.GetServerConfig()
+	var result []*message.MessageArea
+	for _, area := range e.MessageMgr.ListAreas() {
+		if area.ConferenceID != currentUser.CurrentMsgConferenceID {
+			continue
+		}
+		if !CanAccessSponsorMenu(currentUser, area, cfg) {
+			continue
+		}
+		result = append(result, area)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].ID < result[j].ID
+	})
+	return result
 }
 
 // promptAreaField prints a prompt, reads a line, and returns the new value.
