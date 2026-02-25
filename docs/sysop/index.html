@@ -31,11 +31,32 @@
             },
             plugins: [
                 function(hook) {
-                    // After every page render, strip any inline styles Docsify
-                    // applied to sidebar <ul> elements to collapse sections.
-                    hook.doneEach(function() {
+                    function openAllSections() {
                         document.querySelectorAll('.sidebar-nav ul').forEach(function(el) {
                             el.removeAttribute('style');
+                        });
+                    }
+
+                    // doneEach: initial pass after every page load
+                    hook.doneEach(function() {
+                        openAllSections();
+
+                        // Attach MutationObserver once — reacts the instant Docsify
+                        // sets a style attribute on any sidebar <ul> to hide it.
+                        if (window._sidebarObserver) return;
+                        var nav = document.querySelector('.sidebar-nav');
+                        if (!nav) return;
+                        window._sidebarObserver = new MutationObserver(function(mutations) {
+                            mutations.forEach(function(m) {
+                                if (m.target.tagName === 'UL') {
+                                    m.target.removeAttribute('style');
+                                }
+                            });
+                        });
+                        window._sidebarObserver.observe(nav, {
+                            attributes: true,
+                            attributeFilter: ['style'],
+                            subtree: true,
                         });
                     });
                 }
