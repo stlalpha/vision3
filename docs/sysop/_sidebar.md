@@ -14,6 +14,7 @@
 
 * **USERS**
 * [User Management](users/user-management.md)
+* [Admin Menu](users/admin-menu.md)
 * [User Editor](users/user-editor.md)
 * [Login Sequence](users/login-sequence.md)
 * [Sponsor Menus](users/sponsor-menus.md)

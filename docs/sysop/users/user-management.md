@@ -233,14 +233,9 @@ New accounts are created with:
 - `accessLevel: 1` — minimal access level
 - `timeLimit: 60` — 60-minute time limit per call
 
-The SysOp can now validate users in-BBS from the admin menu:
+The SysOp can validate users in-BBS from the Admin Menu (`X` from MAIN → `V`). See [Admin Menu](admin-menu.md) for the full key reference.
 
-1. Go to MAIN menu and press `X` (SysOp level `s100` required)
-2. Press `V` to run user validation
-3. Select a user from the pending unvalidated user list
-4. Confirm validation (access level is set to configured regular user level)
-
-SysOp accounts now also receive an automatic notification on MAIN menu entry when there are pending unvalidated users.
+SysOp accounts also receive an automatic notification on MAIN menu entry when there are pending unvalidated users.
 
 Regular-user validation level is configurable in `configs/config.json` as `regularUserLevel` (default `10`).
 
@@ -436,15 +431,9 @@ fmt.Println(string(hash))
 
 ### Validating New Users
 
-Recommended: use the in-BBS admin menu (`X` from MAIN, then `V`) to set `validated=true` and assign access level.
+**Recommended:** use the in-BBS Admin Menu (`X` from MAIN → `V`) to validate pending accounts. The screen shows all unvalidated users with a detail panel; press `H` to toggle validation status, then `S` to save. See [Admin Menu](admin-menu.md) for all key bindings.
 
-Manual alternative: change `validated` from `false` to `true` and set appropriate `accessLevel` (typically 10) while the BBS is stopped.
-
-Additional admin actions:
-
-- `U` in ADMIN menu: set a user to unvalidated
-- `E` in ADMIN menu, then press `0`: toggle ban/unban a user
-- `E` in ADMIN menu, then press `9`: toggle delete/undelete a user (soft delete)
+**Manual alternative:** change `validated` from `false` to `true` and set appropriate `accessLevel` (typically 10) in `data/users/users.json` while the BBS is stopped.
 
 ### Banning Users
 
