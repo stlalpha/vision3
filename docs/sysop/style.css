@@ -1,0 +1,438 @@
+/* ============================================
+   ViSiON/3 Sysop Docs — Retro BBS Theme
+   Overrides for Docsify dark.css
+   ============================================ */
+
+/* ── Color palette — mirrors docs/style.css ─ */
+:root {
+    --bg-primary:    #0a0a0a;
+    --bg-secondary:  #111118;
+    --bg-card:       #15151f;
+    --text-primary:  #c8c8d4;
+    --text-secondary: #9999b0;
+    --text-heading:  #e0e0f0;
+    --blue-bright:   #4466ff;
+    --blue-glow:     #3355dd;
+    --blue-dark:     #1a1a4e;
+    --cyan-accent:   #44ccdd;
+    --border-color:  #252540;
+    --font-mono:     'IBM Plex Mono', 'Courier New', monospace;
+}
+
+/* ── Global reset ────────────────────────── */
+* { box-sizing: border-box; }
+
+body {
+    font-family: var(--font-mono) !important;
+    background-color: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+    font-size: 15px;
+    line-height: 1.75;
+}
+
+/* ── Sidebar ─────────────────────────────── */
+.sidebar {
+    background-color: var(--bg-secondary) !important;
+    border-right: 1px solid var(--border-color) !important;
+    padding: 0 !important;
+    overflow-x: hidden;
+}
+
+/* Scanline effect on sidebar only */
+.sidebar::after {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 300px;
+    height: 100vh;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+        to bottom,
+        transparent,
+        transparent 2px,
+        rgba(0, 0, 0, 0.08) 2px,
+        rgba(0, 0, 0, 0.08) 4px
+    );
+    z-index: 10;
+}
+
+/* Site name / logo area */
+.sidebar > h1, .app-name {
+    font-family: var(--font-mono) !important;
+    font-size: 0.95rem !important;
+    font-weight: 700 !important;
+    padding: 1.2rem 1rem !important;
+    margin: 0 !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    color: var(--text-heading) !important;
+    letter-spacing: 0.05em;
+    background-color: var(--bg-secondary) !important;
+}
+
+.app-name-link {
+    color: var(--text-heading) !important;
+    text-decoration: none !important;
+}
+
+.app-name-link:hover {
+    color: var(--cyan-accent) !important;
+}
+
+/* BBS key style brackets in app name */
+.nav-bracket {
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+.nav-key {
+    color: var(--cyan-accent);
+    font-weight: 700;
+}
+
+/* Sidebar nav tree */
+.sidebar-nav {
+    padding: 0.5rem 0 !important;
+}
+
+.sidebar-nav ul {
+    list-style: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+.sidebar-nav > ul > li {
+    margin: 0 !important;
+}
+
+/* Section headers (bold items = category labels) */
+.sidebar-nav ul > li > p,
+.sidebar-nav ul > li > strong {
+    display: block;
+    font-size: 0.7rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--text-secondary) !important;
+    padding: 0.85rem 1rem 0.25rem 1rem;
+    margin: 0;
+    border-top: 1px solid var(--border-color);
+}
+
+.sidebar-nav ul > li:first-child > p,
+.sidebar-nav ul > li:first-child > strong {
+    border-top: none;
+}
+
+/* Nav links */
+.sidebar-nav a {
+    display: block;
+    font-size: 0.82rem !important;
+    color: var(--text-secondary) !important;
+    text-decoration: none !important;
+    padding: 0.2rem 1rem 0.2rem 1.5rem !important;
+    transition: color 0.1s, background-color 0.1s;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-nav a:hover {
+    color: var(--cyan-accent) !important;
+    background-color: rgba(68, 204, 221, 0.06) !important;
+}
+
+.sidebar-nav a.active {
+    color: var(--blue-bright) !important;
+    font-weight: 600 !important;
+    background-color: rgba(68, 102, 255, 0.10) !important;
+    border-left: 2px solid var(--blue-bright);
+    padding-left: calc(1.5rem - 2px) !important;
+}
+
+/* Nested nav items */
+.sidebar-nav ul ul a {
+    padding-left: 2rem !important;
+    font-size: 0.78rem !important;
+}
+
+.sidebar-nav ul ul a.active {
+    padding-left: calc(2rem - 2px) !important;
+}
+
+/* ── Search box ──────────────────────────── */
+.search {
+    border-bottom: 1px solid var(--border-color) !important;
+    padding: 0.6rem 0.8rem !important;
+    background-color: var(--bg-secondary) !important;
+}
+
+.search input {
+    font-family: var(--font-mono) !important;
+    font-size: 0.78rem !important;
+    background-color: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+    border: 1px solid var(--border-color) !important;
+    border-radius: 0 !important;
+    padding: 0.35rem 0.6rem !important;
+    outline: none !important;
+    width: 100% !important;
+    transition: border-color 0.15s;
+}
+
+.search input:focus {
+    border-color: var(--blue-bright) !important;
+}
+
+.search input::placeholder {
+    color: var(--text-secondary) !important;
+}
+
+/* ── Main content area ───────────────────── */
+.content {
+    background-color: var(--bg-primary) !important;
+    max-width: 860px;
+}
+
+section.cover, .markdown-section {
+    background-color: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
+    padding: 2rem 2.5rem !important;
+    max-width: 860px;
+}
+
+/* ── Typography ──────────────────────────── */
+.markdown-section h1,
+.markdown-section h2,
+.markdown-section h3,
+.markdown-section h4 {
+    font-family: var(--font-mono) !important;
+    color: var(--text-heading) !important;
+    font-weight: 700;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+    border: none;
+}
+
+.markdown-section h1 {
+    font-size: 1.5rem !important;
+    color: var(--cyan-accent) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding-bottom: 0.5rem;
+}
+
+.markdown-section h2 {
+    font-size: 1.15rem !important;
+    color: var(--blue-bright) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+    padding-bottom: 0.3rem;
+}
+
+.markdown-section h3 {
+    font-size: 1rem !important;
+    color: var(--text-heading) !important;
+}
+
+.markdown-section p {
+    color: var(--text-primary) !important;
+    margin-bottom: 1rem;
+    line-height: 1.8;
+}
+
+.markdown-section a {
+    color: var(--blue-bright) !important;
+    text-decoration: none !important;
+    border-bottom: 1px solid rgba(68, 102, 255, 0.3);
+    transition: color 0.1s, border-color 0.1s;
+}
+
+.markdown-section a:hover {
+    color: var(--cyan-accent) !important;
+    border-bottom-color: var(--cyan-accent);
+}
+
+/* ── Code blocks ─────────────────────────── */
+.markdown-section code {
+    font-family: var(--font-mono) !important;
+    font-size: 0.85em;
+    background-color: var(--bg-card) !important;
+    color: var(--cyan-accent) !important;
+    padding: 0.15em 0.4em;
+    border: 1px solid var(--border-color);
+    border-radius: 0;
+}
+
+.markdown-section pre {
+    background-color: #0d0d1a !important;
+    border: 1px solid var(--border-color) !important;
+    border-left: 3px solid var(--blue-bright) !important;
+    border-radius: 0 !important;
+    padding: 1rem 1.25rem !important;
+    overflow-x: auto;
+    margin: 1.25rem 0;
+}
+
+.markdown-section pre code {
+    background: none !important;
+    border: none !important;
+    padding: 0 !important;
+    color: var(--text-primary) !important;
+    font-size: 0.85rem;
+    line-height: 1.6;
+}
+
+/* ── Tables ──────────────────────────────── */
+.markdown-section table {
+    border-collapse: collapse !important;
+    width: 100%;
+    margin: 1.25rem 0;
+    font-size: 0.85rem;
+}
+
+.markdown-section th {
+    background-color: var(--bg-card) !important;
+    color: var(--text-heading) !important;
+    font-weight: 700;
+    text-align: left;
+    padding: 0.5rem 0.75rem !important;
+    border: 1px solid var(--border-color) !important;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+}
+
+.markdown-section td {
+    padding: 0.45rem 0.75rem !important;
+    border: 1px solid var(--border-color) !important;
+    color: var(--text-primary) !important;
+    vertical-align: top;
+}
+
+.markdown-section tr:nth-child(even) td {
+    background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* ── Blockquotes ─────────────────────────── */
+.markdown-section blockquote {
+    background-color: var(--bg-card) !important;
+    border-left: 3px solid var(--cyan-accent) !important;
+    margin: 1.25rem 0 !important;
+    padding: 0.75rem 1rem !important;
+    color: var(--text-secondary) !important;
+}
+
+.markdown-section blockquote p {
+    color: var(--text-secondary) !important;
+    margin: 0 !important;
+}
+
+/* ── Lists ───────────────────────────────── */
+.markdown-section ul,
+.markdown-section ol {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+    color: var(--text-primary);
+}
+
+.markdown-section li {
+    margin-bottom: 0.25rem;
+    line-height: 1.75;
+}
+
+/* ── Horizontal rule ─────────────────────── */
+.markdown-section hr {
+    border: none !important;
+    border-top: 1px solid var(--border-color) !important;
+    margin: 2rem 0;
+}
+
+/* ── Navbar (top) ────────────────────────── */
+.app-nav {
+    background-color: var(--bg-secondary) !important;
+    border-bottom: 1px solid var(--border-color) !important;
+}
+
+.app-nav a {
+    font-family: var(--font-mono) !important;
+    font-size: 0.8rem !important;
+    color: var(--text-secondary) !important;
+}
+
+.app-nav a:hover {
+    color: var(--cyan-accent) !important;
+}
+
+/* ── GitHub corner ───────────────────────── */
+.github-corner svg {
+    fill: var(--blue-dark) !important;
+    color: var(--bg-secondary) !important;
+}
+
+.github-corner:hover svg {
+    fill: var(--blue-bright) !important;
+}
+
+/* ── Prev/Next page nav ──────────────────── */
+.docsify-pagination-container {
+    border-top: 1px solid var(--border-color) !important;
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+.pagination-item a {
+    font-family: var(--font-mono) !important;
+    font-size: 0.82rem;
+    color: var(--blue-bright) !important;
+    text-decoration: none !important;
+}
+
+.pagination-item a:hover {
+    color: var(--cyan-accent) !important;
+}
+
+/* ── Sidebar toggle button (mobile) ──────── */
+.sidebar-toggle {
+    background-color: var(--bg-secondary) !important;
+    border-right: 1px solid var(--border-color) !important;
+}
+
+.sidebar-toggle span {
+    background-color: var(--text-secondary) !important;
+}
+
+/* ── Scrollbar ───────────────────────────── */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--border-color);
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--blue-dark);
+}
+
+/* ── Back-to-top link ────────────────────── */
+.back-to-top {
+    background-color: var(--blue-bright) !important;
+    color: #fff !important;
+    border-radius: 0 !important;
+}
+
+/* ── Mobile responsive ───────────────────── */
+@media (max-width: 768px) {
+    .markdown-section {
+        padding: 1.25rem 1rem !important;
+    }
+
+    .sidebar::after {
+        width: 100vw;
+    }
+}
