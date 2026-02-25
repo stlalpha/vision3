@@ -565,8 +565,13 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if !dirty {
 				return currentUser, "", nil
 			}
-			// Capture previous area so we can roll back in-memory state if SaveAreas fails.
-			prevArea, _ := e.MessageMgr.GetAreaByID(edited.ID)
+			// Capture a value snapshot for rollback before applying the update.
+			var prevAreaSnapshot message.MessageArea
+			hasPrevArea := false
+			if prevArea, ok := e.MessageMgr.GetAreaByID(edited.ID); ok && prevArea != nil {
+				prevAreaSnapshot = *prevArea
+				hasPrevArea = true
+			}
 			if updateErr := e.MessageMgr.UpdateAreaByID(edited.ID, edited); updateErr != nil {
 				log.Printf("ERROR: Node %d: Failed to update area: %v", nodeNumber, updateErr)
 				msg := "|01Error updating area — changes may be lost.|07\r\n"
@@ -582,8 +587,8 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(2 * time.Second)
 				// Roll back in-memory state so edited state is not left applied without disk persist.
-				if prevArea != nil {
-					_ = e.MessageMgr.UpdateAreaByID(edited.ID, *prevArea)
+				if hasPrevArea {
+					_ = e.MessageMgr.UpdateAreaByID(edited.ID, prevAreaSnapshot)
 				}
 			} else {
 				log.Printf("INFO: Node %d: User %s saved area %s", nodeNumber, currentUser.Handle, edited.Tag)
