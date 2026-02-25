@@ -87,7 +87,7 @@ vision3/
 Create the required directory structure:
 
 ```bash
-mkdir -p data/ftn/{in,secure_in,temp_in,temp_out,out,logs}
+mkdir -p data/ftn/{in,secure_in,temp_in,temp_out,out} data/logs
 ```
 
 ### Step 2: Set Up Your FTN Mailer
