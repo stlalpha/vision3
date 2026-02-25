@@ -3250,8 +3250,9 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 		writeErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		if writeErr != nil {
 			log.Printf("ERROR: Failed writing displayFile error message: %v", writeErr)
+			return fmt.Errorf("read: %w; write error: %w", err, writeErr)
 		}
-		return writeErr
+		return err
 	}
 	if len(clearFirst) > 0 && clearFirst[0] {
 		data = append([]byte(ansi.ClearScreen()), data...)

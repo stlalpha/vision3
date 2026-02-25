@@ -41,7 +41,10 @@ func TestEditAreaRoundTrip(t *testing.T) {
 	}
 
 	areasFile := filepath.Join(configDir, "message_areas.json")
-	data, _ := json.MarshalIndent(initial, "", "  ")
+	data, err := json.MarshalIndent(initial, "", "  ")
+	if err != nil {
+		t.Fatalf("marshal initial areas: %v", err)
+	}
 	if err := os.WriteFile(areasFile, data, 0644); err != nil {
 		t.Fatalf("write initial areas: %v", err)
 	}
@@ -50,6 +53,7 @@ func TestEditAreaRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMessageManager: %v", err)
 	}
+	defer mm.Close()
 
 	// Mutate: assign a sponsor to GENERAL and update TECH's name.
 	// Use UpdateAreaByID (not direct pointer modification) per API contract.
@@ -84,6 +88,7 @@ func TestEditAreaRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewMessageManager (reload): %v", err)
 	}
+	defer mm2.Close()
 
 	// Verify GENERAL.
 	g2, ok := mm2.GetAreaByID(1)
@@ -128,27 +133,41 @@ func TestEditAreaRoundTrip(t *testing.T) {
 func TestSaveAreasPreservesOrder(t *testing.T) {
 	tmpDir := t.TempDir()
 	configDir := filepath.Join(tmpDir, "config")
-	os.MkdirAll(configDir, 0755)
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("MkdirAll config: %v", err)
+	}
 
 	areas := []*MessageArea{
 		{ID: 3, Tag: "THIRD", Name: "Third", BasePath: "msgbases/third", AreaType: "local"},
 		{ID: 1, Tag: "FIRST", Name: "First", BasePath: "msgbases/first", AreaType: "local"},
 		{ID: 2, Tag: "SECOND", Name: "Second", BasePath: "msgbases/second", AreaType: "local"},
 	}
-	data, _ := json.MarshalIndent(areas, "", "  ")
-	os.WriteFile(filepath.Join(configDir, "message_areas.json"), data, 0644)
+	data, err := json.MarshalIndent(areas, "", "  ")
+	if err != nil {
+		t.Fatalf("MarshalIndent areas: %v", err)
+	}
+	areasFile := filepath.Join(configDir, "message_areas.json")
+	if err := os.WriteFile(areasFile, data, 0644); err != nil {
+		t.Fatalf("WriteFile message_areas.json: %v", err)
+	}
 
 	mm, err := NewMessageManager(tmpDir, configDir, "TestBBS", nil)
 	if err != nil {
 		t.Fatalf("NewMessageManager: %v", err)
 	}
+	defer mm.Close()
 	if err := mm.SaveAreas(); err != nil {
 		t.Fatalf("SaveAreas: %v", err)
 	}
 
-	raw, _ := os.ReadFile(filepath.Join(configDir, "message_areas.json"))
+	raw, err := os.ReadFile(areasFile)
+	if err != nil {
+		t.Fatalf("ReadFile saved areas: %v", err)
+	}
 	var saved []*MessageArea
-	json.Unmarshal(raw, &saved)
+	if err := json.Unmarshal(raw, &saved); err != nil {
+		t.Fatalf("Unmarshal saved areas: %v", err)
+	}
 
 	for i, a := range saved {
 		expected := i + 1

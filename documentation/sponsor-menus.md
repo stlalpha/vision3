@@ -48,8 +48,8 @@ From the **Messages Menu**, press `%` to enter the Sponsor Menu for the currentl
 
 The `SPONSORM.ANS` header is displayed, followed by a prompt:
 
-```
-[TECH] Sponsor: E=Edit Area  Q=Quit:
+```text
+[TECH] Sponsor: E=Edit Area  [/]=Prev/Next Area  Q=Quit:
 ```
 
 ### Sponsor Menu Keys
@@ -63,7 +63,7 @@ The `SPONSORM.ANS` header is displayed, followed by a prompt:
 
 Press `E` from the Sponsor Menu to open the area editor. The current field values are displayed:
 
-```
+```text
 Edit Area: TECH
 ────────────────────────────────────────────────────
 N) Name         : Tech Talk
@@ -91,7 +91,7 @@ Edit (N/D/R/W/S/M)  Q=Save  ESC=Cancel:
 
 Press the field's letter. The current value is shown in brackets:
 
-```
+```text
 Name [Tech Talk]:
 ```
 
@@ -103,7 +103,7 @@ Name [Tech Talk]:
 
 When editing the Sponsor (`S`) field, the entered handle is validated against the user database. If no user with that handle exists, the change is rejected:
 
-```
+```text
 User 'Nobody' not found — sponsor unchanged.
 ```
 
@@ -122,7 +122,7 @@ Changes are written atomically using a temporary file rename, so a crash or disc
 
 The Sponsor Menu header is loaded from:
 
-```
+```text
 menus/v3/ansi/SPONSORM.ANS
 ```
 
@@ -144,7 +144,7 @@ The `%` key is wired in `menus/v3/cfg/MSGMENU.CFG`:
 
 The entry is `"HIDDEN": true` so it does not appear in the Messages Menu listing. It is accessible only to those who know the `%` shortcut (sysops can communicate this to their sponsors).
 
-The sponsor sub-menu is defined in `menus/v3/cfg/SPONSORM.CFG`:
+The sponsor sub-menu is defined in `menus/v3/cfg/SPONSORM.CFG`. The shipped config includes area-navigation keys `[` (previous area) and `]` (next area) in addition to E and Q:
 
 ```json
 [
@@ -154,6 +154,20 @@ The sponsor sub-menu is defined in `menus/v3/cfg/SPONSORM.CFG`:
     "ACS": "*",
     "HIDDEN": false,
     "NODE_ACTIVITY": "Editing Message Area"
+  },
+  {
+    "KEYS": "[",
+    "CMD": "RUN:SPONSORPREVAREA",
+    "ACS": "*",
+    "HIDDEN": false,
+    "NODE_ACTIVITY": "Browsing Message Areas"
+  },
+  {
+    "KEYS": "]",
+    "CMD": "RUN:SPONSORNEXTAREA",
+    "ACS": "*",
+    "HIDDEN": false,
+    "NODE_ACTIVITY": "Browsing Message Areas"
   },
   {
     "KEYS": "Q",

@@ -169,6 +169,17 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 }
 
+// allowAnonEqual reports whether two *bool AllowAnon values are equal (both nil, or both non-nil with same value).
+func allowAnonEqual(a, b *bool) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return *a == *b
+}
+
 // runSponsorEditArea is the handler for RUN:SPONSOREDITAREA.
 //
 // Sequential field editor for the current message area. All MessageArea fields
@@ -269,35 +280,50 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		switch key {
 		case int('t'), int('T'):
-			dirty = true
-			edited.Tag = promptAreaField(s, terminal, outputMode, "Tag", edited.Tag, 32)
+			newVal := promptAreaField(s, terminal, outputMode, "Tag", edited.Tag, 32)
+			if newVal != edited.Tag {
+				dirty = true
+				edited.Tag = newVal
+			}
 			showFields()
 
 		case int('n'), int('N'):
-			dirty = true
-			edited.Name = promptAreaField(s, terminal, outputMode, "Name", edited.Name, 60)
+			newVal := promptAreaField(s, terminal, outputMode, "Name", edited.Name, 60)
+			if newVal != edited.Name {
+				dirty = true
+				edited.Name = newVal
+			}
 			showFields()
 
 		case int('d'), int('D'):
-			dirty = true
-			edited.Description = promptAreaField(s, terminal, outputMode,
+			newVal := promptAreaField(s, terminal, outputMode,
 				"Description", edited.Description, 80)
+			if newVal != edited.Description {
+				dirty = true
+				edited.Description = newVal
+			}
 			showFields()
 
 		case int('r'), int('R'):
-			dirty = true
-			edited.ACSRead = promptAreaField(s, terminal, outputMode,
+			newVal := promptAreaField(s, terminal, outputMode,
 				"ACS Read", edited.ACSRead, 40)
+			if newVal != edited.ACSRead {
+				dirty = true
+				edited.ACSRead = newVal
+			}
 			showFields()
 
 		case int('w'), int('W'):
-			dirty = true
-			edited.ACSWrite = promptAreaField(s, terminal, outputMode,
+			newVal := promptAreaField(s, terminal, outputMode,
 				"ACS Write", edited.ACSWrite, 40)
+			if newVal != edited.ACSWrite {
+				dirty = true
+				edited.ACSWrite = newVal
+			}
 			showFields()
 
 		case int('s'), int('S'):
-			dirty = true
+			prevSponsor := edited.Sponsor
 			newHandle := promptAreaField(s, terminal, outputMode,
 				"Sponsor handle (- to clear)", edited.Sponsor, 30)
 			switch {
@@ -317,10 +343,13 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					edited.Sponsor = newHandle
 				}
 			}
+			if edited.Sponsor != prevSponsor {
+				dirty = true
+			}
 			showFields()
 
 		case int('m'), int('M'):
-			dirty = true
+			prevMax := edited.MaxMessages
 			raw := promptAreaField(s, terminal, outputMode,
 				"Max Messages (0=unlimited)", fmt.Sprintf("%d", edited.MaxMessages), 10)
 			if raw != "" {
@@ -334,10 +363,13 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					time.Sleep(1 * time.Second)
 				}
 			}
+			if edited.MaxMessages != prevMax {
+				dirty = true
+			}
 			showFields()
 
 		case int('g'), int('G'):
-			dirty = true
+			prevMaxAge := edited.MaxAge
 			raw := promptAreaField(s, terminal, outputMode,
 				"Max Age days (0=unlimited)", fmt.Sprintf("%d", edited.MaxAge), 6)
 			if raw != "" {
@@ -351,10 +383,13 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					time.Sleep(1 * time.Second)
 				}
 			}
+			if edited.MaxAge != prevMaxAge {
+				dirty = true
+			}
 			showFields()
 
 		case int('a'), int('A'):
-			dirty = true
+			prevAllowAnon := edited.AllowAnon
 			cur := "default"
 			if edited.AllowAnon != nil {
 				if *edited.AllowAnon {
@@ -382,10 +417,13 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					time.Sleep(1 * time.Second)
 				}
 			}
+			if !allowAnonEqual(prevAllowAnon, edited.AllowAnon) {
+				dirty = true
+			}
 			showFields()
 
 		case int('l'), int('L'):
-			dirty = true
+			prevRealName := edited.RealNameOnly
 			cur := "no"
 			if edited.RealNameOnly {
 				cur = "yes"
@@ -396,10 +434,13 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if raw != "" {
 				edited.RealNameOnly = strings.HasPrefix(raw, "y") || raw == "1" || raw == "true"
 			}
+			if edited.RealNameOnly != prevRealName {
+				dirty = true
+			}
 			showFields()
 
 		case int('j'), int('J'):
-			dirty = true
+			prevAutoJoin := edited.AutoJoin
 			cur := "no"
 			if edited.AutoJoin {
 				cur = "yes"
@@ -410,10 +451,13 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if raw != "" {
 				edited.AutoJoin = strings.HasPrefix(raw, "y") || raw == "1" || raw == "true"
 			}
+			if edited.AutoJoin != prevAutoJoin {
+				dirty = true
+			}
 			showFields()
 
 		case int('c'), int('C'):
-			dirty = true
+			prevConfID := edited.ConferenceID
 			raw := promptAreaField(s, terminal, outputMode,
 				"Conference ID (0=ungrouped)", fmt.Sprintf("%d", edited.ConferenceID), 6)
 			if raw != "" {
@@ -427,42 +471,92 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					time.Sleep(1 * time.Second)
 				}
 			}
+			if edited.ConferenceID != prevConfID {
+				dirty = true
+			}
 			showFields()
 
 		case int('b'), int('B'):
-			dirty = true
-			edited.BasePath = promptAreaField(s, terminal, outputMode,
+			if currentUser.AccessLevel < cfg.CoSysOpLevel {
+				msg := "|01Base Path — sysop/co-sysop only.|07\r\n"
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				time.Sleep(1 * time.Second)
+				break
+			}
+			newVal := promptAreaField(s, terminal, outputMode,
 				"Base Path", edited.BasePath, 80)
+			if newVal != edited.BasePath {
+				dirty = true
+				edited.BasePath = newVal
+			}
 			showFields()
 
 		case int('y'), int('Y'):
-			dirty = true
-			edited.AreaType = promptAreaField(s, terminal, outputMode,
+			if currentUser.AccessLevel < cfg.CoSysOpLevel {
+				msg := "|01Area Type — sysop/co-sysop only.|07\r\n"
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				time.Sleep(1 * time.Second)
+				break
+			}
+			newVal := promptAreaField(s, terminal, outputMode,
 				"Area Type (local/echomail/netmail)", edited.AreaType, 16)
+			if newVal != edited.AreaType {
+				dirty = true
+				edited.AreaType = newVal
+			}
 			showFields()
 
 		case int('e'), int('E'):
-			dirty = true
-			edited.EchoTag = promptAreaField(s, terminal, outputMode,
+			if currentUser.AccessLevel < cfg.CoSysOpLevel {
+				msg := "|01Echo Tag — sysop/co-sysop only.|07\r\n"
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				time.Sleep(1 * time.Second)
+				break
+			}
+			newVal := promptAreaField(s, terminal, outputMode,
 				"Echo Tag", edited.EchoTag, 32)
+			if newVal != edited.EchoTag {
+				dirty = true
+				edited.EchoTag = newVal
+			}
 			showFields()
 
 		case int('o'), int('O'):
-			dirty = true
-			edited.OriginAddr = promptAreaField(s, terminal, outputMode,
+			if currentUser.AccessLevel < cfg.CoSysOpLevel {
+				msg := "|01Origin Address — sysop/co-sysop only.|07\r\n"
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				time.Sleep(1 * time.Second)
+				break
+			}
+			newVal := promptAreaField(s, terminal, outputMode,
 				"Origin Address", edited.OriginAddr, 32)
+			if newVal != edited.OriginAddr {
+				dirty = true
+				edited.OriginAddr = newVal
+			}
 			showFields()
 
 		case int('k'), int('K'):
-			dirty = true
-			edited.Network = promptAreaField(s, terminal, outputMode,
+			if currentUser.AccessLevel < cfg.CoSysOpLevel {
+				msg := "|01Network — sysop/co-sysop only.|07\r\n"
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				time.Sleep(1 * time.Second)
+				break
+			}
+			newVal := promptAreaField(s, terminal, outputMode,
 				"Network", edited.Network, 32)
+			if newVal != edited.Network {
+				dirty = true
+				edited.Network = newVal
+			}
 			showFields()
 
 		case int('q'), int('Q'): // Q = save and quit (no-op if nothing changed)
 			if !dirty {
 				return currentUser, "", nil
 			}
+			// Capture previous area so we can roll back in-memory state if SaveAreas fails.
+			prevArea, _ := e.MessageMgr.GetAreaByID(edited.ID)
 			if updateErr := e.MessageMgr.UpdateAreaByID(edited.ID, edited); updateErr != nil {
 				log.Printf("ERROR: Node %d: Failed to update area: %v", nodeNumber, updateErr)
 				msg := "|01Error updating area — changes may be lost.|07\r\n"
@@ -477,6 +571,10 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				_ = terminalio.WriteProcessedBytes(terminal,
 					ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(2 * time.Second)
+				// Roll back in-memory state so edited state is not left applied without disk persist.
+				if prevArea != nil {
+					_ = e.MessageMgr.UpdateAreaByID(edited.ID, *prevArea)
+				}
 			} else {
 				log.Printf("INFO: Node %d: User %s saved area %s", nodeNumber, currentUser.Handle, edited.Tag)
 				msg := fmt.Sprintf("|02Area |14%s|02 saved.|07\r\n", edited.Tag)
