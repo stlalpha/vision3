@@ -71,7 +71,7 @@ Opens a lightbar browser showing only **unvalidated** user accounts. The lower h
 Changes to individual fields are **staged** (shown with a `*` prefix). Nothing is written to disk until you press `S`. Pressing `Q` with unsaved changes will warn rather than exit.
 
 > **Validation behaviour:** When `H` is used to validate a user whose access level is currently 0, the level is automatically raised to `regularUserLevel` (configured in `config.json`, default 10).
-
+>
 > **User #1 protection:** The primary SysOp account (user ID 1) cannot be unvalidated, banned, or deleted through any admin screen.
 
 ---
