@@ -29,7 +29,17 @@
                 noData: 'No results.',
                 depth: 3,
             },
-            plugins: [],
+            plugins: [
+                function(hook) {
+                    // After every page render, strip any inline styles Docsify
+                    // applied to sidebar <ul> elements to collapse sections.
+                    hook.doneEach(function() {
+                        document.querySelectorAll('.sidebar-nav ul').forEach(function(el) {
+                            el.removeAttribute('style');
+                        });
+                    });
+                }
+            ],
         };
     </script>
     <!-- Docsify -->
