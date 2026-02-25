@@ -7,7 +7,7 @@
 Get ViSiON/3 running on your system.
 
 - **[Installation](installation.md)** — download a pre-built release, or build from source
-- **[Docker Deployment](docker.md)** — recommended containerized setup via docker-compose
+- **[Docker Deployment](docker.md)** — recommended containerized setup via Docker Compose
 
 ---
 

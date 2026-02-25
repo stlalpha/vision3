@@ -159,8 +159,7 @@ Each line has an echo tag followed by a description.
 2. Creates a conference entry in `conferences.json` for the network (if one
    doesn't exist)
 3. Adds echomail area entries to `message_areas.json` for each echo tag
-4. Updates `ftn.json` with network and link configuration (note: mostly unused until
-   internal tosser is implemented; currently only `tearline` field is active)
+4. Updates `ftn.json` with network and link configuration
 5. Skips any echo tags that already exist (safe to re-run with updated NA files)
 
 **Tip:** Use `--dry-run` first to preview what will be changed:
@@ -520,7 +519,7 @@ To add another FTN network (e.g., AgoraNet alongside fsxNet):
   --network agoranet
 ```
 
-1. Add the new domain, address, and node to `binkd.conf`:
+3. Add the new domain, address, and node to `binkd.conf`:
 
 ```conf
 domain agoranet /home/bbs/vision3/data/ftn/out 46
@@ -528,7 +527,7 @@ address 46:1/100.1@agoranet
 node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 ```
 
-1. Restart binkd
+4. Restart binkd
 
 ## Troubleshooting
 

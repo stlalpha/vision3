@@ -119,9 +119,14 @@ cd vision3
 
 ### 2. Run the Setup Script
 
+**Linux / macOS:**
 ```bash
-./setup.sh          # Linux/macOS
-.\setup.ps1         # Windows (PowerShell)
+./setup.sh
+```
+
+**Windows (PowerShell):**
+```powershell
+.\setup.ps1
 ```
 
 This will:

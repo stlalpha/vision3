@@ -142,8 +142,8 @@ The system creates a default user on first run:
 Users are added through:
 
 1. New user application (type "new" at login screen)
-2. Manual editing of `users.json` (not recommended)
-3. Future: In-BBS user editor
+2. The `ue` TUI user editor (see [User Editor](user-editor.md))
+3. Manual editing of `users.json` (not recommended)
 
 When adding users manually, ensure:
 
@@ -416,17 +416,23 @@ The access level threshold is driven by `coSysOpLevel` in `configs/config.json` 
 
 Since passwords are hashed, you cannot recover them. To reset:
 
-1. Generate a new bcrypt hash using an external tool or script
-2. Update the `passwordHash` field in `users.json`
-3. Inform the user of their new password
+**Option 1 — `ue` TUI (recommended):** Run `./ue` from the BBS root, select the user, and use the password reset field. See [User Editor](user-editor.md).
 
-Example using Go:
+**Option 2 — manual JSON edit:**
+
+1. Generate a new bcrypt hash:
 
 ```go
 password := "newpassword"
-hash, _ := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+if err != nil {
+    log.Fatal(err)
+}
 fmt.Println(string(hash))
 ```
+
+2. Update the `passwordHash` field in `users.json`
+3. Inform the user of their new password
 
 ### Validating New Users
 
@@ -601,8 +607,7 @@ Increase `accessLevel` and/or add appropriate flags.
 
 The following user management features are planned:
 
-- Full in-BBS user editor
-- Password change function
+- Password change function (self-service from within BBS)
 - Import/export tools
 - User statistics and reports
 - Time bank system

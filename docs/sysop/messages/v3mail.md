@@ -25,7 +25,7 @@
 
 ## Global Options
 
-```
+```text
 --all           Operate on all areas defined in configs/message_areas.json
 --config DIR    Path to config directory (default: configs)
 --data DIR      Path to data directory (default: data)
@@ -34,7 +34,7 @@
 
 ## FTN-Specific Options
 
-```
+```text
 --network NAME  Restrict toss/scan/ftn-pack to a single FTN network name
                 (default: all networks with internal_tosser_enabled: true)
 ```
@@ -89,7 +89,7 @@ Per-link fields:
 
 ## How Echomail Flow Works
 
-```
+```text
 Inbound:
   binkd → secure_in/ → v3mail toss → JAM bases → Vision/3 users
 
@@ -118,14 +118,13 @@ The recommended nightly sequence (configured via the event scheduler):
 
 ## Event Scheduler Integration
 
-`v3mail` is designed to run as scheduled events. See `configs/events.json` and `documentation/event-scheduler.md` for full examples. A typical configuration:
+`v3mail` is designed to run as scheduled events. See `configs/events.json` and [Event Scheduler](../advanced/event-scheduler.md) for full examples. A typical configuration:
 
 ```json
 {
   "id": "v3mail_toss",
-  "command": "/usr/bin/go",
-  "args": ["run", "{BBS_ROOT}/cmd/v3mail", "toss",
-           "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
+  "command": "{BBS_ROOT}/v3mail",
+  "args": ["toss", "--config", "{BBS_ROOT}/configs", "--data", "{BBS_ROOT}/data"],
   "schedule": "@hourly"
 }
 ```
