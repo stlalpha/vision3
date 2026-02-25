@@ -1,6 +1,6 @@
 # ViSiON/3 Sysop Documentation
 
-Welcome, sysop. This wiki covers everything you need to install, configure, and run a ViSiON/3 BBS.
+Welcome, SysOp. This wiki covers everything you need to install, configure, and run a l33t ViSiON/3 BBS like it's 1992 all over again.
 
 ---
 
