@@ -64,28 +64,50 @@ The `SPONSORM.ANS` header is displayed, followed by a prompt:
 Press `E` from the Sponsor Menu to open the area editor. The current field values are displayed:
 
 ```text
-Edit Area: TECH
+Edit Area: TECH (ID 3)
 ────────────────────────────────────────────────────
-N) Name         : Tech Talk
-D) Description  : Technology discussion
-R) ACS Read     : S10
-W) ACS Write    : S10
-S) Sponsor      : TechGuru
-M) Max Messages : 0
+T) Tag           : TECH
+N) Name          : Tech Talk
+D) Description   : Technology discussion
+R) ACS Read      : S10
+W) ACS Write     : S10
+S) Sponsor       : TechGuru
+M) Max Messages  : 0
+G) Max Age (days): 0
+A) Allow Anon    : default
+L) Real Name Only: false
+J) Auto Join     : false
+C) Conference ID : 0
+B) Base Path     : msgbases/tech
+Y) Area Type     : local
+E) Echo Tag      :
+O) Origin Addr   :
+K) Network       :
 ────────────────────────────────────────────────────
-Edit (N/D/R/W/S/M)  Q=Save  ESC=Cancel:
+Edit (T N D R W S M G A L J C B Y E O K)  Q=Save/Quit  ESC=Cancel:
 ```
 
 ### Field Reference
 
-| Key | Field | Max Length | Notes |
-|-----|-------|-----------|-------|
-| `N` | Name | 60 chars | Display name shown in area lists |
-| `D` | Description | 80 chars | Longer description |
-| `R` | ACS Read | 40 chars | ACS string required to read (empty = public) |
-| `W` | ACS Write | 40 chars | ACS string required to post (empty = all) |
-| `S` | Sponsor | 30 chars | Handle of area sponsor; enter `-` to clear |
-| `M` | Max Messages | integer | Maximum messages to retain (0 = unlimited) |
+| Key | Field | Max Length | Access | Notes |
+|-----|-------|-----------|--------|-------|
+| `T` | Tag | 32 chars | Co-SysOp+ | Area tag used in routing; changing may break FTN echomail references |
+| `N` | Name | 60 chars | Sponsor | Display name shown in area lists |
+| `D` | Description | 80 chars | Sponsor | Longer description |
+| `R` | ACS Read | 40 chars | Sponsor | ACS string required to read (empty = public) |
+| `W` | ACS Write | 40 chars | Sponsor | ACS string required to post (empty = all) |
+| `S` | Sponsor | 30 chars | Sponsor | Handle of area sponsor; enter `-` to clear; validated against user database |
+| `M` | Max Messages | integer | Sponsor | Maximum messages to retain (0 = unlimited) |
+| `G` | Max Age (days) | integer | Sponsor | Purge messages older than N days (0 = unlimited) |
+| `A` | Allow Anon | yes/no/default | Sponsor | Allow anonymous posts; `default` inherits system setting |
+| `L` | Real Name Only | yes/no | Sponsor | Require users to post under their real name |
+| `J` | Auto Join | yes/no | Sponsor | Automatically add new users to this area |
+| `C` | Conference ID | integer | Sponsor | Groups area under a conference (0 = ungrouped) |
+| `B` | Base Path | 80 chars | Co-SysOp+ | Filesystem path for message storage |
+| `Y` | Area Type | 16 chars | Co-SysOp+ | `local`, `echomail`, or `netmail` |
+| `E` | Echo Tag | 32 chars | Co-SysOp+ | FTN echomail tag for routing |
+| `O` | Origin Address | 32 chars | Co-SysOp+ | FTN origin address |
+| `K` | Network | 32 chars | Co-SysOp+ | FTN network name |
 
 ### Editing a Field
 
@@ -144,7 +166,7 @@ The `%` key is wired in `menus/v3/cfg/MSGMENU.CFG`:
 
 The entry is `"HIDDEN": true` so it does not appear in the Messages Menu listing. It is accessible only to those who know the `%` shortcut (sysops can communicate this to their sponsors).
 
-The sponsor sub-menu is defined in `menus/v3/cfg/SPONSORM.CFG`. The shipped config includes area-navigation keys `[` (previous area) and `]` (next area) in addition to E and Q:
+The sponsor sub-menu is defined in `menus/v3/cfg/SPONSORM.CFG`:
 
 ```json
 [
@@ -156,20 +178,6 @@ The sponsor sub-menu is defined in `menus/v3/cfg/SPONSORM.CFG`. The shipped conf
     "NODE_ACTIVITY": "Editing Message Area"
   },
   {
-    "KEYS": "[",
-    "CMD": "RUN:SPONSORPREVAREA",
-    "ACS": "*",
-    "HIDDEN": false,
-    "NODE_ACTIVITY": "Browsing Message Areas"
-  },
-  {
-    "KEYS": "]",
-    "CMD": "RUN:SPONSORNEXTAREA",
-    "ACS": "*",
-    "HIDDEN": false,
-    "NODE_ACTIVITY": "Browsing Message Areas"
-  },
-  {
     "KEYS": "Q",
     "CMD": "QUIT",
     "ACS": "*",
@@ -177,6 +185,8 @@ The sponsor sub-menu is defined in `menus/v3/cfg/SPONSORM.CFG`. The shipped conf
   }
 ]
 ```
+
+The `[` (previous area) and `]` (next area) navigation keys are handled internally by `runSponsorMenu` and do not need CFG entries. They are always active within the Sponsor Menu regardless of `SPONSORM.CFG`.
 
 ## Implementation Notes
 

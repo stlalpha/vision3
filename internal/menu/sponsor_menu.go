@@ -149,8 +149,12 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				newArea := sponsorAreas[newIdx]
 				currentUser.CurrentMessageAreaID = newArea.ID
 				currentUser.CurrentMessageAreaTag = newArea.Tag
-				if err := userManager.UpdateUser(currentUser); err != nil {
-					log.Printf("ERROR: Node %d: Failed to save user after sponsor area nav: %v", nodeNumber, err)
+				if userManager != nil {
+					if err := userManager.UpdateUser(currentUser); err != nil {
+						log.Printf("ERROR: Node %d: Failed to save user after sponsor area nav: %v", nodeNumber, err)
+					}
+				} else {
+					log.Printf("WARN: Node %d: userManager is nil; sponsor area nav not persisted", nodeNumber)
 				}
 				area = newArea
 				log.Printf("INFO: Node %d: User %s sponsor-navigated to area %d (%s)", nodeNumber, currentUser.Handle, newArea.ID, newArea.Tag)

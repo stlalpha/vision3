@@ -168,6 +168,15 @@ Get-ChildItem -Path $templateConfigs -Filter "*.txt" -ErrorAction SilentlyContin
         Write-Host "  $($_.Name) already exists, skipping."
     }
 }
+Get-ChildItem -Path $templateConfigs -Filter "*.ini" -ErrorAction SilentlyContinue | ForEach-Object {
+    $target = Join-Path $configsDir $_.Name
+    if (-not (Test-Path $target)) {
+        Write-Host "  Creating $($_.Name) from template..."
+        Copy-Item $_.FullName $target
+    } else {
+        Write-Host "  $($_.Name) already exists, skipping."
+    }
+}
 
 # UTF-8 without BOM (Go's JSON decoder does not accept BOM)
 $utf8NoBom = New-Object System.Text.UTF8Encoding $false
