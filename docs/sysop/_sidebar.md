@@ -1,8 +1,5 @@
 <!-- _sidebar.md -->
 
-* **[W] ViSiON/3 Docs**
-  * [Home](/)
-
 * Getting Started
   * [Overview](getting-started/README.md)
   * [Installation](getting-started/installation.md)

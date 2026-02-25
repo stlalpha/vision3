@@ -111,6 +111,10 @@ body, .markdown-section, .content, #main {
     list-style: none !important;
     padding: 0 !important;
     margin: 0 !important;
+    /* Never collapse any section regardless of active route */
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
 }
 
 .sidebar-nav > ul > li {
