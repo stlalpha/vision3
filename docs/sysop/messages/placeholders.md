@@ -23,7 +23,7 @@ All width-constrained formats support an optional alignment modifier using `|` f
 
 **Modifier syntax examples:**
 
-```
+```text
 @T|R8@       - Right-justify time in 8-char field (Synchronet-style width)
 @T|R:20@     - Right-justify in 20-char field (explicit colon width)
 @T|R#######@ - Right-justify in visual-width field
@@ -35,7 +35,7 @@ All width-constrained formats support an optional alignment modifier using `|` f
 
 The modifier is placed between the code letter and the width specifier, separated by `|`. This syntax is inspired by Synchronet BBS @-codes.
 
-The same alignment modifier syntax applies to file list placeholders (`@FPAGE`, `@FTOTAL`, `@FCONFPATH`) — see [file-areas.md](file-areas.md).
+The same alignment modifier syntax applies to file list placeholders (`@FPAGE`, `@FTOTAL`, `@FCONFPATH`) — see [file-areas.md](../files/file-areas.md).
 
 The visual placeholder format is particularly useful for ANSI art templates where precise character positioning is critical. The `#` characters show exactly how much horizontal space the field will occupy, making it easy to design layouts visually.
 
@@ -71,7 +71,7 @@ The visual placeholder format is particularly useful for ANSI art templates wher
 
 Use `:NUMBER` after the code for explicit width control:
 
-```
+```text
 @T:40@     - Subject truncated/padded to exactly 40 characters
 @F:25@     - From field formatted to 25 characters
 @M:20@     - Message status formatted to 20 characters
@@ -82,7 +82,7 @@ Use `:NUMBER` after the code for explicit width control:
 
 Use `#` characters to show the intended field width directly in your template:
 
-```
+```text
 @T########################@  - Subject field (full placeholder length characters wide)
 @F###################@      - From field (full placeholder length characters wide)
 @M################@         - Status field (full placeholder length characters wide)
@@ -98,7 +98,7 @@ Use `#` characters to show the intended field width directly in your template:
 
 Use `*` after the code to have the width automatically calculated from context:
 
-```
+```text
 @#*@       - Message number padded to the width of the highest message number
 @N*@       - Total messages padded to its own digit count
 @C*@       - Count display [x/y] padded to max possible width
@@ -127,7 +127,7 @@ Use `*` after the code to have the width automatically calculated from context:
 
 **Example template:**
 
-```
+```text
 Posted on @D######@ @W########@       @M###################@
 From: @F#########################@  To: @S##################@
 Subj: @T#####################################################@
@@ -153,17 +153,17 @@ The `@G@` placeholder fills remaining space on the current line with `─` (CP43
 
 **Example:**
 
-```
+```text
 ────────────────────────────────────────────────────── @#@ of @N@ @G*@
 ```
 
 With 42 messages, message 1:
-```
+```text
 ────────────────────────────────────────────────────── 1 of 42 ─────────────────
 ```
 
 With 1500 messages, message 3:
-```
+```text
 ────────────────────────────────────────────────────── 3 of 1500 ───────────────
 ```
 
@@ -359,7 +359,7 @@ If you have old templates using `|X` format, they will continue to work. To conv
 6. Consider using new `@Z@` placeholder for combined conference/area display (not available in legacy format)
 
 Example conversion:
-```
+```text
 Before: |#: |T
 After:  @#@: @T@
 

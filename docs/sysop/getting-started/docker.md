@@ -19,13 +19,12 @@ This guide covers deploying ViSiON/3 using Docker and Docker Compose.
 2. **Start the BBS:**
 
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
    This will:
-   - Build the Docker image with libssh support
+   - Build the Docker image
    - Compile all Go binaries (ViSiON3, v3mail, helper, strings)
-   - Build lrzsz from source (legacy, may be removed in future)
    - Bundle sexyz (Synchronet ZModem 8k) from `bin/sexyz`
    - Create necessary directories (`configs/`, `data/`, `menus/`, `temp/`)
    - Generate SSH host keys automatically
@@ -35,7 +34,7 @@ This guide covers deploying ViSiON/3 using Docker and Docker Compose.
 3. **Check logs:**
 
    ```bash
-   docker-compose logs -f
+   docker compose logs -f
    ```
 
 4. **Connect to the BBS:**
@@ -76,20 +75,15 @@ If you prefer not to use Docker Compose:
 
 ## Important Notes
 
-### CGO and libssh Requirement
+### Docker Image Notes
 
-ViSiON/3 **requires libssh via CGO** for SSH server functionality. The Dockerfile:
+ViSiON/3 uses a pure-Go SSH implementation (`gliderlabs/ssh`) — no CGO or native libraries required. The Dockerfile:
 
-- Enables CGO in the build stage (`CGO_ENABLED=1`)
-- Installs `libssh-dev` during build
-- Includes `libssh` runtime library in the final image
 - Builds all Go binaries: `ViSiON3`, `v3mail`, `helper`, `strings`
 - Copies `bin/sexyz` for ZModem 8k file transfers (works on both SSH and telnet)
 - Copies the static `binkd` binary for FTN mailer support
 
-> **Note:** The sexyz binary at `bin/sexyz` must match the container's architecture (typically linux/amd64). See [File Transfer Protocols](file-transfer-protocols.md) for build instructions.
-
-**Do not disable CGO** or the SSH server will not work.
+> **Note:** The sexyz binary at `bin/sexyz` must match the container's architecture (typically linux/amd64). See [File Transfer Protocols](../files/file-transfer.md) for build instructions.
 
 ### Persistent Data
 
@@ -131,7 +125,7 @@ After first run, edit the configuration files in the `configs/` directory:
 nano configs/config.json
 
 # Restart to apply changes
-docker-compose restart
+docker compose restart
 ```
 
 ## Private Mail Setup
@@ -151,7 +145,7 @@ To update to the latest version:
 git pull
 
 # Rebuild and restart
-docker-compose up -d --build
+docker compose up -d --build
 ```
 
 Your data in `configs/`, `data/`, and `menus/` volumes will be preserved.
@@ -162,27 +156,16 @@ Your data in `configs/`, `data/`, and `menus/` volumes will be preserved.
 
 If you can't connect via SSH:
 
-1. Check container logs: `docker-compose logs`
+1. Check container logs: `docker compose logs`
 2. Verify port 2222 is not already in use: `netstat -ln | grep 2222`
 3. Check SSH keys were generated: `ls -l configs/ssh_host_*`
-
-### libssh Errors
-
-If you see libssh-related errors:
-
-- Ensure the image was built with CGO enabled
-- Check that `libssh` is installed in the container:
-
-  ```bash
-  docker-compose exec vision3 apk info libssh
-  ```
 
 ### Configuration Not Loading
 
 If config changes aren't applied:
 
 1. Ensure config files exist in the `configs/` volume
-2. Restart the container: `docker-compose restart`
+2. Restart the container: `docker compose restart`
 3. Check file permissions (should be readable by container)
 
 ### Message Base Errors
@@ -267,6 +250,6 @@ For production deployments:
 
 For issues related to Docker deployment:
 
-- Check logs: `docker-compose logs -f`
+- Check logs: `docker compose logs -f`
 - GitHub Issues: <https://github.com/stlalpha/vision3/issues>
 - Include Docker version, OS, and error logs when reporting issues

@@ -338,14 +338,14 @@ The `-c` flag runs binkd as a client (calls out once and exits). Check
 To manually toss any received bundles/packets:
 
 ```bash
-go run cmd/v3mail toss --config configs --data data
+./v3mail toss --config configs --data data
 ```
 
 To scan for outbound messages and pack bundles:
 
 ```bash
-go run cmd/v3mail scan --config configs --data data
-go run cmd/v3mail ftn-pack --config configs --data data
+./v3mail scan --config configs --data data
+./v3mail ftn-pack --config configs --data data
 ```
 
 ## Running in Production
@@ -394,7 +394,7 @@ scheduler (configured in `configs/events.json`) to run these automatically:
 }
 ```
 
-See [event-scheduler.md](event-scheduler.md) for the full recommended FTN workflow configuration.
+See [event-scheduler.md](../advanced/event-scheduler.md) for the full recommended FTN workflow configuration.
 
 ## Configuration Files Reference
 
@@ -541,15 +541,15 @@ node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 
 ### Messages arriving but not visible in BBS
 
-- Run `go run cmd/v3mail toss --config configs --data data` manually to toss pending
+- Run `./v3mail toss --config configs --data data` manually to toss pending
   bundles/packets
 - Verify `echo_tag` in message_areas.json matches the AREA tag in the incoming packets
 - Run `./v3mail stats --all` to verify message counts
 
 ### Outbound messages not sending
 
-- Run `go run cmd/v3mail scan --config configs --data data` to create outbound packets
-- Run `go run cmd/v3mail ftn-pack --config configs --data data` to bundle them
+- Run `./v3mail scan --config configs --data data` to create outbound packets
+- Run `./v3mail ftn-pack --config configs --data data` to bundle them
 - Check that `binkd_outbound_path` in `ftn.json` matches the domain path in binkd.conf
 - Verify the echo area's hub address is listed in `links[].echo_areas` in `ftn.json`
 
@@ -572,13 +572,13 @@ node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 bin/binkd -c data/ftn/binkd.conf
 
 # Toss received bundles/packets into JAM bases
-go run cmd/v3mail toss --config configs --data data
+./v3mail toss --config configs --data data
 
 # Scan JAM bases for new outbound messages (creates .pkt files)
-go run cmd/v3mail scan --config configs --data data
+./v3mail scan --config configs --data data
 
 # Pack outbound .pkt files into ZIP bundles for binkd pickup
-go run cmd/v3mail ftn-pack --config configs --data data
+./v3mail ftn-pack --config configs --data data
 
 # View message base statistics
 ./v3mail stats --all

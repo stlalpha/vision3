@@ -3,7 +3,7 @@
 Welcome, SysOp. This wiki covers everything you need to install, configure, and run a l33t ViSiON/3 BBS like it's 1992 all over again.
 
 > **Current Version: v0.1.0** | [GitHub Releases](https://github.com/stlalpha/vision3/releases)
-
+>
 > ⚠️ **Early Development:** ViSiON/3 is under active development and not yet feature-complete. Expect rough edges and missing features. Use at your own risk.
 
 ---

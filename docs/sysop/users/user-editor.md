@@ -123,7 +123,7 @@ Selecting the Password field in the editor opens a secure entry dialog. The new 
 
 Built with BubbleTea + Lipgloss, following the same patterns as the strings editor (`cmd/strings/`).
 
-```
+```text
 cmd/ue/main.go                    # CLI entry point
 internal/usereditor/
   model.go                        # BubbleTea Model, state machine, Update()

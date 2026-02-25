@@ -14,7 +14,7 @@ The string editor (`strings`) is a TUI tool for editing `configs/strings.json`, 
 
 The editor uses a fullscreen 80×25 terminal layout matching the DOS original:
 
-```
+```text
  Current Topic Number: 1 │ ViSiON/3 BBS String Configuration │ Current Page: 1
   #  Name                     Value
   1 [Default User's Prompt ] |08██ |15|MN |08██ |13|TL |05Left|08:
@@ -100,12 +100,12 @@ String values support BBS pipe codes that are rendered with color in the editor.
 | Code | Color |
 |------|-------|
 | `\|B0` | Black background |
-| `\|B1` | Blue background |
+| `\|B1` | Red background |
 | `\|B2` | Green background |
-| `\|B3` | Cyan background |
-| `\|B4` | Red background |
+| `\|B3` | Brown/Yellow background |
+| `\|B4` | Blue background |
 | `\|B5` | Magenta background |
-| `\|B6` | Brown/Yellow background |
+| `\|B6` | Cyan background |
 | `\|B7` | Light Gray background |
 
 ### Special Codes
@@ -114,7 +114,7 @@ String values support BBS pipe codes that are rendered with color in the editor.
 |------|---------|
 | `\|CR` | Carriage return / newline |
 | `\|CL` | Clear screen |
-| `\|DE` | Delete/backspace |
+| `\|DE` | Clear to end of line |
 | `@` | Yes/No selection bar |
 
 ### Dollar Codes (`$x`)
@@ -194,11 +194,11 @@ The editor supports two layers of value restoration:
 
 ### Default Loading Flow
 
-```
+```text
 cmd/strings/main.go
-  └─ loadShippedDefaults()
+  ├─ loadShippedDefaults()
        ├─ Try:  ./templates/configs/strings.json  (relative to CWD)
-       └─ Try:  <exe-dir>/templates/configs/strings.json  (relative to binary)
+       ├─ Try:  <exe-dir>/templates/configs/strings.json  (relative to binary)
        └─ Returns: map[string]string (or nil if not found)
 
   └─ stringeditor.New(configPath, shippedDefaults)

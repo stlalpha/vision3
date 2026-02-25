@@ -9,7 +9,9 @@
     --bg-primary:    #0a0a0a;
     --bg-secondary:  #111118;
     --bg-card:       #15151f;
+    --bg-code:       #0d0d1a;    /* code block / pre background */
     --border-color:  #252540;
+    --sidebar-width: 300px;
 
     /* ANSI base text colors */
     --text-primary:  #aaaaaa;   /* ANSI color 7  — light grey  */
@@ -57,7 +59,7 @@ body, .markdown-section, .content, #main {
     position: fixed;
     top: 0;
     left: 0;
-    width: 300px;
+    width: var(--sidebar-width);
     height: 100vh;
     pointer-events: none;
     background: repeating-linear-gradient(
@@ -157,7 +159,7 @@ body, .markdown-section, .content, #main {
     padding: 0.2rem 1rem 0.2rem 1.5rem !important;
     transition: color 0.1s, background-color 0.1s;
     white-space: normal;
-    word-break: break-word;
+    overflow-wrap: break-word;
     line-height: 1.4;
 }
 
@@ -304,7 +306,7 @@ section.cover, .markdown-section {
 }
 
 .markdown-section pre {
-    background-color: #0d0d1a !important;
+    background-color: var(--bg-code) !important;
     border: 1px solid var(--border-color) !important;
     border-left: 3px solid var(--ansi-cyan) !important;
     border-radius: 0 !important;

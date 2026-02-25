@@ -1,7 +1,7 @@
 # ViSiON/3 Installation Guide
 
 > **Current Version: v0.1.0** — [GitHub Releases](https://github.com/stlalpha/vision3/releases)
-
+>
 > ⚠️ **Early Development:** ViSiON/3 is under active development and not yet feature-complete. Expect rough edges and missing features. Use at your own risk. Check the [releases page](https://github.com/stlalpha/vision3/releases) and the [README](https://github.com/stlalpha/vision3) for the current status of features.
 
 ---
@@ -12,7 +12,7 @@
 |--------|----------|
 | [Download Pre-Built Release](#option-1-download-pre-built-release) | Fastest path — no Go toolchain required |
 | [Build from Source](#option-2-build-from-source) | Contributors, or to run unreleased code |
-| [Docker Deployment](getting-started/docker.md) | Containerized / production setup |
+| [Docker Deployment](docker.md) | Containerized / production setup |
 
 ---
 
@@ -175,7 +175,7 @@ Available output modes:
 
 **sexyz** is Synchronet's ZModem 8k implementation used for file transfers on both SSH and telnet connections. It is included in the release archive and in `bin/sexyz` in the source tree. No separate installation is needed.
 
-If you need to build it for a different platform, see [File Transfer Protocols](file-transfer-protocols.md).
+If you need to build it for a different platform, see [File Transfer Protocols](../files/file-transfer.md).
 
 ---
 
@@ -229,5 +229,5 @@ If you encounter SSH key errors, ensure the key exists at `configs/ssh_host_rsa_
 - Review the [Configuration Guide](../configuration/configuration.md) to customize your BBS
 - Set up [Message Areas](../messages/message-areas.md) and [File Areas](../files/file-areas.md)
 - Configure [Door Programs](../doors/doors.md) if desired
-- Review [File Transfer Protocols](file-transfer-protocols.md) (sexyz ZModem 8k)
+- Review [File Transfer Protocols](../files/file-transfer.md) (sexyz ZModem 8k)
 - Refer to [User Management](../users/user-management.md) for managing users

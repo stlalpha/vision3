@@ -146,7 +146,7 @@ Check `data/ftn/dupes.json`. If the file is corrupt or very large, remove it and
 
 ## See Also
 
-- [ftn-echomail-setup.md](ftn-echomail-setup.md) — End-to-end FTN setup guide
+- [ftn-echomail-setup.md](ftn-echomail.md) — End-to-end FTN setup guide
 - [jam-echomail.md](jam-echomail.md) — JAM message base internals
-- [event-scheduler.md](event-scheduler.md) — Scheduling v3mail commands
+- [event-scheduler.md](../advanced/event-scheduler.md) — Scheduling v3mail commands
 - [message-areas.md](message-areas.md) — Configuring message areas

@@ -44,7 +44,7 @@ Limits the total number of simultaneous connections to your BBS.
 
 This allows only 5 users to be connected at the same time. When the limit is reached, new connections receive:
 
-```
+```text
 Connection rejected: maximum nodes reached
 Please try again later.
 ```
@@ -365,7 +365,7 @@ During an attack from `192.0.2.0/24`:
 
 IP filtering actions are logged:
 
-```
+```text
 INFO: IP blocklist enabled from configs/blocklist.txt (auto-reload on file change)
 INFO: Watching configs/blocklist.txt for changes (auto-reload enabled)
 INFO: IP allowlist enabled from configs/allowlist.txt (auto-reload on file change)
@@ -412,7 +412,7 @@ DEBUG: IP 203.0.113.42 is on allowlist, bypassing all checks
 
 **Solution:** Check the line number in the warning:
 
-```
+```text
 WARN: Invalid CIDR in configs/blocklist.txt line 15: 192.168.1.1/33
 ```
 
@@ -459,7 +459,7 @@ Protect against brute-force attacks with automatic **IP-based** lockout after fa
 1. Each failed login attempt from an IP address is tracked in memory
 2. After reaching the threshold, the IP is locked out
 3. During lockout, login attempts from that IP show:
-   ```
+   ```text
    Too many failed login attempts from your IP.
    Please try again in X minutes.
    ```
@@ -484,7 +484,7 @@ IP lockout data is held **in memory only** (not persisted to disk). This means:
 **Logging:**
 
 All authentication events are logged:
-```
+```text
 SECURITY: Node 3: Failed authentication attempt for user: johndoe from IP: 203.0.113.42
 SECURITY: Node 3: IP 203.0.113.42 has been locked out after too many failed attempts
 SECURITY: Node 3: Login attempt from locked IP 203.0.113.42 (locked until 2026-02-11 14:30:00, 5 attempts)
@@ -667,15 +667,18 @@ grep "authenticated successfully" data/logs/vision3.log
 
 ### SSH Hardening
 
-1. **Disable Password Authentication**
+> **Note:** ViSiON/3 runs its own embedded SSH server (`gliderlabs/ssh`, pure Go) — separate from your system's OpenSSH daemon (`sshd`). The BBS SSH server always requires password authentication for BBS logins. The `sshd_config` settings below apply to the **system OpenSSH daemon** only (if you have one running for host administration), not to the BBS.
+
+1. **System sshd: Disable Password Authentication** (host admin access — optional)
+   If you run a system OpenSSH daemon for host administration, consider restricting it:
    Edit `/etc/ssh/sshd_config`:
 
-   ```
+   ```text
    PasswordAuthentication no
    PubkeyAuthentication yes
    ```
 
-2. **Use Non-Standard Port**
+2. **BBS: Use Non-Standard Port**
 
    ```json
    {
@@ -714,7 +717,7 @@ LOGFILE=/path/to/vision3/data/logs/vision3.log
 ALERT_EMAIL=admin@example.com
 
 # Check for excessive failed logins
-FAILED_COUNT=$(grep -c "authentication failed" "$LOGFILE" | tail -1000)
+FAILED_COUNT=$(tail -n 1000 "$LOGFILE" | grep -c "authentication failed")
 if [ "$FAILED_COUNT" -gt 50 ]; then
     echo "BBS Alert: $FAILED_COUNT failed logins detected" | \
         mail -s "BBS Security Alert" "$ALERT_EMAIL"
@@ -751,7 +754,7 @@ iptables -A INPUT -p tcp --dport 2222 -m state --state NEW \
 - [ ] Configure maxNodes and maxConnectionsPerIP
 - [ ] Set up IP blocklist (if needed)
 - [ ] Set up IP allowlist for admins
-- [ ] Enable SSH key authentication only
+- [ ] Use IP allowlist to restrict host admin SSH access (if running system sshd)
 - [ ] Use non-standard SSH port
 - [ ] Set up log monitoring
 - [ ] Configure automated backups
@@ -763,9 +766,9 @@ iptables -A INPUT -p tcp --dport 2222 -m state --state NEW \
 ## Additional Resources
 
 - [Configuration Guide](configuration.md) - Detailed configuration options
-- [Installation Guide](installation.md) - Setup and deployment
-- [Docker Deployment](docker-deployment.md) - Containerized security
-- [User Management](user-management.md) - User access control
+- [Installation Guide](../getting-started/installation.md) - Setup and deployment
+- [Docker Deployment](../getting-started/docker.md) - Containerized security
+- [User Management](../users/user-management.md) - User access control
 
 ## Support
 

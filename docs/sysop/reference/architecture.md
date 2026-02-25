@@ -10,7 +10,7 @@ The system is designed as a single Go application that listens for incoming SSH 
 
 1. **Main Application (`cmd/vision3/main.go`)**
    * Initializes logging, configuration, user/message/file managers, and menu executor
-   * Sets up the SSH server (libssh via CGO) and telnet server (native Go)
+   * Sets up the SSH server (gliderlabs/ssh, pure Go) and telnet server (native Go)
    * Loads SSH host keys from `configs/` directory
    * Listens for incoming connections on configured ports (SSH default: 2222, Telnet default: 2323)
    * Accepts connections and spawns goroutines to handle individual sessions via `sessionHandler`
@@ -144,9 +144,8 @@ vision3/
 │   │   ├── outbound/   # Outgoing .PKT files
 │   │   ├── temp/       # Temp for failed packets
 │   │   └── dupes.json  # MSGID dupe database
-│   ├── events/         # Event scheduler history
-│   │   └── event_history.json  # Event execution statistics
-│   └── logs/           # Application logs
+│   └── logs/           # Application logs and event history
+│       └── event_history.json  # Event execution statistics
 ├── internal/           # Internal packages
 │   ├── ansi/           # ANSI/CP437 handling
 │   ├── conference/     # Conference grouping
@@ -159,7 +158,7 @@ vision3/
 │   ├── message/        # Message area management (JAM-backed)
 │   ├── scheduler/      # Event scheduler (cron-style)
 │   ├── session/        # Session management
-│   ├── sshserver/      # SSH server (libssh via CGO)
+│   ├── sshserver/      # SSH server (gliderlabs/ssh, pure Go)
 │   ├── telnetserver/   # Telnet server (native Go)
 │   ├── terminalio/     # Terminal I/O utilities
 │   ├── tosser/         # FTN echomail tosser
@@ -176,7 +175,7 @@ vision3/
 ## Module Boundaries
 
 * `cmd/vision3`: Main application loop, SSH/telnet server setup, session handling
-* `internal/sshserver`: SSH server using libssh via CGO
+* `internal/sshserver`: SSH server using gliderlabs/ssh (pure Go)
 * `internal/telnetserver`: Telnet server with IAC protocol handling
 * `internal/user`: User data structures, persistence, authentication, ACS logic
 * `internal/ansi`: ViSiON/2 pipe code parsing and character encoding
@@ -196,7 +195,7 @@ vision3/
 ## Key Design Decisions
 
 1. **Single Binary**: All functionality is compiled into a single Go binary for easy deployment
-2. **Dual Protocol**: Supports both SSH (libssh) and telnet, both adapting to `gliderlabs/ssh.Session`
+2. **Dual Protocol**: Supports both SSH (gliderlabs/ssh) and telnet, both adapting to `gliderlabs/ssh.Session`
 3. **Menu-Driven**: All functionality is accessed through a hierarchical menu system
 4. **Pipe Code Compatibility**: Maintains compatibility with ViSiON/2 pipe codes for colors
 5. **Multiple Output Modes**: Supports both UTF-8 and CP437 output for compatibility

@@ -367,7 +367,7 @@ See [Invisible Login](#invisible-login-sysopco-sysop) below for details.
 
 Users at or above the configured `coSysOpLevel` (default 50) are prompted at login:
 
-```
+```text
 Invisible Logon? Y/n
 ```
 
@@ -518,7 +518,7 @@ Soft-deleted users are retained for a configurable number of days before they ca
 - **`30`** (default) — retain for 30 days after `deletedAt`
 - **`-1`** — never purge automatically
 
-Users with no `deletedAt` timestamp are always treated as immediately eligible for purge.
+Users with no `deletedAt` timestamp (not yet soft-deleted) are never eligible for purge and are always skipped.
 
 **Important:** Purged user IDs are not recycled. The `nextUserID` counter continues to increment, leaving a gap. This is intentional to prevent new accounts from inheriting message attribution from old accounts.
 

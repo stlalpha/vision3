@@ -22,9 +22,9 @@ Configuration files are split between two directories:
 
 **In `menus/v3/` directory (menu set):**
 
-- `bar/PDMATRIX.BAR`, `cfg/PDMATRIX.CFG`, `mnu/PDMATRIX.MNU` - Pre-login matrix menu (see [Menu System Guide](menu-system.md#pre-login-matrix-screen))
+- `bar/PDMATRIX.BAR`, `cfg/PDMATRIX.CFG`, `mnu/PDMATRIX.MNU` - Pre-login matrix menu (see [Menu System Guide](../menus/menu-system.md#pre-login-matrix-screen))
 - `theme.json` - Theme color settings
-- `ansi/PRELOGON.ANS` (or `PRELOGON.1`, `PRELOGON.2`, ...) - Pre-login ANSI screens shown before LOGIN (see [Menu System Guide](menu-system.md#pre-login-ansi-files-prelogon))
+- `ansi/PRELOGON.ANS` (or `PRELOGON.1`, `PRELOGON.2`, ...) - Pre-login ANSI screens shown before LOGIN (see [Menu System Guide](../menus/menu-system.md#pre-login-ansi-files-prelogon))
 
 **In `data/` directory:**
 
@@ -368,7 +368,7 @@ Leave paths empty (`""`) to disable the feature.
 
 Located in the `configs/` directory. Defines message areas available on the BBS.
 
-See [Message Areas Guide](message-areas.md) for detailed configuration.
+See [Message Areas Guide](../messages/message-areas.md) for detailed configuration.
 
 ## conferences.json
 
@@ -434,7 +434,7 @@ If `conferences.json` is missing or empty, the system operates as before — are
 
 The event scheduler configuration file defines automated tasks that run on cron-style schedules.
 
-See the complete [Event Scheduler Guide](event-scheduler.md) for detailed documentation.
+See the complete [Event Scheduler Guide](../advanced/event-scheduler.md) for detailed documentation.
 
 ### Basic Structure
 

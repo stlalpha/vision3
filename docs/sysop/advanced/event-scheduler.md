@@ -6,7 +6,7 @@ The ViSiON/3 BBS includes a built-in event scheduler that can automatically exec
 
 The event scheduler provides:
 
-- **Cron-style scheduling**: Standard cron syntax with seconds support
+- **Cron-style scheduling**: Standard 5-field cron syntax
 - **Concurrency control**: Limit how many events can run simultaneously
 - **Timeout protection**: Prevent runaway processes with configurable timeouts
 - **Event history**: Track execution statistics, success/failure rates
@@ -67,7 +67,7 @@ Event scheduling is configured in `configs/events.json`.
 
 The scheduler uses standard 5-field cron syntax:
 
-```
+```text
 ┌───────────── minute (0-59)
 │ ┌───────────── hour (0-23)
 │ │ ┌───────────── day of month (1-31)
@@ -166,9 +166,9 @@ Before adding to scheduler, test commands manually:
 ```bash
 cd /home/bbs/git/vision3
 /usr/local/bin/binkd -p -D data/ftn/binkd.conf
-go run cmd/v3mail toss --config configs --data data
-go run cmd/v3mail scan --config configs --data data
-go run cmd/v3mail ftn-pack --config configs --data data
+./v3mail toss --config configs --data data
+./v3mail scan --config configs --data data
+./v3mail ftn-pack --config configs --data data
 ```
 
 ## Common Use Cases
@@ -318,7 +318,7 @@ ViSiON/3 uses `v3mail` for JAM message base maintenance. The recommended nightly
 | 2:15 AM | `purge --all` | Remove messages exceeding per-area age/count limits |
 | 2:30 AM | `pack --all` | Defragment bases and reclaim space from deleted messages |
 
-Purge limits (`max_age`, `max_messages`) are configured per area in `message_areas.json`. See [Message Purge Configuration](message-areas.md#message-purge-configuration) for details.
+Purge limits (`max_age`, `max_messages`) are configured per area in `message_areas.json`. See [Message Purge Configuration](../messages/message-areas.md#message-purge-configuration) for details.
 
 ```json
 {
@@ -375,7 +375,7 @@ Permanently remove soft-deleted user accounts that have exceeded the retention p
 }
 ```
 
-See [Purging Deleted Users](user-management.md#purging-deleted-users) for full details including CLI usage and the `--dry-run` preview flag.
+See [Purging Deleted Users](../users/user-management.md#purging-deleted-users) for full details including CLI usage and the `--dry-run` preview flag.
 
 ### Nightly Maintenance
 
@@ -461,7 +461,7 @@ The scheduler includes two levels of concurrency control:
 
 With `max_concurrent_events: 2`:
 
-```
+```text
 Time  Event A  Event B  Event C  Result
 ----  -------  -------  -------  ------
 0:00  Start    -        -        A runs (1/2 slots)
@@ -506,7 +506,7 @@ tail -f data/logs/vision3.log | grep "Event"
 ```
 
 Look for:
-```
+```text
 INFO: Event scheduler started with N events
 INFO: Event 'event_id' scheduled: @hourly
 ```
@@ -519,7 +519,7 @@ INFO: Event 'event_id' scheduled: @hourly
 
 ### Command Not Found
 
-```
+```text
 ERROR: Event 'binkd_poll' failed to start: fork/exec /usr/local/bin/binkd: no such file or directory
 ```
 
@@ -530,7 +530,7 @@ ERROR: Event 'binkd_poll' failed to start: fork/exec /usr/local/bin/binkd: no su
 
 ### Config File Not Found
 
-```
+```text
 ERROR: Event 'v3mail_toss' stderr: cannot open config directory
 ```
 
@@ -542,7 +542,7 @@ ERROR: Event 'v3mail_toss' stderr: cannot open config directory
 
 ### Event Timeout
 
-```
+```text
 ERROR: Event 'event_id' timed out after 300s
 ```
 
@@ -554,7 +554,7 @@ ERROR: Event 'event_id' timed out after 300s
 
 ### Event Always Skipped
 
-```
+```text
 WARN: Event 'binkd_poll' skipped: already running
 ```
 
@@ -566,7 +566,7 @@ WARN: Event 'binkd_poll' skipped: already running
 
 **Max concurrency reached:**
 
-```
+```text
 WARN: Event 'backup' skipped: max concurrent events reached (3)
 ```
 
@@ -577,7 +577,7 @@ WARN: Event 'backup' skipped: max concurrent events reached (3)
 
 ### Event Always Failing
 
-```
+```text
 ERROR: Event 'event_id' failed with exit code 1
 ERROR: Event 'event_id' stderr: [error message]
 ```
