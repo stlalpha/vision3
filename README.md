@@ -149,16 +149,15 @@ See `tasks/tasks.md` for development history and completed features.
 
 ## Platform Support
 
-Linux x86_64 is the primary development and testing platform. Support for additional platforms is planned — contributions welcome.
+Pre-built releases are available for all major platforms. Linux x86_64 is the primary development platform.
 
-| Platform | Architecture          | Status    | Notes                              |
-| -------- | --------------------- | --------- | ---------------------------------- |
-| Linux    | x86_64                | ✅ Tested  | Primary development platform       |
-| Linux    | ARM64                 | 📋 Planned | Includes Raspberry Pi 4/5 (64-bit) |
-| Linux    | ARM (32-bit)          | 📋 Planned | Raspberry Pi 3 and earlier         |
-| macOS    | Apple Silicon (ARM64) | 📋 Planned | M1/M2/M3/M4                        |
-| macOS    | Intel (x86_64)        | 📋 Planned |                                    |
-| Windows  | x86_64                | 📋 Planned |                                    |
+| Platform | Architecture          | Status      | Notes                               |
+| -------- | --------------------- | ----------- | ----------------------------------- |
+| Linux    | x86_64                | ✅ Tested    | Primary development platform        |
+| Linux    | ARM64                 | ✅ Released  | Includes Raspberry Pi 4/5 (64-bit)  |
+| Linux    | ARMv7                 | ✅ Released  | Raspberry Pi 3 and earlier          |
+| macOS    | Universal             | ✅ Released  | Intel + Apple Silicon (M1/M2/M3/M4) |
+| Windows  | x86_64                | ✅ Released  |                                     |
 
 > **Note:** ViSiON/3 is pure Go. The standard Go toolchain is all that's required to build for any supported platform.
 
@@ -241,9 +240,26 @@ vision3/
 
 > **Third-party binaries:** `sexyz` (ZMODEM file transfers) and `binkd` (FTN echomail/netmail) are not built by this project. Pre-compiled binaries for these — along with all ViSiON/3 binaries — are available on the [GitHub Releases page](https://github.com/stlalpha/vision3/releases).
 
-### Docker Deployment (Recommended)
+### Option 1: Download a Pre-Built Release
 
-The easiest way to run ViSiON/3 is using Docker:
+The fastest way to get started — no Go toolchain required.
+
+1. Download the archive for your platform from the [GitHub Releases page](https://github.com/stlalpha/vision3/releases)
+2. Extract it and run the setup script:
+    ```bash
+    tar -xzf vision3_<platform>.tar.gz   # Linux/macOS
+    cd vision3
+    ./setup.sh                            # Linux/macOS
+    .\setup.ps1                           # Windows (PowerShell)
+    ```
+3. Edit `configs/config.json` with your BBS settings
+4. Run the server:
+    ```bash
+    ./vision3         # Linux/macOS
+    .\vision3.exe     # Windows
+    ```
+
+### Option 2: Docker (Recommended for Production)
 
 ```bash
 git clone https://github.com/stlalpha/vision3.git
@@ -253,84 +269,32 @@ docker-compose up -d
 
 See [Docker Deployment Guide](documentation/docker-deployment.md) for detailed instructions.
 
-### Manual Installation
-
-#### System Requirements
+### Option 3: Build from Source
 
 **Go 1.24+** is the only build requirement.
 
-```bash
-# Verify Go version
-go version
-```
-
-### Quick Setup
-
-1. **Clone the repository:**
+1. **Clone and set up:**
     ```bash
     git clone https://github.com/stlalpha/vision3.git
     cd vision3
-    ```
-
-2. **Run the setup script:**
-    ```bash
     ./setup.sh          # Linux/macOS
-    .\setup.ps1         # Windows (PowerShell), or double-click setup.cmd
+    .\setup.ps1         # Windows (PowerShell)
     ```
 
-   This will:
-   - Generate SSH host keys
-   - Copy template configuration files from `templates/configs/` to `configs/`
-   - Create necessary directory structure
-   - Create initial data files
-   - Build the application
+    `setup.sh` will generate SSH host keys, copy template configs to `configs/`, create the required directory structure, and build all binaries (`vision3`, `helper`, `v3mail`, `strings`, `ue`).
 
-4. **Configure your BBS:**
+2. **Configure your BBS:**
     ```bash
-    # Edit configs/config.json with your BBS settings
     nano configs/config.json
     ```
 
-5. **Build and run the BBS:**
+3. **Run the server:**
     ```bash
-    ./build.sh          # Linux/macOS
-    .\build.ps1         # Windows (PowerShell), or double-click build.cmd
     ./vision3           # Linux/macOS
     .\vision3.exe       # Windows
     ```
 
-### Manual Setup
-
-If you prefer to set up manually:
-
-1. **Copy configuration templates:**
-    ```bash
-    cp templates/configs/*.json configs/
-    # Edit configs/config.json with your BBS settings
-    ```
-
-3. **Build the application:**
-    ```bash
-    ./build.sh
-    ```
-    This builds all binaries (`vision3`, `helper`, `v3mail`, `strings`, `ue`) to the root directory.
-
-4. **Generate SSH Host Key:**
-    ```bash
-    ssh-keygen -t rsa -b 2048 -f configs/ssh_host_rsa_key -N ""
-    ```
-
-5. **Create directories:**
-    ```bash
-    mkdir -p data/users data/files/general data/logs data/msgbases
-    ```
-
-6. **Run the server:**
-    ```bash
-    ./vision3
-    ```
-
-The server listens on port 2222 by default.
+The server listens on port 2222 (SSH) and 2323 (Telnet) by default.
 
 ## Default Login
 
@@ -342,15 +306,13 @@ The system creates a default user on first run:
 
 ## Connecting
 
-Connect using any SSH client:
-
 ```bash
 ssh felonius@localhost -p 2222
 ```
 
 ### SyncTerm and Retro Terminal Support
 
-ViSiON/3 fully supports **SyncTerm**, **Netrunner** and other classic BBS terminal emulators:
+ViSiON/3 fully supports **SyncTerm**, **NetRunner**, and other classic BBS terminal emulators:
 - Automatic CP437 encoding for authentic ANSI graphics
 - Compatible with modern SSH algorithms
 
@@ -362,25 +324,14 @@ Download SyncTerm: https://syncterm.bbsdev.net/
 ./vision3 --output-mode=auto
 ```
 
-- `--output-mode`: Terminal output mode (auto, utf8, cp437)
+- `--output-mode`: Terminal output mode (`auto` / `utf8` / `cp437`)
   - `auto`: Automatically detect based on terminal type (default)
   - `utf8`: Force UTF-8 output
   - `cp437`: Force CP437 output for authentic DOS/BBS experience
 
+## Configuration
 
-### Configuration
-
-All configuration files are located in `configs/` and are generated from templates in `templates/configs/` during setup.
-
-### External Programs
-
-- **`doors.json`**: Door/external program configurations (paths, dropfile types, pause settings)
-
-### Security
-
-- **`ssh_host_rsa_key`**: SSH host key (auto-generated on first run if missing)
-
-All configuration files use JSON format and support comments for documentation.
+All configuration files live in `configs/` and are generated from templates in `templates/configs/` during setup. See the [SysOp Documentation](https://vision3bbs.com/sysop/) for full configuration reference.
 
 ## Contributing
 

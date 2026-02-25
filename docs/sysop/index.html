@@ -15,11 +15,11 @@
     <div id="app">Loading...</div>
     <script>
         window.$docsify = {
-            name: '<span class="nav-bracket">[</span><span class="nav-key">W</span><span class="nav-bracket">]</span> ViSiON/3',
+            name: '<span class="nav-bracket">[</span><span class="nav-key">D</span><span class="nav-bracket">]</span> ViSiON/3 Docs',
             nameLink: '/sysop/',
             repo: 'https://github.com/stlalpha/vision3',
             loadSidebar: true,
-            subMaxLevel: 2,
+            subMaxLevel: 0,
             auto2top: true,
             homepage: 'README.md',
             themeColor: '#4466ff',
@@ -31,33 +31,23 @@
             },
             plugins: [
                 function(hook) {
-                    function openAllSections() {
-                        document.querySelectorAll('.sidebar-nav ul').forEach(function(el) {
-                            el.removeAttribute('style');
+                    function setActiveNav() {
+                        // Current page path: strip in-page section anchors (#/page#section → #/page)
+                        var current = decodeURIComponent(window.location.hash || '#/');
+                        current = current.replace(/(#\/[^#]*)(#.*)?$/, '$1');
+
+                        document.querySelectorAll('.sidebar-nav a').forEach(function(a) {
+                            var href = decodeURIComponent(a.getAttribute('href') || '');
+                            a.classList.toggle('active', !!href && href === current);
                         });
                     }
 
-                    // doneEach: initial pass after every page load
                     hook.doneEach(function() {
-                        openAllSections();
-
-                        // Attach MutationObserver once — reacts the instant Docsify
-                        // sets a style attribute on any sidebar <ul> to hide it.
-                        if (window._sidebarObserver) return;
-                        var nav = document.querySelector('.sidebar-nav');
-                        if (!nav) return;
-                        window._sidebarObserver = new MutationObserver(function(mutations) {
-                            mutations.forEach(function(m) {
-                                if (m.target.tagName === 'UL') {
-                                    m.target.removeAttribute('style');
-                                }
-                            });
+                        // Flat sidebar: strip any residual inline styles Docsify adds to collapse sections
+                        document.querySelectorAll('.sidebar-nav ul').forEach(function(el) {
+                            el.removeAttribute('style');
                         });
-                        window._sidebarObserver.observe(nav, {
-                            attributes: true,
-                            attributeFilter: ['style'],
-                            subtree: true,
-                        });
+                        setActiveNav();
                     });
                 }
             ],

@@ -1,41 +1,114 @@
 # ViSiON/3 Installation Guide
 
-## Prerequisites
+> **Current Version: v0.1.0** — [GitHub Releases](https://github.com/stlalpha/vision3/releases)
 
-- Go 1.24.2 or higher
+> ⚠️ **Early Development:** ViSiON/3 is under active development and not yet feature-complete. Expect rough edges and missing features. Use at your own risk. Check the [releases page](https://github.com/stlalpha/vision3/releases) and the [README](https://github.com/stlalpha/vision3) for the current status of features.
+
+---
+
+## Installation Options
+
+| Option | Best For |
+|--------|----------|
+| [Download Pre-Built Release](#option-1-download-pre-built-release) | Fastest path — no Go toolchain required |
+| [Build from Source](#option-2-build-from-source) | Contributors, or to run unreleased code |
+| [Docker Deployment](getting-started/docker.md) | Containerized / production setup |
+
+---
+
+## Option 1: Download Pre-Built Release
+
+No Go toolchain or build tools required. Download, extract, and run.
+
+### Available Platforms
+
+| Platform | Architecture | Archive |
+|----------|-------------|---------|
+| Linux | x86_64 (amd64) | `vision3_linux_amd64.tar.gz` |
+| Linux | ARM64 | `vision3_linux_arm64.tar.gz` |
+| Linux | ARMv7 (Raspberry Pi 3) | `vision3_linux_armv7.tar.gz` |
+| macOS | Universal (Intel + Apple Silicon) | `vision3_darwin_universal.tar.gz` |
+| Windows | x86_64 | `vision3_windows_amd64.zip` |
+
+Download from: [https://github.com/stlalpha/vision3/releases](https://github.com/stlalpha/vision3/releases)
+
+### Steps
+
+1. **Download and extract the archive for your platform:**
+
+   **Linux / macOS:**
+   ```bash
+   tar -xzf vision3_<platform>.tar.gz
+   cd vision3
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   Expand-Archive vision3_windows_amd64.zip
+   cd vision3
+   ```
+
+2. **Run the setup script:**
+
+   **Linux / macOS:**
+   ```bash
+   ./setup.sh
+   ```
+
+   **Windows (PowerShell):**
+   ```powershell
+   .\setup.ps1
+   ```
+
+   This will:
+   - Generate SSH host keys
+   - Copy template configs to `configs/`
+   - Create required directory structure
+   - Create initial data files
+
+3. **Configure your BBS:**
+
+   ```bash
+   nano configs/config.json       # Linux/macOS
+   notepad configs\config.json    # Windows
+   ```
+
+   See the [Configuration Guide](../configuration/configuration.md) for all settings.
+
+4. **Start the BBS:**
+
+   **Linux / macOS:**
+   ```bash
+   ./vision3
+   ```
+
+   **Windows:**
+   ```powershell
+   .\vision3.exe
+   ```
+
+5. **Connect and verify:**
+
+   ```bash
+   ssh felonius@localhost -p 2222
+   # Default password: password
+   ```
+
+   **Important:** Change the default password immediately after first login!
+
+> **Note:** Release archives include all binaries: `vision3`, `v3mail`, `helper`, `strings`, `ue`, and `sexyz` (ZModem file transfers).
+
+---
+
+## Option 2: Build from Source
+
+### Prerequisites
+
+- **Go 1.24+** — the only build requirement ([install Go](https://golang.org/dl/))
 - Git
 - SSH client for testing
-- `libssh` - C library for SSH (required by the SSH server)
-- `pkg-config` - Used to locate libssh during build
-- `sexyz` - Synchronet's ZModem 8k file transfer binary (included in `bin/sexyz`)
 
-### File Transfer Binary: sexyz
-
-**sexyz** is Synchronet's external ZModem 8k implementation and is the sole file transfer engine used by ViSiON/3. It works on both SSH and telnet connections. The binary is included at `bin/sexyz` but can also be built from source — see [File Transfer Protocols](file-transfer-protocols.md) for build instructions.
-
-### Installing Dependencies
-
-**macOS (Homebrew):**
-
-```bash
-brew install libssh pkg-config
-```
-
-**Debian/Ubuntu:**
-
-```bash
-sudo apt install libssh-dev pkg-config
-```
-
-**Fedora:**
-
-```bash
-sudo dnf install libssh-devel pkgconf-pkg-config
-```
-
-> **Note:** sexyz is included as a pre-built binary at `bin/sexyz`. If you need to build it for a different platform, see [File Transfer Protocols](file-transfer-protocols.md).
-
-## Installation Steps
+> **Note:** ViSiON/3 uses a pure-Go SSH server (`gliderlabs/ssh`). No CGO, libssh, or pkg-config is required.
 
 ### 1. Clone the Repository
 
@@ -44,79 +117,45 @@ git clone https://github.com/stlalpha/vision3.git
 cd vision3
 ```
 
-### 2. Build the Application
+### 2. Run the Setup Script
 
 ```bash
-cd cmd/vision3
-go build
+./setup.sh          # Linux/macOS
+.\setup.ps1         # Windows (PowerShell)
 ```
 
-This creates the `vision3` executable in the `cmd/vision3/` directory.
+This will:
+- Generate SSH host keys
+- Copy template configuration files to `configs/`
+- Create the necessary directory structure and initial data files
+- Build all binaries (`vision3`, `v3mail`, `helper`, `strings`, `ue`)
 
-### 3. Generate SSH Host Key
-
-The BBS requires an SSH host key for secure connections:
+### 3. Configure Your BBS
 
 ```bash
-cd ../../configs
-ssh-keygen -t rsa -f ssh_host_rsa_key -N ""
-cd ..
+nano configs/config.json
 ```
 
-### 4. Verify Directory Structure
+See the [Configuration Guide](../configuration/configuration.md) for all settings.
 
-Ensure these directories exist (they should be included in the repository):
-
-- `configs/` - Configuration files
-- `data/` - Runtime data
-- `data/users/` - User database
-- `data/msgbases/` - JAM message base files (created automatically)
-- `data/logs/` - Log files
-- `menus/v3/` - Menu system files
-
-### 5. Initial Configuration
-
-The system includes default configuration files in the `configs/` directory:
-
-- `strings.json` - BBS text strings and prompts
-- `doors.json` - External door program configurations
-- `file_areas.json` - File area definitions
-- `config.json` - General BBS settings (ports, security levels, connection limits)
-  - `maxNodes`: Maximum simultaneous connections (default: 10, 0 = unlimited)
-  - `maxConnectionsPerIP`: Maximum connections per IP (default: 3, 0 = unlimited)
-  - `ipBlocklistPath`: Path to IP blocklist file (optional)
-  - `ipAllowlistPath`: Path to IP allowlist file (optional, bypasses all limits)
-  - `maxFailedLogins`: Failed login attempts before lockout (default: 5, 0 = disabled)
-  - `lockoutMinutes`: Account lockout duration in minutes (default: 30)
-  - `sysOpLevel`: Security level for SysOp access (default: 255)
-  - `coSysOpLevel`: Security level for Co-SysOp access (default: 250)
-- `message_areas.json` - Message area definitions (JAM base paths, area types)
-
-Review and modify these as needed for your setup.
-
-### 6. Run the Server
+### 4. Start the Server
 
 ```bash
-cd cmd/vision3
 ./vision3
 ```
 
-By default, the server listens on port 2222.
+The server listens on port 2222 (SSH) and 2323 (Telnet) by default.
 
-### 7. First Login
-
-Connect to your BBS:
+### 5. First Login
 
 ```bash
 ssh felonius@localhost -p 2222
+# Default password: password
 ```
 
-Default credentials:
+**Important:** Change the default password immediately after first login.
 
-- Username: `felonius`
-- Password: `password`
-
-**Important**: Change this password immediately after first login!
+---
 
 ## Command Line Options
 
@@ -126,46 +165,54 @@ Default credentials:
 
 Available output modes:
 
-- `auto` - Automatically detect based on terminal (default)
-- `utf8` - Force UTF-8 output
-- `cp437` - Force CP437 output for authentic BBS experience
+- `auto` — Detect based on terminal type (default)
+- `utf8` — Force UTF-8 output
+- `cp437` — Force CP437 for authentic BBS experience
+
+---
+
+## File Transfer Binary: sexyz
+
+**sexyz** is Synchronet's ZModem 8k implementation used for file transfers on both SSH and telnet connections. It is included in the release archive and in `bin/sexyz` in the source tree. No separate installation is needed.
+
+If you need to build it for a different platform, see [File Transfer Protocols](file-transfer-protocols.md).
+
+---
 
 ## Directory Structure After Installation
 
 ```text
 vision3/
-├── cmd/vision3/vision3    # The compiled executable
-├── configs/               # Configuration files
+├── vision3              # Main BBS server binary
+├── v3mail               # JAM message base / FTN mail processor
+├── helper               # FTN setup utility
+├── strings              # TUI string configuration editor
+├── ue                   # TUI user editor
+├── configs/             # Configuration files
 │   ├── config.json
 │   ├── doors.json
 │   ├── file_areas.json
 │   ├── strings.json
-│   └── ssh_host_rsa_key  # SSH host key (generated)
-├── data/                  # Runtime data (created automatically)
-│   ├── users/
-│   │   └── users.json    # User database
-│   ├── msgbases/         # JAM message bases (.jhr/.jdt/.jdx/.jlr)
-│   ├── ftn/              # FTN echomail data (if enabled)
-│   │   ├── inbound/      # Incoming .PKT files
-│   │   ├── outbound/     # Outgoing .PKT files
-│   │   └── dupes.json    # MSGID dupe database
-│   └── logs/
-│       └── vision3.log   # Application log
-├── bin/                   # External binaries
-│   └── sexyz              # Synchronet ZModem 8k file transfer binary
-├── scripts/               # Helper shell and Python scripts (future use) - created empty
-└── menus/v3/             # Menu system files
+│   └── ssh_host_rsa_key # SSH host key (auto-generated)
+├── data/                # Runtime data (created automatically)
+│   ├── users/           # User database and call history
+│   ├── msgbases/        # JAM message bases
+│   ├── ftn/             # FidoNet/echomail data
+│   └── logs/            # Application logs (vision3.log)
+├── bin/
+│   └── sexyz            # ZModem file transfer binary
+└── menus/v3/            # Menu system files
 ```
+
+---
 
 ## Troubleshooting
 
 ### Port Already in Use
 
-If port 2222 is already in use, change `"sshPort": 2222` in `templates/configs/config.json` (or your deployed `configs/config.json`) and **restart the server** for the change to take effect.
+Change `"sshPort": 2222` in `configs/config.json` and restart the server.
 
 ### Permission Denied
-
-Ensure the executable has proper permissions:
 
 ```bash
 chmod +x vision3
@@ -173,12 +220,14 @@ chmod +x vision3
 
 ### SSH Key Issues
 
-If you encounter SSH key errors, ensure the key was generated in the correct location (`configs/ssh_host_rsa_key`).
+If you encounter SSH key errors, ensure the key exists at `configs/ssh_host_rsa_key`. Re-run `setup.sh` to regenerate it.
+
+---
 
 ## Next Steps
 
-- Review the [Configuration Guide](configuration.md) to customize your BBS
-- Set up [Message Areas](message-areas.md) and [File Areas](file-areas.md)
-- Configure [Door Programs](doors.md) if desired
+- Review the [Configuration Guide](../configuration/configuration.md) to customize your BBS
+- Set up [Message Areas](../messages/message-areas.md) and [File Areas](../files/file-areas.md)
+- Configure [Door Programs](../doors/doors.md) if desired
 - Review [File Transfer Protocols](file-transfer-protocols.md) (sexyz ZModem 8k)
-- Refer to [User Management](user-management.md) for managing users
+- Refer to [User Management](../users/user-management.md) for managing users

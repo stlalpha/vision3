@@ -121,18 +121,25 @@ body, .markdown-section, .content, #main {
     margin: 0 !important;
 }
 
-/* Section headers (bold items = category labels) */
+/* Section headers — flat structure: * **LABEL** renders as li > p > strong */
 .sidebar-nav ul > li > p,
+.sidebar-nav ul > li > p > strong,
 .sidebar-nav ul > li > strong {
     display: block;
     font-size: 0.7rem !important;
     font-weight: 700 !important;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: var(--ansi-blue) !important;  /* ANSI bright blue for section headers */
+    color: var(--ansi-blue) !important;
     padding: 0.85rem 1rem 0.25rem 1rem;
     margin: 0;
     border-top: 1px solid var(--border-color);
+}
+
+/* li > p gets the padding/border; strong inside it inherits color but needs no extra padding */
+.sidebar-nav ul > li > p > strong {
+    padding: 0 !important;
+    border: none !important;
 }
 
 .sidebar-nav ul > li:first-child > p,
@@ -140,17 +147,34 @@ body, .markdown-section, .content, #main {
     border-top: none;
 }
 
-/* Nav links */
+/* Nav links — all at same level in flat structure */
 .sidebar-nav a {
     display: block;
+    position: relative;
     font-size: 0.82rem !important;
     color: var(--text-primary) !important;
     text-decoration: none !important;
     padding: 0.2rem 1rem 0.2rem 1.5rem !important;
     transition: color 0.1s, background-color 0.1s;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.4;
+}
+
+/* CP437 code 16 — ► — BBS cursor/selector.
+   Always present in the left gutter (invisible by default) so text
+   position never shifts when a link becomes active. */
+.sidebar-nav a::before {
+    content: '►';
+    position: absolute;
+    left: 0.35rem;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 0.6rem;
+    line-height: 1;
+    color: transparent;
+    pointer-events: none;
+    transition: color 0.1s;
 }
 
 .sidebar-nav a:hover {
@@ -158,22 +182,18 @@ body, .markdown-section, .content, #main {
     background-color: rgba(68, 204, 221, 0.06) !important;
 }
 
+.sidebar-nav a:hover::before {
+    color: rgba(68, 204, 221, 0.35);
+}
+
 .sidebar-nav a.active {
-    color: var(--ansi-cyan) !important;  /* ANSI bright cyan for active */
+    color: var(--ansi-cyan) !important;
     font-weight: 600 !important;
     background-color: rgba(68, 204, 221, 0.08) !important;
-    border-left: 2px solid var(--ansi-cyan);
-    padding-left: calc(1.5rem - 2px) !important;
 }
 
-/* Nested nav items */
-.sidebar-nav ul ul a {
-    padding-left: 2rem !important;
-    font-size: 0.78rem !important;
-}
-
-.sidebar-nav ul ul a.active {
-    padding-left: calc(2rem - 2px) !important;
+.sidebar-nav a.active::before {
+    color: var(--ansi-cyan);
 }
 
 /* ── Search box ──────────────────────────── */
