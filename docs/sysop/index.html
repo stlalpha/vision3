@@ -31,13 +31,18 @@
             },
             plugins: [
                 function(hook) {
+                    function normalizePath(p) {
+                        return p
+                            .replace(/\.md$/, '')          // strip .md extension
+                            .replace(/(#\/[^#]*)(#.*)$/, '$1') // strip in-page anchors
+                            .replace(/\/$/, '');            // strip trailing slash
+                    }
+
                     function setActiveNav() {
-                        // Current page path: strip in-page section anchors (#/page#section → #/page)
-                        var current = decodeURIComponent(window.location.hash || '#/');
-                        current = current.replace(/(#\/[^#]*)(#.*)?$/, '$1');
+                        var current = normalizePath(decodeURIComponent(window.location.hash || '#/'));
 
                         document.querySelectorAll('.sidebar-nav a').forEach(function(a) {
-                            var href = decodeURIComponent(a.getAttribute('href') || '');
+                            var href = normalizePath(decodeURIComponent(a.getAttribute('href') || ''));
                             a.classList.toggle('active', !!href && href === current);
                         });
                     }

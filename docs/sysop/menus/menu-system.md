@@ -2,6 +2,8 @@
 
 The ViSiON/3 menu system is the core of the BBS user interface. This guide explains how menus work and how to create or modify them.
 
+> **📋 In Development:** A TUI menu editor (`menuedit`) is currently in development. Once complete, it will replace the need to manually edit `.MNU`, `.CFG`, and `.BAR` files. Until then, menus are configured by hand as described in this guide.
+
 ## Menu System Overview
 
 Each menu consists of three files:

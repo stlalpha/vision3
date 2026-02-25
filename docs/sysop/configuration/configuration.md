@@ -2,6 +2,8 @@
 
 This guide covers the configuration files used by ViSiON/3 BBS.
 
+> **📋 In Development:** A TUI configuration editor (`config`) is planned — modeled after ViSiON/2's `CONFIG.EXE` — that will provide an interactive, menu-driven interface for managing the key settings currently spread across JSON files. Until then, configuration is done by hand as described in this guide.
+
 ## Configuration Files Overview
 
 Configuration files are split between two directories:

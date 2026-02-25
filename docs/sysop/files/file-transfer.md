@@ -69,6 +69,8 @@ You should see version and usage information from Synchronet External X/Y/ZMODEM
 
 ## Configuration
 
+> **📋 In Development:** A TUI sysop configuration editor is planned. Once available, it will include managing `protocols.json` without hand-editing files. Until then, protocols are configured as described below.
+
 The default protocol configuration in `configs/protocols.json`:
 
 ```json

@@ -6,17 +6,20 @@ across one or more FTN networks.
 
 ## Overview
 
-Vision/3 uses **binkd** for FTN mail transport and the built-in **v3mail** commands
-for tossing, scanning, and packing:
+Vision/3 works with **any FTN-compatible mailer** — it does not include one built-in.
+The mailer handles network transport (BinkP sessions with your hub); Vision/3's
+**v3mail** commands handle everything else:
 
-- **binkd** - FTN mailer (sends/receives packets over BinkP protocol)
-  - GitHub: <https://github.com/pgul/binkd>
-- **v3mail toss** - Unpacks ZIP bundles and tosses `.pkt` files into JAM message bases
-- **v3mail scan** - Scans JAM bases for new outbound echomail and creates `.pkt` files
-- **v3mail ftn-pack** - Packs outbound `.pkt` files into ZIP bundles for binkd pickup
+- **v3mail toss** — Unpacks ZIP bundles and tosses `.pkt` files into JAM message bases
+- **v3mail scan** — Scans JAM bases for new outbound echomail and creates `.pkt` files
+- **v3mail ftn-pack** — Packs outbound `.pkt` files into ZIP bundles for mailer pickup
 
-Vision/3 itself manages the JAM message bases, presents messages to users, and
-handles new message creation. binkd handles the network transport.
+Vision/3 releases include a pre-built **binkd** binary in `bin/` and example
+configuration. Binkd is the mailer that has been tested with Vision/3, but any
+mailer that speaks BinkP and uses standard inbound/outbound directory conventions
+will work the same way.
+
+- binkd source: <https://github.com/pgul/binkd>
 
 ### How It Works
 
@@ -43,7 +46,7 @@ Before starting, you need:
 - An FTN network membership (address assigned by your hub/network coordinator)
 - Your hub's connection details (address, hostname/IP, port, password)
 - The network's `.na` file (list of available echo areas)
-- **binkd** installed (see [Install binkd](#step-2-install-binkd))
+- An FTN-compatible mailer — binkd is included in `bin/` and is what Vision/3 has been tested with
 
 ## Directory Structure
 
@@ -87,17 +90,22 @@ Create the required directory structure:
 mkdir -p data/ftn/{in,secure_in,temp_in,temp_out,out,logs}
 ```
 
-### Step 2: Install binkd
+### Step 2: Set Up Your FTN Mailer
 
-Place `binkd` in the `bin/` directory. You can obtain binkd from:
+A pre-built `binkd` binary is included in the Vision/3 release archive under `bin/`.
+If you downloaded a release, it's already there. Any other FTN-compatible mailer
+that uses standard inbound/outbound directories will work the same way.
 
-- Build from source at <https://github.com/pgul/binkd>
-- Install via your distribution's package manager (`apt install binkd`, etc.)
+To build binkd from source or install via package manager instead:
 
 ```bash
-mkdir -p bin
-cp /path/to/binkd bin/
-chmod +x bin/binkd
+# From source
+git clone https://github.com/pgul/binkd && cd binkd && make
+cp binkd /path/to/vision3/bin/
+
+# Or via package manager (Debian/Ubuntu)
+apt install binkd
+cp $(which binkd) bin/
 ```
 
 ### Step 3: Import Echo Areas with `helper`
@@ -161,7 +169,11 @@ Each line has an echo tag followed by a description.
 ./helper ftnsetup --na fsxnet.na --address 21:4/158.1 --hub 21:4/158 --dry-run
 ```
 
-### Step 4: Configure binkd
+### Step 4: Configure Your Mailer (binkd example)
+
+The following is a binkd configuration. If you're using a different mailer, consult
+its documentation — the key things to align with `ftn.json` are the inbound directory
+and outbound directory paths (see the verification table in Step 6).
 
 Create `data/ftn/binkd.conf`. Replace the example values with your own details:
 
@@ -338,10 +350,10 @@ go run cmd/v3mail ftn-pack --config configs --data data
 
 ## Running in Production
 
-### Running binkd as a Daemon
+### Running Your FTN Mailer
 
-For ongoing operation, run binkd as a daemon so it can both accept incoming
-connections and poll your hub:
+For ongoing operation, run your mailer as a daemon so it can both accept incoming
+connections and poll your hub. Example using binkd:
 
 ```bash
 bin/binkd -D data/ftn/binkd.conf
@@ -399,9 +411,9 @@ read by `v3mail toss`, `v3mail scan`, and `v3mail ftn-pack`.
 | `networks.<key>.internal_tosser_enabled` | Set `true` to enable `v3mail` for this network               |
 | `networks.<key>.own_address`             | Your FTN address (e.g., `21:4/158.1`)                        |
 | `networks.<key>.inbound_path`            | Unsecured inbound directory                                  |
-| `networks.<key>.secure_inbound_path`     | Secure inbound (where binkd deposits received mail)          |
+| `networks.<key>.secure_inbound_path`     | Secure inbound (where your mailer deposits received mail)    |
 | `networks.<key>.outbound_path`           | Staging dir for outbound `.pkt` files (`v3mail scan` output) |
-| `networks.<key>.binkd_outbound_path`     | Outbound bundles dir (binkd picks up from here)              |
+| `networks.<key>.binkd_outbound_path`     | Outbound bundles dir (your mailer picks up from here)        |
 | `networks.<key>.temp_path`               | Temp dir for bundle extraction during toss                   |
 | `networks.<key>.tearline`                | Optional tearline suffix (empty = use default)               |
 | `networks.<key>.links[].address`         | Hub FTN address                                              |
@@ -522,10 +534,10 @@ node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 
 ### No messages arriving
 
-- Check `data/logs/binkd.log` for connection errors
+- Check your mailer's log for connection errors (binkd: `data/logs/binkd.log`)
 - Verify your hub's hostname, port, and password are correct
-- Make sure `secure_inbound_path` in `ftn.json` matches binkd.conf `inbound`
-- Run `bin/binkd -c data/ftn/binkd.conf` manually and watch the output
+- Make sure `secure_inbound_path` in `ftn.json` matches your mailer's inbound directory
+- Run your mailer in one-shot client mode manually and watch the output (binkd: `bin/binkd -c data/ftn/binkd.conf`)
 
 ### Messages arriving but not visible in BBS
 

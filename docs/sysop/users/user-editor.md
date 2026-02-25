@@ -1,40 +1,25 @@
-# User Editor (UE) - Standalone TUI Tool
+# User Editor (`ue`)
 
-## Overview
+The `ue` command is a full-screen TUI tool for managing user accounts on a running ViSiON/3 BBS. Run it directly from your server as the sysop — no web interface, no JSON editing required.
 
-The User Editor (`cmd/ue/`) is a standalone terminal-based user account management tool for ViSiON/3 BBS. It faithfully recreates the original Vision/2 `UE.EXE v1.3` (written in Turbo Pascal by Crimson Blade, May 1993) as a modern Go TUI application.
+## Running the Editor
 
-## Usage
+From your ViSiON/3 directory:
 
 ```bash
-# Default (looks for data/users/users.json relative to cwd)
-./ue
-
-# Explicit path to users directory
-./ue --data /path/to/data/users/
+./ue                              # uses data/users/users.json by default
+./ue --data /path/to/data/users/  # explicit path
 ```
 
-## Architecture
+The editor reads and writes `data/users/users.json`. It uses optimistic concurrency — if the BBS modifies the user file while you have it open, you'll be warned before any save overwrites it.
 
-Built with BubbleTea + Lipgloss, following the same patterns as the strings editor (`cmd/strings/`).
-
-```
-cmd/ue/main.go                         # CLI entry point
-internal/usereditor/
-  model.go                             # BubbleTea Model, state machine, Update()
-  view.go                              # List browser rendering
-  view_edit.go                         # Per-user field editor rendering
-  colors.go                            # DOS CGA palette mapped to Lipgloss styles
-  fileio.go                            # JSON load/save with optimistic concurrency
-  fields.go                            # Field definitions and edit types
-  dialogs.go                           # Confirmation dialogs, help screen
-```
+---
 
 ## Screens
 
-### List Browser (Main Screen)
+### User List (Main Screen)
 
-The primary screen showing all users in a scrollable list with 13 visible rows centered on the cursor. Five column views are available, toggled with Left/Right arrows:
+Displays all users in a scrollable list. Five column views are available, toggled with Left/Right arrows:
 
 | View | Columns |
 |------|---------|
@@ -44,104 +29,131 @@ The primary screen showing all users in a scrollable list with 13 visible rows c
 | 4 | Messages Posted, Validated |
 | 5 | Last Login Date, Last Login Time |
 
-Users can be tagged (Space key) for mass operations.
+Users can be tagged with Space for bulk operations (validate, delete).
 
 ### Field Editor
 
-Opened by pressing Enter on a user in the list. Displays 28 fields in two columns:
+Press Enter on any user to open the field editor. Displays 28 fields across two columns:
 
-**Left Column:**
-Handle, Username, Real Name, Phone Number, Access Level, Total Calls, Group/Location, Access Flags, Private Note, File Points, Num Uploads, Messages Posted, Custom Prompt, Time Limit
+**Left column:** Handle, Username, Real Name, Phone Number, Access Level, Total Calls, Group/Location, Access Flags, Private Note, File Points, Num Uploads, Messages Posted, Custom Prompt, Time Limit
 
-**Right Column:**
-Validated, Hot Keys, More Prompts, Screen Width, Screen Height, Encoding, Msg Header, Output Mode, Deleted User, Created At (read-only), Updated At (read-only), Last Login (read-only), Last Bulletin (read-only)
+**Right column:** Validated, Hot Keys, More Prompts, Screen Width, Screen Height, Encoding, Msg Header, Output Mode, Deleted User, Created At, Updated At, Last Login, Last Bulletin
 
-**Special:** Password field (triggers password reset dialog with bcrypt hashing)
+The Password field opens a dialog — new password is bcrypt-hashed before saving.
+
+---
 
 ## Key Bindings
 
-### List Mode
+### User List
 
 | Key | Action |
 |-----|--------|
-| Up/Down | Scroll user list |
-| Home/End | Jump to first/last user |
-| PgUp/PgDn | Scroll by 13 users |
-| Left/Right | Change column view (5 views) |
+| Up / Down | Scroll user list |
+| Home / End | Jump to first / last user |
+| PgUp / PgDn | Scroll by 13 users |
+| Left / Right | Cycle column views |
 | Space | Toggle tag on current user |
-| Enter | Open field editor for highlighted user |
+| Enter | Open field editor |
 | F2 | Delete highlighted user (confirm) |
 | Shift-F2 | Delete all tagged users (confirm) |
-| F3 | Toggle alphabetical/numeric sort |
+| F3 | Toggle alphabetical / numeric sort |
 | F5 | Auto-validate highlighted user |
 | Shift-F5 | Auto-validate all tagged users |
 | F10 | Tag all users |
 | Shift-F10 | Untag all users |
-| Alt-H | Show help screen |
-| Esc | Exit (prompts to save if changes exist) |
+| Alt-H | Help screen |
+| Esc | Exit (prompts to save if unsaved changes exist) |
 
-### Edit Mode
+### Field Editor
 
 | Key | Action |
 |-----|--------|
-| Tab/Enter/Down | Edit current field, then move to next |
+| Tab / Enter / Down | Edit current field, advance to next |
 | Up | Move to previous field |
 | Ctrl-Home | Jump to first field |
 | Ctrl-End | Jump to last field |
-| PgDn | Save changes + next user |
-| PgUp | Save changes + previous user |
+| PgDn | Save changes + open next user |
+| PgUp | Save changes + open previous user |
 | F2 | Delete current user |
-| F5 | Set to default values |
+| F5 | Reset to default values |
 | F10 | Abort (discard changes) |
 | Esc | Save changes + return to list |
 
-### Field Editing
+### Within a Field
 
 | Key | Action |
 |-----|--------|
-| Left/Right | Move cursor within field |
-| Home/End | Start/end of field |
-| Insert | Toggle insert/overwrite mode |
+| Left / Right | Move cursor |
+| Home / End | Start / end of field |
+| Insert | Toggle insert / overwrite |
 | Delete | Delete character at cursor |
 | Backspace | Delete character before cursor |
 
-## Special Operations
+---
+
+## Operations
+
+### Auto-Validate
+
+Sets standard approval values for a new user:
+
+- Access Level → 10
+- Validated → true
+- File Points → 100
+- Time Limit → 60 minutes
 
 ### Delete User
-Performs a soft-delete: sets `deletedUser=true` and records `deletedAt` timestamp. The user record is preserved in `users.json` but marked as deleted. This matches the V3 soft-delete pattern used by the BBS.
 
-### Auto-Validate (Set Defaults)
-Sets standard field values for new user approval:
-- Access Level = 10
-- Validated = true
-- File Points = 100
-- Time Limit = 60 minutes
+Soft-delete: sets `deletedUser=true` and records a `deletedAt` timestamp. The record stays in `users.json` but is flagged as deleted — matching the V3 soft-delete pattern used by the BBS itself.
 
-### Alphabetize
-Toggles between sorting users alphabetically by handle and numerically by user ID.
+### Sort Order
+
+F3 toggles between alphabetical sort (by handle) and numeric sort (by user ID).
 
 ### Password Reset
-In the field editor, selecting the Password field opens a password entry dialog. The new password is hashed with bcrypt before storing.
 
-## File Safety / Concurrency
+Selecting the Password field in the editor opens a secure entry dialog. The new value is bcrypt-hashed before writing — the plain-text password is never stored.
+
+---
+
+## Technical Reference
+
+### Architecture
+
+Built with BubbleTea + Lipgloss, following the same patterns as the strings editor (`cmd/strings/`).
+
+```
+cmd/ue/main.go                    # CLI entry point
+internal/usereditor/
+  model.go                        # BubbleTea Model, state machine, Update()
+  view.go                         # List browser rendering
+  view_edit.go                    # Per-user field editor rendering
+  colors.go                       # DOS CGA palette mapped to Lipgloss styles
+  fileio.go                       # JSON load/save with optimistic concurrency
+  fields.go                       # Field definitions and edit types
+  dialogs.go                      # Confirmation dialogs, help screen
+```
+
+Source data: `data/users/users.json`. The editor imports `internal/user.User` directly — no duplicate type definitions.
+
+### File Safety
 
 The editor uses optimistic concurrency to prevent data loss when the BBS is running simultaneously:
 
-1. **On load**: Records the file modification time (mtime) of `users.json`
-2. **On save**: Checks if mtime has changed since load
-   - If unchanged: saves normally via atomic write (temp file + rename)
-   - If changed: warns the user and asks whether to overwrite
-3. **Atomic writes**: All saves go through a temp file (`users-*.json.tmp`) then `os.Rename()`, preventing partial writes
+1. **On load** — records the mtime of `users.json`
+2. **On save** — checks if mtime has changed
+   - Unchanged: saves via atomic write (temp file + `os.Rename()`)
+   - Changed: warns and asks whether to overwrite
+3. All saves go through a temp file (`users-*.json.tmp`) to prevent partial writes
 
-This approach requires no changes to the BBS server code and protects against accidental overwrites.
+### Color Scheme
 
-## Color Scheme
-
-All colors are period-accurate, matching the original DOS CGA palette from UE.PAS:
+Period-accurate, matching the original DOS CGA palette from `UE.PAS`:
 
 | Element | DOS Color | Description |
 |---------|-----------|-------------|
-| Title/Bottom bars | Color(8,15) | DarkGray bg, White fg |
+| Title / bottom bars | Color(8,15) | DarkGray bg, White fg |
 | Background fill | Fill_Screen('░',7,1) | Gray on Blue |
 | List box border | Color(1,9) | Blue bg, LightBlue fg |
 | List header | Color(1,14) | Blue bg, Yellow fg |
@@ -155,22 +167,18 @@ All colors are period-accurate, matching the original DOS CGA palette from UE.PA
 | Dialog boxes | Color(5,14/15) | Magenta bg, Yellow/White fg |
 | Help screen | Color(4,14/15) | Red bg, Yellow/White fg |
 
-## Comparison with Original V2 UE.EXE
+### Comparison with Original V2 UE.EXE
 
-| Feature | V2 UE.EXE | V3 UE |
+`ue` faithfully recreates `UE.EXE v1.3` (Turbo Pascal, Crimson Blade, May 1993) as a modern Go TUI.
+
+| Feature | V2 UE.EXE | V3 ue |
 |---------|-----------|-------|
-| Data format | Binary record file (USERS.) | JSON (users.json) |
+| Data format | Binary record file (`USERS.`) | JSON (`users.json`) |
 | Delete behavior | Hard delete (FillChar zero) | Soft delete (flag + timestamp) |
-| Password storage | Plain text | Bcrypt hash |
+| Password storage | Plain text | bcrypt hash |
 | File locking | None (DOS single-user) | Optimistic concurrency |
-| User index | Separate USERINDX. file | Not needed (JSON) |
+| User index | Separate `USERINDX.` file | Not needed (JSON) |
 | Mail cleanup | Deletes from MAIL file | Not applicable |
 | Demon attacks | Supported | Not in V3 |
 | File ratios | UDRatio, UDKRatio, PCR | Not in V3 |
 | V3-only fields | N/A | GroupLocation, Encoding, OutputMode, etc. |
-
-## Data File
-
-Source: `data/users/users.json`
-
-The editor imports `internal/user.User` struct directly - no duplicate type definitions. All fields match the User struct defined in `internal/user/user.go`.

@@ -473,6 +473,28 @@ section.cover, .markdown-section {
     background: var(--blue-dark);
 }
 
+/* ── Discord link ────────────────────────── */
+.discord-link {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.45rem 1rem;
+    background-color: #5865F2;
+    color: #ffffff !important;
+    font-family: var(--font-mono) !important;
+    font-size: 0.85rem;
+    font-weight: 600;
+    text-decoration: none !important;
+    border: none !important;
+    border-radius: 0;
+    transition: background-color 0.15s;
+}
+
+.discord-link:hover {
+    background-color: #4752c4;
+    color: #ffffff !important;
+    border: none !important;
+}
+
 /* ── Back-to-top link ────────────────────── */
 .back-to-top {
     background-color: var(--ansi-blue) !important;

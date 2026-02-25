@@ -20,6 +20,7 @@
 
 * **MESSAGES**
 * [Message Areas](messages/message-areas.md)
+* [Private Mail](messages/private-mail.md)
 * [FTN Echomail](messages/ftn-echomail.md)
 * [JAM Echomail](messages/jam-echomail.md)
 * [V3Mail](messages/v3mail.md)
