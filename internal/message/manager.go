@@ -226,6 +226,9 @@ func (mm *MessageManager) UpdateAreaByID(id int, updated MessageArea) error {
 	replacement := new(MessageArea)
 	*replacement = updated
 	if oldTag != updated.Tag {
+		if existing, ok := mm.areasByTag[updated.Tag]; ok && existing.ID != id {
+			return fmt.Errorf("tag %q already in use by area %d", updated.Tag, existing.ID)
+		}
 		delete(mm.areasByTag, oldTag)
 	}
 	mm.areasByID[id] = replacement
@@ -238,9 +241,11 @@ func (mm *MessageManager) UpdateAreaByID(id int, updated MessageArea) error {
 // to avoid partial-write corruption.
 func (mm *MessageManager) SaveAreas() error {
 	mm.mu.RLock()
-	list := make([]*MessageArea, 0, len(mm.areasByID))
+	list := make([]MessageArea, 0, len(mm.areasByID))
 	for _, area := range mm.areasByID {
-		list = append(list, area)
+		if area != nil {
+			list = append(list, *area)
+		}
 	}
 	mm.mu.RUnlock()
 
@@ -265,6 +270,11 @@ func (mm *MessageManager) SaveAreas() error {
 		_ = tmp.Close()
 		_ = os.Remove(tmpName)
 		return fmt.Errorf("failed to write temp areas file: %w", err)
+	}
+	if err = tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to sync temp areas file: %w", err)
 	}
 	if err = tmp.Close(); err != nil {
 		_ = os.Remove(tmpName)
@@ -691,7 +701,6 @@ func (mm *MessageManager) DeleteMessage(areaID, msgNum int) error {
 	}
 	// Invalidate caches so subsequent reads reflect the deletion
 	mm.invalidateThreadIndex(areaID)
-	delete(mm.msgidIndex, areaID)
 	return nil
 }
 
@@ -711,7 +720,6 @@ func (mm *MessageManager) PackAndLinkArea(areaID int) error {
 		return fmt.Errorf("link area %d: %w", areaID, err)
 	}
 	mm.invalidateThreadIndex(areaID)
-	delete(mm.msgidIndex, areaID)
 	return nil
 }
 

@@ -8944,7 +8944,9 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 					paths[i] = fe.path
 					fileIDs[i] = fe.id
 				}
-				successCount, failCount = e.runTransferSend(s, terminal, proto, paths, fileIDs, outputMode, nodeNumber)
+				transferSuccess, transferFail := e.runTransferSend(s, terminal, proto, paths, fileIDs, outputMode, nodeNumber)
+				successCount += transferSuccess
+				failCount += transferFail
 				time.Sleep(1 * time.Second)
 			}
 

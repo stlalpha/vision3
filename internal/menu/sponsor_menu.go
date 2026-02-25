@@ -280,6 +280,12 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		switch key {
 		case int('t'), int('T'):
+			if currentUser.AccessLevel < cfg.CoSysOpLevel {
+				msg := "|01Tag — sysop/co-sysop only.|07\r\n"
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				time.Sleep(1 * time.Second)
+				break
+			}
 			newVal := promptAreaField(s, terminal, outputMode, "Tag", edited.Tag, 32)
 			if newVal != edited.Tag {
 				dirty = true
@@ -635,8 +641,8 @@ func promptAreaField(s ssh.Session, terminal *term.Terminal,
 	if input == "" {
 		return current
 	}
-	if len(input) > maxLen {
-		input = input[:maxLen]
+	if runes := []rune(input); len(runes) > maxLen {
+		input = string(runes[:maxLen])
 	}
 	return input
 }

@@ -91,7 +91,13 @@ func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd) error {
 			_ = cmd.Process.Kill()
 		}
 		_ = stdinPipe.Close()
-		<-cmdDone // Wait for goroutine to finish
+		// Close stdoutPipe to unblock the io.Copy goroutine so outputDone fires.
+		_ = stdoutPipe.Close()
+		select {
+		case <-cmdDone:
+		case <-time.After(5 * time.Second):
+			log.Printf("WARN: (%s) timed out waiting for command goroutine after cancel", cmd.Path)
+		}
 		cmdErr = ctx.Err()
 	case err := <-cmdDone:
 		cmdErr = err

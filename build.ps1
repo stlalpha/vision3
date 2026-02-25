@@ -29,6 +29,13 @@ if (-not (Test-Path "configs\ssh_host_rsa_key") -or -not (Test-Path "data\users\
 Write-Host "=== Building ViSiON/3 BBS ===" -ForegroundColor Cyan
 $BUILT = @()
 
+$goCmd = Get-Command go -ErrorAction SilentlyContinue
+if (-not $goCmd) {
+    Write-Host "Go executable not found in PATH. Re-run setup.ps1 or reopen your shell." -ForegroundColor Red
+    exit 1
+}
+$goExe = $goCmd.Source
+
 $targets = @(
     @{ Cmd = "vision3"; Desc = "BBS server" },
     @{ Cmd = "helper"; Desc = "helper process" },
@@ -38,7 +45,7 @@ $targets = @(
 )
 foreach ($t in $targets) {
     $exe = $t.Cmd + ".exe"
-    & go build -o $exe "./cmd/$($t.Cmd)"
+    & $goExe build -o $exe "./cmd/$($t.Cmd)"
     if ($LASTEXITCODE -ne 0) {
         Write-Host "Build failed ($($t.Cmd))!" -ForegroundColor Red
         exit 1

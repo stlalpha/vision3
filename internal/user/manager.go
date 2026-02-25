@@ -189,10 +189,10 @@ func (um *UserMgr) loadCallHistory() error {
 		return fmt.Errorf("failed to read %s: %w", callHistoryFile, err)
 	}
 
+	data = StripUTF8BOM(data)
 	if len(data) == 0 {
 		return nil // Empty file is okay
 	}
-	data = StripUTF8BOM(data)
 
 	um.mu.Lock() // Lock before modifying internal slice
 	defer um.mu.Unlock()
@@ -225,11 +225,11 @@ func (um *UserMgr) loadNextCallNumber() error {
 		return fmt.Errorf("failed to read %s: %w", callNumberFile, err)
 	}
 
+	data = StripUTF8BOM(data)
 	if len(data) == 0 {
 		log.Printf("WARN: %s is empty, starting call numbers from 1.", callNumberFile)
 		return nil // Empty file, use default
 	}
-	data = StripUTF8BOM(data)
 
 	um.mu.Lock() // Lock before modifying
 	defer um.mu.Unlock()
