@@ -357,8 +357,12 @@ func (ih *InputHandler) parseCSISequence() (int, error) {
 		return KeyArrowLeft, nil
 	case 'H':
 		return KeyHome, nil
-	case 'F':
+	case 'F', 'K': // 'K' used by some terminals (e.g. SyncTERM) for End
 		return KeyEnd, nil
+	case 'U': // SyncTERM / EtherTerm PageDown (ESC [ U)
+		return KeyPageDown, nil
+	case 'V': // SyncTERM / EtherTerm PageUp (ESC [ V)
+		return KeyPageUp, nil
 	case '~':
 		if len(sequence) >= 2 {
 			switch sequence[0] {
