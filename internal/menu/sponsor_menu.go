@@ -116,9 +116,17 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if a, ok := e.MessageMgr.GetAreaByID(currentUser.CurrentMessageAreaID); ok {
 				area = a
 			}
+			// Redisplay the sponsor menu header on a clean screen after returning
+			// from the edit area so the prompt doesn't appear on a dirty screen.
+			if menuRec != nil && menuRec.GetClrScrBefore() {
+				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+			}
+			if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
+				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
+			}
 
-		case int('q'), int('Q'), 27: // ESC
-			_ = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		case int('q'), int('Q'), 27: // ESC — clear before fallback menu loads
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 			return currentUser, "", nil
 		}
 	}
@@ -206,9 +214,10 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	showFields()
 
 	ih := getSessionIH(s)
+	dirty := false
 
 	for {
-		prompt := "|07Edit (|11T|07|11N|07|11D|07|11R|07|11W|07|11S|07|11M|07|11G|07|11A|07|11L|07|11J|07|11C|07|11B|07|11Y|07|11E|07|11O|07|11K|07)  |11Q|07=Save  |03ESC|07=Cancel: "
+		prompt := "|07Edit (|11T|07|11N|07|11D|07|11R|07|11W|07|11S|07|11M|07|11G|07|11A|07|11L|07|11J|07|11C|07|11B|07|11Y|07|11E|07|11O|07|11K|07)  |11Q|07=Save/Quit  |03ESC|07=Cancel: "
 		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
 		key, err := ih.ReadKey()
@@ -223,29 +232,35 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		switch key {
 		case int('t'), int('T'):
+			dirty = true
 			edited.Tag = promptAreaField(s, terminal, outputMode, "Tag", edited.Tag, 32)
 			showFields()
 
 		case int('n'), int('N'):
+			dirty = true
 			edited.Name = promptAreaField(s, terminal, outputMode, "Name", edited.Name, 60)
 			showFields()
 
 		case int('d'), int('D'):
+			dirty = true
 			edited.Description = promptAreaField(s, terminal, outputMode,
 				"Description", edited.Description, 80)
 			showFields()
 
 		case int('r'), int('R'):
+			dirty = true
 			edited.ACSRead = promptAreaField(s, terminal, outputMode,
 				"ACS Read", edited.ACSRead, 40)
 			showFields()
 
 		case int('w'), int('W'):
+			dirty = true
 			edited.ACSWrite = promptAreaField(s, terminal, outputMode,
 				"ACS Write", edited.ACSWrite, 40)
 			showFields()
 
 		case int('s'), int('S'):
+			dirty = true
 			newHandle := promptAreaField(s, terminal, outputMode,
 				"Sponsor handle (- to clear)", edited.Sponsor, 30)
 			switch {
@@ -268,6 +283,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			showFields()
 
 		case int('m'), int('M'):
+			dirty = true
 			raw := promptAreaField(s, terminal, outputMode,
 				"Max Messages (0=unlimited)", fmt.Sprintf("%d", edited.MaxMessages), 10)
 			if raw != "" {
@@ -284,6 +300,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			showFields()
 
 		case int('g'), int('G'):
+			dirty = true
 			raw := promptAreaField(s, terminal, outputMode,
 				"Max Age days (0=unlimited)", fmt.Sprintf("%d", edited.MaxAge), 6)
 			if raw != "" {
@@ -300,6 +317,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			showFields()
 
 		case int('a'), int('A'):
+			dirty = true
 			cur := "default"
 			if edited.AllowAnon != nil {
 				if *edited.AllowAnon {
@@ -330,6 +348,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			showFields()
 
 		case int('l'), int('L'):
+			dirty = true
 			cur := "no"
 			if edited.RealNameOnly {
 				cur = "yes"
@@ -343,6 +362,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			showFields()
 
 		case int('j'), int('J'):
+			dirty = true
 			cur := "no"
 			if edited.AutoJoin {
 				cur = "yes"
@@ -356,6 +376,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			showFields()
 
 		case int('c'), int('C'):
+			dirty = true
 			raw := promptAreaField(s, terminal, outputMode,
 				"Conference ID (0=ungrouped)", fmt.Sprintf("%d", edited.ConferenceID), 6)
 			if raw != "" {
@@ -372,31 +393,39 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			showFields()
 
 		case int('b'), int('B'):
+			dirty = true
 			edited.BasePath = promptAreaField(s, terminal, outputMode,
 				"Base Path", edited.BasePath, 80)
 			showFields()
 
 		case int('y'), int('Y'):
+			dirty = true
 			edited.AreaType = promptAreaField(s, terminal, outputMode,
 				"Area Type (local/echomail/netmail)", edited.AreaType, 16)
 			showFields()
 
 		case int('e'), int('E'):
+			dirty = true
 			edited.EchoTag = promptAreaField(s, terminal, outputMode,
 				"Echo Tag", edited.EchoTag, 32)
 			showFields()
 
 		case int('o'), int('O'):
+			dirty = true
 			edited.OriginAddr = promptAreaField(s, terminal, outputMode,
 				"Origin Address", edited.OriginAddr, 32)
 			showFields()
 
 		case int('k'), int('K'):
+			dirty = true
 			edited.Network = promptAreaField(s, terminal, outputMode,
 				"Network", edited.Network, 32)
 			showFields()
 
-		case int('q'), int('Q'): // Q = save and quit
+		case int('q'), int('Q'): // Q = save and quit (no-op if nothing changed)
+			if !dirty {
+				return currentUser, "", nil
+			}
 			if updateErr := e.MessageMgr.UpdateAreaByID(edited.ID, edited); updateErr != nil {
 				log.Printf("ERROR: Node %d: Failed to update area: %v", nodeNumber, updateErr)
 				msg := "|01Error updating area — changes may be lost.|07\r\n"

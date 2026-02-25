@@ -52,18 +52,27 @@ func TestEditAreaRoundTrip(t *testing.T) {
 	}
 
 	// Mutate: assign a sponsor to GENERAL and update TECH's name.
+	// Use UpdateAreaByID (not direct pointer modification) per API contract.
 	general, ok := mm.GetAreaByID(1)
 	if !ok {
 		t.Fatal("area 1 (GENERAL) not found after load")
 	}
-	general.Sponsor = "AliceHandle"
-	general.Name = "General Chat"
+	modifiedGeneral := *general
+	modifiedGeneral.Sponsor = "AliceHandle"
+	modifiedGeneral.Name = "General Chat"
+	if err := mm.UpdateAreaByID(1, modifiedGeneral); err != nil {
+		t.Fatalf("UpdateAreaByID(1): %v", err)
+	}
 
 	tech, ok := mm.GetAreaByID(2)
 	if !ok {
 		t.Fatal("area 2 (TECH) not found after load")
 	}
-	tech.MaxMessages = 500
+	modifiedTech := *tech
+	modifiedTech.MaxMessages = 500
+	if err := mm.UpdateAreaByID(2, modifiedTech); err != nil {
+		t.Fatalf("UpdateAreaByID(2): %v", err)
+	}
 
 	// Save.
 	if err := mm.SaveAreas(); err != nil {

@@ -1968,14 +1968,12 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		// Note: ansBackgroundBytes is currently unused but will be needed for full lightbar implementation
 		// ansBackgroundBytes := ansiProcessResult.DisplayBytes
 		if currentMenuName != "LOGIN" {
-			// Clear screen before displaying menu if configured to do so
-			if menuRec.GetClrScrBefore() {
-				if wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode); wErr != nil {
-					log.Printf("ERROR: Node %d: Failed clearing screen for menu %s: %v", nodeNumber, currentMenuName, wErr)
-				}
-			}
 			// Truncate ANSI output to terminal height to prevent scrolling
 			displayBytes := ansiProcessResult.DisplayBytes
+			// Prepend clear sequence when CLR is set (single write for reliable clearing)
+			if menuRec.GetClrScrBefore() {
+				displayBytes = append([]byte(ansi.ClearScreen()), displayBytes...)
+			}
 			if termHeight > 0 {
 				lines := bytes.Split(displayBytes, []byte("\n"))
 				if len(lines) > termHeight {
@@ -2211,9 +2209,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 		if !matched { // Check keyword matches (relevant for both)
 			for _, cmdRec := range commands {
-				if cmdRec.GetHidden() {
-					continue // Skip hidden commands
-				}
+				// Hidden commands are still matched (e.g. % for sponsor menu); HIDDEN only affects display/prompts.
 
 				cmdACS := cmdRec.ACS
 				if !checkACS(cmdACS, currentUser, s, terminal, sessionStartTime) { // Use ssh.Session 's'
@@ -3241,7 +3237,8 @@ func (e *MenuExecutor) applyCommonTemplateTokens(data []byte, currentUser *user.
 }
 
 // displayFile reads and displays an ANSI file from the MENU SET's ansi directory.
-func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, outputMode ansi.OutputMode) error {
+// If clearFirst is true, prepends the ANSI clear sequence so clear and content go out in one write.
+func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, outputMode ansi.OutputMode, clearFirst ...bool) error {
 	// Construct full path using MenuSetPath
 	filePath := filepath.Join(e.MenuSetPath, "ansi", filename)
 
@@ -3250,24 +3247,26 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 	if err != nil {
 		log.Printf("ERROR: Failed to read ANSI file %s: %v", filePath, err)
 		errMsg := fmt.Sprintf(e.LoadedStrings.ExecFileLoadError, filename)
-		// Use new helper, need outputMode... Pass it into displayFile?
-		// Use the passed outputMode for the error message
-		writeErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode) // Use passed outputMode
+		writeErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		if writeErr != nil {
 			log.Printf("ERROR: Failed writing displayFile error message: %v", writeErr)
 		}
 		return writeErr
 	}
+	if len(clearFirst) > 0 && clearFirst[0] {
+		data = append([]byte(ansi.ClearScreen()), data...)
+	}
 
 	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	var writeErr error
 	if outputMode == ansi.OutputModeCP437 {
-		_, err = terminal.Write(data)
+		_, writeErr = terminal.Write(data)
 	} else {
-		err = terminalio.WriteProcessedBytes(terminal, data, outputMode)
+		writeErr = terminalio.WriteProcessedBytes(terminal, data, outputMode)
 	}
-	if err != nil {
-		log.Printf("ERROR: Failed to write ANSI file %s: %v", filePath, err)
-		return err
+	if writeErr != nil {
+		log.Printf("ERROR: Failed to write ANSI file %s: %v", filePath, writeErr)
+		return writeErr
 	}
 
 	return nil
@@ -3645,11 +3644,8 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	renderFastLoginScreen := func() {
-		if fastlognMenu != nil && fastlognMenu.GetClrScrBefore() {
-			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-		}
-
-		if displayErr := e.displayFile(terminal, "FASTLOGN.ANS", outputMode); displayErr != nil {
+		clearFirst := fastlognMenu != nil && fastlognMenu.GetClrScrBefore()
+		if displayErr := e.displayFile(terminal, "FASTLOGN.ANS", outputMode, clearFirst); displayErr != nil {
 			log.Printf("WARN: Node %d: Failed to display FASTLOGN.ANS: %v", nodeNumber, displayErr)
 		}
 
