@@ -33,7 +33,13 @@ type readInterrupter interface {
 // ctx controls cancellation and timeout: when ctx.Done() fires, the process is
 // killed and the function returns ctx.Err(). Pass context.Background() for
 // no timeout. Callers should use context.WithTimeout for transfer timeouts.
-func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd) error {
+//
+// stdinIdleTimeout, when > 0, kills the process if no bytes arrive from the
+// client for that duration. Use this for receive (upload) mode: if the client
+// never responds to the initial handshake (e.g. user cancels the SyncTerm
+// upload dialog without sending a ZModem abort), the process would otherwise
+// retry indefinitely. Pass 0 to disable.
+func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd, stdinIdleTimeout time.Duration) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -61,13 +67,112 @@ func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd) error {
 	inputDone := make(chan struct{})
 	outputDone := make(chan struct{})
 
+	// stdinActivity receives a signal each time bytes arrive from the session.
+	// Used by the idle monitor goroutine below; nil when idle timeout is disabled.
+	var stdinActivity chan struct{}
+	if stdinIdleTimeout > 0 {
+		stdinActivity = make(chan struct{}, 1)
+	}
+
 	// session → command stdin
+	// Uses a manual read loop (rather than io.Copy) so we can:
+	//  1. Signal non-CAN stdin activity to the idle monitor.
+	//  2. Detect ZModem abort (5+ consecutive CAN / 0x18 bytes) and kill the
+	//     process immediately rather than waiting for the idle timer. This
+	//     handles the case where the client (e.g. SyncTerm) sends a CAN abort
+	//     when the user cancels the upload dialog — sexyz may not handle the
+	//     CAN reliably, so we enforce the kill ourselves.
 	go func() {
 		defer close(inputDone)
-		n, cpErr := io.Copy(stdinPipe, s)
-		log.Printf("DEBUG: (%s) direct stdin copy finished. Bytes: %d, Error: %v", cmd.Path, n, cpErr)
+		buf := make([]byte, 32*1024)
+		var total int64
+		var cpErr error
+		var canRun int // consecutive CAN (0x18) bytes seen so far
+		for {
+			nr, rerr := s.Read(buf)
+			if nr > 0 {
+				// Scan for consecutive CAN bytes and decide whether this
+				// chunk counts as real file activity.
+				hasNonCAN := false
+				for _, b := range buf[:nr] {
+					if b == 0x18 { // CAN
+						canRun++
+						if canRun >= 5 {
+							// ZModem abort sequence — kill the process so the
+							// BBS returns to the menu immediately rather than
+							// waiting for the idle timer to fire.
+							log.Printf("DEBUG: (%s) ZModem CAN abort detected in stdin; killing process", cmd.Path)
+							if cmd.Process != nil {
+								_ = cmd.Process.Kill()
+							}
+							_ = stdoutPipe.Close()
+						}
+					} else {
+						canRun = 0
+						hasNonCAN = true
+					}
+				}
+				// Only reset the idle timer for real file data.
+				// CAN bytes indicate an abort — treating them as "activity"
+				// would restart the timer and delay the kill by another 30 s.
+				if stdinActivity != nil && hasNonCAN {
+					select {
+					case stdinActivity <- struct{}{}:
+					default:
+					}
+				}
+				nw, werr := stdinPipe.Write(buf[:nr])
+				total += int64(nw)
+				if werr != nil {
+					cpErr = werr
+					break
+				}
+			}
+			if rerr != nil {
+				if rerr != io.EOF {
+					cpErr = rerr
+				}
+				break
+			}
+		}
+		log.Printf("DEBUG: (%s) direct stdin copy finished. Bytes: %d, Error: %v", cmd.Path, total, cpErr)
 		_ = stdinPipe.Close()
 	}()
+
+	// Idle monitor: if no bytes arrive from the client within stdinIdleTimeout,
+	// the user has likely cancelled their terminal uploader without sending a
+	// ZModem abort (CAN sequence). Kill the process so the BBS doesn't loop
+	// indefinitely re-offering the transfer.
+	if stdinIdleTimeout > 0 {
+		go func() {
+			timer := time.NewTimer(stdinIdleTimeout)
+			defer timer.Stop()
+			for {
+				select {
+				case <-timer.C:
+					log.Printf("DEBUG: (%s) no client stdin activity for %v; killing process", cmd.Path, stdinIdleTimeout)
+					if cmd.Process != nil {
+						_ = cmd.Process.Kill()
+					}
+					_ = stdoutPipe.Close() // unblock the output goroutine
+					return
+				case <-stdinActivity:
+					// Client is active — reset the idle timer.
+					if !timer.Stop() {
+						select {
+						case <-timer.C:
+						default:
+						}
+					}
+					timer.Reset(stdinIdleTimeout)
+				case <-inputDone:
+					return // stdin goroutine finished cleanly
+				case <-ctx.Done():
+					return // main context cancelled; main select handles the kill
+				}
+			}
+		}()
+	}
 
 	// command stdout → session
 	go func() {
@@ -77,10 +182,30 @@ func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd) error {
 	}()
 
 	// Race: ctx cancellation vs normal completion (outputDone then cmd.Wait).
+	//
+	// Once outputDone fires (output copy ended — either because the process
+	// exited or because the session write failed after a user abort), give the
+	// process a short grace period to exit on its own, then force-kill it.
+	// Without this, cmd.Wait() can block indefinitely when the user aborts the
+	// transfer in their terminal (e.g. SyncTerm cancel button) without closing
+	// the connection: outputDone fires immediately but the process is still
+	// alive trying to flush its final ZModem frames through a now-dead pipe.
+	const postOutputGrace = 5 * time.Second
 	cmdDone := make(chan error, 1)
 	go func() {
 		<-outputDone
-		cmdDone <- cmd.Wait()
+		waitDone := make(chan error, 1)
+		go func() { waitDone <- cmd.Wait() }()
+		select {
+		case err := <-waitDone:
+			cmdDone <- err
+		case <-time.After(postOutputGrace):
+			log.Printf("DEBUG: (%s) process still running %v after output closed; killing", cmd.Path, postOutputGrace)
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+			cmdDone <- <-waitDone
+		}
 	}()
 
 	var cmdErr error
@@ -103,6 +228,18 @@ func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd) error {
 		cmdErr = err
 	}
 	log.Printf("DEBUG: (%s) command finished (direct). Error: %v", cmd.Path, cmdErr)
+
+	// When the transfer ended abnormally (killed or non-zero exit), send a
+	// ZModem abort sequence to the client. This is necessary because after
+	// killing sexyz, any ZRINIT frame already buffered in the stdout pipe is
+	// still flushed to the client by the output goroutine — the client
+	// (SyncTerm) detects the ZRINIT and re-opens the upload/download dialog.
+	// Sending 8× CAN tells the client to abort its ZModem session and return
+	// to terminal mode.
+	if cmdErr != nil {
+		zmodemAbort := append(bytes.Repeat([]byte{0x18}, 8), '\r', '\n')
+		_, _ = s.Write(zmodemAbort)
+	}
 
 	// Log stderr output from the external transfer program.
 	if stderrBuf.Len() > 0 {
@@ -202,7 +339,7 @@ func RunCommandWithPTY(ctx context.Context, s ssh.Session, cmd *exec.Cmd) error 
 	ptyReq, winCh, isPty := s.Pty()
 	if !isPty {
 		log.Printf("WARN: No PTY available for session. Falling back to direct mode for %s.", cmd.Path)
-		return RunCommandDirect(ctx, s, cmd)
+		return RunCommandDirect(ctx, s, cmd, 0)
 	}
 
 	log.Printf("DEBUG: Starting command '%s' with PTY", cmd.Path)

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gliderlabs/ssh"
 )
@@ -140,7 +141,7 @@ func (p *ProtocolConfig) ExecuteSend(ctx context.Context, s ssh.Session, filePat
 	if p.UsePTY {
 		return RunCommandWithPTY(ctx, s, cmd)
 	}
-	return RunCommandDirect(ctx, s, cmd)
+	return RunCommandDirect(ctx, s, cmd, 0)
 }
 
 // ExecuteReceive runs this protocol's receive command to accept files from the user.
@@ -180,7 +181,18 @@ func (p *ProtocolConfig) ExecuteReceive(ctx context.Context, s ssh.Session, targ
 	if p.UsePTY {
 		return RunCommandWithPTY(ctx, s, cmd)
 	}
-	return RunCommandDirect(ctx, s, cmd)
+	// Kill sexyz if no non-CAN bytes arrive from the client within this window.
+	// Handles the case where the user cancels their terminal uploader
+	// (e.g. closes SyncTerm's upload dialog) without sending a ZModem CAN
+	// abort — sexyz would otherwise loop re-sending ZRINIT indefinitely.
+	//
+	// Keep this shorter than sexyz's ZRINIT retransmit interval (~15 s) so
+	// the kill fires before the first retransmit and SyncTerm does not
+	// re-open the upload dialog. CAN bytes from the client do NOT reset this
+	// timer (only real file data does), so a cancel from SyncTerm that sends
+	// CAN still triggers an immediate kill via CAN detection in RunCommandDirect.
+	const recvIdleTimeout = 10 * time.Second
+	return RunCommandDirect(ctx, s, cmd, recvIdleTimeout)
 }
 
 // expandArgs substitutes placeholders in a command argument template.
