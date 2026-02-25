@@ -202,6 +202,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(b.String())), outputMode)
 	}
 
+	_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 	showFields()
 
 	ih := getSessionIH(s)
