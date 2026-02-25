@@ -887,7 +887,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				// Show cursor for the viewer.
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 				if e.FileMgr.IsSupportedArchive(sel.Filename) {
-					ctx, cancel := e.transferContext()
+					ctx, cancel := e.transferContext(s.Context())
 					ziplab.RunZipLabView(ctx, s, terminal, filePath, sel.Filename, outputMode)
 					cancel()
 				} else {

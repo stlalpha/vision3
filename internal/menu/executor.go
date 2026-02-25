@@ -311,16 +311,20 @@ func (e *MenuExecutor) idleTimeout(u *user.User) time.Duration {
 	return time.Duration(cfg.SessionIdleTimeoutMinutes) * time.Minute
 }
 
-// transferContext returns a context for file transfers. If TransferTimeoutMinutes > 0,
-// returns a context with that timeout and its cancel function; otherwise returns
-// context.Background() and a no-op cancel. Callers must invoke the cancel function
-// when done (e.g. via defer cancel()).
-func (e *MenuExecutor) transferContext() (context.Context, context.CancelFunc) {
+// transferContext returns a context for file transfers rooted at the caller's
+// session context so that transfers are cancelled when the session ends.
+// If TransferTimeoutMinutes > 0, an additional deadline is layered on top —
+// whichever fires first (session close or timeout) wins.
+// Callers must invoke the cancel function when done (e.g. via defer cancel()).
+func (e *MenuExecutor) transferContext(sessionCtx context.Context) (context.Context, context.CancelFunc) {
+	if sessionCtx == nil {
+		sessionCtx = context.Background()
+	}
 	cfg := e.GetServerConfig()
 	if cfg.TransferTimeoutMinutes <= 0 {
-		return context.Background(), func() {}
+		return sessionCtx, func() {}
 	}
-	return context.WithTimeout(context.Background(), time.Duration(cfg.TransferTimeoutMinutes)*time.Minute)
+	return context.WithTimeout(sessionCtx, time.Duration(cfg.TransferTimeoutMinutes)*time.Minute)
 }
 
 // isCoSysOpOrAbove returns true if the user has CoSysOp or SysOp access level.
@@ -8116,7 +8120,7 @@ func (e *MenuExecutor) runTransferSend(s ssh.Session, terminal *term.Terminal, p
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|15Initiating %s batch transfer (%d files)...|07\r\n", proto.Name, len(paths)))), outputMode)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
 
-		ctx, cancel := e.transferContext()
+		ctx, cancel := e.transferContext(s.Context())
 		defer cancel()
 		transferErr := proto.ExecuteSend(ctx, s, paths...)
 		if transferErr != nil {
@@ -8148,7 +8152,7 @@ func (e *MenuExecutor) runTransferSend(s ssh.Session, terminal *term.Terminal, p
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Prepare your terminal to receive each file.\r\n")), outputMode)
 
 	for i, p := range paths {
-		ctx, cancel := e.transferContext()
+		ctx, cancel := e.transferContext(s.Context())
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(paths), names[i]))), outputMode)
 		sendErr := proto.ExecuteSend(ctx, s, p)
 		cancel()
@@ -8294,7 +8298,7 @@ func (e *MenuExecutor) runUploadFiles(
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
 	resetSessionIH(s)
-	ctx, cancel := e.transferContext()
+	ctx, cancel := e.transferContext(s.Context())
 	defer cancel()
 	transferErr := proto.ExecuteReceive(ctx, s, incomingDir)
 	time.Sleep(250 * time.Millisecond)
@@ -9027,7 +9031,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error locating file.|07\r\n")), outputMode)
 					time.Sleep(1 * time.Second)
 				} else {
-					ctx, cancel := e.transferContext()
+					ctx, cancel := e.transferContext(s.Context())
 					ziplab.RunZipLabView(ctx, s, terminal, viewFilePath, fileToView.Filename, outputMode)
 					cancel()
 				}

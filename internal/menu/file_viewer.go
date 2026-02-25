@@ -93,7 +93,7 @@ func runViewFile(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
-		ctx, cancel := e.transferContext()
+		ctx, cancel := e.transferContext(s.Context())
 		defer cancel()
 		ziplab.RunZipLabView(ctx, s, terminal, filePath, record.Filename, outputMode)
 	} else {
@@ -140,7 +140,7 @@ func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, r
 	}
 
 	if e.FileMgr.IsSupportedArchive(record.Filename) {
-		ctx, cancel := e.transferContext()
+		ctx, cancel := e.transferContext(s.Context())
 		defer cancel()
 		ziplab.RunZipLabView(ctx, s, terminal, filePath, record.Filename, outputMode)
 	} else {
