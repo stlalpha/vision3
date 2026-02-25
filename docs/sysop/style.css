@@ -3,19 +3,26 @@
    Overrides for Docsify dark.css
    ============================================ */
 
-/* ── Color palette — mirrors docs/style.css ─ */
+/* ── Color palette — ANSI base + main site palette ─ */
 :root {
+    /* Backgrounds — same as main site */
     --bg-primary:    #0a0a0a;
     --bg-secondary:  #111118;
     --bg-card:       #15151f;
-    --text-primary:  #c8c8d4;
-    --text-secondary: #9999b0;
-    --text-heading:  #e0e0f0;
-    --blue-bright:   #4466ff;
-    --blue-glow:     #3355dd;
-    --blue-dark:     #1a1a4e;
-    --cyan-accent:   #44ccdd;
     --border-color:  #252540;
+
+    /* ANSI base text colors */
+    --text-primary:  #aaaaaa;   /* ANSI color 7  — light grey  */
+    --text-bright:   #ffffff;   /* ANSI color 15 — bright white */
+    --text-secondary: #555555;  /* ANSI color 8  — dark grey   */
+
+    /* ANSI accent colors — match main site hue, ANSI saturation */
+    --ansi-blue:     #4466ff;   /* ANSI color 9  — bright blue  (main --blue-bright) */
+    --ansi-cyan:     #44ccdd;   /* ANSI color 11 — bright cyan  (main --cyan-accent) */
+    --ansi-green:    #55ff55;   /* ANSI color 10 — bright green */
+    --ansi-yellow:   #ffff55;   /* ANSI color 14 — bright yellow */
+
+    --blue-dark:     #1a1a4e;
     --font-mono:     'IBM Plex Mono', 'Courier New', monospace;
 }
 
@@ -28,6 +35,12 @@ body {
     color: var(--text-primary) !important;
     font-size: 15px;
     line-height: 1.75;
+}
+
+/* Nuke Docsify dark.css defaults that bleed through */
+body, .markdown-section, .content, #main {
+    background-color: var(--bg-primary) !important;
+    color: var(--text-primary) !important;
 }
 
 /* ── Sidebar ─────────────────────────────── */
@@ -65,18 +78,18 @@ body {
     padding: 1.2rem 1rem !important;
     margin: 0 !important;
     border-bottom: 1px solid var(--border-color) !important;
-    color: var(--text-heading) !important;
+    color: var(--text-bright) !important;
     letter-spacing: 0.05em;
     background-color: var(--bg-secondary) !important;
 }
 
 .app-name-link {
-    color: var(--text-heading) !important;
+    color: var(--text-bright) !important;
     text-decoration: none !important;
 }
 
 .app-name-link:hover {
-    color: var(--cyan-accent) !important;
+    color: var(--ansi-cyan) !important;
 }
 
 /* BBS key style brackets in app name */
@@ -85,7 +98,7 @@ body {
     font-weight: 400;
 }
 .nav-key {
-    color: var(--cyan-accent);
+    color: var(--ansi-cyan);
     font-weight: 700;
 }
 
@@ -112,7 +125,7 @@ body {
     font-weight: 700 !important;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: var(--text-secondary) !important;
+    color: var(--ansi-blue) !important;  /* ANSI bright blue for section headers */
     padding: 0.85rem 1rem 0.25rem 1rem;
     margin: 0;
     border-top: 1px solid var(--border-color);
@@ -127,7 +140,7 @@ body {
 .sidebar-nav a {
     display: block;
     font-size: 0.82rem !important;
-    color: var(--text-secondary) !important;
+    color: var(--text-primary) !important;
     text-decoration: none !important;
     padding: 0.2rem 1rem 0.2rem 1.5rem !important;
     transition: color 0.1s, background-color 0.1s;
@@ -137,15 +150,15 @@ body {
 }
 
 .sidebar-nav a:hover {
-    color: var(--cyan-accent) !important;
+    color: var(--ansi-cyan) !important;
     background-color: rgba(68, 204, 221, 0.06) !important;
 }
 
 .sidebar-nav a.active {
-    color: var(--blue-bright) !important;
+    color: var(--ansi-cyan) !important;  /* ANSI bright cyan for active */
     font-weight: 600 !important;
-    background-color: rgba(68, 102, 255, 0.10) !important;
-    border-left: 2px solid var(--blue-bright);
+    background-color: rgba(68, 204, 221, 0.08) !important;
+    border-left: 2px solid var(--ansi-cyan);
     padding-left: calc(1.5rem - 2px) !important;
 }
 
@@ -180,7 +193,7 @@ body {
 }
 
 .search input:focus {
-    border-color: var(--blue-bright) !important;
+    border-color: var(--ansi-cyan) !important;
 }
 
 .search input::placeholder {
@@ -206,7 +219,7 @@ section.cover, .markdown-section {
 .markdown-section h3,
 .markdown-section h4 {
     font-family: var(--font-mono) !important;
-    color: var(--text-heading) !important;
+    color: var(--text-bright) !important;
     font-weight: 700;
     margin-top: 2rem;
     margin-bottom: 0.75rem;
@@ -215,21 +228,21 @@ section.cover, .markdown-section {
 
 .markdown-section h1 {
     font-size: 1.5rem !important;
-    color: var(--cyan-accent) !important;
+    color: var(--ansi-cyan) !important;   /* ANSI bright cyan */
     border-bottom: 1px solid var(--border-color) !important;
     padding-bottom: 0.5rem;
 }
 
 .markdown-section h2 {
     font-size: 1.15rem !important;
-    color: var(--blue-bright) !important;
+    color: var(--ansi-blue) !important;   /* ANSI bright blue */
     border-bottom: 1px solid var(--border-color) !important;
     padding-bottom: 0.3rem;
 }
 
 .markdown-section h3 {
     font-size: 1rem !important;
-    color: var(--text-heading) !important;
+    color: var(--text-bright) !important; /* ANSI bright white */
 }
 
 .markdown-section p {
@@ -238,16 +251,21 @@ section.cover, .markdown-section {
     line-height: 1.8;
 }
 
+.markdown-section strong {
+    color: var(--text-bright) !important;
+    font-weight: 700;
+}
+
 .markdown-section a {
-    color: var(--blue-bright) !important;
+    color: var(--ansi-cyan) !important;   /* ANSI bright cyan for links */
     text-decoration: none !important;
-    border-bottom: 1px solid rgba(68, 102, 255, 0.3);
+    border-bottom: 1px solid rgba(68, 204, 221, 0.3);
     transition: color 0.1s, border-color 0.1s;
 }
 
 .markdown-section a:hover {
-    color: var(--cyan-accent) !important;
-    border-bottom-color: var(--cyan-accent);
+    color: var(--text-bright) !important;
+    border-bottom-color: var(--text-bright);
 }
 
 /* ── Code blocks ─────────────────────────── */
@@ -255,7 +273,7 @@ section.cover, .markdown-section {
     font-family: var(--font-mono) !important;
     font-size: 0.85em;
     background-color: var(--bg-card) !important;
-    color: var(--cyan-accent) !important;
+    color: var(--ansi-green) !important;  /* ANSI bright green — classic terminal */
     padding: 0.15em 0.4em;
     border: 1px solid var(--border-color);
     border-radius: 0;
@@ -264,7 +282,7 @@ section.cover, .markdown-section {
 .markdown-section pre {
     background-color: #0d0d1a !important;
     border: 1px solid var(--border-color) !important;
-    border-left: 3px solid var(--blue-bright) !important;
+    border-left: 3px solid var(--ansi-cyan) !important;
     border-radius: 0 !important;
     padding: 1rem 1.25rem !important;
     overflow-x: auto;
@@ -275,7 +293,7 @@ section.cover, .markdown-section {
     background: none !important;
     border: none !important;
     padding: 0 !important;
-    color: var(--text-primary) !important;
+    color: var(--ansi-green) !important;  /* ANSI bright green for code blocks */
     font-size: 0.85rem;
     line-height: 1.6;
 }
@@ -288,9 +306,18 @@ section.cover, .markdown-section {
     font-size: 0.85rem;
 }
 
+/* Kill Docsify's zebra striping on tr — it makes text unreadable */
+.markdown-section table tr,
+.markdown-section table tr:nth-child(odd),
+.markdown-section table tr:nth-child(even),
+.markdown-section table tr:nth-child(2n) {
+    background-color: transparent !important;
+    color: var(--text-primary) !important;
+}
+
 .markdown-section th {
     background-color: var(--bg-card) !important;
-    color: var(--text-heading) !important;
+    color: var(--ansi-blue) !important;   /* ANSI bright blue for column headers */
     font-weight: 700;
     text-align: left;
     padding: 0.5rem 0.75rem !important;
@@ -303,25 +330,28 @@ section.cover, .markdown-section {
 .markdown-section td {
     padding: 0.45rem 0.75rem !important;
     border: 1px solid var(--border-color) !important;
+    background-color: transparent !important;
     color: var(--text-primary) !important;
     vertical-align: top;
 }
 
-.markdown-section tr:nth-child(even) td {
-    background-color: rgba(255, 255, 255, 0.02) !important;
+/* Subtle alternate row tinting — dark only, never light */
+.markdown-section tbody tr:nth-child(even) td {
+    background-color: var(--bg-card) !important;
+    color: var(--text-primary) !important;
 }
 
 /* ── Blockquotes ─────────────────────────── */
 .markdown-section blockquote {
     background-color: var(--bg-card) !important;
-    border-left: 3px solid var(--cyan-accent) !important;
+    border-left: 3px solid var(--ansi-yellow) !important;  /* ANSI bright yellow */
     margin: 1.25rem 0 !important;
     padding: 0.75rem 1rem !important;
-    color: var(--text-secondary) !important;
+    color: var(--text-primary) !important;
 }
 
 .markdown-section blockquote p {
-    color: var(--text-secondary) !important;
+    color: var(--text-primary) !important;
     margin: 0 !important;
 }
 
@@ -354,11 +384,11 @@ section.cover, .markdown-section {
 .app-nav a {
     font-family: var(--font-mono) !important;
     font-size: 0.8rem !important;
-    color: var(--text-secondary) !important;
+    color: var(--text-primary) !important;
 }
 
 .app-nav a:hover {
-    color: var(--cyan-accent) !important;
+    color: var(--ansi-cyan) !important;
 }
 
 /* ── GitHub corner ───────────────────────── */
@@ -368,7 +398,7 @@ section.cover, .markdown-section {
 }
 
 .github-corner:hover svg {
-    fill: var(--blue-bright) !important;
+    fill: var(--ansi-blue) !important;
 }
 
 /* ── Prev/Next page nav ──────────────────── */
@@ -383,12 +413,12 @@ section.cover, .markdown-section {
 .pagination-item a {
     font-family: var(--font-mono) !important;
     font-size: 0.82rem;
-    color: var(--blue-bright) !important;
+    color: var(--ansi-cyan) !important;
     text-decoration: none !important;
 }
 
 .pagination-item a:hover {
-    color: var(--cyan-accent) !important;
+    color: var(--text-bright) !important;
 }
 
 /* ── Sidebar toggle button (mobile) ──────── */
@@ -421,8 +451,8 @@ section.cover, .markdown-section {
 
 /* ── Back-to-top link ────────────────────── */
 .back-to-top {
-    background-color: var(--blue-bright) !important;
-    color: #fff !important;
+    background-color: var(--ansi-blue) !important;
+    color: var(--text-bright) !important;
     border-radius: 0 !important;
 }
 
