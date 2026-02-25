@@ -262,12 +262,15 @@ func (ih *InputHandler) ReadKey() (int, error) {
 	}
 
 	// Check for escape sequence.
-	// A 100 ms timeout distinguishes a lone ESC keypress from sequences like
-	// arrow keys (ESC [ A). 100 ms accommodates higher-latency links (e.g.
-	// telnet over mobile networks) where 50 ms was too tight and caused
-	// arrow-key bytes to be misinterpreted as separate keypresses.
+	// A 500 ms timeout distinguishes a lone ESC keypress from sequences like
+	// arrow keys (ESC [ A) and PageDown (ESC [ 6 ~). This generous window
+	// handles high-latency telnet/SSH links where Nagle's algorithm on the
+	// client combined with delayed ACKs on the server can delay the bytes
+	// following ESC by 200–400 ms, causing PageUp/PageDown to be mis-read
+	// as a bare ESC and exit the lightbar unexpectedly.
+	// (was 50 ms → 100 ms → 500 ms, each bump driven by real-world reports)
 	if b == KeyEsc {
-		next, err := ih.readByteWithTimeout(100 * time.Millisecond)
+		next, err := ih.readByteWithTimeout(500 * time.Millisecond)
 		if err != nil {
 			// Timeout — no following byte, so this is a plain ESC.
 			return int(KeyEsc), nil
