@@ -23,37 +23,6 @@ import (
 	"github.com/stlalpha/vision3/internal/ziplab"
 )
 
-// readKeySequenceIH reads one key via the session-scoped InputHandler and maps it
-// to the same ANSI string format that readKeySequence returns, preventing the
-// "double key press" race between the InputHandler goroutine and a raw bufio.Reader.
-func readKeySequenceIH(ih *editor.InputHandler) (string, error) {
-	key, err := ih.ReadKey()
-	if err != nil {
-		return "", err
-	}
-	switch key {
-	case editor.KeyArrowUp:
-		return "\x1b[A", nil
-	case editor.KeyArrowDown:
-		return "\x1b[B", nil
-	case editor.KeyArrowRight:
-		return "\x1b[C", nil
-	case editor.KeyArrowLeft:
-		return "\x1b[D", nil
-	case editor.KeyPageUp:
-		return "\x1b[5~", nil
-	case editor.KeyPageDown:
-		return "\x1b[6~", nil
-	case editor.KeyHome:
-		return "\x1b[H", nil
-	case editor.KeyEnd:
-		return "\x1b[F", nil
-	case editor.KeyEsc:
-		return "\x1b", nil
-	default:
-		return string(rune(key)), nil
-	}
-}
 
 // fileListPlaceholderRegex matches @FPAGE@, @FTOTAL@, @FCONFPATH@ with optional alignment and width.
 // Modifier: | (0x7C) or │ (CP437 0xB3, common in ANSI art) followed by L/R/C — matches message-header format.
@@ -750,40 +719,48 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		prevCmdIndex = cmdIndex
 		prevPage, _ = calculatePageInfo()
 
-		key, err := readKeySequenceIH(ih)
+		keyInt, err := ih.ReadKey()
 		if err != nil {
 			if errors.Is(err, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			if errors.Is(err, editor.ErrIdleTimeout) {
 				return nil, "LOGOFF", io.EOF
 			}
 			return nil, "", err
 		}
 
-		// Navigation keys.
-		switch key {
-		case "\x1b[A": // Up
+		// Navigation keys — matched directly on integer key codes so that
+		// multi-byte escape sequences (PageUp/PageDown etc.) are handled
+		// atomically by the InputHandler and can never be split by the
+		// 100 ms inter-byte ESC timeout, which previously caused bare ESC
+		// to be returned and the lightbar to exit unexpectedly.
+		var key string
+		switch keyInt {
+		case editor.KeyArrowUp: // Up
 			selectedIndex--
 			continue
-		case "\x1b[B": // Down
+		case editor.KeyArrowDown: // Down
 			selectedIndex++
 			continue
-		case "\x1b[C": // Right — command bar
+		case editor.KeyArrowRight: // Right — command bar
 			cmdIndex++
 			if cmdIndex >= len(cmdEntries) {
 				cmdIndex = 0
 			}
 			continue
-		case "\x1b[D": // Left — command bar
+		case editor.KeyArrowLeft: // Left — command bar
 			cmdIndex--
 			if cmdIndex < 0 {
 				cmdIndex = len(cmdEntries) - 1
 			}
 			continue
-		case "\x1b[5~": // Page Up
+		case editor.KeyPageUp, editor.KeyCtrlR: // Page Up
 			newTop := topIndexForPrevPage()
 			topIndex = newTop
 			selectedIndex = newTop
 			continue
-		case "\x1b[6~": // Page Down
+		case editor.KeyPageDown, editor.KeyCtrlC: // Page Down
 			count := filesVisibleFrom(topIndex)
 			nextTop := topIndex + count
 			if nextTop >= len(allFiles) {
@@ -795,22 +772,28 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				selectedIndex = nextTop
 			}
 			continue
-		case "\x1b[H", "\x1b[1~": // Home
+		case editor.KeyHome: // Home
 			selectedIndex = 0
 			continue
-		case "\x1b[F", "\x1b[4~": // End
+		case editor.KeyEnd: // End
 			if len(allFiles) > 0 {
 				selectedIndex = len(allFiles) - 1
 			}
 			continue
-		case "\x1b": // Bare Esc
+		case editor.KeyEsc: // Bare Esc
 			return nil, "", nil
-		case "\r", "\n": // Enter: execute selected command bar item
+		case editor.KeyEnter: // Enter: execute selected command bar item
 			key = cmdEntries[cmdIndex].hotkey
+		default:
+			if keyInt >= 32 && keyInt < 127 {
+				key = strings.ToLower(string(rune(keyInt)))
+			} else {
+				continue // Ignore non-printable, non-navigation keys
+			}
 		}
 
 		// Command dispatch (direct hotkeys or Enter-selected command).
-		switch strings.ToLower(key) {
+		switch key {
 		case " ": // Space: toggle mark
 			if len(allFiles) > 0 {
 				fileID := allFiles[selectedIndex].ID
@@ -872,7 +855,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d5)), outputMode)
 
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|08Press any key to return...|07")), outputMode)
-				_, _ = readKeySequenceIH(ih)
+				_, _ = ih.ReadKey()
 				needFullRedraw = true
 			}
 
