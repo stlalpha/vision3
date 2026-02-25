@@ -358,9 +358,10 @@ readerLoop:
 
 				// Determine initial direction based on which arrow was pressed
 				initialDir := 0
-				if key == editor.KeyArrowLeft || key == editor.KeyCtrlS {
+				switch key {
+				case editor.KeyArrowLeft, editor.KeyCtrlS:
 					initialDir = -1 // Left arrow
-				} else if key == editor.KeyArrowRight || key == editor.KeyCtrlD {
+				case editor.KeyArrowRight, editor.KeyCtrlD:
 					initialDir = 1 // Right arrow
 				}
 
@@ -983,41 +984,6 @@ func findHeaderEndRow(data []byte) int {
 		i++
 	}
 	return maxRow
-}
-
-// findLastCursorPos finds the last ESC[row;colH cursor position command in data.
-// Returns (row, col) or (0, 0) if none found.
-func findLastCursorPos(data []byte) (int, int) {
-	lastRow, lastCol := 0, 0
-	i := 0
-	for i < len(data) {
-		if data[i] == 0x1B && i+1 < len(data) && data[i+1] == '[' {
-			i += 2
-			params := ""
-			for i < len(data) && (data[i] == ';' || (data[i] >= '0' && data[i] <= '9')) {
-				params += string(data[i])
-				i++
-			}
-			if i < len(data) {
-				cmd := data[i]
-				i++
-				if cmd == 'H' || cmd == 'f' {
-					parts := strings.Split(params, ";")
-					if len(parts) >= 2 && parts[0] != "" && parts[1] != "" {
-						row, e1 := strconv.Atoi(parts[0])
-						col, e2 := strconv.Atoi(parts[1])
-						if e1 == nil && e2 == nil {
-							lastRow = row
-							lastCol = col
-						}
-					}
-				}
-			}
-			continue
-		}
-		i++
-	}
-	return lastRow, lastCol
 }
 
 // handleReply manages the reply flow matching Pascal's reply handling.

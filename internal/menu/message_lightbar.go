@@ -7,7 +7,6 @@ import (
 	"io"
 	"log"
 	"strings"
-	"time"
 	"unicode"
 
 	"github.com/stlalpha/vision3/internal/ansi"
@@ -196,14 +195,15 @@ func runMsgLightbar(reader *bufio.Reader, terminal *term.Terminal,
 				return upperKey, nil
 			}
 			// Also handle numpad/arrow key mappings from Pascal (4=left, 6=right)
-			if key == '4' {
+			switch key {
+			case '4':
 				drawBar(-1)
 				currentIdx--
 				if currentIdx < 0 {
 					currentIdx = len(options) - 1
 				}
 				drawBar(currentIdx)
-			} else if key == '6' {
+			case '6':
 				drawBar(-1)
 				currentIdx++
 				if currentIdx >= len(options) {
@@ -267,66 +267,4 @@ func promptSingleChar(reader *bufio.Reader, terminal *term.Terminal, prompt stri
 	}
 
 	return unicode.ToUpper(r), nil
-}
-
-// readKeySequence reads a key sequence, handling escape sequences for arrow keys, page up/down, etc.
-// Returns the complete sequence as a string for switch handling.
-func readKeySequence(reader *bufio.Reader) (string, error) {
-	waitForBuffered := func(timeout time.Duration) bool {
-		deadline := time.Now().Add(timeout)
-		for time.Now().Before(deadline) {
-			if reader.Buffered() > 0 {
-				return true
-			}
-			time.Sleep(1 * time.Millisecond)
-		}
-		return reader.Buffered() > 0
-	}
-
-	// Read first byte
-	firstByte, err := reader.ReadByte()
-	if err != nil {
-		return "", err
-	}
-
-	// Check if it's an escape sequence
-	if firstByte == 0x1B { // ESC
-		// Wait briefly for the next byte so arrow keys aren't split into a lone ESC
-		// on slower links/PTY scheduling.
-		if waitForBuffered(60 * time.Millisecond) {
-			secondByte, err := reader.ReadByte()
-			if err == nil && secondByte == '[' {
-				// ANSI escape sequence - read until we get a letter or tilde
-				seq := []byte{0x1B, '['}
-				for {
-					if waitForBuffered(20 * time.Millisecond) {
-						b, err := reader.ReadByte()
-						if err != nil {
-							break
-						}
-						seq = append(seq, b)
-						// End of sequence is typically a letter or tilde
-						if (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z') || b == '~' {
-							break
-						}
-						if len(seq) > 8 { // Safety limit
-							break
-						}
-					} else {
-						break
-					}
-				}
-				return string(seq), nil
-			}
-			if err == nil {
-				// ESC followed by something else
-				return string([]byte{0x1B, secondByte}), nil
-			}
-		}
-		// Just ESC by itself
-		return "\x1b", nil
-	}
-
-	// Single character
-	return string(firstByte), nil
 }

@@ -691,8 +691,6 @@ const (
 	oneLinerMaxDisplay = 10
 	oneLinerMaxLength  = 51
 	oneLinerNameWidth  = 20
-	oneLinerStartRow   = 12
-	oneLinerStartCol   = 5
 )
 
 type onelinerRecord struct {
@@ -807,39 +805,6 @@ func truncateOnelinerPreservePipeCodes(value string, maxVisible int) string {
 	return strings.TrimSpace(out.String())
 }
 
-func visibleWidthPreservePipeCodes(value string) int {
-	if value == "" {
-		return 0
-	}
-
-	visible := 0
-	i := 0
-	for i < len(value) {
-		if value[i] == '|' && i+1 < len(value) && value[i+1] == '|' {
-			visible++
-			i += 2
-			continue
-		}
-
-		if value[i] == '|' {
-			codeLen := pipeCodeLenAt(value, i)
-			if codeLen > 0 && i+codeLen <= len(value) {
-				i += codeLen
-				continue
-			}
-		}
-
-		_, size := utf8.DecodeRuneInString(value[i:])
-		if size <= 0 {
-			size = 1
-		}
-		visible++
-		i += size
-	}
-
-	return visible
-}
-
 func truncatePipeCodedText(value string, maxVisible int) string {
 	if value == "" || maxVisible <= 0 {
 		return ""
@@ -917,24 +882,6 @@ func containsDisallowedOnelinerColorCode(value string) bool {
 	}
 
 	return false
-}
-
-func centerPipeCodedText(value string, width int) string {
-	if width <= 0 {
-		return value
-	}
-
-	visible := visibleWidthPreservePipeCodes(value)
-	if visible >= width {
-		return value
-	}
-
-	leftPad := (width - visible) / 2
-	if leftPad <= 0 {
-		return value
-	}
-
-	return strings.Repeat(" ", leftPad) + value
 }
 
 func formatOnelinerDisplayName(name string) string {
@@ -1708,7 +1655,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				}
 
 				// --- BEGIN Set Default Message Area ---
-				if currentUser != nil && e.MessageMgr != nil {
+				if e.MessageMgr != nil {
 					allAreas := e.MessageMgr.ListAreas() // Already sorted by ID
 					log.Printf("DEBUG: Found %d message areas for user %s.", len(allAreas), currentUser.Handle)
 					foundDefaultArea := false
@@ -1731,12 +1678,12 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						currentUser.CurrentMessageAreaTag = ""
 					}
 				} else {
-					log.Printf("WARN: Cannot set default message area: currentUser (%v) or MessageMgr (%v) is nil.", currentUser == nil, e.MessageMgr == nil)
+					log.Printf("WARN: Cannot set default message area: MessageMgr is nil.")
 				}
 				// --- END Set Default Message Area ---
 
 				// --- BEGIN Set Default File Area ---
-				if currentUser != nil && e.FileMgr != nil {
+				if e.FileMgr != nil {
 					allFileAreas := e.FileMgr.ListAreas() // Assumes ListAreas is sorted by ID
 					log.Printf("DEBUG: Found %d file areas for user %s.", len(allFileAreas), currentUser.Handle)
 					foundDefaultFileArea := false
@@ -1759,7 +1706,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						currentUser.CurrentFileAreaTag = ""
 					}
 				} else {
-					log.Printf("WARN: Cannot set default file area: currentUser (%v) or FileMgr (%v) is nil.", currentUser == nil, e.FileMgr == nil)
+					log.Printf("WARN: Cannot set default file area: FileMgr is nil.")
 				}
 				// --- END Set Default File Area ---
 
@@ -3212,9 +3159,9 @@ func (e *MenuExecutor) applyCommonTemplateTokens(data []byte, currentUser *user.
 		"|CFAN":      fileAreaName,
 		"|FCONFPATH": e.resolveFileConferencePath(currentUser),
 		"|UH":        "Guest",
-		"|ALIAS":  "Guest",
-		"|HANDLE": "Guest",
-		"|LEVEL":  "0",
+		"|ALIAS":     "Guest",
+		"|HANDLE":    "Guest",
+		"|LEVEL":     "0",
 	}
 	if currentUser != nil {
 		tokens["|UH"] = currentUser.Handle
@@ -3834,7 +3781,7 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 }
 
 // loginPausePrompt displays the configured pause prompt (centered) and waits for Enter.
-func (e *MenuExecutor) loginPausePrompt(s ssh.Session, terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode, termWidth int, termHeight int) error {
+func (e *MenuExecutor) loginPausePrompt(s ssh.Session, terminal *term.Terminal, _ int, outputMode ansi.OutputMode, termWidth int, termHeight int) error {
 	pausePrompt := e.LoadedStrings.PauseString
 	if pausePrompt == "" {
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
@@ -7226,111 +7173,6 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	return nil, "", nil // Return to the current menu
 }
 
-// displayMessageAreaList is an internal helper to display the list of accessible message areas
-// grouped by conference. It does not include a pause prompt.
-func displayMessageAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, outputMode ansi.OutputMode, nodeNumber int, sessionStartTime time.Time) error {
-	log.Printf("DEBUG: Node %d: Displaying message area list (helper)", nodeNumber)
-
-	// 1. Load templates
-	templateDir := filepath.Join(e.MenuSetPath, "templates")
-	topTemplateBytes, errTop := readTemplateFile(filepath.Join(templateDir, "MSGAREA.TOP"))
-	midTemplateBytes, errMid := readTemplateFile(filepath.Join(templateDir, "MSGAREA.MID"))
-	botTemplateBytes, errBot := readTemplateFile(filepath.Join(templateDir, "MSGAREA.BOT"))
-
-	if errTop != nil || errMid != nil || errBot != nil {
-		log.Printf("ERROR: Node %d: Failed to load MSGAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
-		msg := "\r\n|01Error loading Message Area screen templates.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		time.Sleep(1 * time.Second)
-		return fmt.Errorf("failed loading MSGAREA templates")
-	}
-
-	// Conference header template (optional)
-	confHdrBytes, errConf := readTemplateFile(filepath.Join(templateDir, "MSGCONF.HDR"))
-	confHdrTemplate := ""
-	if errConf == nil {
-		confHdrTemplate = string(ansi.ReplacePipeCodes(confHdrBytes))
-	}
-
-	processedTopTemplate := ansi.ReplacePipeCodes(topTemplateBytes)
-	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
-	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
-
-	// 2. Get areas and group by conference
-	areas := e.MessageMgr.ListAreas()
-
-	// Build conference groups: conferenceID -> []*MessageArea (ACS-filtered)
-	groups := make(map[int][]*message.MessageArea)
-	confIDs := make(map[int]bool)
-	for _, area := range areas {
-		if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
-			continue
-		}
-		groups[area.ConferenceID] = append(groups[area.ConferenceID], area)
-		confIDs[area.ConferenceID] = true
-	}
-
-	// Sort conference IDs (0/ungrouped first)
-	var sortedConfIDs []int
-	if e.ConferenceMgr != nil {
-		sortedConfIDs = e.ConferenceMgr.GetSortedConferenceIDs(confIDs)
-	} else {
-		for cid := range confIDs {
-			sortedConfIDs = append(sortedConfIDs, cid)
-		}
-		sort.Ints(sortedConfIDs)
-	}
-
-	// 3. Build output
-	var outputBuffer bytes.Buffer
-	outputBuffer.Write(processedTopTemplate)
-
-	areasDisplayed := 0
-	for _, cid := range sortedConfIDs {
-		areasInConf := groups[cid]
-		if len(areasInConf) == 0 {
-			continue
-		}
-
-		// Check conference ACS
-		if cid != 0 && e.ConferenceMgr != nil {
-			conf, found := e.ConferenceMgr.GetByID(cid)
-			if found && !checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
-				continue
-			}
-			// Write conference header
-			if found && confHdrTemplate != "" {
-				hdr := confHdrTemplate
-				hdr = strings.ReplaceAll(hdr, "^CN", conf.Name)
-				hdr = strings.ReplaceAll(hdr, "^CT", conf.Tag)
-				hdr = strings.ReplaceAll(hdr, "^CD", conf.Description)
-				hdr = strings.ReplaceAll(hdr, "^CI", strconv.Itoa(conf.ID))
-				outputBuffer.WriteString(hdr)
-			}
-		}
-
-		for _, area := range areasInConf {
-			line := processedMidTemplate
-			line = strings.ReplaceAll(line, "^ID", strconv.Itoa(area.ID))
-			line = strings.ReplaceAll(line, "^TAG", string(ansi.ReplacePipeCodes([]byte(area.Tag))))
-			line = strings.ReplaceAll(line, "^NA", string(ansi.ReplacePipeCodes([]byte(area.Name))))
-			line = strings.ReplaceAll(line, "^DS", string(ansi.ReplacePipeCodes([]byte(area.Description))))
-			outputBuffer.WriteString(line)
-			areasDisplayed++
-		}
-	}
-
-	if areasDisplayed == 0 {
-		outputBuffer.WriteString("\r\n|07   No accessible message areas found.   \r\n")
-	}
-
-	outputBuffer.Write(processedBotTemplate)
-
-	// 4. Display
-	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	return terminalio.WriteProcessedBytes(terminal, outputBuffer.Bytes(), outputMode)
-}
-
 // runListMessageAreas displays a list of message areas using templates, then pauses.
 func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running LISTMSGAR", nodeNumber)
@@ -8128,29 +7970,6 @@ func generateReplySubject(originalSubject string) string {
 		return originalSubject // Already a reply
 	}
 	return "Re: " + originalSubject
-}
-
-// formatQuote formats the body of an original message for quoting in a reply.
-// It prepends each line with the specified quotePrefix.
-func formatQuote(originalMsg *message.DisplayMessage, quotePrefix string) string {
-	if originalMsg == nil || originalMsg.Body == "" {
-		return ""
-	}
-
-	var builder strings.Builder
-	scanner := bufio.NewScanner(strings.NewReader(originalMsg.Body))
-	for scanner.Scan() {
-		builder.WriteString(quotePrefix)
-		builder.WriteString(scanner.Text())
-		builder.WriteString("\n") // Use ACTUAL newline for editor buffer
-	}
-	// Check for scanner errors, although unlikely with strings.Reader
-	if err := scanner.Err(); err != nil {
-		log.Printf("WARN: Error scanning original message body for quoting: %v", err)
-		// Return whatever was built so far, or perhaps an error indicator?
-		// For now, just return the potentially partial quote.
-	}
-	return builder.String()
 }
 
 // sanitizeControlChars strips control characters from user input to prevent
@@ -10136,7 +9955,6 @@ func runReadPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	if updatedUser != nil {
 		updatedUser.CurrentMessageAreaID = originalAreaID
 		updatedUser.CurrentMessageAreaTag = originalAreaTag
-	} else if currentUser != nil {
 		currentUser.CurrentMessageAreaID = originalAreaID
 		currentUser.CurrentMessageAreaTag = originalAreaTag
 	}
@@ -10179,10 +9997,9 @@ func runListPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	if updatedUser != nil {
 		updatedUser.CurrentMessageAreaID = originalAreaID
 		updatedUser.CurrentMessageAreaTag = originalAreaTag
-	} else if currentUser != nil {
-		currentUser.CurrentMessageAreaID = originalAreaID
-		currentUser.CurrentMessageAreaTag = originalAreaTag
 	}
+	currentUser.CurrentMessageAreaID = originalAreaID
+	currentUser.CurrentMessageAreaTag = originalAreaTag
 
 	return updatedUser, nextMenu, err
 }
@@ -10357,7 +10174,7 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		buf.WriteString("\r\n")
 	}
 
-	terminalio.WriteProcessedBytes(terminal, []byte(buf.String()), outputMode)
+	terminalio.WriteProcessedBytes(terminal, buf.Bytes(), outputMode)
 
 	pausePrompt := e.LoadedStrings.PauseString
 	if pausePrompt == "" {
