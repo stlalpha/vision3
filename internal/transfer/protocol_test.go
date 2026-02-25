@@ -18,9 +18,16 @@ func TestExpandArgs_filePath_standalone(t *testing.T) {
 }
 
 func TestExpandArgs_filePath_appended_when_absent(t *testing.T) {
-	// lrzsz rz style: no placeholder, files appended at end
+	// No {filePath} placeholder: files are appended at the end.
+	tmpl := []string{"-b", "-e"}
+	got, _ := expandArgs(tmpl, []string{"/files/a.zip", "/files/b.zip"}, "")
+	want := []string{"-b", "-e", "/files/a.zip", "/files/b.zip"}
+	assertStringSlice(t, want, got)
+}
+
+func TestExpandArgs_no_filePaths_no_placeholder(t *testing.T) {
+	// No filePaths and no placeholder: args returned unchanged (lrzsz rz style).
 	tmpl := []string{"-b", "-r"}
-	// recv call: no filePaths, so nothing appended
 	got, _ := expandArgs(tmpl, nil, "/upload")
 	want := []string{"-b", "-r"}
 	assertStringSlice(t, want, got)
@@ -30,22 +37,6 @@ func TestExpandArgs_targetDir_standalone(t *testing.T) {
 	tmpl := []string{"-r", "{targetDir}"}
 	got, _ := expandArgs(tmpl, nil, "/upload/tmp")
 	want := []string{"-r", "/upload/tmp/"}
-	assertStringSlice(t, want, got)
-}
-
-func TestExpandArgs_sexyz_send(t *testing.T) {
-	// sexyz -raw -8 sz file1 file2
-	tmpl := []string{"-raw", "-8", "sz", "{filePath}"}
-	got, _ := expandArgs(tmpl, []string{"/f/a.zip", "/f/b.zip"}, "")
-	want := []string{"-raw", "-8", "sz", "/f/a.zip", "/f/b.zip"}
-	assertStringSlice(t, want, got)
-}
-
-func TestExpandArgs_sexyz_recv(t *testing.T) {
-	// sexyz -raw -8 rz /upload/  (dir with trailing separator)
-	tmpl := []string{"-raw", "-8", "rz", "{targetDir}"}
-	got, _ := expandArgs(tmpl, nil, "/upload")
-	want := []string{"-raw", "-8", "rz", "/upload/"}
 	assertStringSlice(t, want, got)
 }
 
@@ -64,7 +55,7 @@ func TestExpandArgs_empty_template(t *testing.T) {
 	assertStringSlice(t, want, got)
 }
 
-func TestExpandArgs_fileListPath(t *testing.T) {
+func TestExpandArgs_fileListPath_inline(t *testing.T) {
 	// sexyz-style batch send with @{fileListPath}
 	tmpl := []string{"-raw", "-8", "sz", "@{fileListPath}"}
 	files := []string{"/files/a.zip", "/files/b.zip"}
@@ -91,6 +82,38 @@ func TestExpandArgs_fileListPath(t *testing.T) {
 	if !strings.Contains(content, "/files/a.zip") || !strings.Contains(content, "/files/b.zip") {
 		t.Errorf("list file missing expected paths, got: %q", content)
 	}
+}
+
+func TestExpandArgs_fileListPath_standalone(t *testing.T) {
+	// Standalone {fileListPath} (no @ prefix): bare temp file path is appended.
+	tmpl := []string{"-raw", "-8", "sz", "{fileListPath}"}
+	files := []string{"/files/a.zip", "/files/b.zip"}
+	got, listFile := expandArgs(tmpl, files, "")
+	if listFile == "" {
+		t.Fatal("expected listFile path, got empty")
+	}
+	defer os.Remove(listFile)
+
+	if len(got) != 4 {
+		t.Fatalf("want 4 args, got %d: %v", len(got), got)
+	}
+	if got[3] != listFile {
+		t.Errorf("expected bare temp file path, got %q", got[3])
+	}
+}
+
+func TestExpandArgs_targetDir_already_has_separator(t *testing.T) {
+	tmpl := []string{"rz", "{targetDir}"}
+	got, _ := expandArgs(tmpl, nil, "/upload/tmp/")
+	want := []string{"rz", "/upload/tmp/"}
+	assertStringSlice(t, want, got)
+}
+
+func TestExpandArgs_targetDir_empty(t *testing.T) {
+	tmpl := []string{"rz", "{targetDir}"}
+	got, _ := expandArgs(tmpl, nil, "")
+	want := []string{"rz", ""}
+	assertStringSlice(t, want, got)
 }
 
 // --- LoadProtocols ---
@@ -186,23 +209,12 @@ func TestFindProtocol_found(t *testing.T) {
 		{Key: "Y", Name: "Ymodem"},
 		{Key: "Z", Name: "Zmodem", Default: true},
 	}
-	got, ok := FindProtocol(ps, "z")
+	got, ok := FindProtocol(ps, "z") // lowercase — exercises case-insensitive match
 	if !ok {
 		t.Fatal("expected ok=true")
 	}
 	if got.Name != "Zmodem" {
 		t.Errorf("want Zmodem, got %q", got.Name)
-	}
-}
-
-func TestFindProtocol_case_insensitive(t *testing.T) {
-	ps := []ProtocolConfig{{Key: "Z", Name: "Zmodem", Default: true}}
-	got, ok := FindProtocol(ps, "z")
-	if !ok {
-		t.Fatal("expected ok=true")
-	}
-	if got.Key != "Z" {
-		t.Errorf("want Z, got %q", got.Key)
 	}
 }
 
@@ -218,90 +230,6 @@ func TestFindProtocol_not_found_returns_default(t *testing.T) {
 	if got.Key != "Z" {
 		t.Errorf("want default Z, got %q", got.Key)
 	}
-}
-
-// --- Command-line argument assembly sanity checks ---
-
-// TestLRZSZSendArgs verifies the lrzsz sz command args are assembled correctly.
-func TestLRZSZSendArgs(t *testing.T) {
-	p := ProtocolConfig{
-		Name:     "Zmodem (lrzsz)",
-		SendCmd:  "sz",
-		SendArgs: []string{"-b", "-e"},
-	}
-	files := []string{"/files/area1/foo.zip", "/files/area1/bar.txt"}
-	args, _ := expandArgs(p.SendArgs, files, "")
-	// sz -b -e /files/area1/foo.zip /files/area1/bar.txt
-	want := []string{"-b", "-e", "/files/area1/foo.zip", "/files/area1/bar.txt"}
-	assertStringSlice(t, want, args)
-}
-
-// TestLRZSZRecvArgs verifies the lrzsz rz command args (no file args, dir via cmd.Dir).
-func TestLRZSZRecvArgs(t *testing.T) {
-	p := ProtocolConfig{
-		Name:     "Zmodem (lrzsz)",
-		RecvCmd:  "rz",
-		RecvArgs: []string{"-b", "-r"},
-	}
-	args, _ := expandArgs(p.RecvArgs, nil, "/upload/tmp-123")
-	want := []string{"-b", "-r"}
-	assertStringSlice(t, want, args)
-}
-
-// TestSexyZSendArgs verifies the sexyz send command: sexyz -raw -8 sz file1 file2
-func TestSexyZSendArgs(t *testing.T) {
-	p := ProtocolConfig{
-		Name:     "Zmodem 8k (sexyz)",
-		SendCmd:  "sexyz",
-		SendArgs: []string{"-raw", "-8", "sz", "{filePath}"},
-	}
-	files := []string{"/files/area1/foo.zip", "/files/area1/bar.txt"}
-	args, _ := expandArgs(p.SendArgs, files, "")
-	want := []string{"-raw", "-8", "sz", "/files/area1/foo.zip", "/files/area1/bar.txt"}
-	assertStringSlice(t, want, args)
-}
-
-// TestSexyZRecvArgs verifies the sexyz receive command: sexyz -raw -8 rz /targetDir/
-// The trailing separator is critical — sexyz concatenates dir+filename without
-// inserting a separator (Synchronet bug: backslash() call is commented out).
-func TestSexyZRecvArgs(t *testing.T) {
-	p := ProtocolConfig{
-		Name:     "Zmodem 8k (sexyz)",
-		RecvCmd:  "sexyz",
-		RecvArgs: []string{"-raw", "-8", "rz", "{targetDir}"},
-	}
-	args, _ := expandArgs(p.RecvArgs, nil, "/upload/tmp-123")
-	want := []string{"-raw", "-8", "rz", "/upload/tmp-123/"}
-	assertStringSlice(t, want, args)
-}
-
-// TestExpandArgs_targetDir_already_has_separator ensures no double slash.
-func TestExpandArgs_targetDir_already_has_separator(t *testing.T) {
-	tmpl := []string{"rz", "{targetDir}"}
-	got, _ := expandArgs(tmpl, nil, "/upload/tmp/")
-	want := []string{"rz", "/upload/tmp/"}
-	assertStringSlice(t, want, got)
-}
-
-// TestExpandArgs_targetDir_empty stays empty.
-func TestExpandArgs_targetDir_empty(t *testing.T) {
-	tmpl := []string{"rz", "{targetDir}"}
-	got, _ := expandArgs(tmpl, nil, "")
-	want := []string{"rz", ""}
-	assertStringSlice(t, want, got)
-}
-
-// TestYmodemSendArgs verifies lrzsz sb command args.
-func TestYmodemSendArgs(t *testing.T) {
-	p := ProtocolConfig{
-		Name:     "Ymodem (lrzsz)",
-		SendCmd:  "sb",
-		SendArgs: []string{"-b"},
-	}
-	files := []string{"/files/foo.txt"}
-	args, _ := expandArgs(p.SendArgs, files, "")
-	want := []string{"-b", "/files/foo.txt"}
-	assertStringSlice(t, want, args)
 }
 
 // --- helpers ---

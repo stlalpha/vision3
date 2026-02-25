@@ -56,6 +56,7 @@ Message areas are defined in `configs/message_areas.json` as an array:
 - `origin_addr` - FTN origin address for echomail (e.g., `"21:3/110"`)
 - `max_msgs` - Maximum number of messages to retain (0 = no limit). Oldest messages are removed when the count is exceeded.
 - `max_msg_age` - Maximum message age in days (0 = no limit). Messages older than this are removed.
+- `sponsor` - Handle of the area sponsor/moderator (optional). See [Sponsor Menus](sponsor-menus.md).
 
 ### Area Types
 
@@ -438,7 +439,7 @@ The FTN dupe database (`data/ftn/dupes.json`) tracks MSGIDs to prevent duplicate
 
 ### Not Yet Implemented
 
-- Message deletion/moderation UI
+- Message deletion/moderation UI (sponsor can edit area settings; per-message delete/edit coming later)
 - Anonymous posting
 - Message search
 - File attachments
@@ -481,6 +482,7 @@ The FTN dupe database (`data/ftn/dupes.json`) tracks MSGIDs to prevent duplicate
 - `ListAreas()` - Returns all message areas sorted by ID
 - `GetAreaByID(id)` - Get area by numeric ID
 - `GetAreaByTag(tag)` - Get area by tag name
+- `SaveAreas()` - Persist all areas back to `message_areas.json` (atomic write)
 - `AddMessage(areaID, from, to, subject, body, replyMsgID)` - Add new message (returns msgNum)
 - `GetMessage(areaID, msgNum)` - Read single message by number
 - `GetMessageCountForArea(areaID)` - Total message count

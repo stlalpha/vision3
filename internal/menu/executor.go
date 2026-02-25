@@ -311,16 +311,20 @@ func (e *MenuExecutor) idleTimeout(u *user.User) time.Duration {
 	return time.Duration(cfg.SessionIdleTimeoutMinutes) * time.Minute
 }
 
-// transferContext returns a context for file transfers. If TransferTimeoutMinutes > 0,
-// returns a context with that timeout and its cancel function; otherwise returns
-// context.Background() and a no-op cancel. Callers must invoke the cancel function
-// when done (e.g. via defer cancel()).
-func (e *MenuExecutor) transferContext() (context.Context, context.CancelFunc) {
+// transferContext returns a context for file transfers rooted at the caller's
+// session context so that transfers are cancelled when the session ends.
+// If TransferTimeoutMinutes > 0, an additional deadline is layered on top —
+// whichever fires first (session close or timeout) wins.
+// Callers must invoke the cancel function when done (e.g. via defer cancel()).
+func (e *MenuExecutor) transferContext(sessionCtx context.Context) (context.Context, context.CancelFunc) {
+	if sessionCtx == nil {
+		sessionCtx = context.Background()
+	}
 	cfg := e.GetServerConfig()
 	if cfg.TransferTimeoutMinutes <= 0 {
-		return context.Background(), func() {}
+		return sessionCtx, func() {}
 	}
-	return context.WithTimeout(context.Background(), time.Duration(cfg.TransferTimeoutMinutes)*time.Minute)
+	return context.WithTimeout(sessionCtx, time.Duration(cfg.TransferTimeoutMinutes)*time.Minute)
 }
 
 // isCoSysOpOrAbove returns true if the user has CoSysOp or SysOp access level.
@@ -542,6 +546,8 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["CFG_VIEWCONFIG"] = runCfgViewConfig
 	registry["CHAT"] = runChat
 	registry["PAGE"] = runPage
+	registry["SPONSORMENU"] = runSponsorMenu         // Sponsor menu (% key in Messages Menu)
+	registry["SPONSOREDITAREA"] = runSponsorEditArea // Edit current message area fields
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
@@ -689,8 +695,6 @@ const (
 	oneLinerMaxDisplay = 10
 	oneLinerMaxLength  = 51
 	oneLinerNameWidth  = 20
-	oneLinerStartRow   = 12
-	oneLinerStartCol   = 5
 )
 
 type onelinerRecord struct {
@@ -805,39 +809,6 @@ func truncateOnelinerPreservePipeCodes(value string, maxVisible int) string {
 	return strings.TrimSpace(out.String())
 }
 
-func visibleWidthPreservePipeCodes(value string) int {
-	if value == "" {
-		return 0
-	}
-
-	visible := 0
-	i := 0
-	for i < len(value) {
-		if value[i] == '|' && i+1 < len(value) && value[i+1] == '|' {
-			visible++
-			i += 2
-			continue
-		}
-
-		if value[i] == '|' {
-			codeLen := pipeCodeLenAt(value, i)
-			if codeLen > 0 && i+codeLen <= len(value) {
-				i += codeLen
-				continue
-			}
-		}
-
-		_, size := utf8.DecodeRuneInString(value[i:])
-		if size <= 0 {
-			size = 1
-		}
-		visible++
-		i += size
-	}
-
-	return visible
-}
-
 func truncatePipeCodedText(value string, maxVisible int) string {
 	if value == "" || maxVisible <= 0 {
 		return ""
@@ -915,24 +886,6 @@ func containsDisallowedOnelinerColorCode(value string) bool {
 	}
 
 	return false
-}
-
-func centerPipeCodedText(value string, width int) string {
-	if width <= 0 {
-		return value
-	}
-
-	visible := visibleWidthPreservePipeCodes(value)
-	if visible >= width {
-		return value
-	}
-
-	leftPad := (width - visible) / 2
-	if leftPad <= 0 {
-		return value
-	}
-
-	return strings.Repeat(" ", leftPad) + value
 }
 
 func formatOnelinerDisplayName(name string) string {
@@ -1706,7 +1659,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				}
 
 				// --- BEGIN Set Default Message Area ---
-				if currentUser != nil && e.MessageMgr != nil {
+				if e.MessageMgr != nil {
 					allAreas := e.MessageMgr.ListAreas() // Already sorted by ID
 					log.Printf("DEBUG: Found %d message areas for user %s.", len(allAreas), currentUser.Handle)
 					foundDefaultArea := false
@@ -1729,12 +1682,12 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						currentUser.CurrentMessageAreaTag = ""
 					}
 				} else {
-					log.Printf("WARN: Cannot set default message area: currentUser (%v) or MessageMgr (%v) is nil.", currentUser == nil, e.MessageMgr == nil)
+					log.Printf("WARN: Cannot set default message area: MessageMgr is nil.")
 				}
 				// --- END Set Default Message Area ---
 
 				// --- BEGIN Set Default File Area ---
-				if currentUser != nil && e.FileMgr != nil {
+				if e.FileMgr != nil {
 					allFileAreas := e.FileMgr.ListAreas() // Assumes ListAreas is sorted by ID
 					log.Printf("DEBUG: Found %d file areas for user %s.", len(allFileAreas), currentUser.Handle)
 					foundDefaultFileArea := false
@@ -1757,7 +1710,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						currentUser.CurrentFileAreaTag = ""
 					}
 				} else {
-					log.Printf("WARN: Cannot set default file area: currentUser (%v) or FileMgr (%v) is nil.", currentUser == nil, e.FileMgr == nil)
+					log.Printf("WARN: Cannot set default file area: FileMgr is nil.")
 				}
 				// --- END Set Default File Area ---
 
@@ -1966,14 +1919,12 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 		// Note: ansBackgroundBytes is currently unused but will be needed for full lightbar implementation
 		// ansBackgroundBytes := ansiProcessResult.DisplayBytes
 		if currentMenuName != "LOGIN" {
-			// Clear screen before displaying menu if configured to do so
-			if menuRec.GetClrScrBefore() {
-				if wErr := terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode); wErr != nil {
-					log.Printf("ERROR: Node %d: Failed clearing screen for menu %s: %v", nodeNumber, currentMenuName, wErr)
-				}
-			}
 			// Truncate ANSI output to terminal height to prevent scrolling
 			displayBytes := ansiProcessResult.DisplayBytes
+			// Prepend clear sequence when CLR is set (single write for reliable clearing)
+			if menuRec.GetClrScrBefore() {
+				displayBytes = append([]byte(ansi.ClearScreen()), displayBytes...)
+			}
 			if termHeight > 0 {
 				lines := bytes.Split(displayBytes, []byte("\n"))
 				if len(lines) > termHeight {
@@ -2209,9 +2160,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 		if !matched { // Check keyword matches (relevant for both)
 			for _, cmdRec := range commands {
-				if cmdRec.GetHidden() {
-					continue // Skip hidden commands
-				}
+				// Hidden commands are still matched (e.g. % for sponsor menu); HIDDEN only affects display/prompts.
 
 				cmdACS := cmdRec.ACS
 				if !checkACS(cmdACS, currentUser, s, terminal, sessionStartTime) { // Use ssh.Session 's'
@@ -3214,9 +3163,9 @@ func (e *MenuExecutor) applyCommonTemplateTokens(data []byte, currentUser *user.
 		"|CFAN":      fileAreaName,
 		"|FCONFPATH": e.resolveFileConferencePath(currentUser),
 		"|UH":        "Guest",
-		"|ALIAS":  "Guest",
-		"|HANDLE": "Guest",
-		"|LEVEL":  "0",
+		"|ALIAS":     "Guest",
+		"|HANDLE":    "Guest",
+		"|LEVEL":     "0",
 	}
 	if currentUser != nil {
 		tokens["|UH"] = currentUser.Handle
@@ -3239,7 +3188,8 @@ func (e *MenuExecutor) applyCommonTemplateTokens(data []byte, currentUser *user.
 }
 
 // displayFile reads and displays an ANSI file from the MENU SET's ansi directory.
-func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, outputMode ansi.OutputMode) error {
+// If clearFirst is true, prepends the ANSI clear sequence so clear and content go out in one write.
+func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, outputMode ansi.OutputMode, clearFirst ...bool) error {
 	// Construct full path using MenuSetPath
 	filePath := filepath.Join(e.MenuSetPath, "ansi", filename)
 
@@ -3248,24 +3198,27 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 	if err != nil {
 		log.Printf("ERROR: Failed to read ANSI file %s: %v", filePath, err)
 		errMsg := fmt.Sprintf(e.LoadedStrings.ExecFileLoadError, filename)
-		// Use new helper, need outputMode... Pass it into displayFile?
-		// Use the passed outputMode for the error message
-		writeErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode) // Use passed outputMode
+		writeErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		if writeErr != nil {
 			log.Printf("ERROR: Failed writing displayFile error message: %v", writeErr)
+			return fmt.Errorf("read: %w; write error: %w", err, writeErr)
 		}
-		return writeErr
+		return err
+	}
+	if len(clearFirst) > 0 && clearFirst[0] {
+		data = append([]byte(ansi.ClearScreen()), data...)
 	}
 
 	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
+	var writeErr error
 	if outputMode == ansi.OutputModeCP437 {
-		_, err = terminal.Write(data)
+		_, writeErr = terminal.Write(data)
 	} else {
-		err = terminalio.WriteProcessedBytes(terminal, data, outputMode)
+		writeErr = terminalio.WriteProcessedBytes(terminal, data, outputMode)
 	}
-	if err != nil {
-		log.Printf("ERROR: Failed to write ANSI file %s: %v", filePath, err)
-		return err
+	if writeErr != nil {
+		log.Printf("ERROR: Failed to write ANSI file %s: %v", filePath, writeErr)
+		return writeErr
 	}
 
 	return nil
@@ -3643,11 +3596,8 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	renderFastLoginScreen := func() {
-		if fastlognMenu != nil && fastlognMenu.GetClrScrBefore() {
-			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-		}
-
-		if displayErr := e.displayFile(terminal, "FASTLOGN.ANS", outputMode); displayErr != nil {
+		clearFirst := fastlognMenu != nil && fastlognMenu.GetClrScrBefore()
+		if displayErr := e.displayFile(terminal, "FASTLOGN.ANS", outputMode, clearFirst); displayErr != nil {
 			log.Printf("WARN: Node %d: Failed to display FASTLOGN.ANS: %v", nodeNumber, displayErr)
 		}
 
@@ -3835,7 +3785,7 @@ func runFastLogin(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 }
 
 // loginPausePrompt displays the configured pause prompt (centered) and waits for Enter.
-func (e *MenuExecutor) loginPausePrompt(s ssh.Session, terminal *term.Terminal, nodeNumber int, outputMode ansi.OutputMode, termWidth int, termHeight int) error {
+func (e *MenuExecutor) loginPausePrompt(s ssh.Session, terminal *term.Terminal, _ int, outputMode ansi.OutputMode, termWidth int, termHeight int) error {
 	pausePrompt := e.LoadedStrings.PauseString
 	if pausePrompt == "" {
 		pausePrompt = "\r\n|07Press |15[ENTER]|07 to continue... "
@@ -7227,111 +7177,6 @@ func runShowVersion(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	return nil, "", nil // Return to the current menu
 }
 
-// displayMessageAreaList is an internal helper to display the list of accessible message areas
-// grouped by conference. It does not include a pause prompt.
-func displayMessageAreaList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, outputMode ansi.OutputMode, nodeNumber int, sessionStartTime time.Time) error {
-	log.Printf("DEBUG: Node %d: Displaying message area list (helper)", nodeNumber)
-
-	// 1. Load templates
-	templateDir := filepath.Join(e.MenuSetPath, "templates")
-	topTemplateBytes, errTop := readTemplateFile(filepath.Join(templateDir, "MSGAREA.TOP"))
-	midTemplateBytes, errMid := readTemplateFile(filepath.Join(templateDir, "MSGAREA.MID"))
-	botTemplateBytes, errBot := readTemplateFile(filepath.Join(templateDir, "MSGAREA.BOT"))
-
-	if errTop != nil || errMid != nil || errBot != nil {
-		log.Printf("ERROR: Node %d: Failed to load MSGAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
-		msg := "\r\n|01Error loading Message Area screen templates.|07\r\n"
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		time.Sleep(1 * time.Second)
-		return fmt.Errorf("failed loading MSGAREA templates")
-	}
-
-	// Conference header template (optional)
-	confHdrBytes, errConf := readTemplateFile(filepath.Join(templateDir, "MSGCONF.HDR"))
-	confHdrTemplate := ""
-	if errConf == nil {
-		confHdrTemplate = string(ansi.ReplacePipeCodes(confHdrBytes))
-	}
-
-	processedTopTemplate := ansi.ReplacePipeCodes(topTemplateBytes)
-	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
-	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
-
-	// 2. Get areas and group by conference
-	areas := e.MessageMgr.ListAreas()
-
-	// Build conference groups: conferenceID -> []*MessageArea (ACS-filtered)
-	groups := make(map[int][]*message.MessageArea)
-	confIDs := make(map[int]bool)
-	for _, area := range areas {
-		if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
-			continue
-		}
-		groups[area.ConferenceID] = append(groups[area.ConferenceID], area)
-		confIDs[area.ConferenceID] = true
-	}
-
-	// Sort conference IDs (0/ungrouped first)
-	var sortedConfIDs []int
-	if e.ConferenceMgr != nil {
-		sortedConfIDs = e.ConferenceMgr.GetSortedConferenceIDs(confIDs)
-	} else {
-		for cid := range confIDs {
-			sortedConfIDs = append(sortedConfIDs, cid)
-		}
-		sort.Ints(sortedConfIDs)
-	}
-
-	// 3. Build output
-	var outputBuffer bytes.Buffer
-	outputBuffer.Write(processedTopTemplate)
-
-	areasDisplayed := 0
-	for _, cid := range sortedConfIDs {
-		areasInConf := groups[cid]
-		if len(areasInConf) == 0 {
-			continue
-		}
-
-		// Check conference ACS
-		if cid != 0 && e.ConferenceMgr != nil {
-			conf, found := e.ConferenceMgr.GetByID(cid)
-			if found && !checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
-				continue
-			}
-			// Write conference header
-			if found && confHdrTemplate != "" {
-				hdr := confHdrTemplate
-				hdr = strings.ReplaceAll(hdr, "^CN", conf.Name)
-				hdr = strings.ReplaceAll(hdr, "^CT", conf.Tag)
-				hdr = strings.ReplaceAll(hdr, "^CD", conf.Description)
-				hdr = strings.ReplaceAll(hdr, "^CI", strconv.Itoa(conf.ID))
-				outputBuffer.WriteString(hdr)
-			}
-		}
-
-		for _, area := range areasInConf {
-			line := processedMidTemplate
-			line = strings.ReplaceAll(line, "^ID", strconv.Itoa(area.ID))
-			line = strings.ReplaceAll(line, "^TAG", string(ansi.ReplacePipeCodes([]byte(area.Tag))))
-			line = strings.ReplaceAll(line, "^NA", string(ansi.ReplacePipeCodes([]byte(area.Name))))
-			line = strings.ReplaceAll(line, "^DS", string(ansi.ReplacePipeCodes([]byte(area.Description))))
-			outputBuffer.WriteString(line)
-			areasDisplayed++
-		}
-	}
-
-	if areasDisplayed == 0 {
-		outputBuffer.WriteString("\r\n|07   No accessible message areas found.   \r\n")
-	}
-
-	outputBuffer.Write(processedBotTemplate)
-
-	// 4. Display
-	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	return terminalio.WriteProcessedBytes(terminal, outputBuffer.Bytes(), outputMode)
-}
-
 // runListMessageAreas displays a list of message areas using templates, then pauses.
 func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running LISTMSGAR", nodeNumber)
@@ -8131,29 +7976,6 @@ func generateReplySubject(originalSubject string) string {
 	return "Re: " + originalSubject
 }
 
-// formatQuote formats the body of an original message for quoting in a reply.
-// It prepends each line with the specified quotePrefix.
-func formatQuote(originalMsg *message.DisplayMessage, quotePrefix string) string {
-	if originalMsg == nil || originalMsg.Body == "" {
-		return ""
-	}
-
-	var builder strings.Builder
-	scanner := bufio.NewScanner(strings.NewReader(originalMsg.Body))
-	for scanner.Scan() {
-		builder.WriteString(quotePrefix)
-		builder.WriteString(scanner.Text())
-		builder.WriteString("\n") // Use ACTUAL newline for editor buffer
-	}
-	// Check for scanner errors, although unlikely with strings.Reader
-	if err := scanner.Err(); err != nil {
-		log.Printf("WARN: Error scanning original message body for quoting: %v", err)
-		// Return whatever was built so far, or perhaps an error indicator?
-		// For now, just return the potentially partial quote.
-	}
-	return builder.String()
-}
-
 // sanitizeControlChars strips control characters from user input to prevent
 // ANSI/terminal injection. Preserves tabs and newlines.
 func sanitizeControlChars(s string) string {
@@ -8298,7 +8120,7 @@ func (e *MenuExecutor) runTransferSend(s ssh.Session, terminal *term.Terminal, p
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("\r\n|15Initiating %s batch transfer (%d files)...|07\r\n", proto.Name, len(paths)))), outputMode)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Please start the receive function in your terminal.\r\n")), outputMode)
 
-		ctx, cancel := e.transferContext()
+		ctx, cancel := e.transferContext(s.Context())
 		defer cancel()
 		transferErr := proto.ExecuteSend(ctx, s, paths...)
 		if transferErr != nil {
@@ -8330,7 +8152,7 @@ func (e *MenuExecutor) runTransferSend(s ssh.Session, terminal *term.Terminal, p
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Prepare your terminal to receive each file.\r\n")), outputMode)
 
 	for i, p := range paths {
-		ctx, cancel := e.transferContext()
+		ctx, cancel := e.transferContext(s.Context())
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|15[%d/%d]|07 Sending: |14%s|07...", i+1, len(paths), names[i]))), outputMode)
 		sendErr := proto.ExecuteSend(ctx, s, p)
 		cancel()
@@ -8476,7 +8298,7 @@ func (e *MenuExecutor) runUploadFiles(
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 
 	resetSessionIH(s)
-	ctx, cancel := e.transferContext()
+	ctx, cancel := e.transferContext(s.Context())
 	defer cancel()
 	transferErr := proto.ExecuteReceive(ctx, s, incomingDir)
 	time.Sleep(250 * time.Millisecond)
@@ -9126,7 +8948,9 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 					paths[i] = fe.path
 					fileIDs[i] = fe.id
 				}
-				successCount, failCount = e.runTransferSend(s, terminal, proto, paths, fileIDs, outputMode, nodeNumber)
+				transferSuccess, transferFail := e.runTransferSend(s, terminal, proto, paths, fileIDs, outputMode, nodeNumber)
+				successCount += transferSuccess
+				failCount += transferFail
 				time.Sleep(1 * time.Second)
 			}
 
@@ -9207,7 +9031,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Error locating file.|07\r\n")), outputMode)
 					time.Sleep(1 * time.Second)
 				} else {
-					ctx, cancel := e.transferContext()
+					ctx, cancel := e.transferContext(s.Context())
 					ziplab.RunZipLabView(ctx, s, terminal, viewFilePath, fileToView.Filename, outputMode)
 					cancel()
 				}
@@ -10137,7 +9961,6 @@ func runReadPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	if updatedUser != nil {
 		updatedUser.CurrentMessageAreaID = originalAreaID
 		updatedUser.CurrentMessageAreaTag = originalAreaTag
-	} else if currentUser != nil {
 		currentUser.CurrentMessageAreaID = originalAreaID
 		currentUser.CurrentMessageAreaTag = originalAreaTag
 	}
@@ -10180,10 +10003,9 @@ func runListPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	if updatedUser != nil {
 		updatedUser.CurrentMessageAreaID = originalAreaID
 		updatedUser.CurrentMessageAreaTag = originalAreaTag
-	} else if currentUser != nil {
-		currentUser.CurrentMessageAreaID = originalAreaID
-		currentUser.CurrentMessageAreaTag = originalAreaTag
 	}
+	currentUser.CurrentMessageAreaID = originalAreaID
+	currentUser.CurrentMessageAreaTag = originalAreaTag
 
 	return updatedUser, nextMenu, err
 }
@@ -10358,7 +10180,7 @@ func runWhoIsOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		buf.WriteString("\r\n")
 	}
 
-	terminalio.WriteProcessedBytes(terminal, []byte(buf.String()), outputMode)
+	terminalio.WriteProcessedBytes(terminal, buf.Bytes(), outputMode)
 
 	pausePrompt := e.LoadedStrings.PauseString
 	if pausePrompt == "" {

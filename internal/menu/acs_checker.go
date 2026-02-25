@@ -256,7 +256,7 @@ func checkACS(acsString string, u *user.User, s ssh.Session, terminal *term.Term
 // evaluateCondition evaluates a single ACS condition (e.g., S50, L, Fx).
 // Note: It no longer handles the '!' prefix; that's done by the RPN evaluator.
 // Returns true if the condition is met, false otherwise.
-func evaluateCondition(condition string, u *user.User, s ssh.Session, terminal *term.Terminal, startTime time.Time) bool {
+func evaluateCondition(condition string, u *user.User, s ssh.Session, _ *term.Terminal, startTime time.Time) bool {
 	// Negation handling removed - done in evaluateRPN
 
 	if len(condition) == 0 {

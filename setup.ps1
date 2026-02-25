@@ -17,7 +17,8 @@ Write-Host ""
 
 # Check for Go (PATH + common Windows install locations)
 $goExe = $null
-try { $goExe = (Get-Command go -ErrorAction Stop).Source } catch { }
+$goCmd = Get-Command go -ErrorAction SilentlyContinue
+if ($goCmd) { $goExe = $goCmd.Source }
 if (-not $goExe) {
     $goCandidates = @(
         "$env:ProgramFiles\Go\bin\go.exe",
@@ -110,7 +111,7 @@ if ($MISSING_PREREQS) {
     Write-Host "Error: Missing required prerequisites!" -ForegroundColor Red
     Write-Host "Please install the missing components listed above and run setup.ps1 again."
     Write-Host ""
-    Write-Host "For detailed installation instructions, see: docs\installation.md"
+    Write-Host "For detailed installation instructions, see: documentation\installation.md"
     exit 1
 }
 
@@ -121,7 +122,7 @@ Write-Host ""
 if (-not (Test-Path "configs\ssh_host_rsa_key")) {
     Write-Host "Generating SSH host key (RSA)..."
     New-Item -ItemType Directory -Path "configs" -Force | Out-Null
-    & ssh-keygen -t rsa -b 4096 -f "configs\ssh_host_rsa_key" -N """"
+    & ssh-keygen -q -t rsa -b 4096 -f "configs\ssh_host_rsa_key" -N ''
     Write-Host "SSH host key generated."
 } else {
     Write-Host "SSH host key already exists."
@@ -159,6 +160,15 @@ Get-ChildItem -Path $templateConfigs -Filter "*.json" -ErrorAction SilentlyConti
     }
 }
 Get-ChildItem -Path $templateConfigs -Filter "*.txt" -ErrorAction SilentlyContinue | ForEach-Object {
+    $target = Join-Path $configsDir $_.Name
+    if (-not (Test-Path $target)) {
+        Write-Host "  Creating $($_.Name) from template..."
+        Copy-Item $_.FullName $target
+    } else {
+        Write-Host "  $($_.Name) already exists, skipping."
+    }
+}
+Get-ChildItem -Path $templateConfigs -Filter "*.ini" -ErrorAction SilentlyContinue | ForEach-Object {
     $target = Join-Path $configsDir $_.Name
     if (-not (Test-Path $target)) {
         Write-Host "  Creating $($_.Name) from template..."
@@ -249,6 +259,10 @@ if ($buildFailed) { exit 1 }
 
 Write-Host "Initializing JAM bases..."
 & .\v3mail.exe stats --all --config configs --data data 2>&1 | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "JAM initialization failed!" -ForegroundColor Red
+    exit 1
+}
 
 Write-Host ""
 Write-Host "=== Setup Complete ===" -ForegroundColor Green

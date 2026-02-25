@@ -208,6 +208,85 @@ func (mm *MessageManager) GetAreaByTag(tag string) (*MessageArea, bool) {
 	return area, exists
 }
 
+// UpdateAreaByID replaces the message area with the given ID with a copy of updated.
+// Callers must not modify areas by writing through pointers returned from GetAreaByID;
+// use this method so the update is performed under the manager's lock and avoids races.
+// Returns ErrAreaNotFound if no area has the given ID. The updated area's ID must match id.
+func (mm *MessageManager) UpdateAreaByID(id int, updated MessageArea) error {
+	if updated.ID != id {
+		return fmt.Errorf("message area ID mismatch: got %d, want %d", updated.ID, id)
+	}
+	mm.mu.Lock()
+	defer mm.mu.Unlock()
+	old, exists := mm.areasByID[id]
+	if !exists {
+		return ErrAreaNotFound
+	}
+	oldTag := old.Tag
+	replacement := new(MessageArea)
+	*replacement = updated
+	if oldTag != updated.Tag {
+		if existing, ok := mm.areasByTag[updated.Tag]; ok && existing.ID != id {
+			return fmt.Errorf("tag %q already in use by area %d", updated.Tag, existing.ID)
+		}
+		delete(mm.areasByTag, oldTag)
+	}
+	mm.areasByID[id] = replacement
+	mm.areasByTag[updated.Tag] = replacement
+	return nil
+}
+
+// SaveAreas persists all message areas to message_areas.json atomically.
+// The file is written to a temp file alongside the target and then renamed
+// to avoid partial-write corruption.
+func (mm *MessageManager) SaveAreas() error {
+	mm.mu.RLock()
+	list := make([]MessageArea, 0, len(mm.areasByID))
+	for _, area := range mm.areasByID {
+		if area != nil {
+			list = append(list, *area)
+		}
+	}
+	mm.mu.RUnlock()
+
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].ID < list[j].ID
+	})
+
+	data, err := json.MarshalIndent(list, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal message areas: %w", err)
+	}
+	data = append(data, '\n')
+
+	dir := filepath.Dir(mm.areasPath)
+	tmp, err := os.CreateTemp(dir, "message_areas_*.json.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file for areas: %w", err)
+	}
+	tmpName := tmp.Name()
+
+	if _, err = tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to write temp areas file: %w", err)
+	}
+	if err = tmp.Sync(); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to sync temp areas file: %w", err)
+	}
+	if err = tmp.Close(); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to close temp areas file: %w", err)
+	}
+	if err = os.Rename(tmpName, mm.areasPath); err != nil {
+		_ = os.Remove(tmpName)
+		return fmt.Errorf("failed to rename temp areas file: %w", err)
+	}
+	return nil
+}
+
 // ListAreas returns all loaded areas sorted by ID.
 func (mm *MessageManager) ListAreas() []*MessageArea {
 	mm.mu.RLock()
@@ -622,7 +701,6 @@ func (mm *MessageManager) DeleteMessage(areaID, msgNum int) error {
 	}
 	// Invalidate caches so subsequent reads reflect the deletion
 	mm.invalidateThreadIndex(areaID)
-	delete(mm.msgidIndex, areaID)
 	return nil
 }
 
@@ -642,7 +720,6 @@ func (mm *MessageManager) PackAndLinkArea(areaID int) error {
 		return fmt.Errorf("link area %d: %w", areaID, err)
 	}
 	mm.invalidateThreadIndex(areaID)
-	delete(mm.msgidIndex, areaID)
 	return nil
 }
 

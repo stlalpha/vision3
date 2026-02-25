@@ -21,6 +21,7 @@ This directory contains comprehensive documentation for the ViSiON/3 BBS system.
 
 - [User Management](user-management.md) - Managing users and access levels
 - [Message Areas](message-areas.md) - Setting up and managing message bases
+- [Sponsor Menus](sponsor-menus.md) - Per-area sponsor/moderator menu and area editor
 - [File Areas](file-areas.md) - Configuring file areas and transfers
 - [Door Programs](doors.md) - Setting up external door programs
 
