@@ -48,6 +48,7 @@ func (m Model) updateSysConfigMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.sysSubScreen = idx
 				m.sysFields = m.buildSysFields(m.sysSubScreen)
 				m.editField = 0
+				m.fieldScroll = 0
 				m.mode = modeSysConfigEdit
 				return m, nil
 			}

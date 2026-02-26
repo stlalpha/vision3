@@ -251,6 +251,9 @@ func (m *Model) fieldsConference() []fieldDef {
 
 // conferenceName returns a display string for a conference ID, e.g. "Local Conferences (ID: 1)".
 func (m *Model) conferenceName(id int) string {
+	if id == 0 {
+		return "Ungrouped (ID: 0)"
+	}
 	for _, c := range m.configs.Conferences {
 		if c.ID == id {
 			return fmt.Sprintf("%s (ID: %d)", c.Name, c.ID)
@@ -261,12 +264,16 @@ func (m *Model) conferenceName(id int) string {
 
 // buildConferenceLookupItems builds lookup items from loaded conferences.
 func (m *Model) buildConferenceLookupItems() []LookupItem {
-	items := make([]LookupItem, len(m.configs.Conferences))
-	for i, c := range m.configs.Conferences {
-		items[i] = LookupItem{
+	items := make([]LookupItem, 0, len(m.configs.Conferences)+1)
+	items = append(items, LookupItem{
+		Value:   "0",
+		Display: "Ungrouped (ID: 0)",
+	})
+	for _, c := range m.configs.Conferences {
+		items = append(items, LookupItem{
 			Value:   strconv.Itoa(c.ID),
 			Display: fmt.Sprintf("%s (%s)", c.Name, c.Tag),
-		}
+		})
 	}
 	return items
 }

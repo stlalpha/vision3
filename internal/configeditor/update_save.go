@@ -139,9 +139,14 @@ func (m *Model) insertRecord() {
 			Name:     "New Conference",
 		})
 	case "door":
-		name := fmt.Sprintf("newdoor%d", len(m.configs.Doors)+1)
-		m.configs.Doors[name] = config.DoorConfig{
-			Name: "New Door",
+		for i := 1; ; i++ {
+			name := fmt.Sprintf("newdoor%d", i)
+			if _, exists := m.configs.Doors[name]; !exists {
+				m.configs.Doors[name] = config.DoorConfig{
+					Name: "New Door",
+				}
+				break
+			}
 		}
 	case "ftn":
 		if m.configs.FTN.Networks == nil {

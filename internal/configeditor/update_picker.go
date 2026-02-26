@@ -54,10 +54,13 @@ func (m Model) updateLookupPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		} else {
 			fields = m.sysFields
 		}
-		if m.editField < len(fields) {
+		if m.editField >= 0 && m.editField < len(fields) {
 			f := fields[m.editField]
 			if f.Set != nil {
-				f.Set(selected.Value)
+				if err := f.Set(selected.Value); err != nil {
+					m.message = "Invalid selection: " + err.Error()
+					return m, nil
+				}
 				m.dirty = true
 			}
 		}

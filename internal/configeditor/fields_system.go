@@ -272,7 +272,7 @@ func sysFieldsDefaults(cfg *config.ServerConfig) []fieldDef {
 			Set: func(val string) error { cfg.FileListingMode = val; return nil },
 		},
 		{
-			Label: "Del User Days", Help: "Days to keep deleted user records (0=forever)", Type: ftInteger, Col: 3, Row: 3, Width: 5, Min: 0, Max: 9999,
+			Label: "Del User Days", Help: "Days to keep deleted user records (0=purge now, -1=forever)", Type: ftInteger, Col: 3, Row: 3, Width: 5, Min: -1, Max: 9999,
 			Get: func() string { return strconv.Itoa(cfg.DeletedUserRetentionDays) },
 			Set: func(val string) error {
 				n, err := strconv.Atoi(val)

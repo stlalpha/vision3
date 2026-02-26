@@ -9409,9 +9409,12 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 		// Save the user state
 		if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
 			log.Printf("ERROR: Node %d: Failed to save user data after updating file area: %v", nodeNumber, saveErr)
+			currentUser.CurrentFileAreaID = area.ID // revert not needed, just don't show success
 			msg := "\r\n|01Error: Could not save area selection.|07\r\n"
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
 		}
 
 		log.Printf("INFO: Node %d: User %s changed file area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)
@@ -9578,6 +9581,11 @@ func runSelectMessageArea(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 		if err := userManager.UpdateUser(currentUser); err != nil {
 			log.Printf("ERROR: Node %d: Failed to save user data after updating message area: %v", nodeNumber, err)
+			msg := "\r\n|01Error: Could not save area selection.|07\r\n"
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
 		}
 
 		log.Printf("INFO: Node %d: User %s changed message area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)

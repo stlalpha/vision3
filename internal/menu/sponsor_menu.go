@@ -750,6 +750,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					break
 				}
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+				saveOK := false
 				switch saveKey {
 				case int('y'), int('Y'):
 					if updateErr := e.MessageMgr.UpdateAreaByID(edited.ID, edited); updateErr != nil {
@@ -757,30 +758,27 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 						msg := "|01Error updating area.|07\r\n"
 						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 						time.Sleep(1 * time.Second)
-						break
-					}
-					if saveErr := e.MessageMgr.SaveAreas(); saveErr != nil {
+					} else if saveErr := e.MessageMgr.SaveAreas(); saveErr != nil {
 						log.Printf("ERROR: Node %d: Failed to save areas: %v", nodeNumber, saveErr)
 						msg := "|01Error saving area.|07\r\n"
 						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 						time.Sleep(1 * time.Second)
-						break
-					}
-					log.Printf("INFO: Node %d: User %s saved area %s", nodeNumber, currentUser.Handle, edited.Tag)
-					saveMsg := fmt.Sprintf("|02Area |14%s|02 saved.|07\r\n", edited.Tag)
-					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(saveMsg)), outputMode)
-					time.Sleep(500 * time.Millisecond)
-					if currentUser.CurrentMessageAreaID == edited.ID {
-						currentUser.CurrentMessageAreaTag = edited.Tag
+					} else {
+						log.Printf("INFO: Node %d: User %s saved area %s", nodeNumber, currentUser.Handle, edited.Tag)
+						saveMsg := fmt.Sprintf("|02Area |14%s|02 saved.|07\r\n", edited.Tag)
+						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(saveMsg)), outputMode)
+						time.Sleep(500 * time.Millisecond)
+						if currentUser.CurrentMessageAreaID == edited.ID {
+							currentUser.CurrentMessageAreaTag = edited.Tag
+						}
+						saveOK = true
 					}
 				case int('n'), int('N'):
-					// Discard changes
+					saveOK = true // Discard is intentional, allow navigation
 				default:
 					// Cancel navigation
-					break
 				}
-				// If save failed (break from inner switch), stay on current area
-				if saveKey != int('y') && saveKey != int('Y') && saveKey != int('n') && saveKey != int('N') {
+				if !saveOK {
 					break
 				}
 			}
