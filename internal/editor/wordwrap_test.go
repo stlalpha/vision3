@@ -183,6 +183,45 @@ func TestReflowRange_ForceBreak(t *testing.T) {
 	}
 }
 
+func TestReflowRange_BufferFull_NoTextLoss(t *testing.T) {
+	// Fill buffer to near capacity, then reflow a long line that needs more
+	// lines than can be inserted. Text should be preserved on the last line.
+	mb := NewMessageBuffer()
+	// Fill lines 1..MaxLines-1 with placeholder content
+	for i := 1; i < MaxLines; i++ {
+		mb.SetLine(i, "filler")
+		mb.SetHardNewline(i, true)
+	}
+	// Put a long line on the last slot that needs wrapping into 2+ lines
+	long := strings.Repeat("word ", 20) // ~100 chars, needs 2 lines
+	long = strings.TrimRight(long, " ")
+	mb.SetLine(MaxLines, long)
+	mb.SetHardNewline(MaxLines, true)
+
+	ww := NewWordWrapper(mb)
+	newLine, newCol := ww.ReflowRange(MaxLines, MaxLines, 1)
+
+	// Cursor must be within buffer bounds
+	if newLine > mb.GetLineCount() {
+		t.Errorf("cursor line %d exceeds buffer line count %d", newLine, mb.GetLineCount())
+	}
+	if newCol < 1 {
+		t.Errorf("cursor col should be ≥ 1, got %d", newCol)
+	}
+
+	// All original text must still be present (no silent truncation)
+	var recovered strings.Builder
+	for i := MaxLines; i <= mb.GetLineCount(); i++ {
+		if recovered.Len() > 0 {
+			recovered.WriteByte(' ')
+		}
+		recovered.WriteString(strings.TrimRight(mb.GetLine(i), " "))
+	}
+	if recovered.String() != long {
+		t.Errorf("text was lost or corrupted:\n  want: %q\n  got:  %q", long, recovered.String())
+	}
+}
+
 // --- WrapAfterInsert Tests ---
 
 func TestWrapAfterInsert_NoWrapNeeded(t *testing.T) {

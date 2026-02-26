@@ -467,6 +467,9 @@ func (e *FSEditor) deleteLine() {
 
 // joinLines joins current line with next line and reflows
 func (e *FSEditor) joinLines() {
+	if e.currentLine >= e.buffer.GetLineCount() {
+		return
+	}
 	// Clear hardNewline so reflow can flow across the boundary
 	e.buffer.SetHardNewline(e.currentLine, false)
 	if e.buffer.JoinLines(e.currentLine) {

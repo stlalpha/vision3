@@ -121,13 +121,24 @@ func (ww *WordWrapper) ReflowRange(startLine, cursorLine, cursorCol int) (int, i
 		actualNew := originalCount
 		for i := originalCount; i < newCount; i++ {
 			if !ww.buffer.InsertLine(startLine + i) {
-				break // buffer full
+				// Buffer full: append remaining text to last written line
+				last := startLine + actualNew - 1
+				tail := strings.Join(outputLines[i:], " ")
+				if tail != "" {
+					curr := ww.buffer.GetLine(last)
+					if curr != "" {
+						ww.buffer.SetLine(last, curr+" "+tail)
+					} else {
+						ww.buffer.SetLine(last, tail)
+					}
+				}
+				break
 			}
 			ww.buffer.SetLine(startLine+i, outputLines[i])
 			ww.buffer.SetHardNewline(startLine+i, false)
 			actualNew++
 		}
-		// Truncate to what was actually written if buffer was full
+		// Truncate tracking to what was actually written
 		if actualNew < newCount {
 			newCount = actualNew
 			outputLines = outputLines[:newCount]
