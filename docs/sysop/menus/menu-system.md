@@ -188,17 +188,47 @@ Dynamic content placeholders in prompts and ANSI files:
 
 ### AT-Code Placeholders
 
-Dynamic `@CODE@` placeholders available in prompts and ANSI files:
+Dynamic `@CODE@` placeholders are available in prompts, ANSI files, and templates. They support multiple width formats and alignment modifiers for precise layout control — especially useful in ANSI art where character positioning matters.
+
+**Available codes:**
 
 - `@U@` - Number of users currently online
-- `@UC@` - Total registered users
+- `@UC@` - Total registered users (also `@USERCT@`)
 
-Width formatting is supported:
+**Width formats:**
 
-- `@UC:5@` - Explicit width (pad/truncate to 5 characters)
-- `@UC##@` - Visual width (value fills the same columns as the placeholder)
+| Format | Example | Description |
+|--------|---------|-------------|
+| Simple | `@UC@` | Value as-is, no width constraint |
+| Explicit width | `@UC:5@` | Pad or truncate to exactly 5 characters |
+| Visual width | `@UC##@` | Width equals the number of `#` characters in the placeholder |
 
-These codes also work in Last Caller templates (LASTCALL.TOP/MID/BOT).
+The visual-width format (`@CODE####@`) is designed for ANSI art templates. The `#` characters show exactly how much horizontal space the field will occupy, so you can see the layout directly in your editor.
+
+**Alignment modifiers:**
+
+Add `|L`, `|R`, or `|C` between the code and width specifier to control alignment:
+
+| Modifier | Purpose |
+|----------|---------|
+| `\|L` | Left-justify (pad right) — default |
+| `\|R` | Right-justify (pad left) |
+| `\|C` | Center (pad both sides) |
+
+```text
+@UC:5@       - Left-justify in 5-char field (default)
+@UC|R:5@     - Right-justify in 5-char field
+@UC|C#####@  - Center in 5-char visual-width field
+@UC|R##@     - Right-justify in 2-char visual-width field
+```
+
+**Where AT-code placeholders are supported:**
+
+- Menu ANSI files (`.ANS`)
+- Prompt strings (`PROMPT1` in `.CFG`)
+- Last Caller templates (`LASTCALL.TOP`, `LASTCALL.MID`, `LASTCALL.BOT`)
+- File list templates (`FILELIST.TOP`, `FILELIST.BOT`) — see [File Areas](../files/file-areas.md#file-list-templates) for file-specific codes (`@FPAGE@`, `@FTOTAL@`, `@FCONFPATH@`)
+- Message header templates — see [Header Placeholders](../messages/placeholders.md) for the full message-specific code list
 
 ### Coordinate Codes
 
