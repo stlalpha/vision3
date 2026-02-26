@@ -8,7 +8,7 @@ The file system allows users to browse, upload, and download files organized int
 
 ## File Area Configuration
 
-Use the [TUI Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 3 — File Areas) to add, edit, and remove file areas interactively. This is the recommended approach.
+Use the [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 3 — File Areas) to add, edit, and remove file areas interactively. This is the recommended approach.
 
 ### JSON Reference
 

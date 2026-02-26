@@ -69,7 +69,7 @@ You should see version and usage information from Synchronet External X/Y/ZMODEM
 
 ## Configuration
 
-Use the [TUI Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 8 — Transfer Protocols) to manage protocol definitions interactively. This is the recommended approach.
+Use the [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 8 — Transfer Protocols) to manage protocol definitions interactively. This is the recommended approach.
 
 ### JSON Reference
 

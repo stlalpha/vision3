@@ -4,7 +4,7 @@ ViSiON/3's message system lets users post and read messages across topic areas. 
 
 ## Configuring Message Areas
 
-Use the [TUI Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 2 — Message Areas) to add, edit, and remove message areas interactively. This is the recommended approach.
+Use the [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 2 — Message Areas) to add, edit, and remove message areas interactively. This is the recommended approach.
 
 SysOps and area sponsors can also edit area settings live from within the BBS via the [Sponsor Menu](../users/sponsor-menus.md) (`%` in the Messages Menu) — no restart required.
 

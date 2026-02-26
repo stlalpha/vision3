@@ -397,7 +397,7 @@ See [event-scheduler.md](../advanced/event-scheduler.md) for the full recommende
 
 ## Configuration Files Reference
 
-> *The [TUI Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 7 — FTN Network) manages FTN network and link settings interactively. Mailer-specific configuration (binkd.conf) and directory setup are still handled manually as described below.*
+> *The [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 7 — FTN Network) manages FTN network and link settings interactively. Mailer-specific configuration (binkd.conf) and directory setup are still handled manually as described below.*
 
 ### ftn.json
 
