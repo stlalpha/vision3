@@ -160,29 +160,32 @@ func (ww *WordWrapper) ReflowRange(startLine, cursorLine, cursorCol int) (int, i
 	// Last output line inherits the original paragraph-end hardNewline
 	ww.buffer.SetHardNewline(startLine+newCount-1, endHardNewline)
 
-	// Map cursor offset to output line/col using lineStarts
+	// Map cursor offset to output line/col using lineStarts.
+	// Use actual buffer line lengths (not outputLines) since buffer-full
+	// fallback may have appended overflow text to the last written line.
 	if cursorOffset >= len(text) {
-		lastIdx := newCount - 1
-		return startLine + lastIdx, len(outputLines[lastIdx]) + 1
+		lastLine := startLine + newCount - 1
+		return lastLine, ww.buffer.GetLineLength(lastLine) + 1
 	}
 
-	for i := 0; i < len(lineStarts); i++ {
+	for i := 0; i < len(lineStarts) && i < newCount; i++ {
 		nextStart := len(text) + 1
 		if i+1 < len(lineStarts) {
 			nextStart = lineStarts[i+1]
 		}
 		if cursorOffset >= lineStarts[i] && cursorOffset < nextStart {
 			localOffset := cursorOffset - lineStarts[i]
-			if localOffset > len(outputLines[i]) {
-				localOffset = len(outputLines[i])
+			actualLen := ww.buffer.GetLineLength(startLine + i)
+			if localOffset > actualLen {
+				localOffset = actualLen
 			}
 			return startLine + i, localOffset + 1
 		}
 	}
 
 	// Fallback: cursor at end of last output line
-	lastIdx := newCount - 1
-	return startLine + lastIdx, len(outputLines[lastIdx]) + 1
+	lastLine := startLine + newCount - 1
+	return lastLine, ww.buffer.GetLineLength(lastLine) + 1
 }
 
 // WrapAfterInsert handles word wrap after a character insertion.
