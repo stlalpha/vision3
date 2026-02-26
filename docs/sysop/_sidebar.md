@@ -7,6 +7,19 @@
 
 * **CONFIGURATION**
 * [Configuration](configuration/configuration.md)
+* [Config Editor](configuration/configuration.md#configuration-editor-tui)
+* [General Settings](configuration/configuration.md#configjson)
+* [Strings](configuration/configuration.md#stringsjson)
+* [Doors](configuration/configuration.md#doorsjson)
+* [Archivers](configuration/configuration.md#archiversjson)
+* [File Areas](configuration/configuration.md#file_areasjson)
+* [Message Areas](configuration/configuration.md#message_areasjson)
+* [Conferences](configuration/configuration.md#conferencesjson)
+* [Events](configuration/configuration.md#eventsjson)
+* [Menus](configuration/configuration.md#menu-configuration)
+* [Theme](configuration/configuration.md#theme-configuration)
+* [Oneliners](configuration/configuration.md#onelinersjson)
+* [SSH Host Keys](configuration/configuration.md#ssh-host-keys)
 * [Security](configuration/security.md)
 
 * **MENU SYSTEM**
