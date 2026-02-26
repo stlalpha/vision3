@@ -123,7 +123,7 @@ func (ww *WordWrapper) ReflowRange(startLine, cursorLine, cursorCol int) (int, i
 			if !ww.buffer.InsertLine(startLine + i) {
 				// Buffer full: append remaining text to last written line
 				last := startLine + actualNew - 1
-				tail := strings.Join(outputLines[i:], " ")
+				tail := text[lineStarts[i]:]
 				if tail != "" {
 					curr := ww.buffer.GetLine(last)
 					if curr != "" {
@@ -248,10 +248,9 @@ func (ww *WordWrapper) HandleBackspace(lineNum, col int) (int, int, bool) {
 		prevLine := ww.buffer.GetLine(lineNum - 1)
 		prevLen := len(prevLine)
 
-		// Clear hardNewline on previous line so reflow can flow across the boundary
-		ww.buffer.SetHardNewline(lineNum-1, false)
-
 		if ww.buffer.JoinLines(lineNum - 1) {
+			// Clear hardNewline after successful join so reflow flows across boundary
+			ww.buffer.SetHardNewline(lineNum-1, false)
 			newLine, newCol := ww.ReflowRange(lineNum-1, lineNum-1, prevLen+1)
 			return newLine, newCol, true
 		}
@@ -277,8 +276,9 @@ func (ww *WordWrapper) HandleDelete(lineNum, col int) (int, int, bool) {
 
 	// At end of line - join with next line
 	if lineNum < ww.buffer.GetLineCount() {
-		ww.buffer.SetHardNewline(lineNum, false)
 		if ww.buffer.JoinLines(lineNum) {
+			// Clear hardNewline after successful join so reflow flows across boundary
+			ww.buffer.SetHardNewline(lineNum, false)
 			newLine, newCol := ww.ReflowRange(lineNum, lineNum, col)
 			return newLine, newCol, true
 		}
