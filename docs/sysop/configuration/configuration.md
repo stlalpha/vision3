@@ -82,6 +82,8 @@ Configuration files are split between two directories:
 
 ## strings.json
 
+> *Use the [String Editor](../advanced/string-editor.md) (`./strings`) to edit display strings interactively. It is a Go reimplementation of the original Vision/2 `STRINGS.EXE` utility. The JSON structure below is for reference or manual editing.*
+
 This file contains all the customizable text strings displayed by the BBS. You can modify these to personalize your system.
 
 ### Key String Categories
