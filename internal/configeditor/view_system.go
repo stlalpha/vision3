@@ -3,6 +3,8 @@ package configeditor
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // viewSysConfigEdit renders the system config field editor.
@@ -146,15 +148,12 @@ func (m Model) viewSysConfigEdit() string {
 // renderSysEditRow renders a single row of system config fields.
 func (m Model) renderSysEditRow(row, boxW int) string {
 	var fieldStr string
-	var fieldRawW int
 
 	for i, f := range m.sysFields {
 		if f.Row != row {
 			continue
 		}
-		rendered, rawW := m.renderSysField(i, f)
-		fieldStr = rendered
-		fieldRawW = rawW
+		fieldStr, _ = m.renderSysField(i, f)
 	}
 
 	if fieldStr == "" {
@@ -163,7 +162,8 @@ func (m Model) renderSysEditRow(row, boxW int) string {
 
 	// Pad field content to fill the box
 	padBefore := 2 // indent
-	padAfter := boxW - padBefore - fieldRawW
+	// Use actual visual width to avoid blow-out from multi-byte characters
+	padAfter := boxW - padBefore - lipgloss.Width(fieldStr)
 	if padAfter < 0 {
 		padAfter = 0
 	}

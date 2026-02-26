@@ -60,6 +60,8 @@ func (m Model) updateRecordList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "i", "I", "insert":
 			m.insertRecord()
 			m.dirty = true
+			m.recordCursor = m.recordCount() - 1
+			m.clampRecordScroll()
 			return m, nil
 		case "d", "D", "delete":
 			if total > 0 {

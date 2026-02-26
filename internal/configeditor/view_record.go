@@ -3,6 +3,8 @@ package configeditor
 import (
 	"fmt"
 	"strings"
+
+	"github.com/charmbracelet/lipgloss"
 )
 
 // viewRecordEdit renders the single-record field editor popup.
@@ -184,15 +186,12 @@ func (m Model) recordEditHeader() string {
 // renderRecordEditRow renders a single row of record edit fields.
 func (m Model) renderRecordEditRow(row, boxW int) string {
 	var fieldStr string
-	var fieldRawW int
 
 	for i, f := range m.recordFields {
 		if f.Row != row {
 			continue
 		}
-		rendered, rawW := m.renderRecordField(i, f)
-		fieldStr = rendered
-		fieldRawW = rawW
+		fieldStr, _ = m.renderRecordField(i, f)
 	}
 
 	if fieldStr == "" {
@@ -200,7 +199,8 @@ func (m Model) renderRecordEditRow(row, boxW int) string {
 	}
 
 	padBefore := 2
-	padAfter := boxW - padBefore - fieldRawW
+	// Use actual visual width to avoid blow-out from multi-byte characters
+	padAfter := boxW - padBefore - lipgloss.Width(fieldStr)
 	if padAfter < 0 {
 		padAfter = 0
 	}

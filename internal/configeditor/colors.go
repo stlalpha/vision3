@@ -79,9 +79,8 @@ var fieldLabelStyle = dosStyle(31)
 // --- Field value (display mode): blue bg, yellow fg ---
 var fieldDisplayStyle = dosStyle(30)
 
-// --- Field value (edit mode): yellow ---
-var fieldEditStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(dosColors[14]))
+// --- Field value (edit mode): blue bg, yellow fg ---
+var fieldEditStyle = dosColor(1, 14)
 
 // --- Edit screen title bar ---
 var editTitleStyle = dosColor(0, 15).Bold(true).Background(lipgloss.Color("8"))

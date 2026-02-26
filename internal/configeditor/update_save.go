@@ -133,6 +133,18 @@ func (m *Model) insertRecord() {
 		m.configs.Doors[name] = config.DoorConfig{
 			Name: "New Door",
 		}
+	case "ftn":
+		if m.configs.FTN.Networks == nil {
+			m.configs.FTN.Networks = make(map[string]config.FTNNetworkConfig)
+		}
+		// Use zz_ prefix so new entries sort after real network names
+		for i := 1; ; i++ {
+			name := fmt.Sprintf("zz_newnet_%d", i)
+			if _, exists := m.configs.FTN.Networks[name]; !exists {
+				m.configs.FTN.Networks[name] = config.FTNNetworkConfig{}
+				break
+			}
+		}
 	case "event":
 		newID := fmt.Sprintf("event_%d", len(m.configs.Events.Events)+1)
 		m.configs.Events.Events = append(m.configs.Events.Events, config.EventConfig{
@@ -175,6 +187,11 @@ func (m *Model) deleteRecord() {
 		keys := m.doorKeys()
 		if idx >= 0 && idx < len(keys) {
 			delete(m.configs.Doors, keys[idx])
+		}
+	case "ftn":
+		keys := m.ftnNetworkKeys()
+		if idx >= 0 && idx < len(keys) {
+			delete(m.configs.FTN.Networks, keys[idx])
 		}
 	case "event":
 		if idx >= 0 && idx < len(m.configs.Events.Events) {

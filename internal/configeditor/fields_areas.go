@@ -219,22 +219,22 @@ func (m *Model) fieldsConference() []fieldDef {
 	c := &m.configs.Conferences[idx]
 	return []fieldDef{
 		{
-			Label: "Tag", Help: "Short identifier (e.g. LOCAL, FSXNET)", Type: ftString, Col: 3, Row: 1, Width: 30,
+			Label: "Tag", Help: "Short identifier (e.g. LOCAL, FSXNET)", Type: ftString, Col: 3, Row: 1, Width: 20,
 			Get: func() string { return c.Tag },
 			Set: func(val string) error { c.Tag = val; return nil },
 		},
 		{
-			Label: "Name", Help: "Display name shown to users", Type: ftString, Col: 3, Row: 2, Width: 40,
+			Label: "Name", Help: "Display name shown to users", Type: ftString, Col: 3, Row: 2, Width: 30,
 			Get: func() string { return c.Name },
 			Set: func(val string) error { c.Name = val; return nil },
 		},
 		{
-			Label: "Description", Help: "Longer description of this conference", Type: ftString, Col: 3, Row: 3, Width: 45,
+			Label: "Description", Help: "Longer description of this conference", Type: ftString, Col: 3, Row: 3, Width: 40,
 			Get: func() string { return c.Description },
 			Set: func(val string) error { c.Description = val; return nil },
 		},
 		{
-			Label: "ACS", Help: "Access string for conference access", Type: ftString, Col: 3, Row: 4, Width: 20,
+			Label: "ACS", Help: "Access string for conference access", Type: ftString, Col: 3, Row: 4, Width: 10,
 			Get: func() string { return c.ACS },
 			Set: func(val string) error { c.ACS = val; return nil },
 		},

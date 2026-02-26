@@ -67,13 +67,14 @@ func (m Model) overlayConfirmDialog(background, title, question string) string {
 
 	dialogLines := []string{border, titleLine, emptyLine, questionLine, emptyLine, buttonLine, borderBot}
 
-	// Overlay dialog on background
-	tailW := maxInt(0, m.width-startCol-dialogW)
-	tail := bgFillStyle.Render(strings.Repeat("░", tailW))
+	// Overlay dialog on background, preserving content on both sides
+	endCol := startCol + dialogW
 	for i, dl := range dialogLines {
 		row := startRow + i
 		if row >= 0 && row < len(lines) {
-			lines[row] = padToCol(lines[row], startCol) + dl + tail
+			left := padToCol(lines[row], startCol)
+			right := skipToCol(lines[row], endCol)
+			lines[row] = left + dl + right
 		}
 	}
 
