@@ -30,6 +30,8 @@
 * [Access Control (ACS)](menus/menu-system.md#access-control-strings-acs)
 * [Pre-Login Matrix](menus/menu-system.md#pre-login-matrix-screen)
 * [Pre-Login ANSI](menus/menu-system.md#pre-login-ansi-files-prelogon)
+* [Pipe Color Codes](menus/menu-system.md#pipe-color-codes)
+* [Placeholders](menus/menu-system.md#special-placeholder-codes)
 * [Built-in Functions](menus/menu-system.md#built-in-functions)
 * [Templates](menus/menu-system.md#template-files-top--mid--bot)
 
