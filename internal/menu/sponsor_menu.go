@@ -28,7 +28,7 @@ import (
 //  1. Resolve the user's current message area.
 //  2. Gate via CanAccessSponsorMenu.
 //  3. Display SPONSORM.ANS header.
-//  4. Single-key loop: E=Edit Area, Q=Quit.
+//  4. Command loop (Enter required): E=Edit Area, [/]=Navigate Areas, P=Position, Q=Quit.
 func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User,
 	nodeNumber int, sessionStartTime time.Time, args string,

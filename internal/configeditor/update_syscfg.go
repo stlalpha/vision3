@@ -105,6 +105,7 @@ func (m Model) updateSysConfigEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sysSubScreen++
 			m.sysFields = m.buildSysFields(m.sysSubScreen)
 			m.editField = 0
+			m.fieldScroll = 0
 		}
 		return m, nil
 
@@ -113,6 +114,7 @@ func (m Model) updateSysConfigEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.sysSubScreen--
 			m.sysFields = m.buildSysFields(m.sysSubScreen)
 			m.editField = 0
+			m.fieldScroll = 0
 		}
 		return m, nil
 	}

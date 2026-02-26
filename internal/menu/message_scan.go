@@ -549,8 +549,16 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	// Sort areas by conference Position, then by area Position within each conference.
+	// Missing or zero-position conferences sort after known ones.
 	sort.Slice(allAreas, func(i, j int) bool {
-		ci, cj := confPosMap[allAreas[i].ConferenceID], confPosMap[allAreas[j].ConferenceID]
+		ci, oki := confPosMap[allAreas[i].ConferenceID]
+		cj, okj := confPosMap[allAreas[j].ConferenceID]
+		if !oki || ci <= 0 {
+			ci = 1<<31 - 1 // sort unknown/unset last
+		}
+		if !okj || cj <= 0 {
+			cj = 1<<31 - 1
+		}
 		if ci != cj {
 			return ci < cj
 		}

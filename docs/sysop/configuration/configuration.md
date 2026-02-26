@@ -51,7 +51,7 @@ Press **P** in a record list to enter reorder mode. Use Up/Down to choose the ne
 
 ### Saving
 
-The editor tracks unsaved changes. When you quit with pending changes, you are prompted to save. All configuration files are written atomically.
+The editor tracks unsaved changes. When you quit with pending changes, you are prompted to save, and confirmed changes are then written to the appropriate configuration files.
 
 ## Configuration Files Overview
 

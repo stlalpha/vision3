@@ -92,24 +92,31 @@ func (cm *ConferenceManager) loadConferences() error {
 		log.Printf("TRACE: Loaded conference ID %d, Tag '%s', Name '%s'", conf.ID, conf.Tag, conf.Name)
 	}
 
-	// Migration: auto-assign positions if all are 0 (pre-Position data)
-	allZero := true
+	// Migration: assign positions to any conferences that have Position <= 0.
+	// Finds the current max position and assigns sequentially after it.
+	maxPos := 0
+	hasUnset := false
 	for _, conf := range cm.conferencesByID {
-		if conf.Position != 0 {
-			allZero = false
-			break
+		if conf.Position > maxPos {
+			maxPos = conf.Position
+		}
+		if conf.Position <= 0 {
+			hasUnset = true
 		}
 	}
-	if allZero && len(cm.conferencesByID) > 0 {
+	if hasUnset && len(cm.conferencesByID) > 0 {
 		sorted := make([]*Conference, 0, len(cm.conferencesByID))
 		for _, conf := range cm.conferencesByID {
-			sorted = append(sorted, conf)
+			if conf.Position <= 0 {
+				sorted = append(sorted, conf)
+			}
 		}
 		sort.Slice(sorted, func(i, j int) bool {
 			return sorted[i].ID < sorted[j].ID
 		})
-		for i, conf := range sorted {
-			conf.Position = i + 1
+		for _, conf := range sorted {
+			maxPos++
+			conf.Position = maxPos
 		}
 		log.Printf("INFO: Auto-assigned positions to %d conferences (migration)", len(sorted))
 	}
@@ -163,19 +170,23 @@ func (cm *ConferenceManager) GetSortedConferenceIDs(confIDs map[int]bool) []int 
 		}
 		ids = append(ids, id)
 	}
-	// Sort by conference Position (fall back to ID for unknown conferences)
+	// Sort by conference Position (fall back to ID for unknown or unset positions).
+	// Break ties by ID for deterministic ordering.
 	sort.Slice(ids, func(i, j int) bool {
 		pi, pj := ids[i], ids[j]
 		ci, oki := cm.conferencesByID[pi]
 		cj, okj := cm.conferencesByID[pj]
 		posI, posJ := pi, pj // fallback to ID
-		if oki {
+		if oki && ci.Position > 0 {
 			posI = ci.Position
 		}
-		if okj {
+		if okj && cj.Position > 0 {
 			posJ = cj.Position
 		}
-		return posI < posJ
+		if posI != posJ {
+			return posI < posJ
+		}
+		return pi < pj
 	})
 	if hasZero {
 		ids = append([]int{0}, ids...)

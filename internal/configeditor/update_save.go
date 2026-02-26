@@ -161,12 +161,24 @@ func (m *Model) insertRecord() {
 			}
 		}
 	case "event":
-		newID := fmt.Sprintf("event_%d", len(m.configs.Events.Events)+1)
-		m.configs.Events.Events = append(m.configs.Events.Events, config.EventConfig{
-			ID:      newID,
-			Name:    "New Event",
-			Enabled: false,
-		})
+		for i := 1; ; i++ {
+			newID := fmt.Sprintf("event_%d", i)
+			exists := false
+			for _, e := range m.configs.Events.Events {
+				if e.ID == newID {
+					exists = true
+					break
+				}
+			}
+			if !exists {
+				m.configs.Events.Events = append(m.configs.Events.Events, config.EventConfig{
+					ID:      newID,
+					Name:    "New Event",
+					Enabled: false,
+				})
+				break
+			}
+		}
 	case "protocol":
 		m.configs.Protocols = append(m.configs.Protocols, transfer.ProtocolConfig{
 			Name: "New Protocol",

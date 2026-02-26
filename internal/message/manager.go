@@ -157,24 +157,31 @@ func (mm *MessageManager) loadMessageAreas() error {
 		log.Printf("TRACE: Loaded area ID %d, Tag '%s', Type '%s'", area.ID, area.Tag, area.AreaType)
 	}
 
-	// Migration: auto-assign positions if all are 0 (pre-Position data)
-	allZero := true
+	// Migration: assign positions to any areas that have Position <= 0.
+	// Finds the current max position and assigns sequentially after it.
+	maxPos := 0
+	hasUnset := false
 	for _, area := range mm.areasByID {
-		if area.Position != 0 {
-			allZero = false
-			break
+		if area.Position > maxPos {
+			maxPos = area.Position
+		}
+		if area.Position <= 0 {
+			hasUnset = true
 		}
 	}
-	if allZero && len(mm.areasByID) > 0 {
+	if hasUnset && len(mm.areasByID) > 0 {
 		sorted := make([]*MessageArea, 0, len(mm.areasByID))
 		for _, area := range mm.areasByID {
-			sorted = append(sorted, area)
+			if area.Position <= 0 {
+				sorted = append(sorted, area)
+			}
 		}
 		sort.Slice(sorted, func(i, j int) bool {
 			return sorted[i].ID < sorted[j].ID
 		})
-		for i, area := range sorted {
-			area.Position = i + 1
+		for _, area := range sorted {
+			maxPos++
+			area.Position = maxPos
 		}
 		log.Printf("INFO: Auto-assigned positions to %d message areas (migration)", len(sorted))
 	}
