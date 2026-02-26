@@ -2,6 +2,8 @@
 
 This guide covers user management in ViSiON/3, including user accounts, access levels, and administration.
 
+Use the [User Editor](user-editor.md) (`./ue`) to manage user accounts interactively from the command line — no JSON editing required. SysOps can also edit users live from within the BBS via the [Admin Menu](admin-menu.md).
+
 ## User Database
 
 User data is stored in `data/users/users.json`. The system automatically creates this file with a default user on first run.
