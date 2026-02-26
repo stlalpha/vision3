@@ -224,6 +224,8 @@ echo "Building strings..."
 go build -o strings ./cmd/strings
 echo "Building ue..."
 go build -o ue ./cmd/ue
+echo "Building config..."
+go build -o config ./cmd/config
 
 echo "Initializing JAM bases..."
 ./v3mail stats --all --config configs --data data > /dev/null

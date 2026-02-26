@@ -245,7 +245,8 @@ $buildFailed = $false
     @{ Name = "helper"; Desc = "helper process" },
     @{ Name = "v3mail"; Desc = "mail processor" },
     @{ Name = "strings"; Desc = "strings editor" },
-    @{ Name = "ue"; Desc = "user editor" }
+    @{ Name = "ue"; Desc = "user editor" },
+    @{ Name = "config"; Desc = "config editor" }
 ) | ForEach-Object {
     $exe = $_.Name + ".exe"
     Write-Host "Building $($_.Name)..."

@@ -44,6 +44,9 @@ BUILT+=("  strings   — strings editor")
 if ! go build -o ue ./cmd/ue; then echo "Build failed (ue)!"; exit 1; fi
 BUILT+=("  ue        — user editor")
 
+if ! go build -o config ./cmd/config; then echo "Build failed (config)!"; exit 1; fi
+BUILT+=("  config    — config editor")
+
 echo "============================="
 echo "Build successful!"
 echo
