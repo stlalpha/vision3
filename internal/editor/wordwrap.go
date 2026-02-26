@@ -117,13 +117,21 @@ func (ww *WordWrapper) ReflowRange(startLine, cursorLine, cursorCol int) (int, i
 	}
 
 	if newCount > originalCount {
-		// Need more lines — insert extras
+		// Need more lines — insert extras; track actual count written
+		actualNew := originalCount
 		for i := originalCount; i < newCount; i++ {
 			if !ww.buffer.InsertLine(startLine + i) {
 				break // buffer full
 			}
 			ww.buffer.SetLine(startLine+i, outputLines[i])
 			ww.buffer.SetHardNewline(startLine+i, false)
+			actualNew++
+		}
+		// Truncate to what was actually written if buffer was full
+		if actualNew < newCount {
+			newCount = actualNew
+			outputLines = outputLines[:newCount]
+			lineStarts = lineStarts[:newCount]
 		}
 	} else if newCount < originalCount {
 		// Need fewer lines — delete extras
@@ -132,12 +140,18 @@ func (ww *WordWrapper) ReflowRange(startLine, cursorLine, cursorCol int) (int, i
 		}
 	}
 
+	// Clamp newCount to buffer bounds
+	bufLineCount := ww.buffer.GetLineCount()
+	if startLine+newCount-1 > bufLineCount {
+		newCount = bufLineCount - startLine + 1
+	}
+
 	// Last output line inherits the original paragraph-end hardNewline
 	ww.buffer.SetHardNewline(startLine+newCount-1, endHardNewline)
 
 	// Map cursor offset to output line/col using lineStarts
 	if cursorOffset >= len(text) {
-		lastIdx := len(outputLines) - 1
+		lastIdx := newCount - 1
 		return startLine + lastIdx, len(outputLines[lastIdx]) + 1
 	}
 
@@ -156,7 +170,7 @@ func (ww *WordWrapper) ReflowRange(startLine, cursorLine, cursorCol int) (int, i
 	}
 
 	// Fallback: cursor at end of last output line
-	lastIdx := len(outputLines) - 1
+	lastIdx := newCount - 1
 	return startLine + lastIdx, len(outputLines[lastIdx]) + 1
 }
 

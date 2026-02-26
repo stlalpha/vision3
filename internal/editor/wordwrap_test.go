@@ -6,14 +6,12 @@ import (
 )
 
 // helper creates a buffer with the given lines, all with soft newlines by default.
-// Lines are 1-indexed. Use setHard to mark specific lines as hard newlines.
+// Lines are 1-indexed. Use hardLines to mark specific lines as hard newlines.
 func setupBuffer(lines []string, hardLines ...int) (*MessageBuffer, *WordWrapper) {
 	mb := NewMessageBuffer()
+	// Load lines via public API; SetLine updates lineCount automatically
 	for i, line := range lines {
 		mb.SetLine(i+1, line)
-	}
-	if len(lines) > 0 {
-		mb.lineCount = len(lines)
 	}
 	// Mark specified lines as hard newlines
 	hardSet := make(map[int]bool)
@@ -90,35 +88,30 @@ func TestReflowRange_MultiLinePullUp(t *testing.T) {
 }
 
 func TestReflowRange_StopsAtHardNewline(t *testing.T) {
-	// Line 1 is soft, line 2 is hard — reflow should not cross into line 2
-	mb, ww := setupBuffer([]string{"hello", "world", "separate"}, 1, 3)
-	// line 1: hard, line 2: soft (default), line 3: hard
-	// Actually let me set it up correctly: line 1 soft, line 2 hard
-	mb.SetHardNewline(1, false)
-	mb.SetHardNewline(2, true)
-	mb.SetHardNewline(3, true)
+	// First paragraph: lines 1-2 (line 2 has hard newline, ending paragraph 1).
+	// Second paragraph: lines 3-4. Reflow of paragraph 1 must not alter
+	// second paragraph content. After merge, paragraph 2 shifts up by one line.
+	mb, ww := setupBuffer(
+		[]string{"aaa bbb", "ccc", "ddd eee", "fff ggg"},
+		2, 4, // lines 2 and 4 are hard newlines
+	)
 
-	// Reflow from line 1 — should stop at line 1 (since line 1 is soft but
-	// the scan goes until hardNewline[endLine]=true, which is line 2 for the
-	// second line). Wait, let me re-read the algorithm.
-	// Scan: endLine starts at 1. While endLine < lineCount && !IsHardNewline(endLine):
-	//   endLine=1: IsHardNewline(1) = false → endLine++, endLine=2
-	//   endLine=2: IsHardNewline(2) = true → stop
-	// So endLine=2. Paragraph is lines 1-2.
-	// But we want lines 1-2 to be separate paragraphs!
-	// The fix: line 1 needs hardNewline=true if it's a standalone paragraph.
-	// Let me restructure this test.
-	mb.SetHardNewline(1, true) // line 1 ends paragraph 1
-	mb.SetHardNewline(2, true) // line 2 is its own paragraph
-	mb.SetHardNewline(3, true)
+	ww.ReflowRange(1, 1, 1)
 
-	ww.ReflowRange(1, 1, 1) // reflow paragraph starting at line 1
-	// Should only affect line 1 (single hard-newline paragraph)
-	if mb.GetLine(1) != "hello" {
-		t.Errorf("line 1 should be unchanged, got %q", mb.GetLine(1))
+	// First paragraph should have been merged into one line.
+	if got := mb.GetLine(1); got != "aaa bbb ccc" {
+		t.Errorf("first paragraph should be merged, got %q", got)
 	}
-	if mb.GetLine(2) != "world" {
-		t.Errorf("line 2 should be unchanged, got %q", mb.GetLine(2))
+
+	// Second paragraph content must be preserved (shifted up by one line).
+	if got := mb.GetLine(2); got != "ddd eee" {
+		t.Errorf("second paragraph line 1 should be unchanged, got %q", got)
+	}
+	if got := mb.GetLine(3); got != "fff ggg" {
+		t.Errorf("second paragraph line 2 should be unchanged, got %q", got)
+	}
+	if mb.GetLineCount() != 3 {
+		t.Errorf("expected 3 total lines, got %d", mb.GetLineCount())
 	}
 }
 
