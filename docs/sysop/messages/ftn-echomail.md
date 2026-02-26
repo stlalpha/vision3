@@ -6,20 +6,29 @@ across one or more FTN networks.
 
 ## Overview
 
-Vision/3 works with **any FTN-compatible mailer** — it does not include one built-in.
-The mailer handles network transport (BinkP sessions with your hub); Vision/3's
-**v3mail** commands handle everything else:
+FTN echomail requires two components working together: a **tosser** (internal) and a **mailer** (external). Vision/3 includes the tosser; you supply the mailer.
 
-- **v3mail toss** — Unpacks ZIP bundles and tosses `.pkt` files into JAM message bases
-- **v3mail scan** — Scans JAM bases for new outbound echomail and creates `.pkt` files
-- **v3mail ftn-pack** — Packs outbound `.pkt` files into ZIP bundles for mailer pickup
+### Tosser (Internal) — `v3mail`
 
-Vision/3 releases include a pre-built **binkd** binary in `bin/` and example
-configuration. Binkd is the mailer that has been tested with Vision/3, but any
-mailer that speaks BinkP and uses standard inbound/outbound directory conventions
-will work the same way.
+The tosser is built into Vision/3 via the `v3mail` command. It handles all message processing between the FTN network and your JAM message bases:
+
+| Command | Purpose |
+|---------|---------|
+| `v3mail toss` | Unpacks ZIP bundles and tosses `.pkt` files into JAM message bases |
+| `v3mail scan` | Scans JAM bases for new outbound echomail and creates `.pkt` files |
+| `v3mail ftn-pack` | Packs outbound `.pkt` files into ZIP bundles for mailer pickup |
+
+Configured via `configs/ftn.json`. The [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 7 — FTN Network) manages network and link settings interactively.
+
+### Mailer (External) — `binkd`
+
+The mailer handles network transport — BinkP sessions with your hub to send and receive mail bundles. Vision/3 works with **any FTN-compatible mailer** that uses standard inbound/outbound directory conventions.
+
+Vision/3 releases include a pre-built **binkd** binary in `bin/` and example configuration. Binkd is the mailer that has been tested with Vision/3.
 
 - binkd source: <https://github.com/pgul/binkd>
+
+Configured via `data/ftn/binkd.conf` (or your mailer's own config format). This is not managed by the TUI editor — see [Step 4](#step-4-configure-your-mailer-binkd-example) for setup.
 
 ### How It Works
 
