@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/gliderlabs/ssh"
 )
@@ -138,9 +139,9 @@ func (p *ProtocolConfig) ExecuteSend(ctx context.Context, s ssh.Session, filePat
 
 	log.Printf("INFO: Protocol %q send: %s %v (pty=%v)", p.Name, cmdPath, args, p.UsePTY)
 	if p.UsePTY {
-		return RunCommandWithPTY(ctx, s, cmd)
+		return RunCommandWithPTY(ctx, s, cmd, 0)
 	}
-	return RunCommandDirect(ctx, s, cmd)
+	return RunCommandDirect(ctx, s, cmd, 0)
 }
 
 // ExecuteReceive runs this protocol's receive command to accept files from the user.
@@ -176,11 +177,22 @@ func (p *ProtocolConfig) ExecuteReceive(ctx context.Context, s ssh.Session, targ
 	cmd := exec.CommandContext(ctx, cmdPath, args...)
 	cmd.Dir = targetDir
 
+	// Apply an idle-timeout only for sexyz receive: sexyz loops re-sending
+	// ZRINIT indefinitely when the user cancels without a ZModem CAN abort.
+	// Keep this shorter than its ZRINIT retransmit interval (~15 s) so the
+	// kill fires before SyncTerm re-opens the upload dialog.
+	// CAN bytes do NOT reset this timer; CAN abort is handled separately in
+	// RunCommandDirect. Other protocols get no idle timeout (0).
+	var recvIdleTimeout time.Duration
+	if strings.EqualFold(filepath.Base(cmdPath), "sexyz") {
+		recvIdleTimeout = 10 * time.Second
+	}
+
 	log.Printf("INFO: Protocol %q receive in %s: %s %v (pty=%v)", p.Name, targetDir, cmdPath, args, p.UsePTY)
 	if p.UsePTY {
-		return RunCommandWithPTY(ctx, s, cmd)
+		return RunCommandWithPTY(ctx, s, cmd, recvIdleTimeout)
 	}
-	return RunCommandDirect(ctx, s, cmd)
+	return RunCommandDirect(ctx, s, cmd, recvIdleTimeout)
 }
 
 // expandArgs substitutes placeholders in a command argument template.
