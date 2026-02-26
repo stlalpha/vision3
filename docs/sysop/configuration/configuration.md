@@ -13,7 +13,7 @@ ViSiON/3 includes an interactive TUI configuration editor modeled after ViSiON/2
 ./config
 
 # Or specify a custom config path
-./config --config /path/to/configs
+./config -config /path/to/configs
 ```
 
 ### Main Menu

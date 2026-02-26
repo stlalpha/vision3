@@ -159,7 +159,8 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 
 		case "P":
-			confAreas := getAllAreasInConference(e, currentUser.CurrentMsgConferenceID)
+			// Use getSponsorableAreasInConference to enforce per-area authorization.
+			confAreas := getSponsorableAreasInConference(e, currentUser)
 			if len(confAreas) < 2 {
 				msg := "\r\n|03Need at least 2 areas to reposition.|07\r\n"
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
@@ -179,7 +180,7 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			for {
 				if showPositionList {
 					// Refresh area list each iteration (positions may have changed)
-					confAreas = getAllAreasInConference(e, currentUser.CurrentMsgConferenceID)
+					confAreas = getSponsorableAreasInConference(e, currentUser)
 
 					_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 					header := fmt.Sprintf("\r\n|14-- Area Positions: %s --|07\r\n\r\n", confName)
@@ -259,8 +260,15 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					continue
 				}
 
+				// "before N" semantics: when moving downward, removing the source
+				// shifts indices, so decrement to land at the correct slot.
+				targetPos := newPos
+				if destCmd != "E" && newPos > selIdx {
+					targetPos--
+				}
+
 				// Perform the move within this conference
-				if moveErr := e.MessageMgr.MoveAreaPositionInConference(selectedArea.ID, newPos); moveErr != nil {
+				if moveErr := e.MessageMgr.MoveAreaPositionInConference(selectedArea.ID, targetPos); moveErr != nil {
 					log.Printf("ERROR: Node %d: Failed to move area position: %v", nodeNumber, moveErr)
 					msg := "\r\n|01Error moving area position.|07\r\n"
 					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
@@ -275,7 +283,7 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					continue
 				}
 				log.Printf("INFO: Node %d: User %s repositioned area %s to position %d in conf %s",
-					nodeNumber, currentUser.Handle, selectedArea.Tag, newPos, confName)
+					nodeNumber, currentUser.Handle, selectedArea.Tag, targetPos, confName)
 				// Loop: list will refresh at top of next iteration
 			}
 

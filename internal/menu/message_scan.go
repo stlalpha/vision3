@@ -551,8 +551,9 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	// Sort areas by conference Position, then by area Position within each conference.
 	// Missing or zero-position conferences sort after known ones.
 	sort.Slice(allAreas, func(i, j int) bool {
-		ci, oki := confPosMap[allAreas[i].ConferenceID]
-		cj, okj := confPosMap[allAreas[j].ConferenceID]
+		ai, aj := allAreas[i], allAreas[j]
+		ci, oki := confPosMap[ai.ConferenceID]
+		cj, okj := confPosMap[aj.ConferenceID]
 		if !oki || ci <= 0 {
 			ci = 1<<31 - 1 // sort unknown/unset last
 		}
@@ -562,7 +563,14 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		if ci != cj {
 			return ci < cj
 		}
-		return allAreas[i].Position < allAreas[j].Position
+		// Break conference-position ties by ConferenceID to prevent interleaving
+		if ai.ConferenceID != aj.ConferenceID {
+			return ai.ConferenceID < aj.ConferenceID
+		}
+		if ai.Position != aj.Position {
+			return ai.Position < aj.Position
+		}
+		return ai.ID < aj.ID
 	})
 
 	// Build accessible areas list

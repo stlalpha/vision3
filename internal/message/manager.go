@@ -406,14 +406,11 @@ func (mm *MessageManager) MoveAreaPositionInConference(areaID int, newIndex int)
 		return all[i].Position < all[j].Position
 	})
 
-	// Extract areas in this conference (preserving order) and others
+	// Extract areas in this conference (preserving order)
 	var confAreas []*MessageArea
-	var otherAreas []*MessageArea
 	for _, a := range all {
 		if a.ConferenceID == confID {
 			confAreas = append(confAreas, a)
-		} else {
-			otherAreas = append(otherAreas, a)
 		}
 	}
 
