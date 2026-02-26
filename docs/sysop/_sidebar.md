@@ -7,6 +7,7 @@
 
 * **CONFIGURATION**
 * [Configuration](configuration/configuration.md)
+* [Config Editor](configuration/configuration.md#configuration-editor-tui)
 * [Security](configuration/security.md)
 
 * **MENU SYSTEM**

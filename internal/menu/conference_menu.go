@@ -14,6 +14,7 @@ import (
 
 	"github.com/gliderlabs/ssh"
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/conference"
 	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
@@ -37,95 +38,117 @@ func runChangeMsgConference(e *MenuExecutor, s ssh.Session, terminal *term.Termi
 		return currentUser, "", nil
 	}
 
-	// Display conference list
-	if err := displayConferenceList(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime); err != nil {
+	// Display initial conference list
+	displayedConfs, err := displayConferenceList(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime)
+	if err != nil {
 		return currentUser, "", err
 	}
 
 	// Prompt for selection
 	prompt := e.LoadedStrings.ConfPrompt
 	if prompt == "" {
-		prompt = "\r\n|07Conference |08[|15#|08/|15Tag|07, |15Q|08=|15Quit|08]|07: |15"
+		prompt = "\r\n|03Select Conference |05[|13#|05/|13Tag|08, |13?|05=|13List|08, |13Q|05=|13Quit|05] : |11"
 	}
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+	renderedPrompt := ansi.ReplacePipeCodes([]byte(prompt))
+	curUpClear := "\x1b[A\r\x1b[2K" // move up one line, then clear it
 
-	inputLine, err := readLineFromSessionIH(s, terminal)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, "LOGOFF", io.EOF
+	// Show initial prompt
+	terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+
+	for {
+		inputLine, err := readLineFromSessionIH(s, terminal)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			return currentUser, "", err
 		}
-		return currentUser, "", err
-	}
 
-	inputClean := strings.TrimSpace(inputLine)
-	upperInput := strings.ToUpper(inputClean)
+		inputClean := strings.TrimSpace(inputLine)
+		upperInput := strings.ToUpper(inputClean)
 
-	if upperInput == "" || upperInput == "Q" {
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-		return currentUser, "", nil
-	}
+		if upperInput == "Q" {
+			return currentUser, "", nil
+		}
+		if upperInput == "" {
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
 
-	// Try to match by ID (numeric) then by tag
-	var confID int
-	var matched bool
+		// ? = redisplay list and reprompt
+		if upperInput == "?" {
+			displayedConfs, err = displayConferenceList(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime)
+			if err != nil {
+				return currentUser, "", err
+			}
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
 
-	if id, parseErr := strconv.Atoi(inputClean); parseErr == nil {
-		if conf, found := e.ConferenceMgr.GetByID(id); found {
-			if checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
-				confID = conf.ID
+		// Try to match by list number (1-based) then by tag
+		var confID int
+		var matched bool
+
+		if num, parseErr := strconv.Atoi(inputClean); parseErr == nil {
+			if num >= 1 && num <= len(displayedConfs) {
+				confID = displayedConfs[num-1].ID
 				matched = true
 			}
 		}
-	}
 
-	if !matched {
-		if conf, found := e.ConferenceMgr.GetByTag(upperInput); found {
-			if checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
-				confID = conf.ID
-				matched = true
+		if !matched {
+			if conf, found := e.ConferenceMgr.GetByTag(upperInput); found {
+				if checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
+					confID = conf.ID
+					matched = true
+				}
 			}
 		}
-	}
 
-	if !matched {
-		msg := fmt.Sprintf(e.LoadedStrings.ConfNotFound, inputClean)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		if !matched {
+			// Move up to overwrite prompt+input line, show error, then restore prompt
+			terminalio.WriteProcessedBytes(terminal, []byte(curUpClear), outputMode)
+			msg := fmt.Sprintf(e.LoadedStrings.ConfNotFound, inputClean)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Update user conference
+		e.setUserMsgConference(currentUser, confID)
+
+		// Find first accessible area in new conference
+		firstArea := findFirstAccessibleAreaInConference(e, s, terminal, currentUser, confID, sessionStartTime)
+		if firstArea != nil {
+			currentUser.CurrentMessageAreaID = firstArea.ID
+			currentUser.CurrentMessageAreaTag = firstArea.Tag
+		} else {
+			currentUser.CurrentMessageAreaID = 0
+			currentUser.CurrentMessageAreaTag = ""
+		}
+
+		if err := userManager.UpdateUser(currentUser); err != nil {
+			log.Printf("ERROR: Node %d: Failed to save user after conference change: %v", nodeNumber, err)
+		}
+
+		// Display confirmation
+		conf, _ := e.ConferenceMgr.GetByID(confID)
+		joinedMsg := e.LoadedStrings.JoinedMsgConf
+		if joinedMsg == "" {
+			joinedMsg = "\r\n|07(|15^CN|07) |15Conference Joined!|07\r\n"
+		}
+		joinedMsg = strings.ReplaceAll(joinedMsg, "^CN", conf.Name)
+		joinedMsg = strings.ReplaceAll(joinedMsg, "^CT", conf.Tag)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(joinedMsg)), outputMode)
 		time.Sleep(1 * time.Second)
+
+		log.Printf("INFO: Node %d: User %s changed to conference %d (%s), area: %s",
+			nodeNumber, currentUser.Handle, confID, conf.Tag, currentUser.CurrentMessageAreaTag)
+
 		return currentUser, "", nil
 	}
-
-	// Update user conference
-	e.setUserMsgConference(currentUser, confID)
-
-	// Find first accessible area in new conference
-	firstArea := findFirstAccessibleAreaInConference(e, s, terminal, currentUser, confID, sessionStartTime)
-	if firstArea != nil {
-		currentUser.CurrentMessageAreaID = firstArea.ID
-		currentUser.CurrentMessageAreaTag = firstArea.Tag
-	} else {
-		currentUser.CurrentMessageAreaID = 0
-		currentUser.CurrentMessageAreaTag = ""
-	}
-
-	if err := userManager.UpdateUser(currentUser); err != nil {
-		log.Printf("ERROR: Node %d: Failed to save user after conference change: %v", nodeNumber, err)
-	}
-
-	// Display confirmation
-	conf, _ := e.ConferenceMgr.GetByID(confID)
-	joinedMsg := e.LoadedStrings.JoinedMsgConf
-	if joinedMsg == "" {
-		joinedMsg = "\r\n|07(|15^CN|07) |15Conference Joined!|07\r\n"
-	}
-	joinedMsg = strings.ReplaceAll(joinedMsg, "^CN", conf.Name)
-	joinedMsg = strings.ReplaceAll(joinedMsg, "^CT", conf.Tag)
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(joinedMsg)), outputMode)
-	time.Sleep(1 * time.Second)
-
-	log.Printf("INFO: Node %d: User %s changed to conference %d (%s), area: %s",
-		nodeNumber, currentUser.Handle, confID, conf.Tag, currentUser.CurrentMessageAreaTag)
-
-	return currentUser, "", nil
 }
 
 // runNextMsgArea moves to the next accessible message area within the current conference.
@@ -197,7 +220,7 @@ func navigateMsgArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 }
 
 // displayConferenceList renders the conference list using templates.
-func displayConferenceList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, outputMode ansi.OutputMode, nodeNumber int, sessionStartTime time.Time) error {
+func displayConferenceList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, outputMode ansi.OutputMode, nodeNumber int, sessionStartTime time.Time) ([]*conference.Conference, error) {
 	templateDir := filepath.Join(e.MenuSetPath, "templates")
 
 	topBytes, errTop := readTemplateFile(filepath.Join(templateDir, "MSGCONF.TOP"))
@@ -207,10 +230,19 @@ func displayConferenceList(e *MenuExecutor, s ssh.Session, terminal *term.Termin
 	if errTop != nil || errMid != nil || errBot != nil {
 		log.Printf("ERROR: Node %d: Failed to load MSGCONF templates: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfTemplateError)), outputMode)
-		return fmt.Errorf("failed loading MSGCONF templates")
+		return nil, fmt.Errorf("failed loading MSGCONF templates")
 	}
 
-	processedTop := ansi.ReplacePipeCodes(topBytes)
+	// Substitute current conference name in TOP template
+	topStr := string(topBytes)
+	confName := "None"
+	if currentUser != nil {
+		if conf, found := e.ConferenceMgr.GetByID(currentUser.CurrentMsgConferenceID); found {
+			confName = conf.Name
+		}
+	}
+	topStr = strings.ReplaceAll(topStr, "^CN", confName)
+	processedTop := ansi.ReplacePipeCodes([]byte(topStr))
 	processedMid := string(ansi.ReplacePipeCodes(midBytes))
 	processedBot := ansi.ReplacePipeCodes(botBytes)
 
@@ -219,32 +251,32 @@ func displayConferenceList(e *MenuExecutor, s ssh.Session, terminal *term.Termin
 	var buf bytes.Buffer
 	buf.Write(processedTop)
 
-	displayed := 0
+	var displayedConfs []*conference.Conference
 	for _, conf := range conferences {
 		if !checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
 			continue
 		}
+		displayedConfs = append(displayedConfs, conf)
 		line := processedMid
-		line = strings.ReplaceAll(line, "^CI", padRight(strconv.Itoa(conf.ID), 3))
+		line = strings.ReplaceAll(line, "^CI", padRight(strconv.Itoa(len(displayedConfs)), 3))
 		line = strings.ReplaceAll(line, "^CN", padRight(truncateStr(conf.Name, 33), 33))
 		line = strings.ReplaceAll(line, "^CD", truncateStr(conf.Description, 40))
 		buf.WriteString(line)
-		displayed++
 	}
 
-	if displayed == 0 {
+	if len(displayedConfs) == 0 {
 		buf.WriteString(e.LoadedStrings.ConfNoAccessibleConferences)
 	}
 
 	buf.Write(processedBot)
 
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	return terminalio.WriteProcessedBytes(terminal, buf.Bytes(), outputMode)
+	return displayedConfs, terminalio.WriteProcessedBytes(terminal, buf.Bytes(), outputMode)
 }
 
 // displayMessageAreaListFiltered is like displayMessageAreaList but filters to a single conference.
 // If filterConfID is -1, all conferences are shown (same as unfiltered behavior).
-func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, outputMode ansi.OutputMode, nodeNumber int, sessionStartTime time.Time, filterConfID int) error {
+func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, outputMode ansi.OutputMode, nodeNumber int, sessionStartTime time.Time, filterConfID int) ([]*message.MessageArea, error) {
 	log.Printf("DEBUG: Node %d: Displaying message area list (filtered, confID=%d)", nodeNumber, filterConfID)
 
 	templateDir := filepath.Join(e.MenuSetPath, "templates")
@@ -256,7 +288,7 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 		log.Printf("ERROR: Node %d: Failed to load MSGAREA template files: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfAreaTemplateError)), outputMode)
 		time.Sleep(1 * time.Second)
-		return fmt.Errorf("failed loading MSGAREA templates")
+		return nil, fmt.Errorf("failed loading MSGAREA templates")
 	}
 
 	confHdrBytes, errConf := readTemplateFile(filepath.Join(templateDir, "MSGCONF.HDR"))
@@ -265,7 +297,16 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 		confHdrTemplate = string(ansi.ReplacePipeCodes(confHdrBytes))
 	}
 
-	processedTopTemplate := ansi.ReplacePipeCodes(topTemplateBytes)
+	// Substitute conference name in TOP template
+	topStr := string(topTemplateBytes)
+	confName := "All"
+	if filterConfID >= 0 && e.ConferenceMgr != nil {
+		if conf, found := e.ConferenceMgr.GetByID(filterConfID); found {
+			confName = conf.Name
+		}
+	}
+	topStr = strings.ReplaceAll(topStr, "^CN", confName)
+	processedTopTemplate := ansi.ReplacePipeCodes([]byte(topStr))
 	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
 	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
 
@@ -298,7 +339,7 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 	var outputBuffer bytes.Buffer
 	outputBuffer.Write(processedTopTemplate)
 
-	areasDisplayed := 0
+	var displayedAreas []*message.MessageArea
 	for _, cid := range sortedConfIDs {
 		areasInConf := groups[cid]
 		if len(areasInConf) == 0 {
@@ -316,30 +357,30 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 				hdr = strings.ReplaceAll(hdr, "^CN", conf.Name)
 				hdr = strings.ReplaceAll(hdr, "^CT", conf.Tag)
 				hdr = strings.ReplaceAll(hdr, "^CD", conf.Description)
-				hdr = strings.ReplaceAll(hdr, "^CI", strconv.Itoa(conf.ID))
+				hdr = strings.ReplaceAll(hdr, "^CI", strconv.Itoa(conf.Position))
 				outputBuffer.WriteString(hdr)
 			}
 		}
 
 		for _, area := range areasInConf {
+			displayedAreas = append(displayedAreas, area)
 			line := processedMidTemplate
-			line = strings.ReplaceAll(line, "^ID", padRight(strconv.Itoa(area.ID), 3))
+			line = strings.ReplaceAll(line, "^ID", padRight(strconv.Itoa(len(displayedAreas)), 3))
 			line = strings.ReplaceAll(line, "^TAG", padRight(area.Tag, 12))
 			line = strings.ReplaceAll(line, "^NA", padRight(truncateStr(area.Name, 30), 30))
 			line = strings.ReplaceAll(line, "^DS", area.AreaType)
 			outputBuffer.WriteString(line)
-			areasDisplayed++
 		}
 	}
 
-	if areasDisplayed == 0 {
+	if len(displayedAreas) == 0 {
 		outputBuffer.WriteString(e.LoadedStrings.ConfNoAccessibleMsgAreas)
 	}
 
 	outputBuffer.Write(processedBotTemplate)
 
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	return terminalio.WriteProcessedBytes(terminal, outputBuffer.Bytes(), outputMode)
+	return displayedAreas, terminalio.WriteProcessedBytes(terminal, outputBuffer.Bytes(), outputMode)
 }
 
 // padRight pads s with spaces on the right to the given width. If s is already wider, it is returned as-is.
@@ -370,7 +411,7 @@ func findFirstAccessibleAreaInConference(e *MenuExecutor, s ssh.Session, termina
 	return nil
 }
 
-// getAccessibleAreasInConference returns all areas in a conference the user can read, sorted by ID.
+// getAccessibleAreasInConference returns all areas in a conference the user can read, sorted by Position.
 func getAccessibleAreasInConference(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, conferenceID int, sessionStartTime time.Time) []*message.MessageArea {
 	allAreas := e.MessageMgr.ListAreas()
 	var result []*message.MessageArea
@@ -384,7 +425,7 @@ func getAccessibleAreasInConference(e *MenuExecutor, s ssh.Session, terminal *te
 		result = append(result, area)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].ID < result[j].ID
+		return result[i].Position < result[j].Position
 	})
 	return result
 }

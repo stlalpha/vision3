@@ -224,6 +224,11 @@ echo "Building strings..."
 go build -o strings ./cmd/strings
 echo "Building ue..."
 go build -o ue ./cmd/ue
+echo "Building config..."
+if ! go build -o config ./cmd/config; then
+    echo -e "${RED}Build failed (config)!${NC}"
+    exit 1
+fi
 
 echo "Initializing JAM bases..."
 ./v3mail stats --all --config configs --data data > /dev/null

@@ -1,6 +1,7 @@
 [
     {
         "id": 1,
+        "position": 1,
         "tag": "LOCAL",
         "name": "Local Areas",
         "description": "Local BBS discussion and file areas",
@@ -8,10 +9,10 @@
     },
     {
         "id": 2,
+        "position": 2,
         "tag": "FSXNET",
         "name": "fsxNet",
         "description": "fsxNet echomail message areas",
         "acs": "s10"
     }
-  
 ]

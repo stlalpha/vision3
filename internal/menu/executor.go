@@ -1660,7 +1660,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 				// --- BEGIN Set Default Message Area ---
 				if e.MessageMgr != nil {
-					allAreas := e.MessageMgr.ListAreas() // Already sorted by ID
+					allAreas := e.MessageMgr.ListAreas() // Already sorted by Position
 					log.Printf("DEBUG: Found %d message areas for user %s.", len(allAreas), currentUser.Handle)
 					foundDefaultArea := false
 					for _, area := range allAreas {
@@ -2230,6 +2230,11 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 			// If it was a lightbar menu and input was ignored (userInput == ""), just loop again
 			if isLightbarMenu {
+				continue
+			}
+
+			// Empty Enter should just redisplay the current menu, not fall through to fallback
+			if userInput == "" {
 				continue
 			}
 
@@ -7186,7 +7191,7 @@ func runListMessageAreas(e *MenuExecutor, s ssh.Session, terminal *term.Terminal
 	if currentUser != nil {
 		filterConfID = currentUser.CurrentMsgConferenceID
 	}
-	if err := displayMessageAreaListFiltered(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime, filterConfID); err != nil {
+	if _, err := displayMessageAreaListFiltered(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime, filterConfID); err != nil {
 		return nil, "", err
 	}
 
@@ -7554,10 +7559,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.T
 	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
 	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes) // Process BOT template
 
-	areas := e.MessageMgr.ListAreas() // Get all areas
-	// Filter areas based on read access (for listing)
-	// For now, list all areas, permission check happens later on selection.
-	// TODO: Implement ACSRead filtering here if needed for the list display.
+	areas := e.MessageMgr.ListAreas() // Get all areas, sorted by Position
 
 	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode) // Clear before displaying list
 	terminalio.WriteProcessedBytes(terminal, processedTopTemplate, outputMode)       // Write TOP
@@ -7570,11 +7572,14 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.T
 		return nil, "", nil // Return to menu
 	}
 
+	// Display areas with 1-based sequential numbering
+	var displayedAreas []*message.MessageArea
 	for _, area := range areas {
+		displayedAreas = append(displayedAreas, area)
 		line := processedMidTemplate
 		name := string(ansi.ReplacePipeCodes([]byte(area.Name)))
 		desc := string(ansi.ReplacePipeCodes([]byte(area.Description)))
-		idStr := strconv.Itoa(area.ID)
+		idStr := strconv.Itoa(len(displayedAreas))
 		tag := string(ansi.ReplacePipeCodes([]byte(area.Tag)))
 
 		line = strings.ReplaceAll(line, "^ID", idStr)
@@ -7588,8 +7593,7 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.T
 	terminalio.WriteProcessedBytes(terminal, processedBotTemplate, outputMode) // Write BOT
 
 	// 2. Prompt for Area Selection
-	// TODO: Use a configurable string for this prompt
-	prompt := "\r\n|07Enter Area ID or Tag to Post In (or Enter to cancel): |15"
+	prompt := "\r\n|07Enter Area # or Tag to Post In (or Enter to cancel): |15"
 	log.Printf("DEBUG: Node %d: Writing prompt for message area selection bytes (hex): %x", nodeNumber, ansi.ReplacePipeCodes([]byte(prompt)))
 	wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 	if wErr != nil {
@@ -7609,22 +7613,24 @@ func runPromptAndComposeMessage(e *MenuExecutor, s ssh.Session, terminal *term.T
 	selectedAreaStr := strings.TrimSpace(input)
 	if selectedAreaStr == "" {
 		log.Printf("INFO: Node %d: User cancelled message posting.", nodeNumber)
-		// TODO: Need to redraw the menu screen!
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\nPost cancelled.\r\n"), outputMode)
 		time.Sleep(500 * time.Millisecond)
 		return nil, "", nil // Return to current menu
 	}
 
 	// 3. Find Selected Area and Check Permissions
-	var selectedArea *message.MessageArea // CORRECTED TYPE to pointer
+	var selectedArea *message.MessageArea
 	var foundArea bool
 
-	// Try parsing as ID first
-	if areaID, err := strconv.Atoi(selectedAreaStr); err == nil {
-		selectedArea, foundArea = e.MessageMgr.GetAreaByID(areaID)
+	// Try parsing as list number (1-based) first
+	if num, err := strconv.Atoi(selectedAreaStr); err == nil {
+		if num >= 1 && num <= len(displayedAreas) {
+			selectedArea = displayedAreas[num-1]
+			foundArea = true
+		}
 	}
 
-	// If not found by ID, try by Tag (case-insensitive)
+	// If not found by number, try by Tag (case-insensitive)
 	if !foundArea {
 		selectedArea, foundArea = e.MessageMgr.GetAreaByTag(strings.ToUpper(selectedAreaStr))
 	}
@@ -9311,114 +9317,113 @@ func runSelectFileArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 	// Prompt for area tag
 	prompt := e.LoadedStrings.ChangeFileAreaStr
 	if prompt == "" {
-		prompt = "|07File Area Tag (?=List, Q=Quit): |15" // Updated prompt slightly
+		prompt = "|07File Area Tag (?=List, Q=Quit): |15"
 	}
-	wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
-	if wErr != nil {
-		log.Printf("ERROR: Node %d: Failed writing SELECTFILEAREA prompt: %v", nodeNumber, wErr)
-		// Return to menu, maybe signal error?
+	renderedPrompt := ansi.ReplacePipeCodes([]byte(prompt))
+	curUpClear := "\x1b[A\r\x1b[2K"
+
+	// Show initial prompt
+	terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+
+	for {
+		inputTag, err := readLineFromSessionIH(s, terminal)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				log.Printf("INFO: Node %d: User disconnected during SELECTFILEAREA prompt.", nodeNumber)
+				return nil, "LOGOFF", io.EOF
+			}
+			log.Printf("ERROR: Node %d: Error reading input for SELECTFILEAREA: %v", nodeNumber, err)
+			return currentUser, "", err
+		}
+
+		inputClean := strings.TrimSpace(inputTag)
+		upperInput := strings.ToUpper(inputClean)
+
+		if upperInput == "Q" {
+			log.Printf("DEBUG: Node %d: SELECTFILEAREA aborted by user.", nodeNumber)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			return currentUser, "", nil
+		}
+		if upperInput == "" {
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		if upperInput == "?" {
+			log.Printf("DEBUG: Node %d: User requested file area list again from SELECTFILEAREA.", nodeNumber)
+			if listErr := displayFileAreaList(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime); listErr != nil {
+				log.Printf("ERROR: Node %d: Failed redisplaying file area list: %v", nodeNumber, listErr)
+			}
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Try parsing as ID first, then fallback to Tag
+		var area *file.FileArea
+		var exists bool
+		matched := false
+
+		if inputID, parseErr := strconv.Atoi(inputClean); parseErr == nil {
+			log.Printf("DEBUG: Node %d: User input '%s' parsed as ID %d. Looking up by ID.", nodeNumber, inputClean, inputID)
+			area, exists = e.FileMgr.GetAreaByID(inputID)
+			if exists {
+				matched = true
+			}
+		}
+		if !matched {
+			log.Printf("DEBUG: Node %d: User input '%s' not an ID. Looking up by Tag '%s'.", nodeNumber, inputClean, upperInput)
+			area, exists = e.FileMgr.GetAreaByTag(upperInput)
+			if exists {
+				matched = true
+			}
+		}
+
+		if !matched {
+			terminalio.WriteProcessedBytes(terminal, []byte(curUpClear), outputMode)
+			msg := fmt.Sprintf("|01Invalid file area '%s'!|07", inputClean)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Check ACSList permission
+		if !checkACS(area.ACSList, currentUser, s, terminal, sessionStartTime) {
+			log.Printf("WARN: Node %d: User %s denied access to file area %d ('%s') due to ACS '%s'", nodeNumber, currentUser.Handle, area.ID, area.Tag, area.ACSList)
+			terminalio.WriteProcessedBytes(terminal, []byte(curUpClear), outputMode)
+			msg := fmt.Sprintf("|01Access denied to file area '%s'!|07", area.Tag)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Found a valid, accessible area — update user state
+		currentUser.CurrentFileAreaID = area.ID
+		currentUser.CurrentFileAreaTag = area.Tag
+		e.setUserFileConference(currentUser, area.ConferenceID)
+
+		// Save the user state
+		if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
+			log.Printf("ERROR: Node %d: Failed to save user data after updating file area: %v", nodeNumber, saveErr)
+			currentUser.CurrentFileAreaID = area.ID // revert not needed, just don't show success
+			msg := "\r\n|01Error: Could not save area selection.|07\r\n"
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		log.Printf("INFO: Node %d: User %s changed file area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)
+		msg := fmt.Sprintf("\r\n|07Current file area set to: |15%s|07\r\n", area.Name)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+
 		return currentUser, "", nil
 	}
-
-	inputTag, err := readLineFromSessionIH(s, terminal)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			log.Printf("INFO: Node %d: User disconnected during SELECTFILEAREA prompt.", nodeNumber)
-			return nil, "LOGOFF", io.EOF // Signal logoff
-		}
-		log.Printf("ERROR: Node %d: Error reading input for SELECTFILEAREA: %v", nodeNumber, err)
-		return currentUser, "", err // Return error
-	}
-
-	inputClean := strings.TrimSpace(inputTag) // Keep original case for tag lookup if needed
-	upperInput := strings.ToUpper(inputClean)
-
-	if upperInput == "" || upperInput == "Q" { // Allow Q to quit
-		log.Printf("DEBUG: Node %d: SELECTFILEAREA aborted by user.", nodeNumber)
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode) // Newline after abort
-		return currentUser, "", nil                                          // Return to previous menu
-	}
-
-	if upperInput == "?" { // Handle request for list (? loops back here after display)
-		log.Printf("DEBUG: Node %d: User requested file area list again from SELECTFILEAREA.", nodeNumber)
-		// Simply loop back by returning nil, which will re-run this function
-		// which now starts by displaying the list again.
-		return currentUser, "", nil
-	}
-
-	// --- NEW: Try parsing as ID first, then fallback to Tag ---
-	var area *file.FileArea
-	var exists bool
-
-	// Try parsing as ID
-	if inputID, err := strconv.Atoi(inputClean); err == nil {
-		log.Printf("DEBUG: Node %d: User input '%s' parsed as ID %d. Looking up by ID.", nodeNumber, inputClean, inputID)
-		area, exists = e.FileMgr.GetAreaByID(inputID)
-		if !exists {
-			log.Printf("WARN: Node %d: User %s entered non-existent file area ID: %d", nodeNumber, currentUser.Handle, inputID)
-			msg := fmt.Sprintf("\r\n|01Error: File area ID '%d' not found.|07\r\n", inputID)
-			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-			if wErr != nil { /* Log? */
-			}
-			time.Sleep(1 * time.Second)
-			return currentUser, "", nil // Return to menu
-		}
-	} else {
-		// Not a valid ID, treat as Tag (use uppercase)
-		log.Printf("DEBUG: Node %d: User input '%s' not an ID. Looking up by Tag '%s'.", nodeNumber, inputClean, upperInput)
-		area, exists = e.FileMgr.GetAreaByTag(upperInput)
-		if !exists {
-			log.Printf("WARN: Node %d: User %s entered non-existent file area tag: %s", nodeNumber, currentUser.Handle, upperInput)
-			msg := fmt.Sprintf("\r\n|01Error: File area tag '%s' not found.|07\r\n", upperInput)
-			wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-			if wErr != nil { /* Log? */
-			}
-			time.Sleep(1 * time.Second)
-			return currentUser, "", nil // Return to menu
-		}
-	}
-
-	// --- END NEW LOGIC ---
-
-	// At this point, 'area' should be valid and 'exists' should be true
-
-	// Check ACSList permission
-	if !checkACS(area.ACSList, currentUser, s, terminal, sessionStartTime) {
-		log.Printf("WARN: Node %d: User %s denied access to file area %d ('%s') due to ACS '%s'", nodeNumber, currentUser.Handle, area.ID, area.Tag, area.ACSList)
-		msg := fmt.Sprintf("\r\n|01Error: Access denied to file area '%s'.|07\r\n", area.Tag)
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
-		time.Sleep(1 * time.Second)
-		return currentUser, "", nil // Return to menu
-	}
-
-	// Success! Update user state
-	currentUser.CurrentFileAreaID = area.ID
-	currentUser.CurrentFileAreaTag = area.Tag
-	e.setUserFileConference(currentUser, area.ConferenceID)
-
-	// Save the user state (important!)
-	if err := userManager.UpdateUser(currentUser); err != nil {
-		log.Printf("ERROR: Node %d: Failed to save user data after updating file area: %v", nodeNumber, err)
-		msg := "\r\n|01Error: Could not save area selection.|07\r\n"
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		if wErr != nil { /* Log? */
-		}
-		time.Sleep(1 * time.Second)
-		// Don't change area if save failed?
-		// Or let it proceed and hope for next save?
-		// For now, proceed but log the error.
-	}
-
-	log.Printf("INFO: Node %d: User %s changed file area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)
-	msg := fmt.Sprintf("\r\n|07Current file area set to: |15%s|07\r\n", area.Name)                  // Use area name for confirmation
-	wErr = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode) // <-- Use = instead of :=
-	if wErr != nil {                                                                                /* Log? */
-	}
-	time.Sleep(1 * time.Second)
-
-	return currentUser, "", nil // Success, return to previous menu/state
 }
 
 // runSelectMessageArea displays message areas and prompts the user to select one.
@@ -9432,85 +9437,164 @@ func runSelectMessageArea(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		return nil, "", nil
 	}
 
-	// Display areas filtered to current conference
 	filterConfID := currentUser.CurrentMsgConferenceID
-	if err := displayMessageAreaListFiltered(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime, filterConfID); err != nil {
+
+	// Display initial area list
+	displayedAreas, err := displayMessageAreaListFiltered(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime, filterConfID)
+	if err != nil {
 		return currentUser, "", err
 	}
-	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 
-	// Prompt for area tag/ID
+	// Build accessible conference list for [/] navigation
+	var accessibleConfs []*conference.Conference
+	if e.ConferenceMgr != nil {
+		for _, conf := range e.ConferenceMgr.ListConferences() {
+			if checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
+				accessibleConfs = append(accessibleConfs, conf)
+			}
+		}
+	}
+
+	// Prompt for area #/tag
 	prompt := e.LoadedStrings.ChangeBoardStr
 	if prompt == "" {
-		prompt = "|07Message Area Tag (?=List, Q=Quit): |15"
+		prompt = "|03Select Area |05[|13#|05/|13Tag|08, |13?|05=|13List|08, |13[|05=|13Prev |13]|05=|13Next|08, |13Q|05=|13Quit|05] : |11"
 	}
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
+	renderedPrompt := ansi.ReplacePipeCodes([]byte(prompt))
+	curUpClear := "\x1b[A\r\x1b[2K" // move up one line, then clear it
 
-	inputTag, err := readLineFromSessionIH(s, terminal)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, "LOGOFF", io.EOF
+	// Show initial prompt
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+	terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+
+	for {
+		inputTag, err := readLineFromSessionIH(s, terminal)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			return currentUser, "", err
 		}
-		return currentUser, "", err
-	}
 
-	inputClean := strings.TrimSpace(inputTag)
-	upperInput := strings.ToUpper(inputClean)
+		inputClean := strings.TrimSpace(inputTag)
+		upperInput := strings.ToUpper(inputClean)
 
-	if upperInput == "" || upperInput == "Q" {
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-		return currentUser, "", nil
-	}
-
-	if upperInput == "?" {
-		return currentUser, "", nil // Re-run will redisplay list
-	}
-
-	// Try parsing as ID first, then fallback to Tag
-	var area *message.MessageArea
-	var exists bool
-
-	if inputID, parseErr := strconv.Atoi(inputClean); parseErr == nil {
-		area, exists = e.MessageMgr.GetAreaByID(inputID)
-		if !exists {
-			msg := fmt.Sprintf("\r\n|01Error: Message area ID '%d' not found.|07\r\n", inputID)
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-			time.Sleep(1 * time.Second)
+		if upperInput == "Q" {
 			return currentUser, "", nil
 		}
-	} else {
-		area, exists = e.MessageMgr.GetAreaByTag(upperInput)
+		if upperInput == "" {
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// [ / ] = previous / next conference
+		if (inputClean == "[" || inputClean == "]") && len(accessibleConfs) > 0 {
+			// Find current conference index
+			curIdx := -1
+			for i, c := range accessibleConfs {
+				if c.ID == filterConfID {
+					curIdx = i
+					break
+				}
+			}
+
+			var newIdx int
+			if inputClean == "]" {
+				if curIdx < 0 || curIdx >= len(accessibleConfs)-1 {
+					newIdx = 0 // wrap to first
+				} else {
+					newIdx = curIdx + 1
+				}
+			} else {
+				if curIdx <= 0 {
+					newIdx = len(accessibleConfs) - 1 // wrap to last
+				} else {
+					newIdx = curIdx - 1
+				}
+			}
+
+			filterConfID = accessibleConfs[newIdx].ID
+			displayedAreas, err = displayMessageAreaListFiltered(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime, filterConfID)
+			if err != nil {
+				return currentUser, "", err
+			}
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// ? = redisplay list and reprompt
+		if upperInput == "?" {
+			displayedAreas, err = displayMessageAreaListFiltered(e, s, terminal, currentUser, outputMode, nodeNumber, sessionStartTime, filterConfID)
+			if err != nil {
+				return currentUser, "", err
+			}
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Try parsing as list number (1-based) first, then fallback to Tag
+		var area *message.MessageArea
+		var exists bool
+		var errMsg string
+
+		if num, parseErr := strconv.Atoi(inputClean); parseErr == nil {
+			if num >= 1 && num <= len(displayedAreas) {
+				area = displayedAreas[num-1]
+				exists = true
+			}
+			if !exists {
+				errMsg = fmt.Sprintf("|01Area #%d not found.|07", num)
+			}
+		} else {
+			area, exists = e.MessageMgr.GetAreaByTag(upperInput)
+			if !exists {
+				errMsg = fmt.Sprintf("|01Area '%s' not found.|07", upperInput)
+			}
+		}
+
 		if !exists {
-			msg := fmt.Sprintf("\r\n|01Error: Message area tag '%s' not found.|07\r\n", upperInput)
+			// Move up to overwrite prompt+input line, show error, then restore prompt
+			terminalio.WriteProcessedBytes(terminal, []byte(curUpClear), outputMode)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Check read ACS
+		if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
+			terminalio.WriteProcessedBytes(terminal, []byte(curUpClear), outputMode)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|01Access denied to '%s'.|07", area.Tag))), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Update user state
+		currentUser.CurrentMessageAreaID = area.ID
+		currentUser.CurrentMessageAreaTag = area.Tag
+		e.setUserMsgConference(currentUser, area.ConferenceID)
+
+		if err := userManager.UpdateUser(currentUser); err != nil {
+			log.Printf("ERROR: Node %d: Failed to save user data after updating message area: %v", nodeNumber, err)
+			msg := "\r\n|01Error: Could not save area selection.|07\r\n"
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(1 * time.Second)
-			return currentUser, "", nil
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
 		}
-	}
 
-	// Check read ACS
-	if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
-		msg := fmt.Sprintf("\r\n|01Error: Access denied to message area '%s'.|07\r\n", area.Tag)
+		log.Printf("INFO: Node %d: User %s changed message area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)
+		msg := fmt.Sprintf("\r\n|07Current message area set to: |15%s|07\r\n", area.Name)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 		time.Sleep(1 * time.Second)
+
 		return currentUser, "", nil
 	}
-
-	// Update user state
-	currentUser.CurrentMessageAreaID = area.ID
-	currentUser.CurrentMessageAreaTag = area.Tag
-	e.setUserMsgConference(currentUser, area.ConferenceID)
-
-	if err := userManager.UpdateUser(currentUser); err != nil {
-		log.Printf("ERROR: Node %d: Failed to save user data after updating message area: %v", nodeNumber, err)
-	}
-
-	log.Printf("INFO: Node %d: User %s changed message area to ID %d ('%s')", nodeNumber, currentUser.Handle, area.ID, area.Tag)
-	msg := fmt.Sprintf("\r\n|07Current message area set to: |15%s|07\r\n", area.Name)
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-	time.Sleep(1 * time.Second)
-
-	return currentUser, "", nil
 }
 
 // errInputAborted is returned by styledInput when the user presses ESC to cancel entry.
