@@ -11,8 +11,8 @@ import (
 func (m Model) viewRecordEdit() string {
 	var b strings.Builder
 
-	title := centerText(fmt.Sprintf("-- Edit %s --", m.recordTypeTitle()), m.width)
-	b.WriteString(editTitleStyle.Render(title))
+	// Global header
+	b.WriteString(m.globalHeaderLine())
 	b.WriteByte('\n')
 
 	bgLine := bgFillStyle.Render(strings.Repeat("░", m.width))
@@ -29,14 +29,11 @@ func (m Model) viewRecordEdit() string {
 	if visibleRows > maxFieldRows {
 		visibleRows = maxFieldRows
 	}
-	boxContentH := visibleRows + 2
-	if boxContentH < 5 {
-		boxContentH = 5
-	}
-
-	extraV := maxInt(0, m.height-boxContentH-5) // title + borders + info + help
-	topPad := maxInt(1, extraV/2)
-	bottomPad := maxInt(1, extraV-topPad)
+	// Fixed rows: globalheader(1) + box(border+boxtitle+header+empty+visibleRows+empty+info+border = visibleRows+7) + helptxt(1) + bgline(1) + helpbar(1)
+	// Total fixed = visibleRows + 11
+	extraV := maxInt(0, m.height-visibleRows-11)
+	topPad := extraV / 2
+	bottomPad := extraV - topPad
 
 	for i := 0; i < topPad; i++ {
 		b.WriteString(bgLine)
@@ -48,11 +45,20 @@ func (m Model) viewRecordEdit() string {
 
 	// Top border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		editBorderStyle.Render("╒"+strings.Repeat("═", boxW)+"╕") +
+		editBorderStyle.Render("┌"+strings.Repeat("─", boxW)+"┐") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 
-	// Header
+	// Box title (Edit <type>)
+	boxTitleText := fmt.Sprintf("Edit %s", m.recordTypeTitle())
+	boxTitleLine := editBorderStyle.Render("│") +
+		menuHeaderStyle.Render(centerText(boxTitleText, boxW)) +
+		editBorderStyle.Render("│")
+	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) + boxTitleLine +
+		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
+	b.WriteByte('\n')
+
+	// Record name header
 	headerText := m.recordEditHeader()
 	headerLine := editBorderStyle.Render("│") +
 		menuHeaderStyle.Render(centerText(headerText, boxW)) +
@@ -118,7 +124,7 @@ func (m Model) viewRecordEdit() string {
 
 	// Bottom border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		editBorderStyle.Render("╘"+strings.Repeat("═", boxW)+"╛") +
+		editBorderStyle.Render("└"+strings.Repeat("─", boxW)+"┘") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 

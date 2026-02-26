@@ -1,8 +1,57 @@
 # ViSiON/3 Configuration Guide
 
-This guide covers the configuration files used by ViSiON/3 BBS.
+This guide covers the configuration files used by ViSiON/3 BBS. You can edit these files by hand or use the **TUI Configuration Editor** (see below).
 
-> **📋 In Development:** A TUI configuration editor (`config`) is planned — modeled after ViSiON/2's `CONFIG.EXE` — that will provide an interactive, menu-driven interface for managing the key settings currently spread across JSON files. Until then, configuration is done by hand as described in this guide.
+## Configuration Editor (TUI)
+
+ViSiON/3 includes an interactive TUI configuration editor modeled after ViSiON/2's `CONFIG.EXE`. It provides a menu-driven interface for managing all system configuration without editing JSON by hand.
+
+### Running the Editor
+
+```bash
+# From the BBS directory (uses configs/ by default)
+./config
+
+# Or specify a custom config path
+./config --config /path/to/configs
+```
+
+### Main Menu
+
+The editor opens to a main menu with sections for each configuration area:
+
+| Key | Section | Description |
+|-----|---------|-------------|
+| 1 | System Configuration | BBS name, network, connection limits, access levels, defaults, IP lists |
+| 2 | Message Areas | Message area records with conference grouping |
+| 3 | File Areas | File area records |
+| 4 | Conferences | Conference definitions and ordering |
+| 5 | Door Programs | External door configurations |
+| 6 | Event Scheduler | Automated event definitions |
+| 7 | FTN Network | FidoNet-style network link settings |
+| 8 | Transfer Protocols | File transfer protocol definitions |
+| 9 | Archivers | Archive format tool definitions |
+| A | Login Sequence | Login step sequence |
+
+### Navigation
+
+| Key | Action |
+|-----|--------|
+| Up/Down | Move highlight |
+| Enter | Select / edit field |
+| I | Insert new record |
+| D | Delete record |
+| P | Reorder record position (supported record types) |
+| PgUp/PgDn | Navigate between records in the field editor |
+| ESC | Return to previous screen |
+
+### Reordering Records
+
+Press **P** in a record list to enter reorder mode. Use Up/Down to choose the new position and Enter to confirm. For message areas, reordering is constrained to within the same conference.
+
+### Saving
+
+The editor tracks unsaved changes. When you quit with pending changes, you are prompted to save. All configuration files are written atomically.
 
 ## Configuration Files Overview
 

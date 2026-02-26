@@ -69,7 +69,87 @@ func (m Model) updateRecordList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.confirmYes = false
 			}
 			return m, nil
+		case "p", "P":
+			if total > 0 && m.recordTypeSupportsReorder() {
+				m.reorderSourceIdx = m.recordCursor
+				m.reorderMinIdx = 0
+				m.reorderMaxIdx = total - 1
+
+				// For message areas, clamp to the conference of the source item.
+				if m.recordType == "msgarea" && m.recordCursor < len(m.configs.MsgAreas) {
+					confID := m.configs.MsgAreas[m.recordCursor].ConferenceID
+					lo, hi := m.recordCursor, m.recordCursor
+					for lo > 0 && m.configs.MsgAreas[lo-1].ConferenceID == confID {
+						lo--
+					}
+					for hi < len(m.configs.MsgAreas)-1 && m.configs.MsgAreas[hi+1].ConferenceID == confID {
+						hi++
+					}
+					m.reorderMinIdx = lo
+					m.reorderMaxIdx = hi
+				}
+
+				m.mode = modeRecordReorder
+			}
+			return m, nil
 		}
+	}
+	m.clampRecordScroll()
+	return m, nil
+}
+
+// recordTypeSupportsReorder returns true if the current record type supports P-key reordering.
+func (m Model) recordTypeSupportsReorder() bool {
+	switch m.recordType {
+	case "msgarea", "filearea", "conference", "login", "protocol", "archiver":
+		return true
+	}
+	return false
+}
+
+// --- Record Reorder Mode ---
+
+func (m Model) updateRecordReorder(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	listVisible := m.recordListVisible()
+	lo := m.reorderMinIdx
+	hi := m.reorderMaxIdx
+
+	switch msg.Type {
+	case tea.KeyUp:
+		if m.recordCursor > lo {
+			m.recordCursor--
+		}
+	case tea.KeyDown:
+		if m.recordCursor < hi {
+			m.recordCursor++
+		}
+	case tea.KeyHome:
+		m.recordCursor = lo
+	case tea.KeyEnd:
+		m.recordCursor = hi
+	case tea.KeyPgUp:
+		m.recordCursor -= listVisible
+		if m.recordCursor < lo {
+			m.recordCursor = lo
+		}
+	case tea.KeyPgDown:
+		m.recordCursor += listVisible
+		if m.recordCursor > hi {
+			m.recordCursor = hi
+		}
+	case tea.KeyEnter:
+		m.reorderRecord()
+		m.dirty = true
+		m.reorderSourceIdx = -1
+		m.mode = modeRecordList
+		m.clampRecordScroll()
+		return m, nil
+	case tea.KeyEscape:
+		m.recordCursor = m.reorderSourceIdx
+		m.reorderSourceIdx = -1
+		m.mode = modeRecordList
+		m.clampRecordScroll()
+		return m, nil
 	}
 	m.clampRecordScroll()
 	return m, nil

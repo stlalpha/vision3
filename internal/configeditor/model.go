@@ -31,6 +31,7 @@ const (
 	modeHelp                             // Help screen overlay
 	modeDeleteConfirm                    // Confirm delete record
 	modeLookupPicker                     // Lookup picker popup
+	modeRecordReorder                    // Reorder mode (move record to new position)
 )
 
 // topMenuItem defines an entry in the top-level menu.
@@ -70,6 +71,11 @@ type Model struct {
 	recordEditIdx int        // index of record being edited
 	editField     int        // current field index
 	fieldScroll   int        // first visible field row in edit screens
+
+	// Reorder state
+	reorderSourceIdx int // index of record being moved (-1 when inactive)
+	reorderMinIdx    int // lower bound for cursor in reorder mode (conference clamp)
+	reorderMaxIdx    int // upper bound (inclusive) for cursor in reorder mode
 
 	// Text input (shared for editing fields)
 	textInput textinput.Model
@@ -169,6 +175,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateSysConfigField(msg)
 		case modeRecordList:
 			return m.updateRecordList(msg)
+		case modeRecordReorder:
+			return m.updateRecordReorder(msg)
 		case modeRecordEdit:
 			return m.updateRecordEdit(msg)
 		case modeRecordField:

@@ -39,42 +39,46 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 	a := &m.configs.MsgAreas[idx]
 	return []fieldDef{
 		{
-			Label: "Tag", Help: "Short identifier for this area (used in configs)", Type: ftString, Col: 3, Row: 1, Width: 30,
+			Label: "Position", Help: "Display order (use P key in list to reorder)", Type: ftDisplay, Col: 3, Row: 1, Width: 5,
+			Get: func() string { return strconv.Itoa(a.Position) },
+		},
+		{
+			Label: "Tag", Help: "Short identifier for this area (used in configs)", Type: ftString, Col: 3, Row: 2, Width: 30,
 			Get: func() string { return a.Tag },
 			Set: func(val string) error { a.Tag = val; return nil },
 		},
 		{
-			Label: "Name", Help: "Display name shown to users", Type: ftString, Col: 3, Row: 2, Width: 40,
+			Label: "Name", Help: "Display name shown to users", Type: ftString, Col: 3, Row: 3, Width: 40,
 			Get: func() string { return a.Name },
 			Set: func(val string) error { a.Name = val; return nil },
 		},
 		{
-			Label: "Description", Help: "Longer description of this area", Type: ftString, Col: 3, Row: 3, Width: 45,
+			Label: "Description", Help: "Longer description of this area", Type: ftString, Col: 3, Row: 4, Width: 45,
 			Get: func() string { return a.Description },
 			Set: func(val string) error { a.Description = val; return nil },
 		},
 		{
-			Label: "Area Type", Help: "Message type: local, echomail, netmail", Type: ftString, Col: 3, Row: 4, Width: 10,
+			Label: "Area Type", Help: "Message type: local, echomail, netmail", Type: ftString, Col: 3, Row: 5, Width: 10,
 			Get: func() string { return a.AreaType },
 			Set: func(val string) error { a.AreaType = val; return nil },
 		},
 		{
-			Label: "ACS Read", Help: "Access string for reading (e.g. s20 = level 20+)", Type: ftString, Col: 3, Row: 5, Width: 20,
+			Label: "ACS Read", Help: "Access string for reading (e.g. s20 = level 20+)", Type: ftString, Col: 3, Row: 6, Width: 20,
 			Get: func() string { return a.ACSRead },
 			Set: func(val string) error { a.ACSRead = val; return nil },
 		},
 		{
-			Label: "ACS Write", Help: "Access string for posting (e.g. s20 = level 20+)", Type: ftString, Col: 3, Row: 6, Width: 20,
+			Label: "ACS Write", Help: "Access string for posting (e.g. s20 = level 20+)", Type: ftString, Col: 3, Row: 7, Width: 20,
 			Get: func() string { return a.ACSWrite },
 			Set: func(val string) error { a.ACSWrite = val; return nil },
 		},
 		{
-			Label: "Base Path", Help: "Directory path for message base storage", Type: ftString, Col: 3, Row: 7, Width: 45,
+			Label: "Base Path", Help: "Directory path for message base storage", Type: ftString, Col: 3, Row: 8, Width: 45,
 			Get: func() string { return a.BasePath },
 			Set: func(val string) error { a.BasePath = val; return nil },
 		},
 		{
-			Label: "Conference", Help: "Press Enter to select a conference", Type: ftLookup, Col: 3, Row: 8, Width: 40,
+			Label: "Conference", Help: "Press Enter to select a conference", Type: ftLookup, Col: 3, Row: 9, Width: 40,
 			Get: func() string {
 				return m.conferenceName(a.ConferenceID)
 			},
@@ -91,7 +95,7 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 			},
 		},
 		{
-			Label: "Max Messages", Help: "Maximum messages before purging (0=unlimited)", Type: ftInteger, Col: 3, Row: 9, Width: 6, Min: 0, Max: 999999,
+			Label: "Max Messages", Help: "Maximum messages before purging (0=unlimited)", Type: ftInteger, Col: 3, Row: 10, Width: 6, Min: 0, Max: 999999,
 			Get: func() string { return strconv.Itoa(a.MaxMessages) },
 			Set: func(val string) error {
 				n, err := strconv.Atoi(val)
@@ -103,7 +107,7 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 			},
 		},
 		{
-			Label: "Max Age", Help: "Maximum age in days before purging (0=unlimited)", Type: ftInteger, Col: 3, Row: 10, Width: 5, Min: 0, Max: 99999,
+			Label: "Max Age", Help: "Maximum age in days before purging (0=unlimited)", Type: ftInteger, Col: 3, Row: 11, Width: 5, Min: 0, Max: 99999,
 			Get: func() string { return strconv.Itoa(a.MaxAge) },
 			Set: func(val string) error {
 				n, err := strconv.Atoi(val)
@@ -115,32 +119,32 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 			},
 		},
 		{
-			Label: "Auto Join", Help: "Automatically join new users to this area", Type: ftYesNo, Col: 3, Row: 11, Width: 1,
+			Label: "Auto Join", Help: "Automatically join new users to this area", Type: ftYesNo, Col: 3, Row: 12, Width: 1,
 			Get: func() string { return boolToYN(a.AutoJoin) },
 			Set: func(val string) error { a.AutoJoin = ynToBool(val); return nil },
 		},
 		{
-			Label: "Real Name Only", Help: "Require real name for posts (no aliases)", Type: ftYesNo, Col: 3, Row: 12, Width: 1,
+			Label: "Real Name Only", Help: "Require real name for posts (no aliases)", Type: ftYesNo, Col: 3, Row: 13, Width: 1,
 			Get: func() string { return boolToYN(a.RealNameOnly) },
 			Set: func(val string) error { a.RealNameOnly = ynToBool(val); return nil },
 		},
 		{
-			Label: "Echo Tag", Help: "FTN echomail tag (e.g. FSXNET_GEN)", Type: ftString, Col: 3, Row: 13, Width: 30,
+			Label: "Echo Tag", Help: "FTN echomail tag (e.g. FSXNET_GEN)", Type: ftString, Col: 3, Row: 14, Width: 30,
 			Get: func() string { return a.EchoTag },
 			Set: func(val string) error { a.EchoTag = val; return nil },
 		},
 		{
-			Label: "Origin Addr", Help: "FTN origin address for echomail", Type: ftString, Col: 3, Row: 14, Width: 20,
+			Label: "Origin Addr", Help: "FTN origin address for echomail", Type: ftString, Col: 3, Row: 15, Width: 20,
 			Get: func() string { return a.OriginAddr },
 			Set: func(val string) error { a.OriginAddr = val; return nil },
 		},
 		{
-			Label: "Network", Help: "FTN network name for this area", Type: ftString, Col: 3, Row: 15, Width: 20,
+			Label: "Network", Help: "FTN network name for this area", Type: ftString, Col: 3, Row: 16, Width: 20,
 			Get: func() string { return a.Network },
 			Set: func(val string) error { a.Network = val; return nil },
 		},
 		{
-			Label: "Sponsor", Help: "Name of the network/area sponsor", Type: ftString, Col: 3, Row: 16, Width: 30,
+			Label: "Sponsor", Help: "Name of the network/area sponsor", Type: ftString, Col: 3, Row: 17, Width: 30,
 			Get: func() string { return a.Sponsor },
 			Set: func(val string) error { a.Sponsor = val; return nil },
 		},
@@ -219,22 +223,26 @@ func (m *Model) fieldsConference() []fieldDef {
 	c := &m.configs.Conferences[idx]
 	return []fieldDef{
 		{
-			Label: "Tag", Help: "Short identifier (e.g. LOCAL, FSXNET)", Type: ftString, Col: 3, Row: 1, Width: 20,
+			Label: "Position", Help: "Display order (use P key in list to reorder)", Type: ftDisplay, Col: 3, Row: 1, Width: 5,
+			Get: func() string { return strconv.Itoa(c.Position) },
+		},
+		{
+			Label: "Tag", Help: "Short identifier (e.g. LOCAL, FSXNET)", Type: ftString, Col: 3, Row: 2, Width: 20,
 			Get: func() string { return c.Tag },
 			Set: func(val string) error { c.Tag = val; return nil },
 		},
 		{
-			Label: "Name", Help: "Display name shown to users", Type: ftString, Col: 3, Row: 2, Width: 30,
+			Label: "Name", Help: "Display name shown to users", Type: ftString, Col: 3, Row: 3, Width: 30,
 			Get: func() string { return c.Name },
 			Set: func(val string) error { c.Name = val; return nil },
 		},
 		{
-			Label: "Description", Help: "Longer description of this conference", Type: ftString, Col: 3, Row: 3, Width: 40,
+			Label: "Description", Help: "Longer description of this conference", Type: ftString, Col: 3, Row: 4, Width: 40,
 			Get: func() string { return c.Description },
 			Set: func(val string) error { c.Description = val; return nil },
 		},
 		{
-			Label: "ACS", Help: "Access string for conference access", Type: ftString, Col: 3, Row: 4, Width: 10,
+			Label: "ACS", Help: "Access string for conference access", Type: ftString, Col: 3, Row: 5, Width: 10,
 			Get: func() string { return c.ACS },
 			Set: func(val string) error { c.ACS = val; return nil },
 		},

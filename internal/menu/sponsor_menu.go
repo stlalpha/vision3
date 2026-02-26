@@ -80,28 +80,27 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
 	}
 
-	ih := getSessionIH(s)
-
 	for {
 		if menuRec != nil && menuRec.GetUsePrompt() {
 			if err := e.displayPrompt(terminal, menuRec, currentUser, userManager, nodeNumber, "SPONSORM", sessionStartTime, outputMode, ""); err != nil {
 				log.Printf("WARN: Node %d: displayPrompt failed for SPONSORM: %v", nodeNumber, err)
 			}
 		} else {
-			prompt := fmt.Sprintf("\r\n|15[|14%s|15] Sponsor: |11E|07=Edit Area  |11[|07/|11]|07=Prev/Next Area  |11Q|07=Quit: ", area.Tag)
+			prompt := fmt.Sprintf("\r\n|15[|14%s|15] Sponsor: |11E|07=Edit  |11P|07=Position  |11[|07/|11]|07=Prev/Next  |11Q|07=Quit: ", area.Tag)
 			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 		}
 
-		key, err := ih.ReadKey()
+		input, err := readLineFromSessionIH(s, terminal)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil, "LOGOFF", io.EOF
 			}
 			return currentUser, "", err
 		}
+		cmd := strings.ToUpper(strings.TrimSpace(input))
 
-		switch key {
-		case int('e'), int('E'):
+		switch cmd {
+		case "E":
 			updated, next, runErr := runSponsorEditArea(e, s, terminal, userManager,
 				currentUser, nodeNumber, sessionStartTime, args, outputMode, termWidth, termHeight)
 			if runErr != nil {
@@ -127,8 +126,8 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
 			}
 
-		case int('['), int(']'):
-			forward := key == int(']')
+		case "[", "]":
+			forward := cmd == "]"
 			sponsorAreas := getSponsorableAreasInConference(e, currentUser)
 			if len(sponsorAreas) > 1 {
 				currentIdx := -1
@@ -166,9 +165,158 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				}
 			}
 
-		case int('q'), int('Q'), 27: // ESC — clear before fallback menu loads
+		case "P":
+			confAreas := getAllAreasInConference(e, currentUser.CurrentMsgConferenceID)
+			if len(confAreas) < 2 {
+				msg := "\r\n|03Need at least 2 areas to reposition.|07\r\n"
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+				time.Sleep(1 * time.Second)
+				break
+			}
+
+			confName := "Ungrouped"
+			if e.ConferenceMgr != nil {
+				if conf, ok := e.ConferenceMgr.GetByID(currentUser.CurrentMsgConferenceID); ok {
+					confName = conf.Name
+				}
+			}
+
+			// Position sub-menu loop — exits only on Q or empty input.
+			showPositionList := true
+			for {
+				if showPositionList {
+					// Refresh area list each iteration (positions may have changed)
+					confAreas = getAllAreasInConference(e, currentUser.CurrentMsgConferenceID)
+
+					_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+					header := fmt.Sprintf("\r\n|14-- Area Positions: %s --|07\r\n\r\n", confName)
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode)
+					linesUsed := 3 // header uses 3 lines (blank + title + blank)
+					pageSize := termHeight - 2
+
+					for i, a := range confAreas {
+						line := fmt.Sprintf("  |11%2d|07) |03%-16s |15%-24s|07\r\n",
+							i+1, a.Tag, a.Name)
+						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
+						linesUsed++
+						if linesUsed >= pageSize && i < len(confAreas)-1 {
+							e.holdScreen(s, terminal, outputMode, termWidth, termHeight)
+							linesUsed = 0
+						}
+					}
+				}
+				showPositionList = true // default: redraw on next iteration
+
+				// Prompt: select area to move
+				selPrompt := fmt.Sprintf("\r\n|15Select area to move (|111-%d|15, |11Q|15=Quit): |07",
+					len(confAreas))
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(selPrompt)), outputMode)
+				selInput, selErr := readLineFromSessionIH(s, terminal)
+				if selErr != nil {
+					if errors.Is(selErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					break
+				}
+				selCmd := strings.ToUpper(strings.TrimSpace(selInput))
+				if selCmd == "Q" || selCmd == "" {
+					break // exit position sub-menu
+				}
+
+				var selIdx int
+				if _, scanErr := fmt.Sscanf(selCmd, "%d", &selIdx); scanErr != nil || selIdx < 1 || selIdx > len(confAreas) {
+					msg := "\r\n|01Invalid selection.|07\r\n"
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+					time.Sleep(1 * time.Second)
+					continue
+				}
+				selectedArea := confAreas[selIdx-1]
+
+				// Prompt: where to place it
+				destPrompt := fmt.Sprintf("|15Place |14%s|15 before (|111-%d|15) or |11E|15=End: |07",
+					selectedArea.Tag, len(confAreas))
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(destPrompt)), outputMode)
+				destInput, destErr := readLineFromSessionIH(s, terminal)
+				if destErr != nil {
+					if errors.Is(destErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					break
+				}
+				destCmd := strings.ToUpper(strings.TrimSpace(destInput))
+				if destCmd == "" {
+					// Cancelled — re-show list
+					continue
+				}
+
+				var newPos int
+				if destCmd == "E" {
+					newPos = len(confAreas)
+				} else {
+					if _, scanErr := fmt.Sscanf(destCmd, "%d", &newPos); scanErr != nil || newPos < 1 || newPos > len(confAreas) {
+						msg := "\r\n|01Invalid position.|07\r\n"
+						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+						time.Sleep(1 * time.Second)
+						continue
+					}
+				}
+
+				// No-op if already at that position
+				if newPos == selIdx {
+					continue
+				}
+
+				// Perform the move within this conference
+				if moveErr := e.MessageMgr.MoveAreaPositionInConference(selectedArea.ID, newPos); moveErr != nil {
+					log.Printf("ERROR: Node %d: Failed to move area position: %v", nodeNumber, moveErr)
+					msg := "\r\n|01Error moving area position.|07\r\n"
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+					time.Sleep(1 * time.Second)
+					continue
+				}
+				if saveErr := e.MessageMgr.SaveAreas(); saveErr != nil {
+					log.Printf("ERROR: Node %d: Failed to save areas after reposition: %v", nodeNumber, saveErr)
+					msg := "\r\n|01Error saving areas.|07\r\n"
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+					time.Sleep(1 * time.Second)
+					continue
+				}
+				log.Printf("INFO: Node %d: User %s repositioned area %s to position %d in conf %s",
+					nodeNumber, currentUser.Handle, selectedArea.Tag, newPos, confName)
+				// Loop: list will refresh at top of next iteration
+			}
+
+			// Return to sponsor menu
+			if menuRec != nil && menuRec.GetClrScrBefore() {
+				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+			}
+			if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
+				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
+			}
+
+		case "?":
+			// Reload menu
+			if menuRec != nil && menuRec.GetClrScrBefore() {
+				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+			}
+			if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
+				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
+			}
+
+		case "Q", "":
 			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 			return currentUser, "", nil
+
+		default:
+			msg := "\r\n|01Invalid key.|07\r\n"
+			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			if menuRec != nil && menuRec.GetClrScrBefore() {
+				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+			}
+			if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
+				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
+			}
 		}
 	}
 }
@@ -192,7 +340,7 @@ func allowAnonEqual(a, b *bool) bool {
 // Key map: T=Tag N=Name D=Description R=ACS Read W=ACS Write S=Sponsor
 //   M=Max Msgs G=Max Age A=Allow Anon L=Real Name Only J=Auto Join
 //   C=Conf ID B=Base Path Y=Area Type E=Echo Tag O=Origin K=Network
-//   Q=Save ESC=Cancel
+//   [/]=Prev/Next area (co-sysop+) Q=Save ESC=Cancel
 //
 // The Sponsor field is validated against the user database. Enter "-" to clear.
 func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
@@ -268,8 +416,30 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	ih := getSessionIH(s)
 	dirty := false
 
+	// editPromptRow is the terminal row where the edit prompt appears.
+	// Layout: row 1=blank, 2=header, 3=separator, 4..20=fields, 21=separator, 22=prompt.
+	const editPromptRow = 22
+
+	// refreshFieldRow redraws a single field row in-place using ANSI cursor
+	// positioning, then clears the prompt area so the next prompt renders clean.
+	refreshFieldRow := func(row int, pipeLine string) {
+		pos := fmt.Sprintf("\033[%d;1H\033[2K", row)
+		_ = terminalio.WriteProcessedBytes(terminal, []byte(pos), outputMode)
+		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(pipeLine)), outputMode)
+		clear := fmt.Sprintf("\033[%d;1H\033[J", editPromptRow)
+		_ = terminalio.WriteProcessedBytes(terminal, []byte(clear), outputMode)
+	}
+
 	for {
-		prompt := "|07Edit (|11T|07|11N|07|11D|07|11R|07|11W|07|11S|07|11M|07|11G|07|11A|07|11L|07|11J|07|11C|07|11B|07|11Y|07|11E|07|11O|07|11K|07)  |11Q|07=Save/Quit  |03ESC|07=Cancel: "
+		// Position prompt at a fixed row so keypresses never scroll the display.
+		promptPos := fmt.Sprintf("\033[%d;1H\033[J", editPromptRow)
+		_ = terminalio.WriteProcessedBytes(terminal, []byte(promptPos), outputMode)
+
+		prompt := "|07Edit (|11T|07|11N|07|11D|07|11R|07|11W|07|11S|07|11M|07|11G|07|11A|07|11L|07|11J|07|11C|07|11B|07|11Y|07|11E|07|11O|07|11K|07)"
+		if currentUser.AccessLevel >= cfg.CoSysOpLevel {
+			prompt += "  |11[|07/|11]|07=Prev/Next"
+		}
+		prompt += "  |11Q|07=Save/Quit  |03ESC|07=Cancel: "
 		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(prompt)), outputMode)
 
 		key, err := ih.ReadKey()
@@ -280,12 +450,13 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			return currentUser, "", err
 		}
 
-		_ = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		// Clear prompt area for sub-prompts / messages; cursor stays at row 22.
+		_ = terminalio.WriteProcessedBytes(terminal, []byte(promptPos), outputMode)
 
 		switch key {
 		case int('t'), int('T'):
 			if currentUser.AccessLevel < cfg.CoSysOpLevel {
-				msg := "|01Tag — sysop/co-sysop only.|07\r\n"
+				msg := "|01Tag — sysop/co-sysop only.|07"
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(1 * time.Second)
 				break
@@ -295,7 +466,9 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.Tag = newVal
 			}
-			showFields()
+			// Tag also appears in the header row
+			refreshFieldRow(2, fmt.Sprintf("|15Edit Area: |14%s|07 (ID %d)", edited.Tag, edited.ID))
+			refreshFieldRow(4, fmt.Sprintf("|11T|07) Tag           : |15%s", edited.Tag))
 
 		case int('n'), int('N'):
 			newVal := promptAreaField(s, terminal, outputMode, "Name", edited.Name, 60)
@@ -303,7 +476,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.Name = newVal
 			}
-			showFields()
+			refreshFieldRow(5, fmt.Sprintf("|11N|07) Name          : |15%s", edited.Name))
 
 		case int('d'), int('D'):
 			newVal := promptAreaField(s, terminal, outputMode,
@@ -312,7 +485,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.Description = newVal
 			}
-			showFields()
+			refreshFieldRow(6, fmt.Sprintf("|11D|07) Description   : |15%s", edited.Description))
 
 		case int('r'), int('R'):
 			newVal := promptAreaField(s, terminal, outputMode,
@@ -321,7 +494,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.ACSRead = newVal
 			}
-			showFields()
+			refreshFieldRow(7, fmt.Sprintf("|11R|07) ACS Read      : |15%s", edited.ACSRead))
 
 		case int('w'), int('W'):
 			newVal := promptAreaField(s, terminal, outputMode,
@@ -330,7 +503,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.ACSWrite = newVal
 			}
-			showFields()
+			refreshFieldRow(8, fmt.Sprintf("|11W|07) ACS Write     : |15%s", edited.ACSWrite))
 
 		case int('s'), int('S'):
 			prevSponsor := edited.Sponsor
@@ -342,7 +515,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			case newHandle != "":
 				if userManager != nil {
 					if _, exists := userManager.GetUserByHandle(newHandle); !exists {
-						msg := fmt.Sprintf("|01User '%s' not found — sponsor unchanged.|07\r\n", newHandle)
+						msg := fmt.Sprintf("|01User '%s' not found — sponsor unchanged.|07", newHandle)
 						_ = terminalio.WriteProcessedBytes(terminal,
 							ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 						time.Sleep(1 * time.Second)
@@ -356,7 +529,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if edited.Sponsor != prevSponsor {
 				dirty = true
 			}
-			showFields()
+			refreshFieldRow(9, fmt.Sprintf("|11S|07) Sponsor       : |15%s", edited.Sponsor))
 
 		case int('m'), int('M'):
 			prevMax := edited.MaxMessages
@@ -367,7 +540,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				if _, scanErr := fmt.Sscanf(raw, "%d", &n); scanErr == nil && n >= 0 {
 					edited.MaxMessages = n
 				} else {
-					msg := "|01Invalid number — unchanged.|07\r\n"
+					msg := "|01Invalid number — unchanged.|07"
 					_ = terminalio.WriteProcessedBytes(terminal,
 						ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 					time.Sleep(1 * time.Second)
@@ -376,7 +549,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if edited.MaxMessages != prevMax {
 				dirty = true
 			}
-			showFields()
+			refreshFieldRow(10, fmt.Sprintf("|11M|07) Max Messages  : |15%d", edited.MaxMessages))
 
 		case int('g'), int('G'):
 			prevMaxAge := edited.MaxAge
@@ -387,7 +560,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				if _, scanErr := fmt.Sscanf(raw, "%d", &n); scanErr == nil && n >= 0 {
 					edited.MaxAge = n
 				} else {
-					msg := "|01Invalid number — unchanged.|07\r\n"
+					msg := "|01Invalid number — unchanged.|07"
 					_ = terminalio.WriteProcessedBytes(terminal,
 						ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 					time.Sleep(1 * time.Second)
@@ -396,7 +569,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if edited.MaxAge != prevMaxAge {
 				dirty = true
 			}
-			showFields()
+			refreshFieldRow(11, fmt.Sprintf("|11G|07) Max Age (days): |15%d", edited.MaxAge))
 
 		case int('a'), int('A'):
 			prevAllowAnon := edited.AllowAnon
@@ -422,7 +595,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				case "d", "default", "":
 					edited.AllowAnon = nil
 				default:
-					msg := "|01Enter yes, no, or default.|07\r\n"
+					msg := "|01Enter yes, no, or default.|07"
 					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 					time.Sleep(1 * time.Second)
 				}
@@ -430,7 +603,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if !allowAnonEqual(prevAllowAnon, edited.AllowAnon) {
 				dirty = true
 			}
-			showFields()
+			refreshFieldRow(12, fmt.Sprintf("|11A|07) Allow Anon    : |15%s", showAllowAnon()))
 
 		case int('l'), int('L'):
 			prevRealName := edited.RealNameOnly
@@ -447,7 +620,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if edited.RealNameOnly != prevRealName {
 				dirty = true
 			}
-			showFields()
+			refreshFieldRow(13, fmt.Sprintf("|11L|07) Real Name Only: |15%t", edited.RealNameOnly))
 
 		case int('j'), int('J'):
 			prevAutoJoin := edited.AutoJoin
@@ -464,7 +637,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if edited.AutoJoin != prevAutoJoin {
 				dirty = true
 			}
-			showFields()
+			refreshFieldRow(14, fmt.Sprintf("|11J|07) Auto Join     : |15%t", edited.AutoJoin))
 
 		case int('c'), int('C'):
 			prevConfID := edited.ConferenceID
@@ -475,7 +648,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				if _, scanErr := fmt.Sscanf(raw, "%d", &n); scanErr == nil && n >= 0 {
 					edited.ConferenceID = n
 				} else {
-					msg := "|01Invalid number — unchanged.|07\r\n"
+					msg := "|01Invalid number — unchanged.|07"
 					_ = terminalio.WriteProcessedBytes(terminal,
 						ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 					time.Sleep(1 * time.Second)
@@ -484,11 +657,11 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if edited.ConferenceID != prevConfID {
 				dirty = true
 			}
-			showFields()
+			refreshFieldRow(15, fmt.Sprintf("|11C|07) Conference ID : |15%d", edited.ConferenceID))
 
 		case int('b'), int('B'):
 			if currentUser.AccessLevel < cfg.CoSysOpLevel {
-				msg := "|01Base Path — sysop/co-sysop only.|07\r\n"
+				msg := "|01Base Path — sysop/co-sysop only.|07"
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(1 * time.Second)
 				break
@@ -499,11 +672,11 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.BasePath = newVal
 			}
-			showFields()
+			refreshFieldRow(16, fmt.Sprintf("|11B|07) Base Path     : |15%s", edited.BasePath))
 
 		case int('y'), int('Y'):
 			if currentUser.AccessLevel < cfg.CoSysOpLevel {
-				msg := "|01Area Type — sysop/co-sysop only.|07\r\n"
+				msg := "|01Area Type — sysop/co-sysop only.|07"
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(1 * time.Second)
 				break
@@ -514,11 +687,11 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.AreaType = newVal
 			}
-			showFields()
+			refreshFieldRow(17, fmt.Sprintf("|11Y|07) Area Type     : |15%s", edited.AreaType))
 
 		case int('e'), int('E'):
 			if currentUser.AccessLevel < cfg.CoSysOpLevel {
-				msg := "|01Echo Tag — sysop/co-sysop only.|07\r\n"
+				msg := "|01Echo Tag — sysop/co-sysop only.|07"
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(1 * time.Second)
 				break
@@ -529,11 +702,11 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.EchoTag = newVal
 			}
-			showFields()
+			refreshFieldRow(18, fmt.Sprintf("|11E|07) Echo Tag      : |15%s", edited.EchoTag))
 
 		case int('o'), int('O'):
 			if currentUser.AccessLevel < cfg.CoSysOpLevel {
-				msg := "|01Origin Address — sysop/co-sysop only.|07\r\n"
+				msg := "|01Origin Address — sysop/co-sysop only.|07"
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(1 * time.Second)
 				break
@@ -544,11 +717,11 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.OriginAddr = newVal
 			}
-			showFields()
+			refreshFieldRow(19, fmt.Sprintf("|11O|07) Origin Addr   : |15%s", edited.OriginAddr))
 
 		case int('k'), int('K'):
 			if currentUser.AccessLevel < cfg.CoSysOpLevel {
-				msg := "|01Network — sysop/co-sysop only.|07\r\n"
+				msg := "|01Network — sysop/co-sysop only.|07"
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 				time.Sleep(1 * time.Second)
 				break
@@ -559,6 +732,97 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				dirty = true
 				edited.Network = newVal
 			}
+			refreshFieldRow(20, fmt.Sprintf("|11K|07) Network       : |15%s", edited.Network))
+
+		case int('['), int(']'): // Prev/Next area navigation (co-sysop+)
+			if currentUser.AccessLevel < cfg.CoSysOpLevel {
+				break
+			}
+			// If dirty, prompt to save before switching
+			if dirty {
+				savePrompt := "|15Save changes before switching? (|11Y|15/|11N|15/|03ESC|15=Cancel): |07"
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(savePrompt)), outputMode)
+				saveKey, saveErr := ih.ReadKey()
+				if saveErr != nil {
+					if errors.Is(saveErr, io.EOF) {
+						return nil, "LOGOFF", io.EOF
+					}
+					break
+				}
+				_ = terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+				switch saveKey {
+				case int('y'), int('Y'):
+					if updateErr := e.MessageMgr.UpdateAreaByID(edited.ID, edited); updateErr != nil {
+						log.Printf("ERROR: Node %d: Failed to update area: %v", nodeNumber, updateErr)
+						msg := "|01Error updating area.|07\r\n"
+						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+						time.Sleep(1 * time.Second)
+						break
+					}
+					if saveErr := e.MessageMgr.SaveAreas(); saveErr != nil {
+						log.Printf("ERROR: Node %d: Failed to save areas: %v", nodeNumber, saveErr)
+						msg := "|01Error saving area.|07\r\n"
+						_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+						time.Sleep(1 * time.Second)
+						break
+					}
+					log.Printf("INFO: Node %d: User %s saved area %s", nodeNumber, currentUser.Handle, edited.Tag)
+					saveMsg := fmt.Sprintf("|02Area |14%s|02 saved.|07\r\n", edited.Tag)
+					_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(saveMsg)), outputMode)
+					time.Sleep(500 * time.Millisecond)
+					if currentUser.CurrentMessageAreaID == edited.ID {
+						currentUser.CurrentMessageAreaTag = edited.Tag
+					}
+				case int('n'), int('N'):
+					// Discard changes
+				default:
+					// Cancel navigation
+					break
+				}
+				// If save failed (break from inner switch), stay on current area
+				if saveKey != int('y') && saveKey != int('Y') && saveKey != int('n') && saveKey != int('N') {
+					break
+				}
+			}
+
+			// Find navigable areas in this conference
+			forward := key == int(']')
+			navAreas := getAllAreasInConference(e, currentUser.CurrentMsgConferenceID)
+			if len(navAreas) < 2 {
+				break
+			}
+			currentNavIdx := -1
+			for i, a := range navAreas {
+				if a.ID == area.ID {
+					currentNavIdx = i
+					break
+				}
+			}
+			if currentNavIdx == -1 {
+				break
+			}
+			var newNavIdx int
+			if forward {
+				newNavIdx = (currentNavIdx + 1) % len(navAreas)
+			} else {
+				newNavIdx = (currentNavIdx - 1 + len(navAreas)) % len(navAreas)
+			}
+			newArea := navAreas[newNavIdx]
+
+			// Switch to the new area
+			area = newArea
+			edited = *newArea
+			dirty = false
+			currentUser.CurrentMessageAreaID = newArea.ID
+			currentUser.CurrentMessageAreaTag = newArea.Tag
+			if userManager != nil {
+				if persistErr := userManager.UpdateUser(currentUser); persistErr != nil {
+					log.Printf("ERROR: Node %d: Failed to persist user after area nav: %v", nodeNumber, persistErr)
+				}
+			}
+			log.Printf("INFO: Node %d: User %s editor-navigated to area %d (%s)",
+				nodeNumber, currentUser.Handle, newArea.ID, newArea.Tag)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 			showFields()
 
 		case int('q'), int('Q'): // Q = save and quit (no-op if nothing changed)
@@ -614,7 +878,7 @@ func runSponsorEditArea(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 // getSponsorableAreasInConference returns all areas in the user's current
 // conference where the user has sponsor menu access (sysop, co-sysop, or
-// named sponsor), sorted by ID.
+// named sponsor), sorted by Position.
 func getSponsorableAreasInConference(e *MenuExecutor, currentUser *user.User) []*message.MessageArea {
 	cfg := e.GetServerConfig()
 	var result []*message.MessageArea
@@ -628,7 +892,24 @@ func getSponsorableAreasInConference(e *MenuExecutor, currentUser *user.User) []
 		result = append(result, area)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].ID < result[j].ID
+		return result[i].Position < result[j].Position
+	})
+	return result
+}
+
+// getAllAreasInConference returns all areas in the given conference, sorted by Position.
+// No ACS or sponsor filtering — used for repositioning where the caller already
+// passed the sponsor menu access gate.
+func getAllAreasInConference(e *MenuExecutor, conferenceID int) []*message.MessageArea {
+	var result []*message.MessageArea
+	for _, area := range e.MessageMgr.ListAreas() {
+		if area.ConferenceID != conferenceID {
+			continue
+		}
+		result = append(result, area)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Position < result[j].Position
 	})
 	return result
 }

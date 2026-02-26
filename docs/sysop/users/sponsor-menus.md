@@ -49,7 +49,7 @@ From the **Messages Menu**, press `%` to enter the Sponsor Menu for the currentl
 The `SPONSORM.ANS` header is displayed, followed by a prompt:
 
 ```text
-[TECH] Sponsor: E=Edit Area  [/]=Prev/Next Area  Q=Quit:
+[TECH] Sponsor: E=Edit  P=Position  [/]=Prev/Next  Q=Quit:
 ```
 
 ### Sponsor Menu Keys
@@ -57,6 +57,8 @@ The `SPONSORM.ANS` header is displayed, followed by a prompt:
 | Key | Action |
 |-----|--------|
 | `E` | Edit the current area's settings |
+| `P` | Reorder area positions within the current conference |
+| `[` / `]` | Navigate to previous / next area |
 | `Q` | Return to the Messages Menu |
 
 ## Edit Area Screen
@@ -131,6 +133,16 @@ User 'Nobody' not found — sponsor unchanged.
 
 To remove the sponsor (leave the area with no designated sponsor), enter a single dash (`-`).
 
+### Navigating Between Areas
+
+Co-SysOps and SysOps can press `[` or `]` in the area editor to move to the previous or next area within the conference. If there are unsaved changes, a prompt asks whether to save before switching:
+
+```text
+Save changes before switching? (Y/N/ESC=Cancel):
+```
+
+This allows editing multiple areas in sequence without returning to the Sponsor Menu each time.
+
 ### Saving and Cancelling
 
 | Key | Action |
@@ -139,6 +151,38 @@ To remove the sponsor (leave the area with no designated sponsor), enter a singl
 | `ESC` | Discard all changes and return |
 
 Changes are written atomically using a temporary file rename, so a crash or disconnect during save cannot corrupt `message_areas.json`.
+
+## Area Position (Reorder)
+
+Press `P` from the Sponsor Menu to reorder area positions within the current conference. This controls the display order of areas in area lists, newscan, and conference menus.
+
+### How It Works
+
+1. A numbered list of all areas in the current conference is displayed with their current positions.
+2. **Select** the area to move by entering its number (1-N).
+3. **Place** it by entering the destination position number, or `E` to move it to the end.
+4. The area list is renumbered and saved automatically.
+5. The menu loops — continue repositioning or press `Q` to return.
+
+```text
+-- Area Positions: fsxNet --
+
+ 1. FSX_GEN       fsxNet General Chat
+ 2. FSX_MYS       Mystic BBS Support
+ 3. FSX_BBS       BBS Discussion
+
+Select area to move (1-3, Q=Quit): 3
+Place before (1-3) or E=End: 1
+
+Moved! New order:
+ 1. FSX_BBS       BBS Discussion
+ 2. FSX_GEN       fsxNet General Chat
+ 3. FSX_MYS       Mystic BBS Support
+
+Select area to move (1-3, Q=Quit): Q
+```
+
+Position changes are saved to `configs/message_areas.json` immediately after each move. The `position` field on each area record controls display order within its conference.
 
 ## ANSI File
 

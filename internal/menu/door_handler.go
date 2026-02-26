@@ -921,64 +921,73 @@ func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	// Prompt for door name
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt)), outputMode)
+	renderedPrompt := ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt))
+	curUpClear := "\x1b[A\r\x1b[2K"
 
-	inputName, err := readLineFromSessionIH(s, terminal)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, "LOGOFF", io.EOF
+	terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+
+	for {
+		inputName, err := readLineFromSessionIH(s, terminal)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			log.Printf("ERROR: Node %d: Error reading OPENDOOR input: %v", nodeNumber, err)
+			return currentUser, "", err
 		}
-		log.Printf("ERROR: Node %d: Error reading OPENDOOR input: %v", nodeNumber, err)
-		return currentUser, "", err
-	}
 
-	inputClean := strings.TrimSpace(inputName)
-	upperInput := strings.ToUpper(inputClean)
+		inputClean := strings.TrimSpace(inputName)
+		upperInput := strings.ToUpper(inputClean)
 
-	if upperInput == "" || upperInput == "Q" {
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		if upperInput == "Q" {
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			return currentUser, "", nil
+		}
+		if upperInput == "" {
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		if upperInput == "?" {
+			runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Look up door
+		doorConfig, exists := e.GetDoorConfig(upperInput)
+		if !exists {
+			terminalio.WriteProcessedBytes(terminal, []byte(curUpClear), outputMode)
+			msg := fmt.Sprintf(e.LoadedStrings.DoorNotFoundFormat, inputClean)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Build context and execute
+		ctx := buildDoorCtx(e, s, terminal,
+			currentUser.ID, currentUser.Handle, currentUser.RealName,
+			currentUser.AccessLevel, currentUser.TimeLimit, currentUser.TimesCalled,
+			currentUser.PhoneNumber, currentUser.GroupLocation,
+			termWidth, termHeight,
+			nodeNumber, sessionStartTime, outputMode,
+			doorConfig, upperInput)
+
+		resetSessionIH(s)
+		cmdErr := executeDoor(ctx)
+		_ = getSessionIH(s)
+
+		if cmdErr != nil {
+			log.Printf("ERROR: Node %d: Door execution failed for user %s, door %s: %v", nodeNumber, currentUser.Handle, upperInput, cmdErr)
+			doorErrorMessage(ctx, fmt.Sprintf("Error running door '%s': %v", upperInput, cmdErr))
+		} else {
+			log.Printf("INFO: Node %d: Door completed for user %s, door %s", nodeNumber, currentUser.Handle, upperInput)
+		}
+
 		return currentUser, "", nil
 	}
-
-	if upperInput == "?" {
-		// Show door list inline then return to menu (which will redraw and prompt again)
-		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
-		return currentUser, "", nil
-	}
-
-	// Look up door
-	doorConfig, exists := e.GetDoorConfig(upperInput)
-	if !exists {
-		msg := fmt.Sprintf(e.LoadedStrings.DoorNotFoundFormat, inputClean)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		time.Sleep(1 * time.Second)
-		return currentUser, "", nil
-	}
-
-	// Build context and execute
-	// Use passed termWidth/termHeight (from user preferences) instead of reading from User struct
-	ctx := buildDoorCtx(e, s, terminal,
-		currentUser.ID, currentUser.Handle, currentUser.RealName,
-		currentUser.AccessLevel, currentUser.TimeLimit, currentUser.TimesCalled,
-		currentUser.PhoneNumber, currentUser.GroupLocation,
-		termWidth, termHeight,
-		nodeNumber, sessionStartTime, outputMode,
-		doorConfig, upperInput)
-
-	// Doors read directly from ssh.Session; reset shared InputHandler first
-	// so it does not race and steal door/menu keystrokes.
-	resetSessionIH(s)
-	cmdErr := executeDoor(ctx)
-	_ = getSessionIH(s)
-
-	if cmdErr != nil {
-		log.Printf("ERROR: Node %d: Door execution failed for user %s, door %s: %v", nodeNumber, currentUser.Handle, upperInput, cmdErr)
-		doorErrorMessage(ctx, fmt.Sprintf("Error running door '%s': %v", upperInput, cmdErr))
-	} else {
-		log.Printf("INFO: Node %d: Door completed for user %s, door %s", nodeNumber, currentUser.Handle, upperInput)
-	}
-
-	return currentUser, "", nil
 }
 
 // runDoorInfo displays information about a specific door.
@@ -992,62 +1001,75 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 	}
 
 	// Prompt for door name
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt)), outputMode)
+	renderedPrompt := ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt))
+	curUpClear := "\x1b[A\r\x1b[2K"
 
-	inputName, err := readLineFromSessionIH(s, terminal)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, "LOGOFF", io.EOF
+	terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+
+	for {
+		inputName, err := readLineFromSessionIH(s, terminal)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			log.Printf("ERROR: Node %d: Error reading DOORINFO input: %v", nodeNumber, err)
+			return currentUser, "", err
 		}
-		log.Printf("ERROR: Node %d: Error reading DOORINFO input: %v", nodeNumber, err)
-		return currentUser, "", err
-	}
 
-	inputClean := strings.TrimSpace(inputName)
-	upperInput := strings.ToUpper(inputClean)
+		inputClean := strings.TrimSpace(inputName)
+		upperInput := strings.ToUpper(inputClean)
 
-	if upperInput == "" || upperInput == "Q" {
+		if upperInput == "Q" {
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			return currentUser, "", nil
+		}
+		if upperInput == "" {
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		if upperInput == "?" {
+			runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Look up door
+		doorConfig, exists := e.GetDoorConfig(upperInput)
+		if !exists {
+			terminalio.WriteProcessedBytes(terminal, []byte(curUpClear), outputMode)
+			msg := fmt.Sprintf(e.LoadedStrings.DoorNotFoundFormat, inputClean)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		// Display door info
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		doorType := "Native Linux"
+		if doorConfig.IsDOS {
+			doorType = "DOS (dosemu2)"
+		}
+
+		info := fmt.Sprintf("|15Door: |07%s\r\n|15Type: |07%s\r\n", upperInput, doorType)
+		if doorConfig.Command != "" {
+			info += fmt.Sprintf("|15Command: |07%s\r\n", doorConfig.Command)
+		}
+		if doorConfig.WorkingDirectory != "" {
+			info += fmt.Sprintf("|15Directory: |07%s\r\n", doorConfig.WorkingDirectory)
+		}
+		if doorConfig.DropfileType != "" {
+			info += fmt.Sprintf("|15Dropfile: |07%s\r\n", doorConfig.DropfileType)
+		}
+		if doorConfig.IsDOS && len(doorConfig.DOSCommands) > 0 {
+			info += fmt.Sprintf("|15DOS Commands: |07%s\r\n", strings.Join(doorConfig.DOSCommands, " && "))
+		}
+
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(info)), outputMode)
+		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+
 		return currentUser, "", nil
 	}
-
-	if upperInput == "?" {
-		runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
-		return currentUser, "", nil
-	}
-
-	// Look up door
-	doorConfig, exists := e.GetDoorConfig(upperInput)
-	if !exists {
-		msg := fmt.Sprintf(e.LoadedStrings.DoorNotFoundFormat, inputClean)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
-		time.Sleep(1 * time.Second)
-		return currentUser, "", nil
-	}
-
-	// Display door info
-	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-	doorType := "Native Linux"
-	if doorConfig.IsDOS {
-		doorType = "DOS (dosemu2)"
-	}
-
-	info := fmt.Sprintf("|15Door: |07%s\r\n|15Type: |07%s\r\n", upperInput, doorType)
-	if doorConfig.Command != "" {
-		info += fmt.Sprintf("|15Command: |07%s\r\n", doorConfig.Command)
-	}
-	if doorConfig.WorkingDirectory != "" {
-		info += fmt.Sprintf("|15Directory: |07%s\r\n", doorConfig.WorkingDirectory)
-	}
-	if doorConfig.DropfileType != "" {
-		info += fmt.Sprintf("|15Dropfile: |07%s\r\n", doorConfig.DropfileType)
-	}
-	if doorConfig.IsDOS && len(doorConfig.DOSCommands) > 0 {
-		info += fmt.Sprintf("|15DOS Commands: |07%s\r\n", strings.Join(doorConfig.DOSCommands, " && "))
-	}
-
-	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(info)), outputMode)
-	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
-
-	return currentUser, "", nil
 }

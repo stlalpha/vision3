@@ -5,6 +5,7 @@ import "time"
 // MessageArea defines the structure for a message base/forum.
 type MessageArea struct {
 	ID           int    `json:"id"`                        // Unique local ID for the area
+	Position     int    `json:"position"`                  // Display/sort order (1-based)
 	Tag          string `json:"tag"`                       // Short, unique tag (e.g., "GENERAL", "FSX_GEN")
 	Name         string `json:"name"`                      // Display name
 	Description  string `json:"description"`               // Longer description

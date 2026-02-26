@@ -15,6 +15,7 @@ const conferencesFile = "conferences.json"
 // Conference defines a grouping of message and/or file areas.
 type Conference struct {
 	ID          int    `json:"id"`
+	Position    int    `json:"position"`
 	Tag         string `json:"tag"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
@@ -91,6 +92,28 @@ func (cm *ConferenceManager) loadConferences() error {
 		log.Printf("TRACE: Loaded conference ID %d, Tag '%s', Name '%s'", conf.ID, conf.Tag, conf.Name)
 	}
 
+	// Migration: auto-assign positions if all are 0 (pre-Position data)
+	allZero := true
+	for _, conf := range cm.conferencesByID {
+		if conf.Position != 0 {
+			allZero = false
+			break
+		}
+	}
+	if allZero && len(cm.conferencesByID) > 0 {
+		sorted := make([]*Conference, 0, len(cm.conferencesByID))
+		for _, conf := range cm.conferencesByID {
+			sorted = append(sorted, conf)
+		}
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].ID < sorted[j].ID
+		})
+		for i, conf := range sorted {
+			conf.Position = i + 1
+		}
+		log.Printf("INFO: Auto-assigned positions to %d conferences (migration)", len(sorted))
+	}
+
 	return nil
 }
 
@@ -120,14 +143,17 @@ func (cm *ConferenceManager) ListConferences() []*Conference {
 		list = append(list, conf)
 	}
 	sort.Slice(list, func(i, j int) bool {
-		return list[i].ID < list[j].ID
+		return list[i].Position < list[j].Position
 	})
 	return list
 }
 
 // GetSortedConferenceIDs returns a sorted list of conference IDs present in the given
-// set of conference IDs. ID 0 (ungrouped) is placed first if present.
+// set of conference IDs, ordered by conference Position. ID 0 (ungrouped) is placed first if present.
 func (cm *ConferenceManager) GetSortedConferenceIDs(confIDs map[int]bool) []int {
+	cm.mu.RLock()
+	defer cm.mu.RUnlock()
+
 	var ids []int
 	hasZero := false
 	for id := range confIDs {
@@ -137,7 +163,20 @@ func (cm *ConferenceManager) GetSortedConferenceIDs(confIDs map[int]bool) []int 
 		}
 		ids = append(ids, id)
 	}
-	sort.Ints(ids)
+	// Sort by conference Position (fall back to ID for unknown conferences)
+	sort.Slice(ids, func(i, j int) bool {
+		pi, pj := ids[i], ids[j]
+		ci, oki := cm.conferencesByID[pi]
+		cj, okj := cm.conferencesByID[pj]
+		posI, posJ := pi, pj // fallback to ID
+		if oki {
+			posI = ci.Position
+		}
+		if okj {
+			posJ = cj.Position
+		}
+		return posI < posJ
+	})
 	if hasZero {
 		ids = append([]int{0}, ids...)
 	}

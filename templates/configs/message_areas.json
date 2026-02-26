@@ -1,6 +1,7 @@
 [
     {
         "id": 1,
+        "position": 1,
         "tag": "GENERAL",
         "name": "General Discussion",
         "description": "General discussion area",
@@ -17,6 +18,7 @@
     },
     {
         "id": 2,
+        "position": 2,
         "tag": "SYSOP",
         "name": "SysOp Area",
         "description": "Private sysop discussion",
@@ -32,6 +34,7 @@
     },
     {
         "id": 3,
+        "position": 3,
         "tag": "NETMAIL",
         "name": "Netmail",
         "description": "Netmail area",
@@ -47,6 +50,7 @@
     },
     {
         "id": 4,
+        "position": 4,
         "tag": "BAD",
         "name": "Bad Area",
         "description": "Bad message area",
@@ -62,6 +66,7 @@
     },
     {
         "id": 5,
+        "position": 5,
         "tag": "DUPE",
         "name": "Dupe Area",
         "description": "Dupe message area",
@@ -77,6 +82,7 @@
     },
     {
         "id": 6,
+        "position": 6,
         "tag": "PRIVMAIL",
         "name": "Private Mail",
         "description": "Private user-to-user mail",
@@ -94,6 +100,7 @@
     {
         "_comment": "Example echomail area. Use 'helper ftnsetup' to auto-populate from a FIDONET.NA file. Remove this entry and configure for your network.",
         "id": 7,
+        "position": 7,
         "tag": "FSX_GEN",
         "name": "General Chat + More..",
         "description": "FSXNet general discussion area",

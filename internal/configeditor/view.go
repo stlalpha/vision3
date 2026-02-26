@@ -14,7 +14,7 @@ func (m Model) View() string {
 		return m.viewSysConfigMenu()
 	case modeSysConfigEdit, modeSysConfigField:
 		return m.viewSysConfigEdit()
-	case modeRecordList:
+	case modeRecordList, modeRecordReorder:
 		return m.viewRecordList()
 	case modeRecordEdit, modeRecordField:
 		return m.viewRecordEdit()
@@ -35,25 +35,32 @@ func (m Model) View() string {
 	return m.viewTopMenu()
 }
 
+// globalHeaderLine returns the persistent global header shown on every screen.
+func (m Model) globalHeaderLine() string {
+	title := centerText("-- ViSiON/3 Configuration Editor v1.0 --", m.width)
+	return globalHeaderBarStyle.Render(title)
+}
+
 // viewTopMenu renders the top-level menu.
 func (m Model) viewTopMenu() string {
 	var b strings.Builder
 
-	// Title bar
-	title := centerText("-- ViSiON/3 Configuration Editor v1.0 --", m.width)
-	b.WriteString(titleBarStyle.Render(title))
+	// Global header
+	b.WriteString(m.globalHeaderLine())
 	b.WriteByte('\n')
 
 	bgLine := bgFillStyle.Render(strings.Repeat("░", m.width))
 
 	// Menu box dimensions
 	boxW := 42
-	boxH := len(m.topItems) + 4 // borders + header + blank + items + blank
+	// Box: top border + header + empty + items + empty + bottom border = items + 5
+	// Fixed rows: global header(1) + box + message line(1) + help bar(1) = box + 3
+	boxH := len(m.topItems) + 5
 
 	// Vertical centering
-	extraV := maxInt(0, m.height-boxH-2) // -2 for title bar and help bar
-	topPad := maxInt(1, extraV/2)
-	bottomPad := maxInt(1, extraV-topPad)
+	extraV := maxInt(0, m.height-boxH-3)
+	topPad := extraV / 2
+	bottomPad := extraV - topPad
 
 	for i := 0; i < topPad; i++ {
 		b.WriteString(bgLine)
@@ -66,7 +73,7 @@ func (m Model) viewTopMenu() string {
 
 	// Top border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		menuBorderStyle.Render("╒"+strings.Repeat("═", boxW)+"╕") +
+		menuBorderStyle.Render("┌"+strings.Repeat("─", boxW)+"┐") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 
@@ -115,7 +122,7 @@ func (m Model) viewTopMenu() string {
 
 	// Bottom border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		menuBorderStyle.Render("╘"+strings.Repeat("═", boxW)+"╛") +
+		menuBorderStyle.Render("└"+strings.Repeat("─", boxW)+"┘") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 
@@ -147,18 +154,20 @@ func (m Model) viewTopMenu() string {
 func (m Model) viewSysConfigMenu() string {
 	var b strings.Builder
 
-	title := centerText("-- System Configuration --", m.width)
-	b.WriteString(titleBarStyle.Render(title))
+	// Global header
+	b.WriteString(m.globalHeaderLine())
 	b.WriteByte('\n')
 
 	bgLine := bgFillStyle.Render(strings.Repeat("░", m.width))
 
 	boxW := 38
-	boxH := len(m.sysMenuItems) + 4
+	// Box: border + header + empty + sysMenuItems + "Q. Return" + empty + border
+	boxH := len(m.sysMenuItems) + 6
 
-	extraV := maxInt(0, m.height-boxH-2)
-	topPad := maxInt(1, extraV/2)
-	bottomPad := maxInt(1, extraV-topPad)
+	// Vertical centering: -3 for global header, message line, help bar
+	extraV := maxInt(0, m.height-boxH-3)
+	topPad := extraV / 2
+	bottomPad := extraV - topPad
 
 	for i := 0; i < topPad; i++ {
 		b.WriteString(bgLine)
@@ -170,7 +179,7 @@ func (m Model) viewSysConfigMenu() string {
 
 	// Top border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		menuBorderStyle.Render("╒"+strings.Repeat("═", boxW)+"╕") +
+		menuBorderStyle.Render("┌"+strings.Repeat("─", boxW)+"┐") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 
@@ -231,7 +240,7 @@ func (m Model) viewSysConfigMenu() string {
 
 	// Bottom border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		menuBorderStyle.Render("╘"+strings.Repeat("═", boxW)+"╛") +
+		menuBorderStyle.Render("└"+strings.Repeat("─", boxW)+"┘") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 

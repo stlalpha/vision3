@@ -54,7 +54,7 @@ func (m Model) viewLookupPicker() string {
 
 	// Top border
 	dialogLines = append(dialogLines,
-		menuBorderStyle.Render("╒"+strings.Repeat("═", boxW)+"╕"))
+		menuBorderStyle.Render("┌"+strings.Repeat("─", boxW)+"┐"))
 
 	// Title
 	dialogLines = append(dialogLines,
@@ -97,7 +97,7 @@ func (m Model) viewLookupPicker() string {
 
 	// Bottom border
 	dialogLines = append(dialogLines,
-		menuBorderStyle.Render("╘"+strings.Repeat("═", boxW)+"╛"))
+		menuBorderStyle.Render("└"+strings.Repeat("─", boxW)+"┘"))
 
 	// Help line (not inside box, rendered below)
 	helpLine := menuItemStyle.Render(

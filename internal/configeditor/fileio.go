@@ -3,8 +3,10 @@ package configeditor
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/stlalpha/vision3/internal/archiver"
 	"github.com/stlalpha/vision3/internal/conference"
@@ -50,6 +52,10 @@ func loadAllConfigs(configPath string) (allConfigs, error) {
 	if err != nil {
 		return ac, fmt.Errorf("loading message areas: %w", err)
 	}
+
+	// Sort message areas by conference position, then by area position within
+	// each conference so the TUI list groups areas under their conference.
+	sortMsgAreasByConference(ac.MsgAreas, ac.Conferences)
 
 	// File areas
 	ac.FileAreas, err = loadJSONSlice[file.FileArea](configPath, "file_areas.json")
@@ -218,4 +224,40 @@ func saveFileAreas(configPath string, areas []file.FileArea) error {
 // saveLoginSeq writes login sequence back to disk.
 func saveLoginSeq(configPath string, items []config.LoginItem) error {
 	return saveJSONSlice(configPath, "login.json", items)
+}
+
+// sortMsgAreasByConference sorts message areas by conference display position,
+// then by area position within each conference. Areas whose conference is not
+// found sort to the end.
+func sortMsgAreasByConference(areas []message.MessageArea, confs []conference.Conference) {
+	// Build lookup: conference ID → conference Position.
+	confPos := make(map[int]int, len(confs))
+	for _, c := range confs {
+		confPos[c.ID] = c.Position
+	}
+	sort.SliceStable(areas, func(i, j int) bool {
+		ci := confPos[areas[i].ConferenceID]
+		cj := confPos[areas[j].ConferenceID]
+		if ci == 0 {
+			ci = math.MaxInt32
+		}
+		if cj == 0 {
+			cj = math.MaxInt32
+		}
+		if ci != cj {
+			return ci < cj
+		}
+		return areas[i].Position < areas[j].Position
+	})
+}
+
+// confTagByID returns the conference Tag for the given conference ID,
+// or "?" if not found.
+func confTagByID(confs []conference.Conference, confID int) string {
+	for _, c := range confs {
+		if c.ID == confID {
+			return c.Tag
+		}
+	}
+	return "?"
 }

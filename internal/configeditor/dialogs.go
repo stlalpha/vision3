@@ -19,9 +19,9 @@ func (m Model) overlayConfirmDialog(background, title, question string) string {
 		startCol = 0
 	}
 
-	border := dialogBorderStyle.Render("╔" + strings.Repeat("═", dialogW-2) + "╗")
-	borderBot := dialogBorderStyle.Render("╚" + strings.Repeat("═", dialogW-2) + "╝")
-	side := dialogBorderStyle.Render("║")
+	border := dialogBorderStyle.Render("┌" + strings.Repeat("─", dialogW-2) + "┐")
+	borderBot := dialogBorderStyle.Render("└" + strings.Repeat("─", dialogW-2) + "┘")
+	side := dialogBorderStyle.Render("│")
 
 	// Title line
 	titlePad := (dialogW - 2 - len(title)) / 2
@@ -96,9 +96,9 @@ func (m Model) overlayHelpScreen(background string) string {
 	helpBorder := helpBoxStyle
 	helpTitle := helpTitleStyle
 
-	border := helpBorder.Render("╔" + strings.Repeat("═", dialogW-2) + "╗")
-	borderBot := helpBorder.Render("╚" + strings.Repeat("═", dialogW-2) + "╝")
-	side := helpBorder.Render("║")
+	border := helpBorder.Render("┌" + strings.Repeat("─", dialogW-2) + "┐")
+	borderBot := helpBorder.Render("└" + strings.Repeat("─", dialogW-2) + "┘")
+	side := helpBorder.Render("│")
 
 	helpLines := []string{
 		border,

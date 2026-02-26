@@ -54,6 +54,12 @@ func dosColor(bg, fg int) lipgloss.Style {
 		Background(lipgloss.Color(dosBgColors[bg&0x07]))
 }
 
+// --- Global header bar (white text on dark gray bg) ---
+var globalHeaderBarStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(dosColors[15])).
+	Background(lipgloss.Color("8")).
+	Bold(true)
+
 // --- Title/Status bars ---
 var titleBarStyle = dosColor(0, 15).Bold(true).Background(lipgloss.Color("8"))
 
@@ -81,9 +87,6 @@ var fieldDisplayStyle = dosStyle(30)
 
 // --- Field value (edit mode): blue bg, yellow fg ---
 var fieldEditStyle = dosColor(1, 14)
-
-// --- Edit screen title bar ---
-var editTitleStyle = dosColor(0, 15).Bold(true).Background(lipgloss.Color("8"))
 
 // --- Edit screen border ---
 var editBorderStyle = dosColor(1, 9)
@@ -120,6 +123,9 @@ var buttonActiveStyle = lipgloss.NewStyle().
 var buttonInactiveStyle = lipgloss.NewStyle().
 	Foreground(lipgloss.Color(dosColors[15])).
 	Background(lipgloss.Color(dosColors[5]))
+
+// --- Reorder source row (green bg, white fg) ---
+var reorderSourceStyle = dosColor(2, 15)
 
 // --- Separator style ---
 var separatorStyle = dosColor(1, 9)

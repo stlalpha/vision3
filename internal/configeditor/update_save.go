@@ -96,13 +96,18 @@ func (m *Model) insertRecord() {
 	switch m.recordType {
 	case "msgarea":
 		newID := 1
+		maxPos := 0
 		for _, a := range m.configs.MsgAreas {
 			if a.ID >= newID {
 				newID = a.ID + 1
 			}
+			if a.Position > maxPos {
+				maxPos = a.Position
+			}
 		}
 		m.configs.MsgAreas = append(m.configs.MsgAreas, message.MessageArea{
 			ID:       newID,
+			Position: maxPos + 1,
 			Name:     "New Message Area",
 			AreaType: "local",
 		})
@@ -119,14 +124,19 @@ func (m *Model) insertRecord() {
 		})
 	case "conference":
 		newID := 1
+		maxPos := 0
 		for _, c := range m.configs.Conferences {
 			if c.ID >= newID {
 				newID = c.ID + 1
 			}
+			if c.Position > maxPos {
+				maxPos = c.Position
+			}
 		}
 		m.configs.Conferences = append(m.configs.Conferences, conference.Conference{
-			ID:   newID,
-			Name: "New Conference",
+			ID:       newID,
+			Position: maxPos + 1,
+			Name:     "New Conference",
 		})
 	case "door":
 		name := fmt.Sprintf("newdoor%d", len(m.configs.Doors)+1)

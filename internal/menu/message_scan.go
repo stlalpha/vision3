@@ -538,24 +538,27 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
-	// Sort areas by conference ID to prevent duplicate conference headers
-	sort.Slice(allAreas, func(i, j int) bool {
-		if allAreas[i].ConferenceID != allAreas[j].ConferenceID {
-			return allAreas[i].ConferenceID < allAreas[j].ConferenceID
+	// Build conference lookup maps for name and position.
+	confNameMap := make(map[int]string)
+	confPosMap := make(map[int]int)
+	if e.ConferenceMgr != nil {
+		for _, conf := range e.ConferenceMgr.ListConferences() {
+			confNameMap[conf.ID] = conf.Name
+			confPosMap[conf.ID] = conf.Position
 		}
-		return allAreas[i].ID < allAreas[j].ID
+	}
+
+	// Sort areas by conference Position, then by area Position within each conference.
+	sort.Slice(allAreas, func(i, j int) bool {
+		ci, cj := confPosMap[allAreas[i].ConferenceID], confPosMap[allAreas[j].ConferenceID]
+		if ci != cj {
+			return ci < cj
+		}
+		return allAreas[i].Position < allAreas[j].Position
 	})
 
 	// Build accessible areas list
 	var accessibleAreas []areaListItem
-
-	// Group areas by conference
-	confMap := make(map[int]string)
-	if e.ConferenceMgr != nil {
-		for _, conf := range e.ConferenceMgr.ListConferences() {
-			confMap[conf.ID] = conf.Name
-		}
-	}
 
 	// Build area list with conference headers
 	currentConfID := -1
@@ -568,7 +571,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		// Add conference header if changed
 		if area.ConferenceID != currentConfID {
 			currentConfID = area.ConferenceID
-			confName := confMap[area.ConferenceID]
+			confName := confNameMap[area.ConferenceID]
 			if confName == "" {
 				confName = "General"
 			}
@@ -580,7 +583,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 		accessibleAreas = append(accessibleAreas, areaListItem{
 			area:     area,
-			confName: confMap[area.ConferenceID],
+			confName: confNameMap[area.ConferenceID],
 			isHeader: false,
 		})
 	}

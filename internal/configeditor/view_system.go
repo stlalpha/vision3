@@ -11,14 +11,14 @@ import (
 func (m Model) viewSysConfigEdit() string {
 	var b strings.Builder
 
-	// Title bar with sub-screen name
+	// Global header
+	b.WriteString(m.globalHeaderLine())
+	b.WriteByte('\n')
+
 	screenName := ""
 	if m.sysSubScreen < len(m.sysMenuItems) {
 		screenName = m.sysMenuItems[m.sysSubScreen].Label
 	}
-	title := centerText(fmt.Sprintf("-- %s --", screenName), m.width)
-	b.WriteString(editTitleStyle.Render(title))
-	b.WriteByte('\n')
 
 	bgLine := bgFillStyle.Render(strings.Repeat("░", m.width))
 
@@ -35,15 +35,11 @@ func (m Model) viewSysConfigEdit() string {
 	if visibleRows > maxFieldRows {
 		visibleRows = maxFieldRows
 	}
-	boxContentH := visibleRows + 2 // content rows + padding
-	if boxContentH < 5 {
-		boxContentH = 5
-	}
-
-	// Vertical centering
-	extraV := maxInt(0, m.height-boxContentH-4) // title + borders + help
-	topPad := maxInt(1, extraV/2)
-	bottomPad := maxInt(1, extraV-topPad)
+	// Fixed rows: globalheader(1) + box(border+header+empty+visibleRows+empty+info+border = visibleRows+6) + helptxt(1) + bgline(1) + helpbar(1)
+	// Total fixed = visibleRows + 10
+	extraV := maxInt(0, m.height-visibleRows-10)
+	topPad := extraV / 2
+	bottomPad := extraV - topPad
 
 	for i := 0; i < topPad; i++ {
 		b.WriteString(bgLine)
@@ -55,7 +51,7 @@ func (m Model) viewSysConfigEdit() string {
 
 	// Top border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		editBorderStyle.Render("╒"+strings.Repeat("═", boxW)+"╕") +
+		editBorderStyle.Render("┌"+strings.Repeat("─", boxW)+"┐") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 
@@ -123,7 +119,7 @@ func (m Model) viewSysConfigEdit() string {
 
 	// Bottom border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		editBorderStyle.Render("╘"+strings.Repeat("═", boxW)+"╛") +
+		editBorderStyle.Render("└"+strings.Repeat("─", boxW)+"┘") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 

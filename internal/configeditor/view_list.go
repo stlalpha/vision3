@@ -9,9 +9,8 @@ import (
 func (m Model) viewRecordList() string {
 	var b strings.Builder
 
-	// Title bar
-	title := centerText(fmt.Sprintf("-- %s --", m.recordTypeTitle()), m.width)
-	b.WriteString(titleBarStyle.Render(title))
+	// Global header
+	b.WriteString(m.globalHeaderLine())
 	b.WriteByte('\n')
 
 	bgLine := bgFillStyle.Render(strings.Repeat("░", m.width))
@@ -19,11 +18,11 @@ func (m Model) viewRecordList() string {
 	boxW := 70
 	listVisible := m.recordListVisible()
 
-	// Vertical centering: title + border + header + blank + listVisible + blank + border + msg + help
-	fixedRows := listVisible + 7
+	// Fixed rows: globalheader(1) + border(1) + boxtitle(1) + colheader(1) + sep(1) + listVisible + border(1) + msg(1) + help(1)
+	fixedRows := listVisible + 8
 	extraV := maxInt(0, m.height-fixedRows)
-	topPad := maxInt(1, extraV/2)
-	bottomPad := maxInt(1, extraV-topPad)
+	topPad := extraV / 2
+	bottomPad := extraV - topPad
 
 	for i := 0; i < topPad; i++ {
 		b.WriteString(bgLine)
@@ -35,11 +34,19 @@ func (m Model) viewRecordList() string {
 
 	// Top border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		menuBorderStyle.Render("╒"+strings.Repeat("═", boxW)+"╕") +
+		menuBorderStyle.Render("┌"+strings.Repeat("─", boxW)+"┐") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 
-	// Header
+	// Box title (record type)
+	boxTitle := menuBorderStyle.Render("│") +
+		menuHeaderStyle.Render(centerText(m.recordTypeTitle(), boxW)) +
+		menuBorderStyle.Render("│")
+	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) + boxTitle +
+		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
+	b.WriteByte('\n')
+
+	// Column header
 	colHeader := m.recordColumnHeader(boxW)
 	headerLine := menuBorderStyle.Render("│") +
 		menuHeaderStyle.Render(padRight(colHeader, boxW)) +
@@ -59,18 +66,25 @@ func (m Model) viewRecordList() string {
 
 	// List rows
 	total := m.recordCount()
+	inReorder := m.mode == modeRecordReorder
 	for row := 0; row < listVisible; row++ {
 		idx := m.recordScroll + row
 		isHighlight := idx == m.recordCursor
+		isSource := inReorder && idx == m.reorderSourceIdx
 
 		var rowContent string
 		if idx < 0 || idx >= total {
 			rowContent = menuItemStyle.Render(strings.Repeat(" ", boxW))
 		} else {
 			content := m.renderRecordRow(idx, boxW)
-			if isHighlight {
+			switch {
+			case isSource && isHighlight:
+				rowContent = reorderSourceStyle.Render(content)
+			case isSource:
+				rowContent = reorderSourceStyle.Render(content)
+			case isHighlight:
 				rowContent = menuHighlightStyle.Render(content)
-			} else {
+			default:
 				rowContent = menuItemStyle.Render(content)
 			}
 		}
@@ -86,7 +100,7 @@ func (m Model) viewRecordList() string {
 
 	// Bottom border
 	b.WriteString(bgFillStyle.Render(strings.Repeat("░", padL)) +
-		menuBorderStyle.Render("╘"+strings.Repeat("═", boxW)+"╛") +
+		menuBorderStyle.Render("└"+strings.Repeat("─", boxW)+"┘") +
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 
@@ -106,7 +120,20 @@ func (m Model) viewRecordList() string {
 		b.WriteByte('\n')
 	}
 
-	helpText := centerText("Enter - Edit  |  I - Insert  |  D - Delete  |  ESC - Return", m.width)
+	var helpStr string
+	if inReorder {
+		helpStr = "Up/Down - Move  |  Enter - Confirm  |  ESC - Cancel"
+		if m.recordType == "msgarea" && m.reorderSourceIdx >= 0 && m.reorderSourceIdx < len(m.configs.MsgAreas) {
+			confID := m.configs.MsgAreas[m.reorderSourceIdx].ConferenceID
+			cTag := confTagByID(m.configs.Conferences, confID)
+			helpStr = fmt.Sprintf("Reorder within: %s  |  Up/Down - Move  |  Enter - Confirm  |  ESC - Cancel", cTag)
+		}
+	} else if m.recordTypeSupportsReorder() {
+		helpStr = "Enter - Edit  |  I - Insert  |  D - Delete  |  P - Position  |  ESC - Return"
+	} else {
+		helpStr = "Enter - Edit  |  I - Insert  |  D - Delete  |  ESC - Return"
+	}
+	helpText := centerText(helpStr, m.width)
 	b.WriteString(helpBarStyle.Render(helpText))
 
 	return b.String()
@@ -141,11 +168,11 @@ func (m Model) recordTypeTitle() string {
 func (m Model) recordColumnHeader(boxW int) string {
 	switch m.recordType {
 	case "msgarea":
-		return "  #  Tag                  Name                         Type"
+		return "  #  Conf      Tag              Name                        Type"
 	case "filearea":
 		return "  #  Tag                  Name                         Path"
 	case "conference":
-		return "  #  Tag                  Name                         ACS"
+		return " Pos  #  Tag               Name                         ACS"
 	case "door":
 		return "  Key                     Name                         I/O Mode"
 	case "event":
@@ -170,7 +197,8 @@ func (m Model) renderRecordRow(idx, boxW int) string {
 	case "msgarea":
 		if idx < len(m.configs.MsgAreas) {
 			a := m.configs.MsgAreas[idx]
-			content = fmt.Sprintf(" %3d  %-20s %-28s %s", a.ID, padRight(a.Tag, 20), padRight(a.Name, 28), a.AreaType)
+			cTag := confTagByID(m.configs.Conferences, a.ConferenceID)
+			content = fmt.Sprintf(" %3d  %-8s  %-16s %-27s %s", a.ID, padRight(cTag, 8), padRight(a.Tag, 16), padRight(a.Name, 27), a.AreaType)
 		}
 	case "filearea":
 		if idx < len(m.configs.FileAreas) {
@@ -180,7 +208,7 @@ func (m Model) renderRecordRow(idx, boxW int) string {
 	case "conference":
 		if idx < len(m.configs.Conferences) {
 			c := m.configs.Conferences[idx]
-			content = fmt.Sprintf(" %3d  %-20s %-28s %s", c.ID, padRight(c.Tag, 20), padRight(c.Name, 28), c.ACS)
+			content = fmt.Sprintf(" %3d %3d  %-17s %-28s %s", c.Position, c.ID, padRight(c.Tag, 17), padRight(c.Name, 28), c.ACS)
 		}
 	case "door":
 		keys := m.doorKeys()
