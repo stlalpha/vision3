@@ -24,6 +24,14 @@
 
 * **MENU SYSTEM**
 * [Menus & ACS](menus/menu-system.md)
+* [Menu Files (.MNU)](menus/menu-system.md#menu-configuration-files-mnu)
+* [Command Files (.CFG)](menus/menu-system.md#command-definition-files-cfg)
+* [ANSI Art (.ANS)](menus/menu-system.md#ansi-art-files-ans)
+* [Access Control (ACS)](menus/menu-system.md#access-control-strings-acs)
+* [Pre-Login Matrix](menus/menu-system.md#pre-login-matrix-screen)
+* [Pre-Login ANSI](menus/menu-system.md#pre-login-ansi-files-prelogon)
+* [Built-in Functions](menus/menu-system.md#built-in-functions)
+* [Templates](menus/menu-system.md#template-files-top--mid--bot)
 
 * **USERS**
 * [User Management](users/user-management.md)
