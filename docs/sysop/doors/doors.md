@@ -4,7 +4,7 @@ Doors are external programs launched from the BBS. ViSiON/3 generates a dropfile
 
 ## Configuration
 
-Use the [Configuration Editor](configuration/configuration.md#configuration-editor-tui) (`./config`, section 5 — Door Programs) to add, edit, and remove door definitions interactively. This is the recommended approach.
+Use the [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 5 — Door Programs) to add, edit, and remove door definitions interactively. This is the recommended approach.
 
 ### JSON Reference
 
@@ -57,4 +57,4 @@ The following placeholders can be used in `args` and are substituted at runtime:
 
 ## Menu Integration
 
-Doors are launched via menu commands. Add a menu entry with the `DOOR` command type and specify the door key as the data parameter. See [Menus & ACS](menus/menu-system.md) for details.
+Doors are launched via menu commands. Add a menu entry with the `DOOR` command type and specify the door key as the data parameter. See [Menus & ACS](../menus/menu-system.md) for details.
