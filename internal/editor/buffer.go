@@ -13,8 +13,9 @@ const (
 
 // MessageBuffer manages the text content of the message being edited
 type MessageBuffer struct {
-	lines     [MaxLines + 1]string // 1-based indexing, line 0 unused
-	lineCount int                  // Number of lines with content
+	lines       [MaxLines + 1]string // 1-based indexing, line 0 unused
+	hardNewline [MaxLines + 1]bool   // true = user-created line break (Enter); false = soft wrap
+	lineCount   int                  // Number of lines with content
 }
 
 // NewMessageBuffer creates a new message buffer
@@ -24,9 +25,26 @@ func NewMessageBuffer() *MessageBuffer {
 	}
 }
 
+// IsHardNewline returns whether the line ends with a hard return (user-created).
+func (mb *MessageBuffer) IsHardNewline(lineNum int) bool {
+	if lineNum < 1 || lineNum > MaxLines {
+		return false
+	}
+	return mb.hardNewline[lineNum]
+}
+
+// SetHardNewline sets or clears the hard-newline flag for a line.
+func (mb *MessageBuffer) SetHardNewline(lineNum int, hard bool) {
+	if lineNum < 1 || lineNum > MaxLines {
+		return
+	}
+	mb.hardNewline[lineNum] = hard
+}
+
 // LoadContent loads initial content into the buffer
 func (mb *MessageBuffer) LoadContent(content string) {
 	mb.lines = [MaxLines + 1]string{}
+	mb.hardNewline = [MaxLines + 1]bool{}
 	mb.lineCount = 1
 
 	if content == "" {
@@ -40,6 +58,7 @@ func (mb *MessageBuffer) LoadContent(content string) {
 			break
 		}
 		mb.lines[i+1] = line // 1-based indexing
+		mb.hardNewline[i+1] = true // loaded content = real line breaks
 		count++
 	}
 
@@ -70,15 +89,24 @@ func (mb *MessageBuffer) SetLine(lineNum int, content string) {
 	}
 }
 
-// GetLineCount returns the current number of lines
+// GetLineCount returns the number of navigable lines (includes trailing blank
+// lines created by the user). Used for cursor bounds and navigation.
 func (mb *MessageBuffer) GetLineCount() int {
-	// Count actual non-empty lines from the end
+	if mb.lineCount < 1 {
+		return 1
+	}
+	return mb.lineCount
+}
+
+// GetContentLineCount returns the line count for content output, trimming
+// trailing empty lines. Used by GetContent() for storage.
+func (mb *MessageBuffer) GetContentLineCount() int {
 	count := mb.lineCount
 	for count > 0 && strings.TrimSpace(mb.lines[count]) == "" {
 		count--
 	}
 	if count == 0 {
-		count = 1 // Always have at least one line
+		count = 1
 	}
 	return count
 }
@@ -187,15 +215,17 @@ func (mb *MessageBuffer) InsertLine(lineNum int) bool {
 		return false
 	}
 
-	// Shift lines down from the insertion point
+	// Shift lines and hardNewline flags down from the insertion point
 	for i := mb.lineCount; i >= lineNum; i-- {
 		if i+1 <= MaxLines {
 			mb.lines[i+1] = mb.lines[i]
+			mb.hardNewline[i+1] = mb.hardNewline[i]
 		}
 	}
 
 	// Clear the new line
 	mb.lines[lineNum] = ""
+	mb.hardNewline[lineNum] = false
 	mb.lineCount++
 
 	return true
@@ -207,13 +237,15 @@ func (mb *MessageBuffer) DeleteLine(lineNum int) bool {
 		return false
 	}
 
-	// Shift lines up from the deletion point
+	// Shift lines and hardNewline flags up from the deletion point
 	for i := lineNum; i < mb.lineCount; i++ {
 		mb.lines[i] = mb.lines[i+1]
+		mb.hardNewline[i] = mb.hardNewline[i+1]
 	}
 
 	// Clear the last line
 	mb.lines[mb.lineCount] = ""
+	mb.hardNewline[mb.lineCount] = false
 	mb.lineCount--
 
 	// Always have at least one line
@@ -225,14 +257,18 @@ func (mb *MessageBuffer) DeleteLine(lineNum int) bool {
 	return true
 }
 
-// SplitLine splits a line at the specified column (1-based)
-// Returns true if successful
+// SplitLine splits a line at the specified column (1-based).
+// The split line (lineNum) gets hardNewline=false; the caller sets it to true
+// for user-initiated splits (Enter, Ctrl+N). The new line (lineNum+1) inherits
+// the original hardNewline value of lineNum.
+// Returns true if successful.
 func (mb *MessageBuffer) SplitLine(lineNum, col int) bool {
 	if lineNum < 1 || lineNum > mb.lineCount || mb.lineCount >= MaxLines {
 		return false
 	}
 
 	line := mb.lines[lineNum]
+	oldHardNewline := mb.hardNewline[lineNum]
 
 	// Split the line at the column
 	var leftPart, rightPart string
@@ -254,25 +290,41 @@ func (mb *MessageBuffer) SplitLine(lineNum, col int) bool {
 	if !mb.InsertLine(lineNum + 1) {
 		// Restore if insertion failed
 		mb.lines[lineNum] = line
+		mb.hardNewline[lineNum] = oldHardNewline
 		return false
 	}
 	mb.lines[lineNum+1] = rightPart
 
+	// Split line gets false (caller decides); new line inherits old value
+	mb.hardNewline[lineNum] = false
+	mb.hardNewline[lineNum+1] = oldHardNewline
+
 	return true
 }
 
-// JoinLines joins the current line with the next line
+// JoinLines joins the current line with the next line.
+// The combined line inherits hardNewline from the second line (lineNum+1),
+// since the end of the combined line is where line lineNum+1 used to end.
 func (mb *MessageBuffer) JoinLines(lineNum int) bool {
 	if lineNum < 1 || lineNum >= mb.lineCount {
 		return false
 	}
+
+	// Save the second line's hardNewline before it gets shifted by DeleteLine
+	nextHardNewline := mb.hardNewline[lineNum+1]
 
 	// Combine the two lines
 	combined := mb.lines[lineNum] + mb.lines[lineNum+1]
 	mb.lines[lineNum] = combined
 
 	// Delete the next line
-	return mb.DeleteLine(lineNum + 1)
+	if !mb.DeleteLine(lineNum + 1) {
+		return false
+	}
+
+	// Combined line inherits the second line's hard newline status
+	mb.hardNewline[lineNum] = nextHardNewline
+	return true
 }
 
 // RemoveTrailingSpaces removes trailing spaces from a line
@@ -283,11 +335,12 @@ func (mb *MessageBuffer) RemoveTrailingSpaces(lineNum int) {
 	mb.lines[lineNum] = strings.TrimRight(mb.lines[lineNum], " ")
 }
 
-// GetContent returns the entire buffer content as a string
+// GetContent returns the entire buffer content as a string.
+// Uses GetContentLineCount to trim trailing empty lines for storage.
 func (mb *MessageBuffer) GetContent() string {
 	var result strings.Builder
 
-	lineCount := mb.GetLineCount()
+	lineCount := mb.GetContentLineCount()
 	for i := 1; i <= lineCount; i++ {
 		if i > 1 {
 			result.WriteString("\n")
@@ -302,6 +355,7 @@ func (mb *MessageBuffer) GetContent() string {
 func (mb *MessageBuffer) Clear() {
 	for i := 1; i <= MaxLines; i++ {
 		mb.lines[i] = ""
+		mb.hardNewline[i] = false
 	}
 	mb.lineCount = 1
 }

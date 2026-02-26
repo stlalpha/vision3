@@ -299,7 +299,7 @@ func (e *FSEditor) insertCharacter(ch rune) {
 	e.modified = true
 
 	// Check for word wrap
-	newLine, newCol := e.wordWrapper.CheckAndWrap(e.currentLine, e.currentCol)
+	newLine, newCol := e.wordWrapper.WrapAfterInsert(e.currentLine, e.currentCol)
 	e.currentLine = newLine
 	e.currentCol = newCol
 }
@@ -308,6 +308,8 @@ func (e *FSEditor) insertCharacter(ch rune) {
 func (e *FSEditor) handleReturn() {
 	// Split line at cursor position
 	if e.buffer.SplitLine(e.currentLine, e.currentCol) {
+		// Mark the split line as a hard newline (user-created break)
+		e.buffer.SetHardNewline(e.currentLine, true)
 		e.currentLine++
 		e.currentCol = 1
 		e.modified = true
@@ -326,7 +328,10 @@ func (e *FSEditor) handleBackspace() {
 
 // handleDeleteKey processes the Delete key
 func (e *FSEditor) handleDeleteKey() {
-	if e.wordWrapper.HandleDelete(e.currentLine, e.currentCol) {
+	newLine, newCol, changed := e.wordWrapper.HandleDelete(e.currentLine, e.currentCol)
+	if changed {
+		e.currentLine = newLine
+		e.currentCol = newCol
 		e.modified = true
 	}
 }
@@ -437,7 +442,10 @@ func (e *FSEditor) toggleInsertMode() {
 
 // deleteWord deletes the word to the right of the cursor
 func (e *FSEditor) deleteWord() {
-	if e.wordWrapper.DeleteWord(e.currentLine, e.currentCol) {
+	newLine, newCol, changed := e.wordWrapper.DeleteWord(e.currentLine, e.currentCol)
+	if changed {
+		e.currentLine = newLine
+		e.currentCol = newCol
 		e.modified = true
 	}
 }
@@ -457,16 +465,21 @@ func (e *FSEditor) deleteLine() {
 	}
 }
 
-// joinLines joins current line with next line
+// joinLines joins current line with next line and reflows
 func (e *FSEditor) joinLines() {
 	if e.buffer.JoinLines(e.currentLine) {
 		e.modified = true
+		newLine, newCol := e.wordWrapper.ReflowRange(e.currentLine, e.currentLine, e.currentCol)
+		e.currentLine = newLine
+		e.currentCol = newCol
 	}
 }
 
-// splitLine splits the current line at the cursor
+// splitLine splits the current line at the cursor (user-initiated Ctrl+N)
 func (e *FSEditor) splitLine() {
 	if e.buffer.SplitLine(e.currentLine, e.currentCol) {
+		// Mark the split line as a hard newline (user-created break)
+		e.buffer.SetHardNewline(e.currentLine, true)
 		e.currentLine++
 		e.currentCol = 1
 		e.modified = true

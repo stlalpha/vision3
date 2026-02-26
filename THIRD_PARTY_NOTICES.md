@@ -27,7 +27,7 @@ https://github.com/pgul/binkd/blob/master/COPYING
 
 ---
 
-### 4. SEXYZ
+### 2. SEXYZ
 
 **Component:** X/Y/Z-modem file transfer protocols  
 **Version:** Current from Synchronet | **License:** GPL-2.0  
@@ -55,7 +55,7 @@ https://gitlab.synchro.net/main/sbbs/-/blob/master/LICENSE
 
 ### Requirements for Redistributors
 
-If you redistribute Retrograde BBS with bundled GPL software:
+If you redistribute ViSiON/3 BBS with bundled GPL software:
 
 1. Include this THIRD_PARTY_NOTICES.md file
 2. Ensure source code access via original repositories
@@ -65,7 +65,7 @@ If you redistribute Retrograde BBS with bundled GPL software:
 ### Our Modifications
 
 - **Build system only:** Modified Makefiles for cross-compilation
-- **Configuration files:** Example configs with Retrograde-specific paths
+- **Configuration files:** Example configs with ViSiON/3-specific paths
 - **No source changes:** Original utility code is unmodified
 
 ---
