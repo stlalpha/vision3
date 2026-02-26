@@ -32,28 +32,55 @@
             },
             plugins: [
                 function(hook) {
-                    function normalizePath(p) {
-                        return p
-                            .replace(/\.md$/, '')          // strip .md extension
-                            .replace(/(#\/[^#]*)(#.*)$/, '$1') // strip in-page anchors
-                            .replace(/\/$/, '');            // strip trailing slash
+                    function stripMd(p) {
+                        return p.replace(/\.md($|#)/, '$1').replace(/\/$/, '');
+                    }
+
+                    function getPage(p) {
+                        return p.replace(/(#\/[^#]*)(#.*)$/, '$1').replace(/\/$/, '');
+                    }
+
+                    function getAnchor(p) {
+                        var m = p.match(/(#\/[^#]*)(#.*)$/);
+                        return m ? m[2] : '';
                     }
 
                     function setActiveNav() {
-                        var current = normalizePath(decodeURIComponent(window.location.hash || '#/'));
+                        var raw = decodeURIComponent(window.location.hash || '#/');
+                        var current = stripMd(raw);
+                        var currentPage = getPage(current);
+                        var currentAnchor = getAnchor(current);
 
                         document.querySelectorAll('.sidebar-nav a').forEach(function(a) {
-                            var href = normalizePath(decodeURIComponent(a.getAttribute('href') || ''));
-                            a.classList.toggle('active', !!href && href === current);
+                            var href = stripMd(decodeURIComponent(a.getAttribute('href') || ''));
+                            var hrefPage = getPage(href);
+                            var hrefAnchor = getAnchor(href);
+                            var isActive = false;
+
+                            if (!href) {
+                                isActive = false;
+                            } else if (hrefAnchor) {
+                                // Link has an anchor: match only if both page and anchor match
+                                isActive = hrefPage === currentPage && hrefAnchor === currentAnchor;
+                            } else {
+                                // Page-only link: active if page matches and URL has no anchor
+                                isActive = hrefPage === currentPage && !currentAnchor;
+                            }
+
+                            a.classList.toggle('active', isActive);
                         });
                     }
 
                     hook.doneEach(function() {
-                        // Flat sidebar: strip any residual inline styles Docsify adds to collapse sections
                         document.querySelectorAll('.sidebar-nav ul').forEach(function(el) {
                             el.removeAttribute('style');
                         });
                         setActiveNav();
+                    });
+
+                    // Update active state when navigating to anchors within the same page
+                    hook.mounted(function() {
+                        window.addEventListener('hashchange', setActiveNav);
                     });
                 }
             ],
