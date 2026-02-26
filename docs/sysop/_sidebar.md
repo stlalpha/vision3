@@ -46,6 +46,8 @@
 * [Message Areas](messages/message-areas.md)
 * [Private Mail](messages/private-mail.md)
 * [FTN Echomail](messages/ftn-echomail.md)
+* [Tosser (v3mail)](messages/ftn-echomail.md#tosser-internal--v3mail)
+* [Mailer (binkd)](messages/ftn-echomail.md#mailer-external--binkd)
 * [JAM Echomail](messages/jam-echomail.md)
 * [V3Mail](messages/v3mail.md)
 * [Header Placeholders](messages/placeholders.md)
