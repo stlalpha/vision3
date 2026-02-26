@@ -146,6 +146,8 @@ The strings support pipe color codes:
 
 ## doors.json
 
+> *Use the [Configuration Editor](#configuration-editor-tui) (section 5 — Door Programs) to manage door settings interactively. The JSON structure below is for reference or manual editing.*
+
 Configures external door programs that can be launched from the BBS. The file contains an array of door configurations.
 
 ### Door Configuration Structure
@@ -191,6 +193,8 @@ Configures external door programs that can be launched from the BBS. The file co
 - `{LEVEL}` - Access level
 
 ## archivers.json
+
+> *Use the [Configuration Editor](#configuration-editor-tui) (section 9 — Archivers) to manage archiver settings interactively. The JSON structure below is for reference or manual editing.*
 
 Defines archive formats and the external tools used to pack, unpack, test, and list them. This centralized configuration ensures all subsystems (ZipLab upload pipeline, file area management, archive viewing) use the same archiver definitions, and that different platforms can specify their preferred tool versions.
 
@@ -256,6 +260,8 @@ To enable additional archive formats, set `"enabled": true` and ensure the corre
 FTN echomail bundles always use ZIP format (per FidoNet standard practice) and are handled natively by Go's `archive/zip` regardless of this configuration. This config applies to user-facing archive operations: file area uploads, archive viewing, ZipLab pipeline, etc.
 
 ## file_areas.json
+
+> *Use the [Configuration Editor](#configuration-editor-tui) (section 3 — File Areas) to manage file area settings interactively. The JSON structure below is for reference or manual editing.*
 
 Defines file areas available on the BBS. The file contains an array of file area configurations.
 
@@ -415,11 +421,15 @@ Leave paths empty (`""`) to disable the feature.
 
 ## message_areas.json
 
+> *Use the [Configuration Editor](#configuration-editor-tui) (section 2 — Message Areas) to manage message area settings interactively. The JSON structure below is for reference or manual editing.*
+
 Located in the `configs/` directory. Defines message areas available on the BBS.
 
 See [Message Areas Guide](../messages/message-areas.md) for detailed configuration.
 
 ## conferences.json
+
+> *Use the [Configuration Editor](#configuration-editor-tui) (section 4 — Conferences) to manage conference settings interactively. The JSON structure below is for reference or manual editing.*
 
 Located in the `configs/` directory. Defines conferences that group message areas and file areas together for organized display.
 

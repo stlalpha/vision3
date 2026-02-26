@@ -4,7 +4,11 @@ Doors are external programs launched from the BBS. ViSiON/3 generates a dropfile
 
 ## Configuration
 
-Door programs are defined in `configs/doors.json`. Each entry is keyed by a unique name:
+Use the [TUI Configuration Editor](configuration/configuration.md#configuration-editor-tui) (`./config`, section 5 — Door Programs) to add, edit, and remove door definitions interactively. This is the recommended approach.
+
+### JSON Reference
+
+Door programs are stored in `configs/doors.json`. Each entry is keyed by a unique name:
 
 ```json
 {
@@ -22,8 +26,6 @@ Door programs are defined in `configs/doors.json`. Each entry is keyed by a uniq
   }
 }
 ```
-
-You can also manage doors through the [TUI Configuration Editor](configuration/configuration.md#configuration-editor-tui) (section 5).
 
 ## Configuration Fields
 
