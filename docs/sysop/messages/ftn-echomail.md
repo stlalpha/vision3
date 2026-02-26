@@ -10,7 +10,7 @@ FTN echomail requires two components working together: a **tosser** (internal) a
 
 ### Tosser (Internal) — `v3mail`
 
-The tosser is built into Vision/3 via the `v3mail` command. It handles all message processing between the FTN network and your JAM message bases:
+The tosser is built into Vision/3 via the `v3mail` command, conceptually similar to Vision/2's `V2MAIL`. It handles all message processing between the FTN network and your JAM message bases:
 
 | Command | Purpose |
 |---------|---------|
