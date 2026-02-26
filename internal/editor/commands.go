@@ -300,6 +300,7 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 			ch.buffer.InsertLine(insertLine)
 		}
 		ch.buffer.SetLine(insertLine, quoteTop)
+		ch.buffer.SetHardNewline(insertLine, true) // prevent reflow across quote boundary
 		insertLine++
 	}
 
@@ -318,6 +319,7 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 			quotedLine = quotedLine[:79]
 		}
 		ch.buffer.SetLine(insertLine, quotedLine)
+		ch.buffer.SetHardNewline(insertLine, true) // prevent reflow across quote lines
 		insertLine++
 	}
 
@@ -330,6 +332,7 @@ func (ch *CommandHandler) HandleQuote(inputHandler *InputHandler, currentLine, c
 			ch.buffer.InsertLine(insertLine)
 		}
 		ch.buffer.SetLine(insertLine, quoteBottom)
+		ch.buffer.SetHardNewline(insertLine, true) // prevent reflow across quote boundary
 		insertLine++
 	}
 

@@ -17,174 +17,228 @@ func NewWordWrapper(buffer *MessageBuffer) *WordWrapper {
 	}
 }
 
-// CheckAndWrap checks if the current line exceeds the maximum length
-// and performs word wrapping if necessary
-// Returns the new cursor position (line, col)
-func (ww *WordWrapper) CheckAndWrap(lineNum, col int) (int, int) {
-	line := ww.buffer.GetLine(lineNum)
-
-	// Check if line exceeds maximum length
-	if len(line) <= MaxLineLength {
-		return lineNum, col
-	}
-
-	// Need to wrap - find the last space before or at position 79
-	wrapPos := ww.findWrapPosition(line)
-
-	if wrapPos <= 0 {
-		// No space found - force wrap at MaxLineLength
-		wrapPos = MaxLineLength
-	}
-
-	// Split the line
-	leftPart := strings.TrimRight(line[:wrapPos], " ")
-	rightPart := strings.TrimLeft(line[wrapPos:], " ")
-
-	// Update current line with left part
-	ww.buffer.SetLine(lineNum, leftPart)
-
-	// Check if we're at the last line or need to insert a new line
-	nextLine := lineNum + 1
+// ReflowRange reflows soft-wrapped lines starting from startLine.
+// It scans forward through consecutive soft-wrapped lines (hardNewline=false)
+// and stops at the first hard newline or end of buffer. Text is collected,
+// re-wrapped to MaxLineLength, and placed back into the buffer.
+// cursorLine/cursorCol track the cursor through the reflow using a linear
+// character offset, which is more robust than the old col-wrapPos arithmetic.
+// Returns the adjusted cursor position (line, col).
+func (ww *WordWrapper) ReflowRange(startLine, cursorLine, cursorCol int) (int, int) {
 	lineCount := ww.buffer.GetLineCount()
+	if startLine < 1 || startLine > lineCount {
+		return cursorLine, cursorCol
+	}
 
-	if nextLine <= lineCount {
-		// Join with existing next line
-		existingNext := ww.buffer.GetLine(nextLine)
-		if len(existingNext) > 0 {
-			combined := rightPart + " " + existingNext
-			ww.buffer.SetLine(nextLine, combined)
-			// Recursively check if the next line also needs wrapping
-			if col > wrapPos {
-				nextCol := col - wrapPos
-				if nextCol < 1 {
-					nextCol = 1
-				}
-				return ww.CheckAndWrap(nextLine, nextCol)
+	// Find paragraph bounds: scan forward until hardNewline=true or end of buffer
+	endLine := startLine
+	for endLine < lineCount && !ww.buffer.IsHardNewline(endLine) {
+		endLine++
+	}
+	endHardNewline := ww.buffer.IsHardNewline(endLine)
+
+	// Collect text from all lines in the paragraph and compute cursor offset
+	var collected strings.Builder
+	cursorOffset := 0
+	cursorFound := false
+
+	for i := startLine; i <= endLine; i++ {
+		line := strings.TrimRight(ww.buffer.GetLine(i), " ")
+		if i > startLine && collected.Len() > 0 && len(line) > 0 {
+			collected.WriteByte(' ')
+			if !cursorFound {
+				cursorOffset++
 			}
-			_, _ = ww.CheckAndWrap(nextLine, 1)
-			return lineNum, col
-		} else {
-			ww.buffer.SetLine(nextLine, rightPart)
 		}
-	} else {
-		// Insert new line
-		if ww.buffer.InsertLine(nextLine) {
-			ww.buffer.SetLine(nextLine, rightPart)
+		if i == cursorLine && !cursorFound {
+			col := cursorCol - 1 // 0-based
+			if col > len(line) {
+				col = len(line)
+			}
+			cursorOffset += col
+			cursorFound = true
+		} else if !cursorFound {
+			cursorOffset += len(line)
+		}
+		collected.WriteString(line)
+	}
+
+	text := collected.String()
+	if cursorOffset > len(text) {
+		cursorOffset = len(text)
+	}
+
+	// Re-wrap the collected text into lines of MaxLineLength.
+	// Track start offsets in the collected text for cursor mapping.
+	var outputLines []string
+	var lineStarts []int
+	pos := 0
+
+	for pos < len(text) {
+		lineStarts = append(lineStarts, pos)
+		remaining := text[pos:]
+
+		if len(remaining) <= MaxLineLength {
+			outputLines = append(outputLines, remaining)
+			break
+		}
+
+		wrapPos := ww.findWrapPosition(remaining)
+		if wrapPos <= 0 {
+			wrapPos = MaxLineLength
+		}
+
+		outputLines = append(outputLines, strings.TrimRight(remaining[:wrapPos], " "))
+
+		// Advance past the wrap point and any spaces at the boundary
+		pos += wrapPos
+		for pos < len(text) && text[pos] == ' ' {
+			pos++
 		}
 	}
 
-	// Adjust cursor position
-	if col > wrapPos {
-		// Cursor was in the wrapped part - move to next line
-		newCol := col - wrapPos
-		if rightPart != "" && rightPart[0] == ' ' {
-			newCol-- // Adjust for removed space
-		}
-		if newCol < 1 {
-			newCol = 1
-		}
-		return nextLine, newCol
+	if len(outputLines) == 0 {
+		outputLines = []string{""}
+		lineStarts = []int{0}
 	}
 
-	// Cursor stays on current line
-	return lineNum, col
+	// Place output lines back into the buffer
+	originalCount := endLine - startLine + 1
+	newCount := len(outputLines)
+
+	// Set content for lines we can reuse
+	commonCount := originalCount
+	if newCount < commonCount {
+		commonCount = newCount
+	}
+	for i := 0; i < commonCount; i++ {
+		ww.buffer.SetLine(startLine+i, outputLines[i])
+		ww.buffer.SetHardNewline(startLine+i, false)
+	}
+
+	if newCount > originalCount {
+		// Need more lines — insert extras; track actual count written
+		actualNew := originalCount
+		for i := originalCount; i < newCount; i++ {
+			if !ww.buffer.InsertLine(startLine + i) {
+				// Buffer full: append remaining text to last written line
+				last := startLine + actualNew - 1
+				tail := text[lineStarts[i]:]
+				if tail != "" {
+					curr := ww.buffer.GetLine(last)
+					if curr != "" {
+						ww.buffer.SetLine(last, curr+" "+tail)
+					} else {
+						ww.buffer.SetLine(last, tail)
+					}
+				}
+				break
+			}
+			ww.buffer.SetLine(startLine+i, outputLines[i])
+			ww.buffer.SetHardNewline(startLine+i, false)
+			actualNew++
+		}
+		// Truncate tracking to what was actually written
+		if actualNew < newCount {
+			newCount = actualNew
+			outputLines = outputLines[:newCount]
+			lineStarts = lineStarts[:newCount]
+		}
+	} else if newCount < originalCount {
+		// Need fewer lines — delete extras
+		for i := 0; i < originalCount-newCount; i++ {
+			ww.buffer.DeleteLine(startLine + newCount)
+		}
+	}
+
+	// Clamp newCount to buffer bounds
+	bufLineCount := ww.buffer.GetLineCount()
+	if startLine+newCount-1 > bufLineCount {
+		newCount = bufLineCount - startLine + 1
+	}
+
+	// Last output line inherits the original paragraph-end hardNewline
+	ww.buffer.SetHardNewline(startLine+newCount-1, endHardNewline)
+
+	// Map cursor offset to output line/col using lineStarts.
+	// Use actual buffer line lengths (not outputLines) since buffer-full
+	// fallback may have appended overflow text to the last written line.
+	if cursorOffset >= len(text) {
+		lastLine := startLine + newCount - 1
+		return lastLine, ww.buffer.GetLineLength(lastLine) + 1
+	}
+
+	for i := 0; i < len(lineStarts) && i < newCount; i++ {
+		nextStart := len(text) + 1
+		if i+1 < len(lineStarts) {
+			nextStart = lineStarts[i+1]
+		}
+		if cursorOffset >= lineStarts[i] && cursorOffset < nextStart {
+			localOffset := cursorOffset - lineStarts[i]
+			actualLen := ww.buffer.GetLineLength(startLine + i)
+			if localOffset > actualLen {
+				localOffset = actualLen
+			}
+			return startLine + i, localOffset + 1
+		}
+	}
+
+	// Fallback: cursor at end of last output line
+	lastLine := startLine + newCount - 1
+	return lastLine, ww.buffer.GetLineLength(lastLine) + 1
 }
 
-// findWrapPosition finds the best position to wrap the line
-// Returns the position after the last space before MaxLineLength
+// WrapAfterInsert handles word wrap after a character insertion.
+// Fast path: only reflows if the current line exceeds MaxLineLength.
+func (ww *WordWrapper) WrapAfterInsert(lineNum, cursorCol int) (int, int) {
+	line := ww.buffer.GetLine(lineNum)
+	if len(line) <= MaxLineLength {
+		return lineNum, cursorCol
+	}
+	return ww.ReflowRange(lineNum, lineNum, cursorCol)
+}
+
+// findWrapPosition finds the best position to wrap the line.
+// Returns the index of the last space at or before MaxLineLength.
 func (ww *WordWrapper) findWrapPosition(line string) int {
-	// Find the last space at or before position MaxLineLength
 	for i := MaxLineLength; i > 0; i-- {
 		if i < len(line) && line[i] == ' ' {
 			return i
 		}
 	}
-
-	// No space found at all
 	return -1
 }
 
-// ReformatParagraph reformats a paragraph starting at the specified line
-// This joins lines and redistributes words to maintain proper wrapping
+// ReformatParagraph reformats a paragraph starting at the specified line.
+// Uses ReflowRange to redistribute words across soft-wrapped lines.
+// Stops at hard newlines or blank lines.
 func (ww *WordWrapper) ReformatParagraph(startLine int) int {
-	// Find the extent of the paragraph (until blank line or end)
-	endLine := startLine
-	lineCount := ww.buffer.GetLineCount()
-
-	for endLine < lineCount && !ww.buffer.IsLineEmpty(endLine+1) {
-		endLine++
-	}
-
-	if endLine == startLine && ww.buffer.IsLineEmpty(startLine) {
-		return startLine // Empty line, nothing to reformat
-	}
-
-	// Collect all words from the paragraph
-	words := make([]string, 0)
-	for i := startLine; i <= endLine; i++ {
-		line := ww.buffer.GetLine(i)
-		lineWords := strings.Fields(line)
-		words = append(words, lineWords...)
-	}
-
-	if len(words) == 0 {
+	if ww.buffer.IsLineEmpty(startLine) {
 		return startLine
 	}
 
-	// Rebuild lines with proper wrapping
-	currentLine := startLine
-	currentText := ""
+	// ReflowRange handles paragraph bounds via hardNewline flags
+	newLine, _ := ww.ReflowRange(startLine, startLine, 1)
 
-	for _, word := range words {
-		testLine := currentText
-		if len(currentText) > 0 {
-			testLine += " "
-		}
-		testLine += word
-
-		if len(testLine) > MaxLineLength {
-			// Would exceed limit - save current line and start new one
-			if currentText != "" {
-				ww.buffer.SetLine(currentLine, currentText)
-				currentLine++
-
-				// Insert line if needed
-				if currentLine > endLine {
-					if currentLine <= MaxLines && ww.buffer.InsertLine(currentLine) {
-						endLine++
-					} else {
-						break // Can't insert more lines
-					}
-				}
-			}
-			currentText = word
-		} else {
-			currentText = testLine
-		}
+	// Find the last line of the reformatted paragraph
+	endLine := newLine
+	lineCount := ww.buffer.GetLineCount()
+	for endLine < lineCount && !ww.buffer.IsHardNewline(endLine) && !ww.buffer.IsLineEmpty(endLine+1) {
+		endLine++
 	}
-
-	// Save last line
-	if currentText != "" {
-		ww.buffer.SetLine(currentLine, currentText)
-		currentLine++
-	}
-
-	// Clear any remaining lines that were part of the paragraph
-	for i := currentLine; i <= endLine; i++ {
-		ww.buffer.SetLine(i, "")
-	}
-
-	return currentLine - 1 // Return last line of reformatted paragraph
+	return endLine
 }
 
-// HandleBackspace handles backspace at the given position
-// May trigger line joining if at start of line
-// Returns new cursor position (line, col)
+// HandleBackspace handles backspace at the given position.
+// Deletes the character before the cursor and reflows the paragraph to pull
+// words up from subsequent soft-wrapped lines. At start-of-line, joins with
+// the previous line and reflows.
+// Returns new cursor position (line, col) and whether a change was made.
 func (ww *WordWrapper) HandleBackspace(lineNum, col int) (int, int, bool) {
 	if col > 1 {
-		// Delete character before cursor
 		if ww.buffer.DeleteChar(lineNum, col-1) {
-			return lineNum, col - 1, true
+			newLine, newCol := ww.ReflowRange(lineNum, lineNum, col-1)
+			return newLine, newCol, true
 		}
 		return lineNum, col, false
 	}
@@ -195,63 +249,74 @@ func (ww *WordWrapper) HandleBackspace(lineNum, col int) (int, int, bool) {
 		prevLen := len(prevLine)
 
 		if ww.buffer.JoinLines(lineNum - 1) {
-			return lineNum - 1, prevLen + 1, true
+			// Clear hardNewline after successful join so reflow flows across boundary
+			ww.buffer.SetHardNewline(lineNum-1, false)
+			newLine, newCol := ww.ReflowRange(lineNum-1, lineNum-1, prevLen+1)
+			return newLine, newCol, true
 		}
 	}
 
 	return lineNum, col, false
 }
 
-// HandleDelete handles delete at the given position
-// May trigger line joining if at end of line
-// Returns whether delete was successful
-func (ww *WordWrapper) HandleDelete(lineNum, col int) bool {
+// HandleDelete handles delete at the given position.
+// Deletes the character at the cursor and reflows, or joins with the next
+// line if at end-of-line.
+// Returns new cursor position (line, col) and whether a change was made.
+func (ww *WordWrapper) HandleDelete(lineNum, col int) (int, int, bool) {
 	lineLen := ww.buffer.GetLineLength(lineNum)
 
 	if col <= lineLen {
-		// Delete character at cursor
-		return ww.buffer.DeleteChar(lineNum, col)
+		if ww.buffer.DeleteChar(lineNum, col) {
+			newLine, newCol := ww.ReflowRange(lineNum, lineNum, col)
+			return newLine, newCol, true
+		}
+		return lineNum, col, false
 	}
 
 	// At end of line - join with next line
 	if lineNum < ww.buffer.GetLineCount() {
-		return ww.buffer.JoinLines(lineNum)
+		if ww.buffer.JoinLines(lineNum) {
+			// Clear hardNewline after successful join so reflow flows across boundary
+			ww.buffer.SetHardNewline(lineNum, false)
+			newLine, newCol := ww.ReflowRange(lineNum, lineNum, col)
+			return newLine, newCol, true
+		}
 	}
 
-	return false
+	return lineNum, col, false
 }
 
-// DeleteWord deletes the word to the right of the cursor
-func (ww *WordWrapper) DeleteWord(lineNum, col int) bool {
+// DeleteWord deletes the word to the right of the cursor and reflows.
+// Returns new cursor position (line, col) and whether a change was made.
+func (ww *WordWrapper) DeleteWord(lineNum, col int) (int, int, bool) {
 	line := ww.buffer.GetLine(lineNum)
 	if col > len(line) {
-		return false
+		return lineNum, col, false
 	}
 
-	// Find the end of the current word (or whitespace)
 	i := col - 1
 	if i >= len(line) {
-		return false
+		return lineNum, col, false
 	}
 
 	// Skip initial whitespace
 	for i < len(line) && unicode.IsSpace(rune(line[i])) {
 		i++
 	}
-
 	// Skip word characters
 	for i < len(line) && !unicode.IsSpace(rune(line[i])) {
 		i++
 	}
 
-	// Delete from cursor to end of word
 	if i > col-1 {
 		newLine := line[:col-1] + line[i:]
 		ww.buffer.SetLine(lineNum, newLine)
-		return true
+		newLn, newCol := ww.ReflowRange(lineNum, lineNum, col)
+		return newLn, newCol, true
 	}
 
-	return false
+	return lineNum, col, false
 }
 
 // FindWordLeft finds the start of the word to the left
@@ -267,7 +332,6 @@ func (ww *WordWrapper) FindWordLeft(lineNum, col int) int {
 	for pos >= 0 && pos < len(line) && unicode.IsSpace(rune(line[pos])) {
 		pos--
 	}
-
 	// Skip word characters
 	for pos >= 0 && pos < len(line) && !unicode.IsSpace(rune(line[pos])) {
 		pos--
@@ -289,7 +353,6 @@ func (ww *WordWrapper) FindWordRight(lineNum, col int) int {
 	for pos < len(line) && !unicode.IsSpace(rune(line[pos])) {
 		pos++
 	}
-
 	// Skip whitespace
 	for pos < len(line) && unicode.IsSpace(rune(line[pos])) {
 		pos++
@@ -308,6 +371,5 @@ func (ww *WordWrapper) IsAtWordBoundary(lineNum, col int) bool {
 	before := line[col-2]
 	at := line[col-1]
 
-	// Word boundary is transition from non-space to space or vice versa
 	return unicode.IsSpace(rune(before)) != unicode.IsSpace(rune(at))
 }

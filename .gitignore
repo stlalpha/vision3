@@ -7,10 +7,10 @@
 *.dll
 *.so
 *.dylib
-log
-strings
-ue
-config
+/log
+/strings
+/ue
+/config
 
 bin/
 DOS/
@@ -32,10 +32,9 @@ go.work.sum
 # env file
 .env
 
-# Runtime data directory
-/data/
+# Runtime data directory (ignore contents, keep .gitkeep)
 /data/*
-!.gitkeep
+!/data/.gitkeep
 
 # Compiled executable
 /vision3
@@ -44,7 +43,6 @@ go.work.sum
 /v3mail
 /helper
 tmp/
-/tmp/*
 .gocache/
 
 # Config files (contain site-specific settings, FTN addresses, passwords)
@@ -58,7 +56,6 @@ tmp/
 *.log
 log/
 logs/
-tea_debug.log
 
 # Backup files
 *.bak
@@ -82,5 +79,5 @@ Thumbs.db
 # Cursor rules (local development)
 .cursorrules
 
-# Git worktrees
-.worktrees/
+# Claude Code worktrees
+.claude/worktrees/
