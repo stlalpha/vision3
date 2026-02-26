@@ -87,7 +87,8 @@ func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd, stdinId
 		buf := make([]byte, 32*1024)
 		var total int64
 		var cpErr error
-		var canRun int // consecutive CAN (0x18) bytes seen so far
+		var canRun int  // consecutive CAN (0x18) bytes seen so far
+		var killed bool // set once CAN abort fires; stops further writes
 		for {
 			nr, rerr := s.Read(buf)
 			if nr > 0 {
@@ -97,10 +98,11 @@ func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd, stdinId
 				for _, b := range buf[:nr] {
 					if b == 0x18 { // CAN
 						canRun++
-						if canRun >= 5 {
+						if canRun >= 5 && !killed {
 							// ZModem abort sequence — kill the process so the
 							// BBS returns to the menu immediately rather than
 							// waiting for the idle timer to fire.
+							killed = true
 							log.Printf("DEBUG: (%s) ZModem CAN abort detected in stdin; killing process", cmd.Path)
 							if cmd.Process != nil {
 								_ = cmd.Process.Kill()
@@ -111,6 +113,9 @@ func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd, stdinId
 						canRun = 0
 						hasNonCAN = true
 					}
+				}
+				if killed {
+					break
 				}
 				// Only reset the idle timer for real file data.
 				// CAN bytes indicate an abort — treating them as "activity"
@@ -332,14 +337,14 @@ func drainSessionInput(s ssh.Session, duration time.Duration) {
 // ctx controls cancellation and timeout: when ctx.Done() fires, the process is
 // killed and the function returns ctx.Err(). Pass context.Background() for
 // no timeout.
-func RunCommandWithPTY(ctx context.Context, s ssh.Session, cmd *exec.Cmd) error {
+func RunCommandWithPTY(ctx context.Context, s ssh.Session, cmd *exec.Cmd, stdinIdleTimeout time.Duration) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	ptyReq, winCh, isPty := s.Pty()
 	if !isPty {
 		log.Printf("WARN: No PTY available for session. Falling back to direct mode for %s.", cmd.Path)
-		return RunCommandDirect(ctx, s, cmd, 0)
+		return RunCommandDirect(ctx, s, cmd, stdinIdleTimeout)
 	}
 
 	log.Printf("DEBUG: Starting command '%s' with PTY", cmd.Path)
@@ -476,7 +481,7 @@ func ExecuteZmodemSend(ctx context.Context, s ssh.Session, filePaths ...string) 
 
 	log.Printf("INFO: Executing Zmodem send: %s %v", szPath, args)
 	// Execute using the PTY helper
-	err = RunCommandWithPTY(ctx, s, cmd)
+	err = RunCommandWithPTY(ctx, s, cmd, 0)
 	if err != nil {
 		log.Printf("ERROR: Zmodem send command ('%s') failed: %v", szPath, err)
 		return fmt.Errorf("Zmodem send failed: %w", err)
@@ -525,7 +530,7 @@ func ExecuteZmodemReceive(ctx context.Context, s ssh.Session, targetDir string) 
 
 	log.Printf("INFO: Executing Zmodem receive in directory '%s': %s %v", absTargetDir, rzPath, args)
 	// 4. Execute using the PTY helper
-	err = RunCommandWithPTY(ctx, s, cmd)
+	err = RunCommandWithPTY(ctx, s, cmd, 0)
 	if err != nil {
 		log.Printf("ERROR: Zmodem receive command ('%s') failed: %v", rzPath, err)
 		return fmt.Errorf("Zmodem receive failed: %w", err)

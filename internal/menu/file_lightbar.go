@@ -855,7 +855,12 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(d5)), outputMode)
 
 				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|08Press any key to return...|07")), outputMode)
-				_, _ = ih.ReadKey()
+				if _, waitErr := ih.ReadKey(); waitErr != nil {
+					if errors.Is(waitErr, io.EOF) || errors.Is(waitErr, editor.ErrIdleTimeout) {
+						return nil, "LOGOFF", io.EOF
+					}
+					return nil, "", waitErr
+				}
 				needFullRedraw = true
 			}
 

@@ -80,6 +80,10 @@ type InputHandler struct {
 	// SetSessionIdleTimeout; read on every key-wait.
 	idleNs int64 // atomic
 
+	// escTimeoutNs overrides the inter-byte ESC disambiguation window
+	// (default 500 ms). 0 means use the default. Set via SetEscTimeout.
+	escTimeoutNs int64 // atomic
+
 	// Optional read interrupt integration for sessions that support it.
 	readInterrupt    chan struct{}
 	setReadInterrupt func(<-chan struct{})
@@ -90,6 +94,19 @@ type InputHandler struct {
 // ReadKey call. Pass 0 to disable. Thread-safe.
 func (ih *InputHandler) SetSessionIdleTimeout(d time.Duration) {
 	atomic.StoreInt64(&ih.idleNs, d.Nanoseconds())
+}
+
+// SetEscTimeout overrides the ESC disambiguation window used in ReadKey.
+// Pass 0 to restore the default (500 ms). Thread-safe.
+func (ih *InputHandler) SetEscTimeout(d time.Duration) {
+	atomic.StoreInt64(&ih.escTimeoutNs, d.Nanoseconds())
+}
+
+func (ih *InputHandler) escTimeout() time.Duration {
+	if ns := atomic.LoadInt64(&ih.escTimeoutNs); ns > 0 {
+		return time.Duration(ns)
+	}
+	return 500 * time.Millisecond
 }
 
 func (ih *InputHandler) sessionIdleTimeout() time.Duration {
@@ -270,7 +287,7 @@ func (ih *InputHandler) ReadKey() (int, error) {
 	// as a bare ESC and exit the lightbar unexpectedly.
 	// (was 50 ms → 100 ms → 500 ms, each bump driven by real-world reports)
 	if b == KeyEsc {
-		next, err := ih.readByteWithTimeout(500 * time.Millisecond)
+		next, err := ih.readByteWithTimeout(ih.escTimeout())
 		if err != nil {
 			// Timeout — no following byte, so this is a plain ESC.
 			return int(KeyEsc), nil
@@ -357,7 +374,10 @@ func (ih *InputHandler) parseCSISequence() (int, error) {
 		return KeyArrowLeft, nil
 	case 'H':
 		return KeyHome, nil
-	case 'F', 'K': // 'K' used by some terminals (e.g. SyncTERM) for End
+	case 'F': // xterm / VT standard End
+		// NOTE: 'K' (CSI K = ANSI "Erase in Line") is intentionally NOT
+		// mapped here to avoid phantom End keypresses from clients that
+		// echo server output or have broken raw-mode passthrough.
 		return KeyEnd, nil
 	case 'U': // SyncTERM / EtherTerm PageDown (ESC [ U)
 		return KeyPageDown, nil
