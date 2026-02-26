@@ -280,7 +280,10 @@ func (mm *MessageManager) SaveAreas() error {
 	mm.mu.RUnlock()
 
 	sort.Slice(list, func(i, j int) bool {
-		return list[i].Position < list[j].Position
+		if list[i].Position != list[j].Position {
+			return list[i].Position < list[j].Position
+		}
+		return list[i].ID < list[j].ID
 	})
 
 	data, err := json.MarshalIndent(list, "", "  ")
@@ -327,7 +330,10 @@ func (mm *MessageManager) ListAreas() []*MessageArea {
 		list = append(list, area)
 	}
 	sort.Slice(list, func(i, j int) bool {
-		return list[i].Position < list[j].Position
+		if list[i].Position != list[j].Position {
+			return list[i].Position < list[j].Position
+		}
+		return list[i].ID < list[j].ID
 	})
 	return list
 }

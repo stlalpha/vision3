@@ -2,6 +2,7 @@ package configeditor
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/stlalpha/vision3/internal/archiver"
 	"github.com/stlalpha/vision3/internal/conference"
@@ -253,10 +254,6 @@ func (m Model) doorKeys() []string {
 	for k := range m.configs.Doors {
 		keys = append(keys, k)
 	}
-	for i := 1; i < len(keys); i++ {
-		for j := i; j > 0 && keys[j] < keys[j-1]; j-- {
-			keys[j], keys[j-1] = keys[j-1], keys[j]
-		}
-	}
+	sort.Strings(keys)
 	return keys
 }
