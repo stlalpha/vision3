@@ -19,6 +19,16 @@ import (
 	"github.com/stlalpha/vision3/internal/user"
 )
 
+// displaySponsorHeader clears the screen (if configured) and displays the SPONSORM.ANS header.
+func (e *MenuExecutor) displaySponsorHeader(terminal *term.Terminal, menuRec *MenuRecord, outputMode ansi.OutputMode, nodeNumber int) {
+	if menuRec != nil && menuRec.GetClrScrBefore() {
+		_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+	}
+	if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
+		log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
+	}
+}
+
 // runSponsorMenu is the handler for RUN:SPONSORMENU.
 //
 // Triggered by "%" in the Messages Menu. Sysop, co-sysop, or the named area
@@ -70,15 +80,8 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		menuRec = nil
 	}
 
-	// Issue clear screen as a separate write before the ANSI file — this is the
-	// canonical pattern in the codebase and ensures the terminal processes the
-	// clear before any subsequent display bytes arrive.
-	if menuRec != nil && menuRec.GetClrScrBefore() {
-		_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-	}
-	if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
-		log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
-	}
+	// Display the sponsor menu header (clear screen + SPONSORM.ANS).
+	e.displaySponsorHeader(terminal, menuRec, outputMode, nodeNumber)
 
 	for {
 		if menuRec != nil && menuRec.GetUsePrompt() {
@@ -119,12 +122,7 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 			// Redisplay the sponsor menu header on a clean screen after returning
 			// from the edit area so the prompt doesn't appear on a dirty screen.
-			if menuRec != nil && menuRec.GetClrScrBefore() {
-				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-			}
-			if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
-				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
-			}
+			e.displaySponsorHeader(terminal, menuRec, outputMode, nodeNumber)
 
 		case "[", "]":
 			forward := cmd == "]"
@@ -157,12 +155,7 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				}
 				area = newArea
 				log.Printf("INFO: Node %d: User %s sponsor-navigated to area %d (%s)", nodeNumber, currentUser.Handle, newArea.ID, newArea.Tag)
-				if menuRec != nil && menuRec.GetClrScrBefore() {
-					_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-				}
-				if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
-					log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
-				}
+				e.displaySponsorHeader(terminal, menuRec, outputMode, nodeNumber)
 			}
 
 		case "P":
@@ -287,21 +280,11 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			}
 
 			// Return to sponsor menu
-			if menuRec != nil && menuRec.GetClrScrBefore() {
-				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-			}
-			if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
-				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
-			}
+			e.displaySponsorHeader(terminal, menuRec, outputMode, nodeNumber)
 
 		case "?":
 			// Reload menu
-			if menuRec != nil && menuRec.GetClrScrBefore() {
-				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-			}
-			if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
-				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
-			}
+			e.displaySponsorHeader(terminal, menuRec, outputMode, nodeNumber)
 
 		case "Q", "":
 			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
@@ -311,12 +294,7 @@ func runSponsorMenu(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			msg := "\r\n|01Invalid key.|07\r\n"
 			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 			time.Sleep(1 * time.Second)
-			if menuRec != nil && menuRec.GetClrScrBefore() {
-				_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-			}
-			if err := e.displayFile(terminal, "SPONSORM.ANS", outputMode); err != nil {
-				log.Printf("WARN: Node %d: Failed to display SPONSORM.ANS: %v", nodeNumber, err)
-			}
+			e.displaySponsorHeader(terminal, menuRec, outputMode, nodeNumber)
 		}
 	}
 }
