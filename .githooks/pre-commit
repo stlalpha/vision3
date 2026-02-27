@@ -1,0 +1,41 @@
+#!/bin/bash
+#
+# Pre-commit hook to verify Go code builds successfully
+# Prevents commits with compilation errors
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# Check if this is a Go project
+if [ ! -f "go.mod" ]; then
+    echo "✅ Not a Go project, skipping build check"
+    exit 0
+fi
+
+# Run go build to verify compilation
+echo "🔨 Building Go packages..."
+if go build ./... 2>&1; then
+    echo "✅ Build successful"
+else
+    echo ""
+    echo "❌ Build failed! Please fix compilation errors before committing."
+    echo ""
+    echo "Tip: Run 'go build ./...' to see detailed errors"
+    exit 1
+fi
+
+# Optional: Run gofmt check
+echo "🎨 Checking code formatting..."
+UNFORMATTED=$(gofmt -l . 2>&1 | grep -v "^vendor/" | grep -v "^vision-2-bbs/" || true)
+if [ -n "$UNFORMATTED" ]; then
+    echo "⚠️  Warning: The following files are not formatted:"
+    echo "$UNFORMATTED"
+    echo ""
+    echo "Run 'gofmt -w .' to format all files"
+    echo ""
+    echo "Continuing with commit (formatting is a warning, not an error)..."
+fi
+
+echo "✅ All pre-commit checks passed!"
+exit 0
