@@ -56,10 +56,12 @@ func (m *Model) fieldsEvent() []fieldDef {
 					e.Name = val
 					e.ID = newID
 
-					// Update all RunAfter references in other events
-					for i := range m.configs.Events.Events {
-						if i != idx && m.configs.Events.Events[i].RunAfter == oldID {
-							m.configs.Events.Events[i].RunAfter = newID
+					// Update all RunAfter references in other events (skip if oldID is empty)
+					if oldID != "" {
+						for i := range m.configs.Events.Events {
+							if i != idx && m.configs.Events.Events[i].RunAfter == oldID {
+								m.configs.Events.Events[i].RunAfter = newID
+							}
 						}
 					}
 				} else {
@@ -126,9 +128,9 @@ func (m *Model) fieldsEvent() []fieldDef {
 				items := []LookupItem{
 					{Value: "(none)", Display: "(none) - No dependency"},
 				}
-				// Add all other events as options (exclude current event)
+				// Add all other events as options (exclude current event and events with empty IDs)
 				for i, evt := range m.configs.Events.Events {
-					if i != idx {
+					if i != idx && evt.ID != "" {
 						items = append(items, LookupItem{
 							Value:   evt.ID,
 							Display: fmt.Sprintf("%s - %s", evt.ID, evt.Name),

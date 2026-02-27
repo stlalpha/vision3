@@ -16,7 +16,6 @@ func buildTimezoneLookupItems() []LookupItem {
 		"America/Phoenix",
 		"America/Los_Angeles",
 		"America/Anchorage",
-		"America/Honolulu",
 		"America/Toronto",
 		"America/Vancouver",
 		"America/Mexico_City",

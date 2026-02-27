@@ -72,7 +72,7 @@ func (m *Model) fieldsProtocol() []fieldDef {
 			Set: func(val string) error { p.SendCmd = val; return nil },
 		},
 		{
-			Label: "Send Args", Help: "Arguments for send command (space-separated, use quotes for spaces)", Type: ftString, Col: 3, Row: 5, Width: 40,
+			Label: "Send Args", Help: "Arguments for send command (JSON array, e.g. [\"arg1\",\"arg with space\"])", Type: ftString, Col: 3, Row: 5, Width: 40,
 			Get: func() string { return joinArgs(p.SendArgs) },
 			Set: func(val string) error {
 				p.SendArgs = splitArgs(val)
@@ -85,7 +85,7 @@ func (m *Model) fieldsProtocol() []fieldDef {
 			Set: func(val string) error { p.RecvCmd = val; return nil },
 		},
 		{
-			Label: "Recv Args", Help: "Arguments for receive command (space-separated, use quotes for spaces)", Type: ftString, Col: 3, Row: 7, Width: 40,
+			Label: "Recv Args", Help: "Arguments for receive command (JSON array, e.g. [\"arg1\",\"arg with space\"])", Type: ftString, Col: 3, Row: 7, Width: 40,
 			Get: func() string { return joinArgs(p.RecvArgs) },
 			Set: func(val string) error {
 				p.RecvArgs = splitArgs(val)

@@ -5404,8 +5404,10 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 					target.Validated = val.(bool)
 					// When validating, upgrade to regular user level if below it
 					if target.Validated {
+						// Get thread-safe config snapshot
+						cfg := e.GetServerConfig()
 						// Normalize RegularUserLevel to ensure it's positive
-						desiredLevel := e.ServerCfg.RegularUserLevel
+						desiredLevel := cfg.RegularUserLevel
 						if desiredLevel <= 0 {
 							desiredLevel = 10
 						}
@@ -6297,8 +6299,10 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 					target.Validated = val.(bool)
 					// When validating, upgrade to regular user level if below it
 					if target.Validated {
+						// Get thread-safe config snapshot
+						cfg := e.GetServerConfig()
 						// Normalize RegularUserLevel to ensure it's positive
-						desiredLevel := e.ServerCfg.RegularUserLevel
+						desiredLevel := cfg.RegularUserLevel
 						if desiredLevel <= 0 {
 							desiredLevel = 10
 						}
