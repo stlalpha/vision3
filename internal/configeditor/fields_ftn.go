@@ -228,12 +228,28 @@ func (m *Model) fieldsFTNLinkEdit() []fieldDef {
 		{
 			Label: "Address", Help: "FTN node address (e.g. 21:4/158)", Type: ftString, Col: 3, Row: 2, Width: 30,
 			Get: func() string { return linkPtr.Address },
-			Set: func(val string) error { linkPtr.Address = strings.TrimSpace(val); save(); return nil },
+			Set: func(val string) error {
+				val = strings.TrimSpace(val)
+				if val == "" {
+					return fmt.Errorf("address cannot be empty")
+				}
+				linkPtr.Address = val
+				save()
+				return nil
+			},
 		},
 		{
 			Label: "Packet Password", Help: "Packet password for this link (max 8 chars)", Type: ftString, Col: 3, Row: 3, Width: 8,
 			Get: func() string { return linkPtr.PacketPassword },
-			Set: func(val string) error { linkPtr.PacketPassword = val; save(); return nil },
+			Set: func(val string) error {
+				val = strings.TrimSpace(val)
+				if len(val) > 8 {
+					return fmt.Errorf("packet password must be at most 8 characters")
+				}
+				linkPtr.PacketPassword = val
+				save()
+				return nil
+			},
 		},
 		{
 			Label: "Areafix Password", Help: "Password for AreaFix netmail (subject line)", Type: ftString, Col: 3, Row: 4, Width: 20,

@@ -167,7 +167,8 @@ func (m *Model) insertRecord() {
 		// Add a new blank link to the first available network.
 		nets := m.ftnNetworkKeys()
 		if len(nets) == 0 {
-			return // no networks defined yet
+			m.message = "Create an Echomail Network before adding a link"
+			return
 		}
 		key := nets[0]
 		nc := m.configs.FTN.Networks[key]

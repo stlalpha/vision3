@@ -47,12 +47,13 @@ const messageAreaFile = "message_areas.json"
 // Bases are opened on-demand and closed after each operation to allow
 // v3mail and other external tools concurrent access.
 type MessageManager struct {
-	mu         sync.RWMutex
-	dataPath   string // Base data directory (e.g., "data")
-	areasPath  string // Full path to message_areas.json
-	areasByID  map[int]*MessageArea
-	areasByTag map[string]*MessageArea
-	boardName  string // BBS name for echomail origin lines
+	mu              sync.RWMutex
+	dataPath        string // Base data directory (e.g., "data")
+	areasPath       string // Full path to message_areas.json
+	areasByID       map[int]*MessageArea
+	areasByTag      map[string]*MessageArea
+	areasByEchoTag  map[string]*MessageArea // indexed by EchoTag when it differs from Tag
+	boardName       string                  // BBS name for echomail origin lines
 	// networkTearlines maps network key -> custom tearline text.
 	networkTearlines map[string]string
 	threadIndex      map[int]*threadIndex
@@ -143,6 +144,7 @@ func (mm *MessageManager) loadMessageAreas() error {
 
 	mm.areasByID = make(map[int]*MessageArea)
 	mm.areasByTag = make(map[string]*MessageArea)
+	mm.areasByEchoTag = make(map[string]*MessageArea)
 
 	for _, area := range areasList {
 		if area == nil {
@@ -154,6 +156,10 @@ func (mm *MessageManager) loadMessageAreas() error {
 		}
 		mm.areasByID[area.ID] = area
 		mm.areasByTag[area.Tag] = area
+		// Also index by EchoTag for FTN inbound routing when tag-prefix is in use.
+		if area.EchoTag != "" && area.EchoTag != area.Tag {
+			mm.areasByEchoTag[area.EchoTag] = area
+		}
 		log.Printf("TRACE: Loaded area ID %d, Tag '%s', Type '%s'", area.ID, area.Tag, area.AreaType)
 	}
 
@@ -235,6 +241,15 @@ func (mm *MessageManager) GetAreaByTag(tag string) (*MessageArea, bool) {
 	mm.mu.RLock()
 	defer mm.mu.RUnlock()
 	area, exists := mm.areasByTag[tag]
+	return area, exists
+}
+
+// GetAreaByEchoTag retrieves a message area by its FTN echo tag.
+// Used when areas have a local tag-prefix (e.g. Tag="FD_LINUX", EchoTag="LINUX").
+func (mm *MessageManager) GetAreaByEchoTag(echoTag string) (*MessageArea, bool) {
+	mm.mu.RLock()
+	defer mm.mu.RUnlock()
+	area, exists := mm.areasByEchoTag[echoTag]
 	return area, exists
 }
 

@@ -23,6 +23,31 @@
 | `scan`     | Scan JAM bases for new outbound echomail and create staging `.pkt` files   |
 | `ftn-pack` | Pack staged `.pkt` files into ZIP bundles for binkd; writes BSO flow files |
 
+### AreaFix Commands (via `helper`)
+
+AreaFix requests are sent as netmail to the hub's `AreaFix` robot using the `helper areafix` command (not via `v3mail` directly).
+
+| Option            | Description                                                                 |
+| ----------------- | --------------------------------------------------------------------------- |
+| `--network NAME`  | FTN network name (required)                                                 |
+| `--command CMD`   | AreaFix command to send (e.g. `%LIST`, `+LINUX`, `-LINUX`)                  |
+| `--seed`          | Subscribe to all areas in `message_areas.json` for this network             |
+| `--seed-messages` | Number of old messages to rescan when using `--seed` (default: 25)          |
+| `--link ADDR`     | Hub address to target (default: first link of the network)                  |
+
+```bash
+# List available echo areas from the hub
+./helper areafix --network fsxnet --command "%LIST"
+
+# Subscribe to a specific area
+./helper areafix --network fsxnet --command "+LINUX"
+
+# Seed all subscribed areas with the last 50 messages
+./helper areafix --network fsxnet --seed --seed-messages 50
+```
+
+The `areafix_password` field on the link config is used as the netmail subject (the AreaFix password). The resulting `.pkt` is written to `outbound_path` and picked up by the next `v3mail ftn-pack` + binkd run.
+
 ## Global Options
 
 ```text
@@ -64,27 +89,35 @@
 
 ## FTN Configuration
 
-FTN behaviour is controlled by `configs/ftn.json`. Key per-network fields:
+FTN behaviour is controlled by `configs/ftn.json`. Global fields (top-level):
 
 | Field                 | Description                                                     |
 | --------------------- | --------------------------------------------------------------- |
-| `own_address`         | This node's FTN address (zone:net/node.point)                   |
 | `inbound_path`        | Directory binkd delivers inbound bundles to                     |
 | `secure_inbound_path` | Directory for password-authenticated sessions                   |
 | `outbound_path`       | Staging directory for outbound `.pkt` files (`scan` output)     |
 | `binkd_outbound_path` | binkd BSO outbound directory (`ftn-pack` output)                |
 | `temp_path`           | Temporary directory for bundle extraction                       |
-| `netmail_area_tag`    | JAM area tag for inbound netmail (e.g. `"NETMAIL"`)             |
 | `bad_area_tag`        | JAM area tag for messages with unknown echo tags (e.g. `"BAD"`) |
 | `dupe_area_tag`       | JAM area tag for duplicate MSGIDs (e.g. `"DUPE"`)               |
 
-Per-link fields:
+Per-network fields (`networks.<key>`):
+
+| Field                       | Description                                                     |
+| --------------------------- | --------------------------------------------------------------- |
+| `own_address`               | This node's FTN address (zone:net/node.point)                   |
+| `internal_tosser_enabled`   | Set `true` to enable `v3mail` for this network                  |
+| `poll_interval_seconds`     | Auto-poll interval; `0` = manual only                           |
+| `tearline`                  | Custom tearline text (empty = use default)                      |
+
+Per-link fields (`networks.<key>.links[]`):
 
 | Field                  | Description                                                     |
 | ---------------------- | --------------------------------------------------------------- |
 | `address`              | Link's FTN address                                              |
 | `packet_password`      | Packet password shared with hub (empty for no auth)             |
 | `areafix_password`     | Password for AreaFix netmail (subject line; set by hub)         |
+| `name`                 | Human-readable label for this link                              |
 | `flavour`              | Delivery mode: `Normal` (default), `Crash`, `Hold`, `Direct`    |
 
 ## How Echomail Flow Works

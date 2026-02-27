@@ -436,7 +436,7 @@ See [Message Areas Guide](../messages/message-areas.md) for detailed configurati
 
 > *Use the [Configuration Editor](#configuration-editor-tui) (section 7 — Echomail Networks, section 8 — Echomail Links) to manage FTN settings interactively. The JSON structure below is for reference or manual editing.*
 
-Located in the `configs/` directory. Configures the internal FTN tosser (v3mail) for echomail: networks, hub links, and directory paths. Per-network fields include `own_address`, `internal_tosser_enabled`, and path settings. Per-link fields include `address`, `packet_password`, `areafix_password`, `name`, and `flavour`.
+Located in the `configs/` directory. Configures the internal FTN tosser (v3mail) for echomail. Global fields include directory paths (`inbound_path`, `outbound_path`, `binkd_outbound_path`, `temp_path`) and routing tags (`bad_area_tag`, `dupe_area_tag`). Per-network fields include `own_address`, `internal_tosser_enabled`, `poll_interval_seconds`, and `tearline`. Per-link fields include `address`, `packet_password`, `areafix_password`, `name`, and `flavour`.
 
 See [FTN Echomail Guide](../messages/ftn-echomail.md) for setup and full field reference.
 

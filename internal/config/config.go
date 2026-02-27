@@ -638,18 +638,27 @@ type FTNLinkConfig struct {
 	Flavour         string `json:"flavour,omitempty"`          // Delivery flavour: Normal (default), Crash, Hold, Direct
 }
 
-// UnmarshalJSON supports backward compatibility: "password" is read into PacketPassword if packet_password is empty.
+// UnmarshalJSON supports backward compatibility: "password" is read into PacketPassword
+// when packet_password is absent (nil pointer = field omitted vs explicitly empty string).
 func (c *FTNLinkConfig) UnmarshalJSON(data []byte) error {
-	type raw FTNLinkConfig
 	var r struct {
-		raw
-		LegacyPassword string `json:"password"`
+		Address         string  `json:"address"`
+		PacketPassword  *string `json:"packet_password"`
+		AreafixPassword string  `json:"areafix_password,omitempty"`
+		Name            string  `json:"name"`
+		Flavour         string  `json:"flavour,omitempty"`
+		LegacyPassword  string  `json:"password"`
 	}
 	if err := json.Unmarshal(data, &r); err != nil {
 		return err
 	}
-	*c = FTNLinkConfig(r.raw)
-	if c.PacketPassword == "" && r.LegacyPassword != "" {
+	c.Address = r.Address
+	c.AreafixPassword = r.AreafixPassword
+	c.Name = r.Name
+	c.Flavour = r.Flavour
+	if r.PacketPassword != nil {
+		c.PacketPassword = *r.PacketPassword
+	} else if r.LegacyPassword != "" {
 		c.PacketPassword = r.LegacyPassword
 	}
 	return nil

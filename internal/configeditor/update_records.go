@@ -406,13 +406,18 @@ func (m *Model) applyRecordFieldValue(f fieldDef) error {
 // toggleYesNo flips a Y/N field value in place.
 func (m *Model) toggleYesNo(f fieldDef) {
 	if f.Get != nil && f.Set != nil {
+		var val string
 		if f.Get() == "Y" {
-			f.Set("N")
+			val = "N"
 		} else {
-			f.Set("Y")
+			val = "Y"
 		}
+		f.Set(val)
 		m.dirty = true
 		m.message = ""
+		if f.AfterSet != nil {
+			f.AfterSet(m, val)
+		}
 		// Rebuild fields in case toggle changed visible fields (e.g. Is DOS)
 		m.recordFields = m.buildRecordFields()
 		if m.editField >= len(m.recordFields) {

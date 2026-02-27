@@ -264,8 +264,13 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 		return errDupe
 	}
 
-	// Find the target area by echo tag
+	// Find the target area by echo tag.
+	// Fall back to EchoTag index for areas using a local tag-prefix
+	// (e.g. Tag="FD_LINUX", EchoTag="LINUX" when --tag-prefix was used during setup).
 	area, found := t.msgMgr.GetAreaByTag(parsed.Area)
+	if !found {
+		area, found = t.msgMgr.GetAreaByEchoTag(parsed.Area)
+	}
 	if !found {
 		log.Printf("WARN: Unknown echo area %q from %s", parsed.Area, msg.From)
 		if t.paths.BadAreaTag != "" {

@@ -904,7 +904,11 @@ func cmdAreafix(args []string) {
 		fmt.Fprintf(os.Stderr, "Error writing packet: %v\n", err)
 		os.Exit(1)
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		os.Remove(pktPath)
+		fmt.Fprintf(os.Stderr, "Error finalizing packet: %v\n", err)
+		os.Exit(1)
+	}
 
 	fmt.Printf("AreaFix netmail written to %s\n", pktPath)
 	fmt.Printf("  To: AreaFix @ %s\n", link.Address)
