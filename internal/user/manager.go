@@ -613,9 +613,20 @@ func (um *UserMgr) GetTotalCalls() uint64 {
 
 // SetNewUserLevel sets the access level assigned to new user signups.
 // This should be called after loading the server config.
+// Level is clamped to the valid range of 0-255.
 func (um *UserMgr) SetNewUserLevel(level int) {
 	um.mu.Lock()
 	defer um.mu.Unlock()
+
+	// Validate and clamp to 0-255 range
+	if level < 0 {
+		log.Printf("WARN: invalid newUserLevel %d; clamping to 0", level)
+		level = 0
+	} else if level > 255 {
+		log.Printf("WARN: invalid newUserLevel %d; clamping to 255", level)
+		level = 255
+	}
+
 	um.newUserLevel = level
 }
 

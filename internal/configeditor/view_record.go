@@ -7,6 +7,31 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// truncateToDisplayWidth truncates a string to fit within maxWidth display cells,
+// safely handling multi-byte UTF-8 characters by iterating runes.
+func truncateToDisplayWidth(s string, maxWidth int) string {
+	if lipgloss.Width(s) <= maxWidth {
+		return s
+	}
+
+	var result strings.Builder
+	currentWidth := 0
+
+	for _, r := range s {
+		runeStr := string(r)
+		runeWidth := lipgloss.Width(runeStr)
+
+		if currentWidth+runeWidth > maxWidth {
+			break
+		}
+
+		result.WriteRune(r)
+		currentWidth += runeWidth
+	}
+
+	return result.String()
+}
+
 // viewRecordEdit renders the single-record field editor popup.
 func (m Model) viewRecordEdit() string {
 	var b strings.Builder
@@ -269,16 +294,19 @@ func (m Model) renderRecordField(fieldIdx int, f fieldDef) (string, int) {
 	displayValue := padRight(value, f.Width)
 
 	if isActive && m.mode == modeRecordEdit {
-		v := value
 		// For Y/N and integer fields, add padding space so fill characters are visible
 		effectiveWidth := f.Width
 		if f.Type == ftYesNo || f.Type == ftInteger {
 			effectiveWidth = f.Width + 2 // Add space for visual padding
 		}
-		if len(v) > effectiveWidth {
-			v = v[:effectiveWidth]
-		}
-		fillStr := strings.Repeat(string(fieldFillChar), maxInt(0, effectiveWidth-len(v)))
+
+		// Truncate using display-width-aware method to handle multi-byte UTF-8 safely
+		v := truncateToDisplayWidth(value, effectiveWidth)
+
+		// Calculate fill based on display width
+		vWidth := lipgloss.Width(v)
+		fillStr := strings.Repeat(string(fieldFillChar), maxInt(0, effectiveWidth-vWidth))
+
 		return fieldLabelStyle.Render(label) + fieldEditStyle.Render(v+fillStr), rawW
 	}
 

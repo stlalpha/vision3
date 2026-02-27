@@ -27,7 +27,7 @@
     "allow_anonymous": false,
     "real_name_only": false,
     "conference_id": 1,
-    "base_path": "msgbases/anon",
+    "base_path": "msgbases/sysop",
     "area_type": "local",
     "max_messages": 1000,
     "max_age": 365
@@ -60,7 +60,7 @@
     "allow_anonymous": true,
     "real_name_only": false,
     "conference_id": 1,
-    "base_path": "msgbases/sysop",
+    "base_path": "msgbases/anon",
     "area_type": "local",
     "max_messages": 1000,
     "max_age": 365,

@@ -132,9 +132,9 @@ ViSiON/3 uses several key configuration values in `configs/config.json` to contr
 
 - **coSysOpLevel (250)**: Co-SysOp privileges. Users at this level have elevated permissions for moderation and user management, but may be restricted from certain system administration functions.
 
-- **newUserLevel (1)**: The access level assigned to users when they first sign up. This is an *assignment value* — when someone registers a new account, they get this level. Default is 1 (requires manual validation before login).
+- **newUserLevel (10)**: The access level assigned to users when they first sign up. This is an *assignment value* — when someone registers a new account, they get this level. Default is 10 (allows immediate login after registration).
 
-- **regularUserLevel (10)**: The access level assigned to users when they are validated by the SysOp. This is an *assignment value* — when you validate a user, their level is upgraded to this value (if they're below it).
+- **regularUserLevel (20)**: The access level assigned to users when they are validated by the SysOp. This is an *assignment value* — when you validate a user, their level is upgraded to this value (if they're below it).
 
 - **logonLevel (10)**: Minimum access level required to log in to the BBS. This is a *threshold check* — users below this level are denied login even if their password is correct. Set to `0` to disable this check.
 
@@ -150,11 +150,11 @@ When a user attempts to log in, the system performs three checks in order:
 
 Only after passing all three checks is the user granted access to the BBS.
 
-**Example with default config (newUserLevel=1, logonLevel=10, regularUserLevel=10):**
+**Example with default config (newUserLevel=10, logonLevel=10, regularUserLevel=20):**
 
-- User registers → Gets AccessLevel: 1, Validated: false
+- User registers → Gets AccessLevel: 10, Validated: false
 - User tries to log in → Denied at step 2 (not validated)
-- SysOp validates user → AccessLevel upgraded to 10, Validated: true
+- SysOp validates user → AccessLevel upgraded to 20, Validated: true
 - User logs in → Passes all checks, login successful
 
 ### Creating Tiered Access Systems
@@ -164,17 +164,18 @@ By adjusting `newUserLevel`, `logonLevel`, and `regularUserLevel`, you can creat
 **Simple Configuration (Default - Manual Validation Required):**
 ```json
 {
-  "newUserLevel": 1,
+  "newUserLevel": 10,
   "logonLevel": 10,
-  "regularUserLevel": 10
+  "regularUserLevel": 20
 }
 ```
 
 - Level 0: Banned
-- Level 1-9: New users, cannot log in until validated
-- Level 10+: Validated users with full access
+- Level 1-9: Locked out (below logonLevel threshold)
+- Level 10-19: New users with basic access
+- Level 20+: Validated users with full access
 
-**Workflow:** User signs up (level 1) → cannot log in → SysOp validates → upgraded to level 10 → can log in
+**Workflow:** User signs up (level 10) → can log in with basic access → SysOp validates → upgraded to level 20 → full access granted
 
 **Auto-Login Probationary Configuration:**
 ```json
@@ -253,7 +254,7 @@ With `logonLevel: 0`, the level check is disabled and only username/password and
 
 Level-based login denials are logged for security monitoring:
 
-```
+```text
 INFO: Login denied for user 'bob' - insufficient access level (has 5, needs 10)
 ```
 

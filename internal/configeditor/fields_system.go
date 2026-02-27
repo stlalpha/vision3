@@ -110,9 +110,30 @@ func sysFieldsRegistration(cfg *config.ServerConfig) []fieldDef {
 		},
 		{
 			Label: "Timezone", Help: "IANA timezone (press Enter to select)", Type: ftLookup, Col: 3, Row: 3, Width: 30,
-			Get:         func() string { return cfg.Timezone },
-			Set:         func(val string) error { cfg.Timezone = val; return nil },
-			LookupItems: func() []LookupItem { return buildTimezoneLookupItems() },
+			Get: func() string { return cfg.Timezone },
+			Set: func(val string) error { cfg.Timezone = val; return nil },
+			LookupItems: func() []LookupItem {
+				items := buildTimezoneLookupItems()
+
+				// If current timezone is not empty and not in the curated list, append it
+				if cfg.Timezone != "" {
+					found := false
+					for _, item := range items {
+						if item.Value == cfg.Timezone || item.Display == cfg.Timezone {
+							found = true
+							break
+						}
+					}
+					if !found {
+						items = append(items, LookupItem{
+							Value:   cfg.Timezone,
+							Display: cfg.Timezone + " (current)",
+						})
+					}
+				}
+
+				return items
+			},
 		},
 	}
 }

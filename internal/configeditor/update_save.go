@@ -113,7 +113,7 @@ func (m *Model) insertRecord() {
 			Position: maxPos + 1,
 			Name:     "New Message Area",
 			AreaType: "local",
-			BasePath: "msgbases/changeme",
+			BasePath: fmt.Sprintf("msgbases/area_%d", newID),
 		})
 	case "filearea":
 		newID := 1
@@ -125,7 +125,7 @@ func (m *Model) insertRecord() {
 		m.configs.FileAreas = append(m.configs.FileAreas, file.FileArea{
 			ID:   newID,
 			Name: "New File Area",
-			Path: "files/changeme",
+			Path: fmt.Sprintf("files/area_%d", newID),
 		})
 	case "conference":
 		newID := 1

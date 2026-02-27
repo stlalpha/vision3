@@ -36,17 +36,35 @@ func (m *Model) fieldsEvent() []fieldDef {
 			Get: func() string { return e.Name },
 			Set: func(val string) error {
 				oldID := e.ID
-				e.Name = val
 				newID := sanitizeEventID(val)
+
+				// Validate newID is non-empty
+				if newID == "" {
+					return fmt.Errorf("event name must contain at least one alphanumeric character")
+				}
+
 				// Only update if ID actually changed
 				if oldID != newID {
+					// Check for collisions with other events (skip current event)
+					for i := range m.configs.Events.Events {
+						if i != idx && m.configs.Events.Events[i].ID == newID {
+							return fmt.Errorf("event ID '%s' already exists (derived from another event name)", newID)
+						}
+					}
+
+					// All validation passed - update the name, ID, and references
+					e.Name = val
 					e.ID = newID
+
 					// Update all RunAfter references in other events
 					for i := range m.configs.Events.Events {
 						if i != idx && m.configs.Events.Events[i].RunAfter == oldID {
 							m.configs.Events.Events[i].RunAfter = newID
 						}
 					}
+				} else {
+					// ID didn't change, just update the name
+					e.Name = val
 				}
 				return nil
 			},

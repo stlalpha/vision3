@@ -1,24 +1,30 @@
 package configeditor
 
 import (
+	"encoding/json"
+	"log"
 	"strconv"
 	"strings"
 )
 
-// joinArgs converts an array of arguments into a single space-separated string.
+// joinArgs converts an array of arguments into a JSON-encoded string.
+// This preserves arguments with spaces, quotes, and special characters without corruption.
 // Empty arrays return an empty string.
 func joinArgs(args []string) string {
 	if len(args) == 0 {
 		return ""
 	}
-	return strings.Join(args, " ")
+	// Encode as JSON array for lossless round-trip
+	data, err := json.Marshal(args)
+	if err != nil {
+		log.Printf("WARN: Failed to encode args as JSON: %v", err)
+		return ""
+	}
+	return string(data)
 }
 
-// splitArgs parses a space-separated string into an array of arguments.
-// Supports basic shell-style quoting:
-//   - Double quotes ("arg with spaces")
-//   - Single quotes ('arg with spaces')
-//   - Backslash escapes (\" \' \\)
+// splitArgs parses a JSON-encoded string into an array of arguments.
+// Falls back to simple space-splitting for backward compatibility with old configs.
 // Empty strings return an empty array.
 func splitArgs(s string) []string {
 	s = strings.TrimSpace(s)
@@ -26,59 +32,15 @@ func splitArgs(s string) []string {
 		return []string{}
 	}
 
+	// Try JSON decoding first
 	var args []string
-	var current strings.Builder
-	inQuote := false
-	quoteChar := rune(0)
-	escaped := false
-
-	for _, ch := range s {
-		if escaped {
-			// Previous char was backslash - add this char literally
-			current.WriteRune(ch)
-			escaped = false
-			continue
-		}
-
-		if ch == '\\' {
-			escaped = true
-			continue
-		}
-
-		if ch == '"' || ch == '\'' {
-			if !inQuote {
-				// Start quote
-				inQuote = true
-				quoteChar = ch
-			} else if ch == quoteChar {
-				// End quote
-				inQuote = false
-				quoteChar = 0
-			} else {
-				// Different quote char while in quote - add literally
-				current.WriteRune(ch)
-			}
-			continue
-		}
-
-		if ch == ' ' && !inQuote {
-			// Space outside quotes - end current arg
-			if current.Len() > 0 {
-				args = append(args, current.String())
-				current.Reset()
-			}
-			continue
-		}
-
-		current.WriteRune(ch)
+	if err := json.Unmarshal([]byte(s), &args); err == nil {
+		return args
 	}
 
-	// Add final arg if any
-	if current.Len() > 0 {
-		args = append(args, current.String())
-	}
-
-	return args
+	// Fallback: treat as space-separated for backward compatibility
+	// (simple split, no quote handling - users should re-save to upgrade to JSON)
+	return strings.Fields(s)
 }
 
 // fieldsProtocol returns fields for editing a transfer protocol.

@@ -1679,7 +1679,7 @@ func main() {
 
 	// Initialize configuration file watcher for hot reload
 	var serverConfigMu sync.RWMutex
-	configWatcher, err := NewConfigWatcher(rootConfigPath, menuSetPath, menuExecutor, &serverConfig, &serverConfigMu)
+	configWatcher, err := NewConfigWatcher(rootConfigPath, menuSetPath, menuExecutor, userMgr, &serverConfig, &serverConfigMu)
 	if err != nil {
 		log.Printf("WARN: Failed to start config file watcher: %v. Hot reload disabled.", err)
 	} else {
