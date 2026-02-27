@@ -3,6 +3,7 @@ package configeditor
 import (
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // buildRecordFields returns field definitions for the current record type and index.
@@ -19,7 +20,12 @@ func (m *Model) buildRecordFields() []fieldDef {
 	case "event":
 		return m.fieldsEvent()
 	case "ftn":
+		if m.recordEditIdx < 0 {
+			return m.fieldsFTNGlobal()
+		}
 		return m.fieldsFTNLink()
+	case "ftnlink":
+		return m.fieldsFTNLinkEdit()
 	case "protocol":
 		return m.fieldsProtocol()
 	case "archiver":
@@ -31,13 +37,15 @@ func (m *Model) buildRecordFields() []fieldDef {
 }
 
 // fieldsMsgArea returns fields for editing a message area.
+// FTN-specific fields are shown conditionally based on the area type.
 func (m *Model) fieldsMsgArea() []fieldDef {
 	idx := m.recordEditIdx
 	if idx < 0 || idx >= len(m.configs.MsgAreas) {
 		return nil
 	}
 	a := &m.configs.MsgAreas[idx]
-	return []fieldDef{
+
+	fields := []fieldDef{
 		{
 			Label: "Position", Help: "Display order (use P key in list to reorder)", Type: ftDisplay, Col: 3, Row: 1, Width: 5,
 			Get: func() string { return strconv.Itoa(a.Position) },
@@ -58,9 +66,16 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 			Set: func(val string) error { a.Description = val; return nil },
 		},
 		{
-			Label: "Area Type", Help: "Message type: local, echomail, netmail", Type: ftString, Col: 3, Row: 5, Width: 10,
+			Label: "Area Type", Help: "local = BBS-only  |  echomail = FTN echo  |  netmail = FTN point-to-point", Type: ftLookup, Col: 3, Row: 5, Width: 10,
 			Get: func() string { return a.AreaType },
 			Set: func(val string) error { a.AreaType = val; return nil },
+			LookupItems: func() []LookupItem {
+				return []LookupItem{
+					{Value: "local", Display: "local - BBS-only message area"},
+					{Value: "echomail", Display: "echomail - FTN echoed message area"},
+					{Value: "netmail", Display: "netmail - FTN point-to-point mail"},
+				}
+			},
 		},
 		{
 			Label: "ACS Read", Help: "Access string for reading (e.g. s20 = level 20+)", Type: ftString, Col: 3, Row: 6, Width: 20,
@@ -79,9 +94,7 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 		},
 		{
 			Label: "Conference", Help: "Press Enter to select a conference", Type: ftLookup, Col: 3, Row: 9, Width: 40,
-			Get: func() string {
-				return m.conferenceName(a.ConferenceID)
-			},
+			Get: func() string { return m.conferenceName(a.ConferenceID) },
 			Set: func(val string) error {
 				n, err := strconv.Atoi(val)
 				if err != nil {
@@ -90,9 +103,7 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 				a.ConferenceID = n
 				return nil
 			},
-			LookupItems: func() []LookupItem {
-				return m.buildConferenceLookupItems()
-			},
+			LookupItems: func() []LookupItem { return m.buildConferenceLookupItems() },
 		},
 		{
 			Label: "Max Messages", Help: "Maximum messages before purging (0=unlimited)", Type: ftInteger, Col: 3, Row: 10, Width: 6, Min: 0, Max: 999999,
@@ -128,27 +139,45 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 			Get: func() string { return boolToYN(a.RealNameOnly) },
 			Set: func(val string) error { a.RealNameOnly = ynToBool(val); return nil },
 		},
-		{
-			Label: "Echo Tag", Help: "FTN echomail tag (e.g. FSXNET_GEN)", Type: ftString, Col: 3, Row: 14, Width: 30,
-			Get: func() string { return a.EchoTag },
-			Set: func(val string) error { a.EchoTag = val; return nil },
-		},
-		{
-			Label: "Origin Addr", Help: "FTN origin address for echomail", Type: ftString, Col: 3, Row: 15, Width: 20,
-			Get: func() string { return a.OriginAddr },
-			Set: func(val string) error { a.OriginAddr = val; return nil },
-		},
-		{
-			Label: "Network", Help: "FTN network name for this area", Type: ftString, Col: 3, Row: 16, Width: 20,
-			Get: func() string { return a.Network },
-			Set: func(val string) error { a.Network = val; return nil },
-		},
-		{
-			Label: "Sponsor", Help: "Name of the network/area sponsor", Type: ftString, Col: 3, Row: 17, Width: 30,
-			Get: func() string { return a.Sponsor },
-			Set: func(val string) error { a.Sponsor = val; return nil },
-		},
 	}
+
+	switch strings.ToLower(a.AreaType) {
+	case "echomail":
+		fields = append(fields,
+			fieldDef{
+				Label: "Network", Help: "FTN network key from ftn.json (e.g. fsxnet)", Type: ftLookup, Col: 3, Row: 14, Width: 20,
+				Get: func() string { return a.Network },
+				Set: func(val string) error { a.Network = val; return nil },
+				LookupItems: func() []LookupItem { return m.buildFTNNetworkLookupItems() },
+			},
+			fieldDef{
+				Label: "Echo Tag", Help: "FTN echo tag matching the network's area list (e.g. FSX_GEN)", Type: ftString, Col: 3, Row: 15, Width: 30,
+				Get: func() string { return a.EchoTag },
+				Set: func(val string) error { a.EchoTag = val; return nil },
+			},
+			fieldDef{
+				Label: "Origin Addr", Help: "Your FTN origin address for this echo (e.g. 21:4/158.1)", Type: ftString, Col: 3, Row: 16, Width: 20,
+				Get: func() string { return a.OriginAddr },
+				Set: func(val string) error { a.OriginAddr = val; return nil },
+			},
+			fieldDef{
+				Label: "Sponsor", Help: "Handle of the echo sponsor/moderator (optional)", Type: ftString, Col: 3, Row: 17, Width: 30,
+				Get: func() string { return a.Sponsor },
+				Set: func(val string) error { a.Sponsor = val; return nil },
+			},
+		)
+	case "netmail":
+		fields = append(fields,
+			fieldDef{
+				Label: "Network", Help: "FTN network key this netmail area serves (e.g. fsxnet)", Type: ftLookup, Col: 3, Row: 14, Width: 20,
+				Get: func() string { return a.Network },
+				Set: func(val string) error { a.Network = val; return nil },
+				LookupItems: func() []LookupItem { return m.buildFTNNetworkLookupItems() },
+			},
+		)
+	}
+
+	return fields
 }
 
 // fieldsFileArea returns fields for editing a file area.

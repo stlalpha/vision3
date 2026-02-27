@@ -37,7 +37,7 @@ func cmdToss(args []string) {
 			continue
 		}
 
-		t, err := tosser.New(name, netCfg, dupeDB, msgMgr)
+		t, err := tosser.New(name, netCfg, ftnCfg, dupeDB, msgMgr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating tosser for %s: %v\n", name, err)
 			hadErrors = true
@@ -99,7 +99,7 @@ func cmdScan(args []string) {
 			continue
 		}
 
-		t, err := tosser.New(name, netCfg, dupeDB, msgMgr)
+		t, err := tosser.New(name, netCfg, ftnCfg, dupeDB, msgMgr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating tosser for %s: %v\n", name, err)
 			hadErrors = true
@@ -158,7 +158,7 @@ func cmdFtnPack(args []string) {
 			continue
 		}
 
-		t, err := tosser.New(name, netCfg, dupeDB, msgMgr)
+		t, err := tosser.New(name, netCfg, ftnCfg, dupeDB, msgMgr)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error creating tosser for %s: %v\n", name, err)
 			hadErrors = true

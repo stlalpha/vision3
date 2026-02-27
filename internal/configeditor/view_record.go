@@ -49,8 +49,11 @@ func (m Model) viewRecordEdit() string {
 		bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR))))
 	b.WriteByte('\n')
 
-	// Box title (Edit <type>)
+	// Box title
 	boxTitleText := fmt.Sprintf("Edit %s", m.recordTypeTitle())
+	if m.recordType == "ftn" && m.recordEditIdx < 0 {
+		boxTitleText = "FTN Global Settings"
+	}
 	boxTitleLine := editBorderStyle.Render("│") +
 		menuHeaderStyle.Render(centerText(boxTitleText, boxW)) +
 		editBorderStyle.Render("│")
@@ -115,6 +118,9 @@ func (m Model) viewRecordEdit() string {
 		}
 	}
 	infoText := fmt.Sprintf("Record %d of %d%s", m.recordEditIdx+1, total, scrollHint)
+	if m.recordEditIdx < 0 {
+		infoText = "Global Settings" + scrollHint
+	}
 	infoLine := editBorderStyle.Render("│") +
 		editInfoLabelStyle.Render(centerText(infoText, boxW)) +
 		editBorderStyle.Render("│")
@@ -140,7 +146,11 @@ func (m Model) viewRecordEdit() string {
 	b.WriteString(bgLine)
 	b.WriteByte('\n')
 
-	helpText := centerText("Enter - Edit  |  PgUp/PgDn - Records  |  ESC - Return", m.width)
+	helpBarStr := "Enter - Edit  |  PgUp/PgDn - Records  |  ESC - Return"
+	if m.recordEditIdx < 0 {
+		helpBarStr = "Enter - Edit  |  ESC - Return"
+	}
+	helpText := centerText(helpBarStr, m.width)
 	b.WriteString(helpBarStyle.Render(helpText))
 
 	return b.String()
@@ -180,6 +190,27 @@ func (m Model) recordEditHeader() string {
 	case "archiver":
 		if m.recordEditIdx < len(m.configs.Archivers.Archivers) {
 			return m.configs.Archivers.Archivers[m.recordEditIdx].Name
+		}
+	case "ftn":
+		if m.recordEditIdx < 0 {
+			return "Paths & Storage"
+		}
+		keys := m.ftnNetworkKeys()
+		if m.recordEditIdx < len(keys) {
+			return keys[m.recordEditIdx]
+		}
+	case "ftnlink":
+		refs := m.ftnAllLinkRefs()
+		if m.recordEditIdx >= 0 && m.recordEditIdx < len(refs) {
+			ref := refs[m.recordEditIdx]
+			nc := m.configs.FTN.Networks[ref.networkKey]
+			if ref.linkIdx < len(nc.Links) {
+				lnk := nc.Links[ref.linkIdx]
+				if lnk.Name != "" {
+					return fmt.Sprintf("%s  (%s)", lnk.Name, ref.networkKey)
+				}
+				return fmt.Sprintf("%s  (%s)", lnk.Address, ref.networkKey)
+			}
 		}
 	case "login":
 		if m.recordEditIdx < len(m.configs.LoginSeq) {

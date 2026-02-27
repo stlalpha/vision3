@@ -18,7 +18,9 @@ The tosser is built into Vision/3 via the `v3mail` command, conceptually similar
 | `v3mail scan` | Scans JAM bases for new outbound echomail and creates `.pkt` files |
 | `v3mail ftn-pack` | Packs outbound `.pkt` files into ZIP bundles for mailer pickup |
 
-Configured via `configs/ftn.json`. The [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 7 — FTN Network) manages network and link settings interactively.
+Configured via `configs/ftn.json`. The [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 7 — Echomail Networks, section 8 — Echomail Links) manages network and link settings interactively.
+
+> **Current limitation — single uplink per network:** Vision/3 currently supports one uplink (hub) per FTN network. All outbound echomail for a network is sent to every configured link, so defining more than one link will result in duplicate packets being delivered to each. Multi-link routing (hub/downlink operation) is planned for a future release.
 
 ### Mailer (External) — `binkd`
 
@@ -155,6 +157,7 @@ Each line has an echo tag followed by a description.
 | `--hub-password <pw>`  | No       | Packet password shared with your hub                             |
 | `--hub-name <name>`    | No       | Human-readable hub label (default: `Hub <addr>`)                 |
 | `--network <name>`     | No       | Network name (default: derived from NA filename)                 |
+| `--tag-prefix <pfx>`   | No       | Prefix for area tags and base paths (e.g. `fd_` for Fidonet)     |
 | `--conference-id <id>` | No       | Use an existing conference instead of creating one               |
 | `--acs-read <acs>`     | No       | ACS string for read access                                       |
 | `--acs-write <acs>`    | No       | ACS string for write access (e.g., `s10` for security level 10+) |
@@ -175,6 +178,53 @@ Each line has an echo tag followed by a description.
 
 ```bash
 ./helper ftnsetup --na fsxnet.na --address 21:4/158.1 --hub 21:4/158 --dry-run
+```
+
+With `--tag-prefix fd_`, areas get prefixed tags (e.g. `FD_LINUX`) and base paths (e.g. `msgbases/fd_linux`), useful to avoid conflicts with local areas when importing Fidonet.
+
+### Step 3b: Send AreaFix Commands
+
+The `helper areafix` command sends an AreaFix netmail to your hub. AreaFix lets you subscribe/unsubscribe to echo areas, list areas, and rescan without contacting your hub operator.
+
+**Prerequisites:** Set `areafix_password` on the hub link in `configs/ftn.json` (Configuration Editor, section 8 — Echomail Links). Your hub assigns this password.
+
+**Run `helper areafix`:**
+
+```bash
+./helper areafix --network fidonet --command "%LIST"
+```
+
+**Options:**
+
+| Flag               | Required | Description                                                                 |
+| ------------------ | -------- | --------------------------------------------------------------------------- |
+| `--network`        | Yes      | FTN network name (e.g. `fidonet`)                                           |
+| `--command`        | Yes*     | AreaFix command (e.g. `%LIST`, `+LINUX`, `-LINUX`); not required with `--seed` |
+| `--seed`           | No       | Subscribe to all echomail areas in message_areas.json for this network      |
+| `--seed-messages`  | No       | Number of old messages to request when using `--seed` (default: 25)         |
+| `--link <addr>`    | No       | Hub address (default: first link in the network)                            |
+| `--config`         | No       | Config directory (default: `configs`)                                       |
+
+**AreaFix commands:**
+
+| Command     | Description                                      |
+| ----------- | ------------------------------------------------ |
+| `%HELP`     | Return list of available commands                |
+| `%LIST`     | List all available areas                         |
+| `%QUERY`    | List currently subscribed areas                  |
+| `%UNLINKED` | List areas not yet subscribed                    |
+| `+areaname` | Subscribe to an area                             |
+| `-areaname` | Unsubscribe from an area                         |
+| `=areaname,R=<days>` | Update/rescan area (R = days of old msgs) |
+| `%RESCAN`   | Rescan all newly added/updated areas             |
+
+The command creates a netmail packet in the outbound directory. Run `v3mail ftn-pack` and binkd will pick it up on the next poll.
+
+**Seed new echomail network:** Use `--seed` to subscribe to all echomail areas configured in `message_areas.json` for the network, with a request for the last N messages per area (useful when setting up a new network and seeding it):
+
+```bash
+./helper areafix --network fidonet --seed
+./helper areafix --network fidonet --seed --seed-messages 50
 ```
 
 ### Step 4: Configure Your Mailer (binkd example)
@@ -275,22 +325,23 @@ verify the directory paths are correct for your installation:
 ```json
 {
     "dupe_db_path": "data/ftn/dupes.json",
+    "inbound_path": "data/ftn/in",
+    "secure_inbound_path": "data/ftn/secure_in",
+    "outbound_path": "data/ftn/temp_out",
+    "binkd_outbound_path": "data/ftn/out",
+    "temp_path": "data/ftn/temp_in",
     "networks": {
         "fsxnet": {
             "internal_tosser_enabled": true,
             "own_address": "21:4/158.1",
-            "inbound_path": "data/ftn/in",
-            "secure_inbound_path": "data/ftn/secure_in",
-            "outbound_path": "data/ftn/temp_out",
-            "binkd_outbound_path": "data/ftn/out",
-            "temp_path": "data/ftn/temp_in",
             "tearline": "",
             "links": [
                 {
                     "address": "21:4/158",
-                    "password": "MYSECRET",
+                    "packet_password": "MYSECRET",
+                    "areafix_password": "",
                     "name": "Hub 21:4/158",
-                    "echo_areas": ["FSX_GEN", "FSX_BBS", "FSX_RETRO", "FSX_GAMING"]
+                    "flavour": "Crash"
                 }
             ]
         }
@@ -304,8 +355,8 @@ verify the directory paths are correct for your installation:
 - `secure_inbound_path` - Must match binkd's `inbound` directive
 - `binkd_outbound_path` - Must match binkd's `domain` outbound path
 - `links[].address` - Your hub's FTN address
-- `links[].password` - Packet password shared with your hub
-- `links[].echo_areas` - List of echo tags this link carries (must match `echo_tag` in message_areas.json)
+- `links[].packet_password` - Packet password shared with your hub
+- `links[].areafix_password` - Password for AreaFix netmail (subject line; set by hub operator)
 
 All paths are relative to the Vision/3 installation root (where you run the BBS from).
 
@@ -317,7 +368,7 @@ Check that all paths are consistent across your config files:
 | -------------- | ------------- | --------------------- |
 | Secure inbound | `inbound`     | `secure_inbound_path` |
 | Outbound       | `domain` path | `binkd_outbound_path` |
-| Hub password   | `node` line   | `links[].password`    |
+| Hub password   | `node` line   | `links[].packet_password` |
 | Your address   | `address`     | `own_address`         |
 
 ### Step 7: Initialize Message Bases
@@ -406,52 +457,71 @@ See [event-scheduler.md](../advanced/event-scheduler.md) for the full recommende
 
 ## Configuration Files Reference
 
-> *The [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 7 — FTN Network) manages FTN network and link settings interactively. Mailer-specific configuration (binkd.conf) and directory setup are still handled manually as described below.*
+> *The [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 7 — Echomail Networks, section 8 — Echomail Links) manages FTN network and link settings interactively. Mailer-specific configuration (binkd.conf) and directory setup are still handled manually as described below.*
 
 ### ftn.json
 
 `configs/ftn.json` is the central configuration for the internal FTN tosser. It is
 read by `v3mail toss`, `v3mail scan`, and `v3mail ftn-pack`.
 
-**Fields:**
+**Global fields (top-level):**
 
-| Field                                    | Description                                                  |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| `dupe_db_path`                           | Path to the dupe detection database (relative to BBS root)   |
-| `networks.<key>.internal_tosser_enabled` | Set `true` to enable `v3mail` for this network               |
-| `networks.<key>.own_address`             | Your FTN address (e.g., `21:4/158.1`)                        |
-| `networks.<key>.inbound_path`            | Unsecured inbound directory                                  |
-| `networks.<key>.secure_inbound_path`     | Secure inbound (where your mailer deposits received mail)    |
-| `networks.<key>.outbound_path`           | Staging dir for outbound `.pkt` files (`v3mail scan` output) |
-| `networks.<key>.binkd_outbound_path`     | Outbound bundles dir (your mailer picks up from here)        |
-| `networks.<key>.temp_path`               | Temp dir for bundle extraction during toss                   |
-| `networks.<key>.tearline`                | Optional tearline suffix (empty = use default)               |
-| `networks.<key>.links[].address`         | Hub FTN address                                              |
-| `networks.<key>.links[].password`        | Packet password shared with hub                              |
-| `networks.<key>.links[].name`            | Human-readable hub label                                     |
-| `networks.<key>.links[].echo_areas`      | Echo tags carried by this link                               |
+| Field                 | Description                                                  |
+| --------------------- | ------------------------------------------------------------ |
+| `dupe_db_path`        | Path to the dupe detection database (relative to BBS root)   |
+| `inbound_path`        | Unsecured inbound directory (binkd deposits bundles here)    |
+| `secure_inbound_path` | Secure inbound for password-authenticated mailer sessions    |
+| `outbound_path`       | Staging dir for outbound `.pkt` files (`v3mail scan` output) |
+| `binkd_outbound_path` | Outbound bundles dir (binkd picks up ZIP archives from here) |
+| `temp_path`           | Temp dir for bundle extraction during toss                   |
+| `bad_area_tag`        | Area tag for messages with unknown echo tags (e.g. `"BAD"`)  |
+| `dupe_area_tag`       | Area tag for duplicate MSGIDs (e.g. `"DUPE"`)                |
+
+**Per-network fields (`networks.<key>`):**
+
+| Field                     | Description                                         |
+| ------------------------- | --------------------------------------------------- |
+| `internal_tosser_enabled` | Set `true` to enable `v3mail` for this network      |
+| `own_address`             | Your FTN address (e.g., `21:4/158.1`)               |
+| `poll_interval_seconds`   | Auto-poll interval; `0` = manual only               |
+| `tearline`                | Optional tearline suffix (empty = use default)      |
+
+**Per-link fields (`networks.<key>.links[]`):**
+
+> **Note:** Only one link (your uplink/hub) is supported per network at this time. Defining multiple links will cause all outbound echomail to be sent to each of them. Multi-link hub/downlink routing is planned for a future release.
+
+| Field              | Description                                              |
+| ------------------ | -------------------------------------------------------- |
+| `address`          | Hub FTN address                                          |
+| `packet_password`  | Packet password shared with hub                          |
+| `areafix_password` | Password for AreaFix netmail (subject line; set by hub)  |
+| `name`             | Human-readable hub label                                 |
+| `flavour`          | Delivery mode: `Normal`, `Crash`, `Hold`, `Direct`       |
 
 **Example:**
 
 ```json
 {
     "dupe_db_path": "data/ftn/dupes.json",
+    "inbound_path": "data/ftn/in",
+    "secure_inbound_path": "data/ftn/secure_in",
+    "outbound_path": "data/ftn/temp_out",
+    "binkd_outbound_path": "data/ftn/out",
+    "temp_path": "data/ftn/temp_in",
+    "bad_area_tag": "BAD",
+    "dupe_area_tag": "DUPE",
     "networks": {
         "fsxnet": {
             "internal_tosser_enabled": true,
             "own_address": "21:4/158.1",
-            "inbound_path": "data/ftn/in",
-            "secure_inbound_path": "data/ftn/secure_in",
-            "outbound_path": "data/ftn/temp_out",
-            "binkd_outbound_path": "data/ftn/out",
-            "temp_path": "data/ftn/temp_in",
             "tearline": "",
             "links": [
                 {
                     "address": "21:4/158",
-                    "password": "MYSECRET",
+                    "packet_password": "MYSECRET",
+                    "areafix_password": "",
                     "name": "Hub 21:4/158",
-                    "echo_areas": ["FSX_GEN", "FSX_BBS", "FSX_RETRO", "FSX_GAMING"]
+                    "flavour": "Crash"
                 }
             ]
         }
@@ -561,19 +631,60 @@ node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 - Run `./v3mail scan --config configs --data data` to create outbound packets
 - Run `./v3mail ftn-pack --config configs --data data` to bundle them
 - Check that `binkd_outbound_path` in `ftn.json` matches the domain path in binkd.conf
-- Verify the echo area's hub address is listed in `links[].echo_areas` in `ftn.json`
 
 ### Duplicate messages
 
-- `v3mail toss` handles dupe detection via `data/ftn/dupes.json`
-- The dupe window is configured by `DupeWindow` in the tosser (default: 30 days)
+The tosser tracks seen MSGIDs in `data/ftn/dupes.json`. When a message arrives
+whose MSGID was already recorded, it is written to the `DUPE` message area
+(sysop-only) instead of the normal area. Entries older than 30 days are
+auto-purged.
+
+**Reading `dupes.json`:** Each entry is a key/value pair:
+
+```json
+{
+  "entries": {
+    "21:4/100 deadbeef": 1772208000,
+    "21:4/100 cafebabe": 1772208001
+  }
+}
+```
+
+- Key: `<originating FTN address> <8-char hex MSGID serial>`
+- Value: Unix timestamp when the MSGID was first seen
+
+You will rarely need to look at this file. It is fully managed by the tosser.
+Useful things you can do with it:
+
+| Action | Why |
+|---|---|
+| Count entries (`jq '.entries | length' data/ftn/dupes.json`) | Gauge how much traffic has been processed in the last 30 days |
+| Delete the file | Reset dupe detection — e.g. after a crash or if you want to re-import old mail without every message being flagged as a dupe |
+
+**DUPE area:** Messages routed here indicate the same message arrived via two
+different paths (common in meshed networks) or a hub retransmitting old traffic.
+A low dupe rate is normal. A consistently high rate (dozens per poll) suggests a
+routing loop or that your hub is resending mail — contact your hub sysop if it
+persists.
 
 ### Bad/undeliverable messages
 
-- Check `data/msgbases/bad` (via `./v3mail stats data/msgbases/bad`) for messages
-  that could not be tossed
-- Usually means the AREA tag in the packet doesn't match any `echo_tag` in
-  message_areas.json or any `echo_areas` entry in `ftn.json` links
+When a packet contains an `AREA:` tag that doesn't match any subscribed echo
+area, the message is written to the `BAD` message area (sysop-only) instead of
+being silently dropped.
+
+**BAD area:** Read it via the BBS message reader. Each message will show the
+original `AREA:` tag in the header — that tells you what echo the sender thought
+they were writing to.
+
+Common causes and actions:
+
+| What you see in BAD | Likely cause | What to do |
+|---|---|---|
+| Area tags from a network you're on | Hub is forwarding areas you haven't subscribed to | Subscribe via `helper areafix` if you want them; otherwise ignore |
+| Area tags you want to add | You forgot to subscribe after running `ftnsetup` | Run `./helper areafix --network <net> --command "+AREATAG"` |
+| Junk/unknown area tags | Misconfigured remote, spam | Ignore; the BAD area auto-purges after 365 days |
+| Tags that look like your own areas but differ in case | `echo_tag` case mismatch in `message_areas.json` | Fix the `echo_tag` field to match exactly what the hub sends |
 
 ## Useful Commands
 
@@ -607,4 +718,10 @@ bin/binkd -c data/ftn/binkd.conf
 
 # Preview helper changes before applying
 ./helper ftnsetup --na network.na --address 21:4/158.1 --hub 21:4/158 --dry-run
+
+# Send AreaFix command (e.g. list areas, subscribe to LINUX)
+./helper areafix --network fidonet --command "%LIST"
+
+# Seed new echomail network (subscribe to all areas in message_areas.json)
+./helper areafix --network fidonet --seed
 ```

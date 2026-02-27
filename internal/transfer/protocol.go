@@ -119,7 +119,7 @@ func (p *ProtocolConfig) ExecuteSend(ctx context.Context, s ssh.Session, filePat
 	cmdPath, err := exec.LookPath(p.SendCmd)
 	if err != nil {
 		log.Printf("ERROR: send command %q not found for protocol %q: %v", p.SendCmd, p.Name, err)
-		return fmt.Errorf("%w: send command %q not found for protocol %q — see documentation/file-transfer-protocols.md", ErrBinaryNotFound, p.SendCmd, p.Name)
+		return fmt.Errorf("%w: send command %q not found for protocol %q — see docs/sysop/files/file-transfer.md", ErrBinaryNotFound, p.SendCmd, p.Name)
 	}
 	// Resolve to absolute path so relative binary paths survive any working-directory changes.
 	if !filepath.IsAbs(cmdPath) {
@@ -158,7 +158,7 @@ func (p *ProtocolConfig) ExecuteReceive(ctx context.Context, s ssh.Session, targ
 	cmdPath, err := exec.LookPath(p.RecvCmd)
 	if err != nil {
 		log.Printf("ERROR: recv command %q not found for protocol %q: %v", p.RecvCmd, p.Name, err)
-		return fmt.Errorf("%w: recv command %q not found for protocol %q — see documentation/file-transfer-protocols.md", ErrBinaryNotFound, p.RecvCmd, p.Name)
+		return fmt.Errorf("%w: recv command %q not found for protocol %q — see docs/sysop/files/file-transfer.md", ErrBinaryNotFound, p.RecvCmd, p.Name)
 	}
 	// Resolve to absolute path so that cmd.Dir does not break relative binary paths.
 	if !filepath.IsAbs(cmdPath) {

@@ -60,8 +60,26 @@ func (m Model) updateRecordList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "i", "I", "insert":
 			m.insertRecord()
 			m.dirty = true
-			m.recordCursor = m.recordCount() - 1
+			// For ftnlink the new link is appended to the first (sorted) network,
+			// not necessarily at the end of the flat list; point at it directly.
+			if m.recordType == "ftnlink" {
+				nets := m.ftnNetworkKeys()
+				if len(nets) > 0 {
+					m.recordCursor = len(m.configs.FTN.Networks[nets[0]].Links) - 1
+				}
+			} else {
+				m.recordCursor = m.recordCount() - 1
+			}
 			m.clampRecordScroll()
+			return m, nil
+		case "g", "G":
+			if m.recordType == "ftn" {
+				m.recordFields = m.fieldsFTNGlobal()
+				m.editField = 0
+				m.fieldScroll = 0
+				m.recordEditIdx = -1
+				m.mode = modeRecordEdit
+			}
 			return m, nil
 		case "d", "D", "delete":
 			if total > 0 {
@@ -200,7 +218,7 @@ func (m Model) updateRecordEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPgDown:
 		total := m.recordCount()
-		if total > 0 && m.recordEditIdx < total-1 {
+		if m.recordEditIdx >= 0 && total > 0 && m.recordEditIdx < total-1 {
 			m.recordEditIdx++
 			m.recordFields = m.buildRecordFields()
 			m.editField = 0
@@ -293,7 +311,10 @@ func (m Model) updateRecordField(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.textInput.Blur()
 		m.mode = modeRecordEdit
-		m.editField = m.nextRecordEditableField(1)
+		if !m.stayOnField {
+			m.editField = m.nextRecordEditableField(1)
+		}
+		m.stayOnField = false
 		m.clampFieldScroll(m.recordFields)
 		return m, nil
 
@@ -304,7 +325,10 @@ func (m Model) updateRecordField(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.textInput.Blur()
 		m.mode = modeRecordEdit
-		m.editField = m.nextRecordEditableField(-1)
+		if !m.stayOnField {
+			m.editField = m.nextRecordEditableField(-1)
+		}
+		m.stayOnField = false
 		m.clampFieldScroll(m.recordFields)
 		return m, nil
 
@@ -374,6 +398,9 @@ func (m *Model) applyRecordFieldValue(f fieldDef) error {
 		}
 		m.dirty = true
 		m.message = ""
+		if f.AfterSet != nil {
+			f.AfterSet(m, val)
+		}
 	}
 
 	// Rebuild field list in case a toggle (e.g. Is DOS) changed visible fields.
@@ -388,13 +415,18 @@ func (m *Model) applyRecordFieldValue(f fieldDef) error {
 // toggleYesNo flips a Y/N field value in place.
 func (m *Model) toggleYesNo(f fieldDef) {
 	if f.Get != nil && f.Set != nil {
+		var val string
 		if f.Get() == "Y" {
-			f.Set("N")
+			val = "N"
 		} else {
-			f.Set("Y")
+			val = "Y"
 		}
+		f.Set(val)
 		m.dirty = true
 		m.message = ""
+		if f.AfterSet != nil {
+			f.AfterSet(m, val)
+		}
 		// Rebuild fields in case toggle changed visible fields (e.g. Is DOS)
 		m.recordFields = m.buildRecordFields()
 		if m.editField >= len(m.recordFields) {

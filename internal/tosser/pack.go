@@ -29,8 +29,8 @@ type PackResult struct {
 func (t *Tosser) PackOutbound() PackResult {
 	result := PackResult{}
 
-	stagingDir := t.config.OutboundPath
-	binkdDir := t.config.BinkdOutboundPath
+	stagingDir := t.paths.OutboundPath
+	binkdDir := t.paths.BinkdOutboundPath
 	if stagingDir == "" || binkdDir == "" {
 		result.Errors = append(result.Errors, "outbound_path or binkd_outbound_path not configured")
 		return result

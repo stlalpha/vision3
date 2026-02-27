@@ -47,12 +47,13 @@ const messageAreaFile = "message_areas.json"
 // Bases are opened on-demand and closed after each operation to allow
 // v3mail and other external tools concurrent access.
 type MessageManager struct {
-	mu         sync.RWMutex
-	dataPath   string // Base data directory (e.g., "data")
-	areasPath  string // Full path to message_areas.json
-	areasByID  map[int]*MessageArea
-	areasByTag map[string]*MessageArea
-	boardName  string // BBS name for echomail origin lines
+	mu              sync.RWMutex
+	dataPath        string // Base data directory (e.g., "data")
+	areasPath       string // Full path to message_areas.json
+	areasByID       map[int]*MessageArea
+	areasByTag      map[string]*MessageArea
+	areasByEchoTag  map[string]*MessageArea // indexed by EchoTag when it differs from Tag
+	boardName       string                  // BBS name for echomail origin lines
 	// networkTearlines maps network key -> custom tearline text.
 	networkTearlines map[string]string
 	threadIndex      map[int]*threadIndex
@@ -143,6 +144,7 @@ func (mm *MessageManager) loadMessageAreas() error {
 
 	mm.areasByID = make(map[int]*MessageArea)
 	mm.areasByTag = make(map[string]*MessageArea)
+	mm.areasByEchoTag = make(map[string]*MessageArea)
 
 	for _, area := range areasList {
 		if area == nil {
@@ -154,6 +156,10 @@ func (mm *MessageManager) loadMessageAreas() error {
 		}
 		mm.areasByID[area.ID] = area
 		mm.areasByTag[area.Tag] = area
+		// Also index by EchoTag for FTN inbound routing when tag-prefix is in use.
+		if area.EchoTag != "" && area.EchoTag != area.Tag {
+			mm.areasByEchoTag[area.EchoTag] = area
+		}
 		log.Printf("TRACE: Loaded area ID %d, Tag '%s', Type '%s'", area.ID, area.Tag, area.AreaType)
 	}
 
@@ -238,6 +244,15 @@ func (mm *MessageManager) GetAreaByTag(tag string) (*MessageArea, bool) {
 	return area, exists
 }
 
+// GetAreaByEchoTag retrieves a message area by its FTN echo tag.
+// Used when areas have a local tag-prefix (e.g. Tag="FD_LINUX", EchoTag="LINUX").
+func (mm *MessageManager) GetAreaByEchoTag(echoTag string) (*MessageArea, bool) {
+	mm.mu.RLock()
+	defer mm.mu.RUnlock()
+	area, exists := mm.areasByEchoTag[echoTag]
+	return area, exists
+}
+
 // UpdateAreaByID replaces the message area with the given ID with a copy of updated.
 // Callers must not modify areas by writing through pointers returned from GetAreaByID;
 // use this method so the update is performed under the manager's lock and avoids races.
@@ -253,6 +268,7 @@ func (mm *MessageManager) UpdateAreaByID(id int, updated MessageArea) error {
 		return ErrAreaNotFound
 	}
 	oldTag := old.Tag
+	oldEchoTag := old.EchoTag
 	replacement := new(MessageArea)
 	*replacement = updated
 	if oldTag != updated.Tag {
@@ -260,6 +276,13 @@ func (mm *MessageManager) UpdateAreaByID(id int, updated MessageArea) error {
 			return fmt.Errorf("tag %q already in use by area %d", updated.Tag, existing.ID)
 		}
 		delete(mm.areasByTag, oldTag)
+	}
+	// Keep areasByEchoTag in sync when EchoTag changes.
+	if oldEchoTag != "" && oldEchoTag != old.Tag {
+		delete(mm.areasByEchoTag, oldEchoTag)
+	}
+	if updated.EchoTag != "" && updated.EchoTag != updated.Tag {
+		mm.areasByEchoTag[updated.EchoTag] = replacement
 	}
 	mm.areasByID[id] = replacement
 	mm.areasByTag[updated.Tag] = replacement
