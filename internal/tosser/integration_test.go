@@ -313,7 +313,10 @@ func TestHighWaterMarkAdvances(t *testing.T) {
 	base.WriteMessageExt(msg, msgType, area.EchoTag, "TestBBS", "")
 	base.Close()
 
-	tosser, _ := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	tosser.ScanAndExport()
 
 	// HWM should be persisted in the base's .jlr file
@@ -343,7 +346,10 @@ func TestPackOutboundCreatesBundle(t *testing.T) {
 	pktPath := filepath.Join(env.outboundDir, "staged.pkt")
 	os.WriteFile(pktPath, pktData, 0644)
 
-	tosser, _ := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	result := tosser.PackOutbound()
 
 	if result.BundlesCreated != 1 {
@@ -532,7 +538,10 @@ func TestPackFlowFileCreated(t *testing.T) {
 	// Put a proper .PKT in the outbound dir (destNet=4, destNode=158 matches test link)
 	os.WriteFile(filepath.Join(env.outboundDir, "staged.pkt"), makeStagedPkt(t), 0644)
 
-	tosser, _ := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
 	result := tosser.PackOutbound()
 
 	if result.BundlesCreated != 1 {

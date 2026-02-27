@@ -856,7 +856,7 @@ func LoadFTNConfig(configPath string) (FTNConfig, error) {
 			{"temp_path", config.TempPath},
 		}
 		for _, r := range required {
-			if r.value == "" {
+			if strings.TrimSpace(r.value) == "" {
 				return defaultConfig, fmt.Errorf("ftn.json: %q is required when internal_tosser_enabled is true", r.field)
 			}
 		}

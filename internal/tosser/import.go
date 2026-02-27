@@ -267,9 +267,13 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 	// Find the target area by echo tag.
 	// Fall back to EchoTag index for areas using a local tag-prefix
 	// (e.g. Tag="FD_LINUX", EchoTag="LINUX" when --tag-prefix was used during setup).
+	// Constrain the fallback to the current network to avoid cross-network misrouting
+	// when two networks share the same echo tag.
 	area, found := t.msgMgr.GetAreaByTag(parsed.Area)
 	if !found {
-		area, found = t.msgMgr.GetAreaByEchoTag(parsed.Area)
+		if a, ok := t.msgMgr.GetAreaByEchoTag(parsed.Area); ok && strings.EqualFold(a.Network, t.networkName) {
+			area, found = a, true
+		}
 	}
 	if !found {
 		log.Printf("WARN: Unknown echo area %q from %s", parsed.Area, msg.From)

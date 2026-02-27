@@ -36,8 +36,11 @@ func (m *Model) fieldsFTNLink() []fieldDef {
 				if val == key {
 					return nil
 				}
-				if _, exists := m.configs.FTN.Networks[val]; exists {
-					return fmt.Errorf("network %q already exists", val)
+				lowerVal := strings.ToLower(val)
+				for k := range m.configs.FTN.Networks {
+					if k != key && strings.ToLower(k) == lowerVal {
+						return fmt.Errorf("network %q already exists", k)
+					}
 				}
 				cfg := m.configs.FTN.Networks[key]
 				m.configs.FTN.Networks[val] = cfg
