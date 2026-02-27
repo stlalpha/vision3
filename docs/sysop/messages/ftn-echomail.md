@@ -323,15 +323,15 @@ verify the directory paths are correct for your installation:
 ```json
 {
     "dupe_db_path": "data/ftn/dupes.json",
+    "inbound_path": "data/ftn/in",
+    "secure_inbound_path": "data/ftn/secure_in",
+    "outbound_path": "data/ftn/temp_out",
+    "binkd_outbound_path": "data/ftn/out",
+    "temp_path": "data/ftn/temp_in",
     "networks": {
         "fsxnet": {
             "internal_tosser_enabled": true,
             "own_address": "21:4/158.1",
-            "inbound_path": "data/ftn/in",
-            "secure_inbound_path": "data/ftn/secure_in",
-            "outbound_path": "data/ftn/temp_out",
-            "binkd_outbound_path": "data/ftn/out",
-            "temp_path": "data/ftn/temp_in",
             "tearline": "",
             "links": [
                 {

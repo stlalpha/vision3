@@ -268,6 +268,7 @@ func (mm *MessageManager) UpdateAreaByID(id int, updated MessageArea) error {
 		return ErrAreaNotFound
 	}
 	oldTag := old.Tag
+	oldEchoTag := old.EchoTag
 	replacement := new(MessageArea)
 	*replacement = updated
 	if oldTag != updated.Tag {
@@ -275,6 +276,13 @@ func (mm *MessageManager) UpdateAreaByID(id int, updated MessageArea) error {
 			return fmt.Errorf("tag %q already in use by area %d", updated.Tag, existing.ID)
 		}
 		delete(mm.areasByTag, oldTag)
+	}
+	// Keep areasByEchoTag in sync when EchoTag changes.
+	if oldEchoTag != "" && oldEchoTag != old.Tag {
+		delete(mm.areasByEchoTag, oldEchoTag)
+	}
+	if updated.EchoTag != "" && updated.EchoTag != updated.Tag {
+		mm.areasByEchoTag[updated.EchoTag] = replacement
 	}
 	mm.areasByID[id] = replacement
 	mm.areasByTag[updated.Tag] = replacement
