@@ -130,6 +130,10 @@ func (m Model) viewRecordList() string {
 		}
 	} else if m.recordTypeSupportsReorder() {
 		helpStr = "Enter - Edit  |  I - Insert  |  D - Delete  |  P - Position  |  ESC - Return"
+	} else if m.recordType == "ftn" {
+		helpStr = "Enter - Edit  |  I - Insert  |  D - Delete  |  G - Global Settings  |  ESC - Return"
+	} else if m.recordType == "ftnlink" {
+		helpStr = "Enter - Edit  |  I - Insert  |  D - Delete  |  ESC - Return"
 	} else {
 		helpStr = "Enter - Edit  |  I - Insert  |  D - Delete  |  ESC - Return"
 	}
@@ -153,7 +157,9 @@ func (m Model) recordTypeTitle() string {
 	case "event":
 		return "Event Scheduler"
 	case "ftn":
-		return "FTN Network Links"
+		return "Echomail Networks"
+	case "ftnlink":
+		return "Echomail Links"
 	case "protocol":
 		return "Transfer Protocols"
 	case "archiver":
@@ -178,7 +184,9 @@ func (m Model) recordColumnHeader(boxW int) string {
 	case "event":
 		return "  ID                      Name                         Enabled"
 	case "ftn":
-		return "  Network                 Address                      Tosser"
+		return "  Network                 Own Address                  Tosser"
+	case "ftnlink":
+		return "  Network        Address                  Name                Flavour"
 	case "protocol":
 		return "  Key    Name                           Send Cmd"
 	case "archiver":
@@ -228,6 +236,19 @@ func (m Model) renderRecordRow(idx, boxW int) string {
 			k := keys[idx]
 			n := m.configs.FTN.Networks[k]
 			content = fmt.Sprintf("  %-22s %-28s %s", padRight(k, 22), padRight(n.OwnAddress, 28), boolToYN(n.InternalTosserEnabled))
+		}
+	case "ftnlink":
+		refs := m.ftnAllLinkRefs()
+		if idx < len(refs) {
+			ref := refs[idx]
+			nc := m.configs.FTN.Networks[ref.networkKey]
+			lnk := nc.Links[ref.linkIdx]
+			flavour := lnk.Flavour
+			if flavour == "" {
+				flavour = "Normal"
+			}
+			content = fmt.Sprintf("  %-14s %-24s %-20s %s",
+				padRight(ref.networkKey, 14), padRight(lnk.Address, 24), padRight(lnk.Name, 20), flavour)
 		}
 	case "protocol":
 		if idx < len(m.configs.Protocols) {

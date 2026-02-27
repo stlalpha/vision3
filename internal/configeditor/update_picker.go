@@ -62,6 +62,16 @@ func (m Model) updateLookupPicker(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				m.dirty = true
+				if f.AfterSet != nil {
+					f.AfterSet(&m, selected.Value)
+				}
+			}
+		}
+		// Rebuild field list in case picker selection changed visible fields.
+		if m.pickerReturnMode == modeRecordEdit {
+			m.recordFields = m.buildRecordFields()
+			if m.editField >= len(m.recordFields) {
+				m.editField = len(m.recordFields) - 1
 			}
 		}
 		m.mode = m.pickerReturnMode

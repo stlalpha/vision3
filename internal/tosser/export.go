@@ -106,20 +106,17 @@ func (t *Tosser) ScanAndExport() TossResult {
 				continue
 			}
 
-			// Find which links should receive this message
+			// Route to all links in this network.
+			// Echo area subscriptions are managed via Message Areas (Network field),
+			// not per-link echo_areas lists.
 			for _, link := range t.config.Links {
-				for _, echoTag := range link.EchoAreas {
-					if strings.EqualFold(echoTag, area.EchoTag) || echoTag == "*" {
-						linkMsgs[link.Address] = append(linkMsgs[link.Address], pendingMsg{
-							area:   area,
-							msg:    msg,
-							hdr:    hdr,
-							msgNum: msgNum,
-							base:   base,
-						})
-						break
-					}
-				}
+				linkMsgs[link.Address] = append(linkMsgs[link.Address], pendingMsg{
+					area:   area,
+					msg:    msg,
+					hdr:    hdr,
+					msgNum: msgNum,
+					base:   base,
+				})
 			}
 		}
 	}
@@ -189,7 +186,7 @@ func (t *Tosser) createOutboundPacket(link *linkConfig, msgs []pendingMsg) (int,
 	hdr := ftn.NewPacketHeader(
 		uint16(t.ownAddr.Zone), uint16(t.ownAddr.Net), uint16(t.ownAddr.Node), uint16(t.ownAddr.Point),
 		uint16(destAddr.Zone), uint16(destAddr.Net), uint16(destAddr.Node), uint16(destAddr.Point),
-		link.Password,
+		link.PacketPassword,
 	)
 
 	var packedMsgs []*ftn.PackedMessage
@@ -252,10 +249,10 @@ func (t *Tosser) createOutboundPacket(link *linkConfig, msgs []pendingMsg) (int,
 	}
 
 	// Use os.CreateTemp to avoid filename collisions
-	if err := os.MkdirAll(t.config.OutboundPath, 0755); err != nil {
+	if err := os.MkdirAll(t.paths.OutboundPath, 0755); err != nil {
 		return 0, fmt.Errorf("create outbound dir: %w", err)
 	}
-	f, err := os.CreateTemp(t.config.OutboundPath, "*.pkt")
+	f, err := os.CreateTemp(t.paths.OutboundPath, "*.pkt")
 	if err != nil {
 		return 0, fmt.Errorf("create temp packet: %w", err)
 	}
@@ -270,7 +267,7 @@ func (t *Tosser) createOutboundPacket(link *linkConfig, msgs []pendingMsg) (int,
 
 	// Rename to a proper .pkt filename
 	finalName := fmt.Sprintf("%08x.pkt", time.Now().UnixNano()&0xFFFFFFFF)
-	finalPath := filepath.Join(t.config.OutboundPath, finalName)
+	finalPath := filepath.Join(t.paths.OutboundPath, finalName)
 	if err := os.Rename(pktPath, finalPath); err != nil {
 		// Temp file is already a valid .pkt, just log the rename failure
 		log.Printf("WARN: Export: rename %s -> %s failed: %v (temp file kept)", pktPath, finalPath, err)

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/ftn"
 	"github.com/stlalpha/vision3/internal/jam"
 	"github.com/stlalpha/vision3/internal/message"
@@ -27,6 +28,7 @@ type testEnv struct {
 	msgMgr      *message.MessageManager
 	dupeDB      *DupeDB
 	netCfg      networkConfig
+	globalCfg   config.FTNConfig
 }
 
 // testArea is a minimal message_areas.json entry.
@@ -90,19 +92,20 @@ func setupTestEnv(t *testing.T) *testEnv {
 	netCfg := networkConfig{
 		InternalTosserEnabled: true,
 		OwnAddress:            "21:4/158.1",
-		InboundPath:           inboundDir,
-		SecureInboundPath:     "",
-		OutboundPath:          outboundDir,
-		BinkdOutboundPath:     binkdDir,
-		TempPath:              tempDir,
 		Links: []linkConfig{
 			{
-				Address:   "21:4/158",
-				Password:  "",
-				Name:      "Test Hub",
-				EchoAreas: []string{"FSX_TEST"},
+				Address:  "21:4/158",
+				PacketPassword: "",
+				Name:     "Test Hub",
 			},
 		},
+	}
+
+	globalCfg := config.FTNConfig{
+		InboundPath:       inboundDir,
+		OutboundPath:      outboundDir,
+		BinkdOutboundPath: binkdDir,
+		TempPath:          tempDir,
 	}
 
 	return &testEnv{
@@ -117,13 +120,14 @@ func setupTestEnv(t *testing.T) *testEnv {
 		msgMgr:      msgMgr,
 		dupeDB:      dupeDB,
 		netCfg:      netCfg,
+		globalCfg:   globalCfg,
 	}
 }
 
 // TestTossDirectPkt tests tossing a raw .PKT file into a JAM base.
 func TestTossDirectPkt(t *testing.T) {
 	env := setupTestEnv(t)
-	tosser, err := New("testnet", env.netCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -180,7 +184,7 @@ func TestTossDirectPkt(t *testing.T) {
 // TestTossDuplicateDetection verifies that the same MSGID is not imported twice.
 func TestTossDuplicateDetection(t *testing.T) {
 	env := setupTestEnv(t)
-	tosser, err := New("testnet", env.netCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -211,7 +215,7 @@ func TestTossDuplicateDetection(t *testing.T) {
 // TestTossBundlePkt tests that a ZIP bundle is unpacked and tossed correctly.
 func TestTossBundlePkt(t *testing.T) {
 	env := setupTestEnv(t)
-	tosser, err := New("testnet", env.netCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -267,7 +271,7 @@ func TestScanExportCreatesPacket(t *testing.T) {
 	}
 	base.Close()
 
-	tosser, err := New("testnet", env.netCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -309,7 +313,7 @@ func TestHighWaterMarkAdvances(t *testing.T) {
 	base.WriteMessageExt(msg, msgType, area.EchoTag, "TestBBS", "")
 	base.Close()
 
-	tosser, _ := New("testnet", env.netCfg, env.dupeDB, env.msgMgr)
+	tosser, _ := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	tosser.ScanAndExport()
 
 	// HWM should be persisted in the base's .jlr file
@@ -339,7 +343,7 @@ func TestPackOutboundCreatesBundle(t *testing.T) {
 	pktPath := filepath.Join(env.outboundDir, "staged.pkt")
 	os.WriteFile(pktPath, pktData, 0644)
 
-	tosser, _ := New("testnet", env.netCfg, env.dupeDB, env.msgMgr)
+	tosser, _ := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	result := tosser.PackOutbound()
 
 	if result.BundlesCreated != 1 {
@@ -402,24 +406,19 @@ func setupExtendedTestEnv(t *testing.T) (*testEnv, networkConfig) {
 	extCfg := networkConfig{
 		InternalTosserEnabled: true,
 		OwnAddress:            "21:4/158.1",
-		InboundPath:           env.inboundDir,
-		OutboundPath:          env.outboundDir,
-		BinkdOutboundPath:     env.binkdDir,
-		TempPath:              env.tempDir,
-		NetmailAreaTag:        "NETMAIL",
-		BadAreaTag:            "BAD",
-		DupeAreaTag:           "DUPE",
 		Links: []linkConfig{
-			{Address: "21:4/158", Password: "", Name: "Test Hub", EchoAreas: []string{"FSX_TEST"}},
+			{Address: "21:4/158", PacketPassword: "", Name: "Test Hub"},
 		},
 	}
+	env.globalCfg.BadAreaTag = "BAD"
+	env.globalCfg.DupeAreaTag = "DUPE"
 	return env, extCfg
 }
 
 // TestTossNetmail verifies that a message without AREA kludge is routed to the netmail area.
 func TestTossNetmail(t *testing.T) {
 	env, extCfg := setupExtendedTestEnv(t)
-	tosser, err := New("testnet", extCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", extCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -454,7 +453,7 @@ func TestTossNetmail(t *testing.T) {
 // TestTossBadArea verifies that a message for an unknown area is routed to the bad area.
 func TestTossBadArea(t *testing.T) {
 	env, extCfg := setupExtendedTestEnv(t)
-	tosser, err := New("testnet", extCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", extCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -485,7 +484,7 @@ func TestTossBadArea(t *testing.T) {
 // TestTossDupeArea verifies that a duplicate MSGID is routed to the dupe area.
 func TestTossDupeArea(t *testing.T) {
 	env, extCfg := setupExtendedTestEnv(t)
-	tosser, err := New("testnet", extCfg, env.dupeDB, env.msgMgr)
+	tosser, err := New("testnet", extCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -527,14 +526,13 @@ func TestPackFlowFileCreated(t *testing.T) {
 
 	// Configure link with Crash flavour
 	env.netCfg.Links = []linkConfig{
-		{Address: "21:4/158", Password: "", Name: "Test Hub",
-			EchoAreas: []string{"FSX_TEST"}, Flavour: "Crash"},
+		{Address: "21:4/158", PacketPassword: "", Name: "Test Hub", Flavour: "Crash"},
 	}
 
 	// Put a proper .PKT in the outbound dir (destNet=4, destNode=158 matches test link)
 	os.WriteFile(filepath.Join(env.outboundDir, "staged.pkt"), makeStagedPkt(t), 0644)
 
-	tosser, _ := New("testnet", env.netCfg, env.dupeDB, env.msgMgr)
+	tosser, _ := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
 	result := tosser.PackOutbound()
 
 	if result.BundlesCreated != 1 {

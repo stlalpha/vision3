@@ -79,6 +79,8 @@ func (m Model) recordCount() int {
 		return len(m.configs.Events.Events)
 	case "ftn":
 		return len(m.configs.FTN.Networks)
+	case "ftnlink":
+		return m.ftnLinkCount()
 	case "protocol":
 		return len(m.configs.Protocols)
 	case "archiver":
@@ -161,6 +163,18 @@ func (m *Model) insertRecord() {
 				break
 			}
 		}
+	case "ftnlink":
+		// Add a new blank link to the first available network.
+		nets := m.ftnNetworkKeys()
+		if len(nets) == 0 {
+			return // no networks defined yet
+		}
+		key := nets[0]
+		nc := m.configs.FTN.Networks[key]
+		nc.Links = append(nc.Links, config.FTNLinkConfig{
+			Name: "New Link",
+		})
+		m.configs.FTN.Networks[key] = nc
 	case "event":
 		for i := 1; ; i++ {
 			newID := fmt.Sprintf("event_%d", i)
@@ -220,6 +234,14 @@ func (m *Model) deleteRecord() {
 		keys := m.ftnNetworkKeys()
 		if idx >= 0 && idx < len(keys) {
 			delete(m.configs.FTN.Networks, keys[idx])
+		}
+	case "ftnlink":
+		refs := m.ftnAllLinkRefs()
+		if idx >= 0 && idx < len(refs) {
+			ref := refs[idx]
+			nc := m.configs.FTN.Networks[ref.networkKey]
+			nc.Links = append(nc.Links[:ref.linkIdx], nc.Links[ref.linkIdx+1:]...)
+			m.configs.FTN.Networks[ref.networkKey] = nc
 		}
 	case "event":
 		if idx >= 0 && idx < len(m.configs.Events.Events) {

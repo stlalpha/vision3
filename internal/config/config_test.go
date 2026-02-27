@@ -257,15 +257,15 @@ func TestLoadFTNConfig_MissingFile(t *testing.T) {
 func TestLoadFTNConfig_ValidFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := FTNConfig{
-		DupeDBPath: "data/ftn/dupes.json",
+		DupeDBPath:   "data/ftn/dupes.json",
+		InboundPath:  "data/ftn/in",
+		OutboundPath: "data/ftn/temp_out",
 		Networks: map[string]FTNNetworkConfig{
 			"fsxnet": {
 				InternalTosserEnabled: true,
 				OwnAddress:            "21:3/110",
-				InboundPath:           "data/ftn/fsxnet/inbound",
-				OutboundPath:          "data/ftn/fsxnet/outbound",
 				Links: []FTNLinkConfig{
-					{Address: "21:1/100", Password: "secret", Name: "Hub"},
+					{Address: "21:1/100", PacketPassword: "secret", Name: "Hub"},
 				},
 			},
 		},

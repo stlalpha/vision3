@@ -80,12 +80,12 @@ FTN behaviour is controlled by `configs/ftn.json`. Key per-network fields:
 
 Per-link fields:
 
-| Field        | Description                                                  |
-| ------------ | ------------------------------------------------------------ |
-| `address`    | Link's FTN address                                           |
-| `password`   | Session password (empty for no auth)                         |
-| `flavour`    | Delivery mode: `Normal` (default), `Crash`, `Hold`, `Direct` |
-| `echo_areas` | List of echo area tags this link exchanges                   |
+| Field                  | Description                                                     |
+| ---------------------- | --------------------------------------------------------------- |
+| `address`              | Link's FTN address                                              |
+| `packet_password`      | Packet password shared with hub (empty for no auth)             |
+| `areafix_password`     | Password for AreaFix netmail (subject line; set by hub)         |
+| `flavour`              | Delivery mode: `Normal` (default), `Crash`, `Hold`, `Direct`    |
 
 ## How Echomail Flow Works
 
