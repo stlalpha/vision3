@@ -634,15 +634,57 @@ node 46:1/100@agoranet hub-hostname:24554 HUBPASS -
 
 ### Duplicate messages
 
-- `v3mail toss` handles dupe detection via `data/ftn/dupes.json`
-- The dupe window is configured by `DupeWindow` in the tosser (default: 30 days)
+The tosser tracks seen MSGIDs in `data/ftn/dupes.json`. When a message arrives
+whose MSGID was already recorded, it is written to the `DUPE` message area
+(sysop-only) instead of the normal area. Entries older than 30 days are
+auto-purged.
+
+**Reading `dupes.json`:** Each entry is a key/value pair:
+
+```json
+{
+  "entries": {
+    "21:4/100 deadbeef": 1772208000,
+    "21:4/100 cafebabe": 1772208001
+  }
+}
+```
+
+- Key: `<originating FTN address> <8-char hex MSGID serial>`
+- Value: Unix timestamp when the MSGID was first seen
+
+You will rarely need to look at this file. It is fully managed by the tosser.
+Useful things you can do with it:
+
+| Action | Why |
+|---|---|
+| Count entries (`jq '.entries | length' data/ftn/dupes.json`) | Gauge how much traffic has been processed in the last 30 days |
+| Delete the file | Reset dupe detection — e.g. after a crash or if you want to re-import old mail without every message being flagged as a dupe |
+
+**DUPE area:** Messages routed here indicate the same message arrived via two
+different paths (common in meshed networks) or a hub retransmitting old traffic.
+A low dupe rate is normal. A consistently high rate (dozens per poll) suggests a
+routing loop or that your hub is resending mail — contact your hub sysop if it
+persists.
 
 ### Bad/undeliverable messages
 
-- Check `data/msgbases/bad` (via `./v3mail stats data/msgbases/bad`) for messages
-  that could not be tossed
-- Usually means the AREA tag in the packet doesn't match any `echo_tag` in
-  message_areas.json
+When a packet contains an `AREA:` tag that doesn't match any subscribed echo
+area, the message is written to the `BAD` message area (sysop-only) instead of
+being silently dropped.
+
+**BAD area:** Read it via the BBS message reader. Each message will show the
+original `AREA:` tag in the header — that tells you what echo the sender thought
+they were writing to.
+
+Common causes and actions:
+
+| What you see in BAD | Likely cause | What to do |
+|---|---|---|
+| Area tags from a network you're on | Hub is forwarding areas you haven't subscribed to | Subscribe via `helper areafix` if you want them; otherwise ignore |
+| Area tags you want to add | You forgot to subscribe after running `ftnsetup` | Run `./helper areafix --network <net> --command "+AREATAG"` |
+| Junk/unknown area tags | Misconfigured remote, spam | Ignore; the BAD area auto-purges after 365 days |
+| Tags that look like your own areas but differ in case | `echo_tag` case mismatch in `message_areas.json` | Fix the `echo_tag` field to match exactly what the hub sends |
 
 ## Useful Commands
 
