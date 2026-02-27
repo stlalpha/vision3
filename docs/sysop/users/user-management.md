@@ -182,16 +182,21 @@ By adjusting `newUserLevel`, `logonLevel`, and `regularUserLevel`, you can creat
 {
   "newUserLevel": 10,
   "logonLevel": 10,
-  "regularUserLevel": 20
+  "regularUserLevel": 20,
+  "allowNewUsers": true
 }
 ```
 
 - Level 0: Banned
 - Level 1-9: Below minimum (shouldn't occur)
-- Level 10-19: **New/probationary users** — can log in immediately with limited access
+- Level 10-19: **New/probationary users** — once validated, can log in with limited access
 - Level 20+: **Validated regular users** — full access to standard areas
 
-**Workflow:** User signs up (level 10) → can log in immediately → limited access via ACS `s10` → SysOp validates → upgraded to level 20 → full access via ACS `s20`
+**Workflow:** User signs up (level 10, validated: false) → cannot log in until SysOp validates → once validated, can log in with limited access via ACS `s10` → SysOp later upgrades to level 20 → full access via ACS `s20`
+
+> **Note:** In the current implementation, the `validated` flag is **always required** for login, even when `newUserLevel` equals `logonLevel`. To allow truly immediate login after signup, you would need to either:
+> - Automatically set `validated: true` during registration (code change required)
+> - Add an `autoValidateNewUsers` configuration option (feature not yet implemented)
 
 **Three-Tier Graduated System:**
 ```json
@@ -204,23 +209,23 @@ By adjusting `newUserLevel`, `logonLevel`, and `regularUserLevel`, you can creat
 
 - Level 0: Banned
 - Level 1-4: Below minimum
-- Level 5-9: **New users** — minimal access (read-only areas)
-- Level 10-19: **Intermediate users** — more access (can post in some areas)
-- Level 20+: **Regular users** — full access
+- Level 5-9: **New users** — once validated, minimal access (read-only areas)
+- Level 10-19: **Intermediate users** — once validated, more access (can post in some areas)
+- Level 20+: **Regular users** — once validated, full access
 
-**Workflow:** Allows manual promotion through intermediate tiers before full validation
+**Workflow:** User signs up (level 5, validated: false) → SysOp validates → can log in with minimal access → SysOp manually promotes through tiers (5 → 10 → 20) based on user behavior/trust
 
 **Use Cases for Tiered Access:**
 
-1. **Auto-Login New Users**: Set `newUserLevel: 10` to let users log in immediately and explore limited areas before full validation
+1. **Probationary New Users**: Set `newUserLevel: 10, regularUserLevel: 20` — New users get level 10 upon validation, then manually upgrade to 20 after probation period
 
-2. **Manual Validation Only**: Set `newUserLevel: 1, logonLevel: 10` to require SysOp approval before any access
+2. **Manual Validation Only**: Set `newUserLevel: 1, logonLevel: 10` to require SysOp approval before any access (default secure configuration)
 
-3. **New User Orientation**: Show level 10 users a welcome screen explaining how to become a regular user (level 20)
+3. **Differentiated Access Levels**: Use ACS strings (`s10`, `s20`, `s30`) to control what each validated level can access
 
-4. **Probationary Period**: New users at level 10 for trial period, then validated to level 20 for full access
+4. **Graduated Permissions**: Multiple tiers (5 = read-only, 10 = can post, 20 = full access) with manual promotion based on user trust/behavior
 
-5. **Graduated Permissions**: Multiple tiers (5 = read-only, 10 = can post, 20 = full access) with manual or automated promotion
+5. **Time-Based Upgrades**: Start validated users at level 10, then manually promote to 20 after they've been active for X days (requires manual monitoring)
 
 6. **Restricted Access Accounts**: Give someone level 15 to access specific areas but not everything
 
