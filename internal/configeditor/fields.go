@@ -35,7 +35,8 @@ type fieldDef struct {
 	Max         int                  // Maximum value (for ftInteger)
 	Get         func() string
 	Set         func(val string) error
-	LookupItems func() []LookupItem // provider for ftLookup
+	AfterSet    func(m *Model, val string) // called after Set succeeds, on the current model
+	LookupItems func() []LookupItem        // provider for ftLookup
 }
 
 // boolToYN converts a bool to "Y" or "N".

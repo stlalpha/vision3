@@ -71,6 +71,7 @@ type Model struct {
 	recordEditIdx int        // index of record being edited
 	editField     int        // current field index
 	fieldScroll   int        // first visible field row in edit screens
+	stayOnField   bool       // if true, don't advance to next field after apply (e.g. FTN network rename)
 
 	// Reorder state
 	reorderSourceIdx int // index of record being moved (-1 when inactive)
@@ -115,10 +116,11 @@ func New(configPath string) (Model, error) {
 		{"4", "Conferences"},
 		{"5", "Door Programs"},
 		{"6", "Event Scheduler"},
-		{"7", "FTN Network"},
-		{"8", "Transfer Protocols"},
-		{"9", "Archivers"},
-		{"A", "Login Sequence"},
+		{"7", "Echomail Networks"},
+		{"8", "Echomail Links"},
+		{"9", "Transfer Protocols"},
+		{"A", "Archivers"},
+		{"B", "Login Sequence"},
 		{"Q", "Quit Program"},
 	}
 
@@ -227,7 +229,7 @@ func (m Model) updateTopMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m Model) selectTopMenuItem() (Model, tea.Cmd) {
 	recordTypes := []string{
 		"", "msgarea", "filearea", "conference", "door",
-		"event", "ftn", "protocol", "archiver", "login",
+		"event", "ftn", "ftnlink", "protocol", "archiver", "login",
 	}
 
 	switch m.topCursor {
@@ -235,7 +237,7 @@ func (m Model) selectTopMenuItem() (Model, tea.Cmd) {
 		m.mode = modeSysConfigMenu
 		m.sysMenuCursor = 0
 		return m, nil
-	case 10: // Quit
+	case 11: // Quit
 		return m.tryExit()
 	default:
 		// Items 1-9 are record list editors

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/ftn"
 	"github.com/stlalpha/vision3/internal/jam"
 	"github.com/stlalpha/vision3/internal/message"
@@ -17,7 +18,7 @@ import (
 func (t *Tosser) inboundDirs() []string {
 	seen := make(map[string]bool)
 	var dirs []string
-	for _, d := range []string{t.config.InboundPath, t.config.SecureInboundPath} {
+	for _, d := range []string{t.paths.InboundPath, t.paths.SecureInboundPath} {
 		if d != "" && !seen[d] {
 			seen[d] = true
 			dirs = append(dirs, d)
@@ -42,26 +43,47 @@ const ScannerUser = "v3mail"
 
 // Tosser handles importing and exporting FTN echomail packets for a single network.
 type Tosser struct {
-	networkName string
-	config      networkConfig
-	msgMgr      *message.MessageManager
-	dupeDB      *DupeDB
-	ownAddr     *jam.FidoAddress
+	networkName    string
+	config         networkConfig
+	paths          pathConfig
+	netmailAreaTag string // tag of the netmail area for this network, derived from message areas
+	msgMgr         *message.MessageManager
+	dupeDB         *DupeDB
+	ownAddr        *jam.FidoAddress
 }
 
 // New creates a new Tosser instance for a single FTN network.
-func New(networkName string, cfg networkConfig, dupeDB *DupeDB, msgMgr *message.MessageManager) (*Tosser, error) {
+func New(networkName string, cfg networkConfig, globalCfg config.FTNConfig, dupeDB *DupeDB, msgMgr *message.MessageManager) (*Tosser, error) {
 	addr, err := jam.ParseAddress(cfg.OwnAddress)
 	if err != nil {
 		return nil, fmt.Errorf("tosser[%s]: invalid own_address %q: %w", networkName, cfg.OwnAddress, err)
 	}
 
+	// Derive the netmail area tag from message areas (AreaType == "netmail" for this network).
+	netmailAreaTag := ""
+	for _, area := range msgMgr.ListAreas() {
+		if strings.EqualFold(area.Network, networkName) && strings.EqualFold(area.AreaType, "netmail") {
+			netmailAreaTag = area.Tag
+			break
+		}
+	}
+
 	return &Tosser{
-		networkName: networkName,
-		config:      cfg,
-		msgMgr:      msgMgr,
-		dupeDB:      dupeDB,
-		ownAddr:     addr,
+		networkName:    networkName,
+		config:         cfg,
+		netmailAreaTag: netmailAreaTag,
+		paths: pathConfig{
+			InboundPath:       globalCfg.InboundPath,
+			SecureInboundPath: globalCfg.SecureInboundPath,
+			OutboundPath:      globalCfg.OutboundPath,
+			BinkdOutboundPath: globalCfg.BinkdOutboundPath,
+			TempPath:          globalCfg.TempPath,
+			BadAreaTag:        globalCfg.BadAreaTag,
+			DupeAreaTag:       globalCfg.DupeAreaTag,
+		},
+		msgMgr:  msgMgr,
+		dupeDB:  dupeDB,
+		ownAddr: addr,
 	}, nil
 }
 
@@ -130,12 +152,12 @@ func (t *Tosser) processInboundDir(dir string, result *TossResult) {
 
 // processBundle unpacks a ZIP bundle, tosses its .PKT contents, then removes it.
 func (t *Tosser) processBundle(path, name string, result *TossResult) {
-	tempDir := filepath.Join(t.config.TempPath, "unpack")
+	tempDir := filepath.Join(t.paths.TempPath, "unpack")
 	pktPaths, err := ftn.ExtractBundle(path, tempDir)
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("extract bundle %s: %v", name, err))
 		// Move bad bundle to temp for inspection
-		badPath := filepath.Join(t.config.TempPath, name)
+		badPath := filepath.Join(t.paths.TempPath, name)
 		if renErr := os.Rename(path, badPath); renErr != nil {
 			log.Printf("WARN: Failed to move bad bundle %s: %v", path, renErr)
 		}
@@ -168,7 +190,7 @@ func (t *Tosser) tossPktFile(path, displayName string, result *TossResult) {
 			log.Printf("WARN: Failed to remove processed packet %s: %v", path, err)
 		}
 	} else {
-		badPath := filepath.Join(t.config.TempPath, displayName)
+		badPath := filepath.Join(t.paths.TempPath, displayName)
 		if err := os.Rename(path, badPath); err != nil {
 			log.Printf("WARN: Failed to move bad packet %s to %s: %v", path, badPath, err)
 		}
@@ -220,34 +242,39 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 
 	// Netmail: messages without AREA: kludge are private point-to-point messages.
 	if parsed.Area == "" {
-		if t.config.NetmailAreaTag != "" {
-			if err := t.writeMsgToArea(t.config.NetmailAreaTag, msg, pktHdr, parsed, msgID); err != nil {
-				return fmt.Errorf("netmail to area %q: %w", t.config.NetmailAreaTag, err)
+		if t.netmailAreaTag != "" {
+			if err := t.writeMsgToArea(t.netmailAreaTag, msg, pktHdr, parsed, msgID); err != nil {
+				return fmt.Errorf("netmail to area %q: %w", t.netmailAreaTag, err)
 			}
 			log.Printf("INFO: Tossed netmail from %s to %s (MSGID: %s)", msg.From, msg.To, msgID)
 			return nil
 		}
-		log.Printf("TRACE: Skipping netmail from %s to %s (netmail_area_tag not configured)", msg.From, msg.To)
+		log.Printf("TRACE: Skipping netmail from %s to %s (no netmail area configured for network %s)", msg.From, msg.To, t.networkName)
 		return nil
 	}
 
 	// Dupe check (only meaningful if message has a MSGID)
 	if msgID != "" && t.dupeDB.Add(msgID) {
 		log.Printf("TRACE: Dupe MSGID=%s area %s", msgID, parsed.Area)
-		if t.config.DupeAreaTag != "" {
-			if err := t.writeMsgToArea(t.config.DupeAreaTag, msg, pktHdr, parsed, msgID); err != nil {
+		if t.paths.DupeAreaTag != "" {
+			if err := t.writeMsgToArea(t.paths.DupeAreaTag, msg, pktHdr, parsed, msgID); err != nil {
 				log.Printf("WARN: Dupe area write failed: %v", err)
 			}
 		}
 		return errDupe
 	}
 
-	// Find the target area by echo tag
+	// Find the target area by echo tag.
+	// Fall back to EchoTag index for areas using a local tag-prefix
+	// (e.g. Tag="FD_LINUX", EchoTag="LINUX" when --tag-prefix was used during setup).
 	area, found := t.msgMgr.GetAreaByTag(parsed.Area)
 	if !found {
+		area, found = t.msgMgr.GetAreaByEchoTag(parsed.Area)
+	}
+	if !found {
 		log.Printf("WARN: Unknown echo area %q from %s", parsed.Area, msg.From)
-		if t.config.BadAreaTag != "" {
-			if err := t.writeMsgToArea(t.config.BadAreaTag, msg, pktHdr, parsed, msgID); err != nil {
+		if t.paths.BadAreaTag != "" {
+			if err := t.writeMsgToArea(t.paths.BadAreaTag, msg, pktHdr, parsed, msgID); err != nil {
 				log.Printf("WARN: Bad area write failed for area %q: %v", parsed.Area, err)
 				return fmt.Errorf("unknown area %q", parsed.Area)
 			}

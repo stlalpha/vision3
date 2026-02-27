@@ -28,10 +28,12 @@ The editor opens to a main menu with sections for each configuration area:
 | 4 | Conferences | Conference definitions and ordering |
 | 5 | Door Programs | External door configurations |
 | 6 | Event Scheduler | Automated event definitions |
-| 7 | FTN Network | FidoNet-style network link settings |
-| 8 | Transfer Protocols | File transfer protocol definitions |
-| 9 | Archivers | Archive format tool definitions |
-| A | Login Sequence | Login step sequence |
+| 7 | Echomail Networks | FTN network settings (own address, paths, tosser) |
+| 8 | Echomail Links | FTN hub links (address, packet_password, areafix_password) |
+| 9 | Transfer Protocols | File transfer protocol definitions |
+| A | Archivers | Archive format tool definitions |
+| B | Login Sequence | Login step sequence |
+| Q | Quit Program | Exit the configuration editor |
 
 ### Navigation
 
@@ -66,6 +68,7 @@ Configuration files are split between two directories:
 - `conferences.json` - Conference grouping definitions
 - `events.json` - Event scheduler configuration
 - `config.json` - General BBS configuration
+- `ftn.json` - FTN echomail configuration (networks, links, paths)
 - `archivers.json` - Archive format definitions (ZIP, 7z, RAR, ARJ, LHA)
 - SSH host keys (`ssh_host_rsa_key`, etc.)
 
@@ -196,7 +199,7 @@ Configures external door programs that can be launched from the BBS. The file co
 
 ## archivers.json
 
-> *Use the [Configuration Editor](#configuration-editor-tui) (section 9 — Archivers) to manage archiver settings interactively. The JSON structure below is for reference or manual editing.*
+> *Use the [Configuration Editor](#configuration-editor-tui) (section A — Archivers) to manage archiver settings interactively. The JSON structure below is for reference or manual editing.*
 
 Defines archive formats and the external tools used to pack, unpack, test, and list them. This centralized configuration ensures all subsystems (ZipLab upload pipeline, file area management, archive viewing) use the same archiver definitions, and that different platforms can specify their preferred tool versions.
 
@@ -428,6 +431,14 @@ Leave paths empty (`""`) to disable the feature.
 Located in the `configs/` directory. Defines message areas available on the BBS.
 
 See [Message Areas Guide](../messages/message-areas.md) for detailed configuration.
+
+## ftn.json
+
+> *Use the [Configuration Editor](#configuration-editor-tui) (section 7 — Echomail Networks, section 8 — Echomail Links) to manage FTN settings interactively. The JSON structure below is for reference or manual editing.*
+
+Located in the `configs/` directory. Configures the internal FTN tosser (v3mail) for echomail. Global fields include directory paths (`inbound_path`, `outbound_path`, `binkd_outbound_path`, `temp_path`) and routing tags (`bad_area_tag`, `dupe_area_tag`). Per-network fields include `own_address`, `internal_tosser_enabled`, `poll_interval_seconds`, and `tearline`. Per-link fields include `address`, `packet_password`, `areafix_password`, `name`, and `flavour`.
+
+See [FTN Echomail Guide](../messages/ftn-echomail.md) for setup and full field reference.
 
 ## conferences.json
 

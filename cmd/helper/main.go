@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/stlalpha/vision3/internal/config"
+	"github.com/stlalpha/vision3/internal/ftn"
+	"github.com/stlalpha/vision3/internal/jam"
+	"github.com/stlalpha/vision3/internal/message"
 	"github.com/stlalpha/vision3/internal/user"
 	"github.com/stlalpha/vision3/internal/version"
 )
@@ -24,23 +27,6 @@ type naArea struct {
 }
 
 // --- Config types (local, minimal) ---
-
-type areaConfig struct {
-	ID           int    `json:"id"`
-	Tag          string `json:"tag"`
-	Name         string `json:"name"`
-	Description  string `json:"description"`
-	ACSRead      string `json:"acs_read"`
-	ACSWrite     string `json:"acs_write"`
-	AllowAnon    bool   `json:"allow_anonymous"`
-	RealNameOnly bool   `json:"real_name_only"`
-	ConferenceID int    `json:"conference_id,omitempty"`
-	BasePath     string `json:"base_path"`
-	AreaType     string `json:"area_type"`
-	EchoTag      string `json:"echo_tag,omitempty"`
-	OriginAddr   string `json:"origin_addr,omitempty"`
-	Network      string `json:"network,omitempty"`
-}
 
 type conferenceConfig struct {
 	ID          int    `json:"id"`
@@ -102,6 +88,8 @@ func main() {
 	switch cmd {
 	case "ftnsetup":
 		cmdFTNSetup(os.Args[2:])
+	case "areafix", "aerafix":
+		cmdAreafix(os.Args[2:])
 	case "users":
 		cmdUsers(os.Args[2:])
 	case "files":
@@ -125,6 +113,7 @@ func printUsage(errMsg string) {
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  %sFTN Commands:%s\n", clrBold, clrReset)
 	fmt.Fprintln(w, helpcmd("FTNSETUP", "Import FTN echo areas from a FIDONET.NA file"))
+	fmt.Fprintln(w, helpcmd("AREAFIX", "Send an AreaFix netmail command to a network hub"))
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  %sUser Commands:%s\n", clrBold, clrReset)
 	fmt.Fprintln(w, helpcmd("USERS PURGE", "Permanently remove soft-deleted users past retention"))
@@ -432,6 +421,7 @@ func cmdFTNSetup(args []string) {
 	conferenceID := fs.Int("conference-id", 0, "Use existing conference ID instead of creating new one")
 	acsRead := fs.String("acs-read", "", "ACS string for reading areas")
 	acsWrite := fs.String("acs-write", "", "ACS string for writing areas")
+	tagPrefix := fs.String("tag-prefix", "", "Prefix for area tags and base paths (e.g. fd_ for Fidonet)")
 	configDir := fs.String("config", "configs", "Config directory")
 	dryRun := fs.Bool("dry-run", false, "Show what would be done without modifying files")
 	quiet := fs.Bool("quiet", false, "Suppress detailed output")
@@ -444,6 +434,7 @@ func cmdFTNSetup(args []string) {
 		fs.PrintDefaults()
 		fmt.Fprintf(os.Stderr, "\nExample:\n")
 		fmt.Fprintf(os.Stderr, "  helper ftnsetup --na fsxnet.na --address 21:3/110 --hub 21:1/100 --network FSxNet\n")
+		fmt.Fprintf(os.Stderr, "  helper ftnsetup --na fidonet.na --address 3:633/2744.11 --hub 3:633/2744 --tag-prefix fd_\n")
 	}
 	fs.Parse(args)
 
@@ -543,11 +534,18 @@ func cmdFTNSetup(args []string) {
 		}
 	}
 
-	// 5. Partition areas into new vs duplicate
+	// 5. Partition areas into new vs duplicate (using effective tag = prefix + tag)
 	var newAreas []naArea
 	var skipped []naArea
 	for _, a := range areas {
-		if _, exists := existingTags[strings.ToUpper(a.Tag)]; exists {
+		effectiveTag := strings.ToUpper(*tagPrefix + a.Tag)
+		if !isValidEchoTag(effectiveTag) {
+			if !*quiet {
+				fmt.Fprintf(os.Stderr, "Warn: skipping %s — tag %q exceeds length or invalid chars\n", a.Tag, effectiveTag)
+			}
+			continue
+		}
+		if _, exists := existingTags[effectiveTag]; exists {
 			skipped = append(skipped, a)
 		} else {
 			newAreas = append(newAreas, a)
@@ -580,7 +578,8 @@ func cmdFTNSetup(args []string) {
 	if len(newAreas) > 0 {
 		fmt.Printf("Areas to add (%d):\n", len(newAreas))
 		for _, a := range newAreas {
-			fmt.Printf("  %-20s %s\n", a.Tag, a.Description)
+			effectiveTag := strings.ToUpper(*tagPrefix + a.Tag)
+			fmt.Printf("  %-20s %s\n", effectiveTag, a.Description)
 		}
 	} else {
 		fmt.Println("No new areas to add.")
@@ -589,7 +588,8 @@ func cmdFTNSetup(args []string) {
 	if len(skipped) > 0 {
 		fmt.Printf("\nSkipped (%d duplicates):\n", len(skipped))
 		for _, a := range skipped {
-			fmt.Printf("  %-20s Already exists (id %d)\n", a.Tag, existingTags[strings.ToUpper(a.Tag)])
+			effectiveTag := strings.ToUpper(*tagPrefix + a.Tag)
+			fmt.Printf("  %-20s Already exists (id %d)\n", effectiveTag, existingTags[effectiveTag])
 		}
 	}
 
@@ -603,9 +603,9 @@ func cmdFTNSetup(args []string) {
 		fmt.Printf("  networks.%s.own_address: %q (unchanged)\n", networkKey, netCfg.OwnAddress)
 	}
 	if existingLinkIdx >= 0 {
-		fmt.Printf("  networks.%s.links: merge %d echo areas into existing link %s\n", networkKey, len(newAreas), *hub)
+		fmt.Printf("  networks.%s.links: existing link %s (no change)\n", networkKey, *hub)
 	} else {
-		fmt.Printf("  networks.%s.links: +1 link (%s, %d echo areas)\n", networkKey, *hub, len(newAreas))
+		fmt.Printf("  networks.%s.links: +1 link (%s)\n", networkKey, *hub)
 	}
 
 	if len(newAreas) == 0 {
@@ -633,26 +633,25 @@ func cmdFTNSetup(args []string) {
 
 	// 8b. Add message areas
 	nextID := maxAreaID + 1
-	echoTags := make([]string, 0, len(newAreas))
 	for _, a := range newAreas {
-		basePath := "msgbases/" + strings.ToLower(a.Tag)
-		existingAreas = append(existingAreas, areaConfig{
+		effectiveTag := strings.ToUpper(*tagPrefix + a.Tag)
+		basePath := "msgbases/" + strings.ToLower(effectiveTag)
+		existingAreas = append(existingAreas, message.MessageArea{
 			ID:           nextID,
-			Tag:          a.Tag,
+			Tag:          effectiveTag,
 			Name:         a.Description,
 			Description:  a.Description,
 			ACSRead:      *acsRead,
 			ACSWrite:     *acsWrite,
-			AllowAnon:    false,
-			RealNameOnly: false,
 			ConferenceID: confID,
 			BasePath:     basePath,
 			AreaType:     "echomail",
 			EchoTag:      a.Tag,
 			OriginAddr:   *address,
 			Network:      networkKey,
+			MaxMessages:  1000,
+			MaxAge:       365,
 		})
-		echoTags = append(echoTags, a.Tag)
 		nextID++
 	}
 
@@ -661,35 +660,28 @@ func cmdFTNSetup(args []string) {
 	if netCfg.OwnAddress == "" {
 		netCfg.OwnAddress = *address
 	}
-	if netCfg.InboundPath == "" {
-		netCfg.InboundPath = fmt.Sprintf("data/ftn/%s/inbound", networkKey)
+	if ftn.InboundPath == "" {
+		ftn.InboundPath = "data/ftn/in"
 	}
-	if netCfg.OutboundPath == "" {
-		netCfg.OutboundPath = fmt.Sprintf("data/ftn/%s/outbound", networkKey)
+	if ftn.OutboundPath == "" {
+		ftn.OutboundPath = "data/ftn/temp_out"
 	}
-	if netCfg.TempPath == "" {
-		netCfg.TempPath = fmt.Sprintf("data/ftn/%s/temp", networkKey)
+	if ftn.BinkdOutboundPath == "" {
+		ftn.BinkdOutboundPath = "data/ftn/out"
+	}
+	if ftn.TempPath == "" {
+		ftn.TempPath = "data/ftn/temp_in"
 	}
 	if netCfg.PollSeconds == 0 {
 		netCfg.PollSeconds = 300
 	}
 
-	if existingLinkIdx >= 0 {
-		existing := make(map[string]bool)
-		for _, t := range netCfg.Links[existingLinkIdx].EchoAreas {
-			existing[strings.ToUpper(t)] = true
-		}
-		for _, t := range echoTags {
-			if !existing[strings.ToUpper(t)] {
-				netCfg.Links[existingLinkIdx].EchoAreas = append(netCfg.Links[existingLinkIdx].EchoAreas, t)
-			}
-		}
-	} else {
+	if existingLinkIdx < 0 {
+		// Add link if not already present; echo area routing is managed via Message Areas.
 		netCfg.Links = append(netCfg.Links, linkConfig{
-			Address:   *hub,
-			Password:  *hubPassword,
-			Name:      *hubName,
-			EchoAreas: echoTags,
+			Address:        *hub,
+			PacketPassword: *hubPassword,
+			Name:           *hubName,
 		})
 	}
 
@@ -724,6 +716,207 @@ func cmdFTNSetup(args []string) {
 	}
 
 	fmt.Printf("\nDone. Added %d echo areas for %s.\n", len(newAreas), *network)
+}
+
+// --- areafix command ---
+
+func cmdAreafix(args []string) {
+	fs := flag.NewFlagSet("areafix", flag.ExitOnError)
+	network := fs.String("network", "", "FTN network name (required)")
+	command := fs.String("command", "", "AreaFix command, e.g. %LIST or +LINUX (required unless --seed)")
+	seed := fs.Bool("seed", false, "Subscribe to all echomail areas in message_areas.json for this network, with R=<n> messages")
+	seedMessages := fs.Int("seed-messages", 25, "Number of old messages to rescan when using --seed")
+	linkAddr := fs.String("link", "", "Hub address (default: first link of network)")
+	configDir := fs.String("config", "configs", "Config directory")
+
+	fs.Usage = func() {
+		fmt.Fprintf(os.Stderr, "Usage: helper areafix [options]\n\n")
+		fmt.Fprintf(os.Stderr, "Send an AreaFix netmail message to a network hub.\n")
+		fmt.Fprintf(os.Stderr, "To: AreaFix, Subject: <areafix_password>, Body: <command>---\n\n")
+		fmt.Fprintf(os.Stderr, "Options:\n")
+		fs.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nAreaFix commands: %%HELP %%LIST %%QUERY %%UNLINKED +area -area =area,R=<n> %%RESCAN\n")
+		fmt.Fprintf(os.Stderr, "\nExamples:\n")
+		fmt.Fprintf(os.Stderr, "  helper areafix --network fidonet --command \"%%LIST\"\n")
+		fmt.Fprintf(os.Stderr, "  helper areafix --network fidonet --seed\n")
+		fmt.Fprintf(os.Stderr, "  helper areafix --network fidonet --seed --seed-messages 50\n")
+	}
+	fs.Parse(args)
+
+	if *network == "" {
+		fmt.Fprintf(os.Stderr, "Error: --network is required\n\n")
+		fs.Usage()
+		os.Exit(1)
+	}
+	if !*seed && *command == "" {
+		fmt.Fprintf(os.Stderr, "Error: --command or --seed is required\n\n")
+		fs.Usage()
+		os.Exit(1)
+	}
+
+	ftnPath := filepath.Join(*configDir, "ftn.json")
+	ftnCfg, err := loadFTNConfig(ftnPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", ftnPath, err)
+		os.Exit(1)
+	}
+
+	// Find network (case-insensitive)
+	netKey := ""
+	for k := range ftnCfg.Networks {
+		if strings.EqualFold(k, *network) {
+			netKey = k
+			break
+		}
+	}
+	if netKey == "" {
+		fmt.Fprintf(os.Stderr, "Error: network %q not found in %s\n", *network, ftnPath)
+		os.Exit(1)
+	}
+
+	netCfg := ftnCfg.Networks[netKey]
+	if len(netCfg.Links) == 0 {
+		fmt.Fprintf(os.Stderr, "Error: network %s has no links\n", netKey)
+		os.Exit(1)
+	}
+
+	var link *config.FTNLinkConfig
+	if *linkAddr != "" {
+		for i := range netCfg.Links {
+			if netCfg.Links[i].Address == *linkAddr {
+				link = &netCfg.Links[i]
+				break
+			}
+		}
+		if link == nil {
+			fmt.Fprintf(os.Stderr, "Error: link %s not found in network %s\n", *linkAddr, netKey)
+			os.Exit(1)
+		}
+	} else {
+		link = &netCfg.Links[0]
+	}
+
+	if link.AreafixPassword == "" {
+		fmt.Fprintf(os.Stderr, "Error: link %s has no areafix_password configured\n", link.Address)
+		os.Exit(1)
+	}
+
+	// Use SysOp name from config so return messages reach the SysOp's inbox
+	fromName := "SysOp"
+	if cfg, err := config.LoadServerConfig(*configDir); err == nil && cfg.SysOpName != "" {
+		fromName = cfg.SysOpName
+	}
+
+	ownAddr, err := jam.ParseAddress(netCfg.OwnAddress)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: invalid own_address %q: %v\n", netCfg.OwnAddress, err)
+		os.Exit(1)
+	}
+
+	destAddr, err := jam.ParseAddress(link.Address)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: invalid link address %q: %v\n", link.Address, err)
+		os.Exit(1)
+	}
+
+	// Build netmail body: command(s) + "---" per areafix spec
+	var body string
+	var seedCount int
+	if *seed {
+		areasPath := filepath.Join(*configDir, "message_areas.json")
+		areas, err := loadAreas(areasPath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error loading %s: %v\n", areasPath, err)
+			os.Exit(1)
+		}
+		var lines []string
+		for _, a := range areas {
+			if (a.AreaType != "echomail" && a.AreaType != "echo") || !strings.EqualFold(a.Network, netKey) {
+				continue
+			}
+			tag := a.EchoTag
+			if tag == "" {
+				tag = a.Tag
+			}
+			if tag == "" {
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("+%s,R=%d", tag, *seedMessages))
+		}
+		if len(lines) == 0 {
+			fmt.Fprintf(os.Stderr, "Error: no echomail areas found for network %s in message_areas.json\n", netKey)
+			os.Exit(1)
+		}
+		seedCount = len(lines)
+		body = strings.Join(lines, "\r") + "\r---\r"
+		fmt.Printf("Seeding %d areas with +area,R=%d for network %s\n", seedCount, *seedMessages, netKey)
+	} else {
+		body = strings.TrimRight(*command, "\r\n") + "\r---\r"
+	}
+
+	// Netmail has no AREA kludge; add MSGID, PID for routing
+	msgID := fmt.Sprintf("%s %08X", netCfg.OwnAddress, uint32(time.Now().UnixNano()&0xFFFFFFFF))
+	parsed := &ftn.ParsedBody{
+		Text:    body,
+		Kludges: []string{"MSGID: " + msgID, "PID: " + jam.FormatPID()},
+	}
+	bodyBytes := ftn.FormatPackedMessageBody(parsed)
+
+	msg := &ftn.PackedMessage{
+		MsgType:  2,
+		OrigNode: uint16(ownAddr.Node),
+		DestNode: uint16(destAddr.Node),
+		OrigNet:  uint16(ownAddr.Net),
+		DestNet:  uint16(destAddr.Net),
+		Attr:     ftn.MsgAttrLocal | ftn.MsgAttrCrash,
+		Cost:     0,
+		DateTime: ftn.FormatFTNDateTime(time.Now()),
+		To:       "AreaFix",
+		From:     fromName,
+		Subject:  link.AreafixPassword,
+		Body:     bodyBytes,
+	}
+
+	hdr := ftn.NewPacketHeader(
+		uint16(ownAddr.Zone), uint16(ownAddr.Net), uint16(ownAddr.Node), uint16(ownAddr.Point),
+		uint16(destAddr.Zone), uint16(destAddr.Net), uint16(destAddr.Node), uint16(destAddr.Point),
+		link.PacketPassword,
+	)
+
+	outboundPath := ftnCfg.OutboundPath
+	if outboundPath == "" {
+		outboundPath = "data/ftn/temp_out"
+	}
+	if err := os.MkdirAll(outboundPath, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating outbound dir: %v\n", err)
+		os.Exit(1)
+	}
+
+	f, err := os.CreateTemp(outboundPath, "areafix_*.pkt")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error creating packet: %v\n", err)
+		os.Exit(1)
+	}
+	pktPath := f.Name()
+	if err := ftn.WritePacket(f, hdr, []*ftn.PackedMessage{msg}); err != nil {
+		f.Close()
+		os.Remove(pktPath)
+		fmt.Fprintf(os.Stderr, "Error writing packet: %v\n", err)
+		os.Exit(1)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(pktPath)
+		fmt.Fprintf(os.Stderr, "Error finalizing packet: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("AreaFix netmail written to %s\n", pktPath)
+	fmt.Printf("  To: AreaFix @ %s\n", link.Address)
+	if *seed {
+		fmt.Printf("  Seeded %d areas with R=%d messages each\n", seedCount, *seedMessages)
+	} else {
+		fmt.Printf("  Command: %s\n", *command)
+	}
 }
 
 // --- NA file parser ---
@@ -800,12 +993,12 @@ func loadFTNConfig(path string) (ftnConfig, error) {
 	return cfg, nil
 }
 
-func loadAreas(path string) ([]areaConfig, error) {
+func loadAreas(path string) ([]message.MessageArea, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	var areas []areaConfig
+	var areas []message.MessageArea
 	if err := json.Unmarshal(data, &areas); err != nil {
 		return nil, err
 	}

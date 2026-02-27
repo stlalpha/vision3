@@ -8133,7 +8133,7 @@ func (e *MenuExecutor) runTransferSend(s ssh.Session, terminal *term.Terminal, p
 			log.Printf("ERROR: Node %d: %q batch send failed: %v", nodeNumber, proto.Name, transferErr)
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 			if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See docs/sysop/files/file-transfer.md for setup instructions.\r\n")), outputMode)
 			} else {
 				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|01Transfer failed or was cancelled.\r\n")), outputMode)
 			}
@@ -8166,7 +8166,7 @@ func (e *MenuExecutor) runTransferSend(s ssh.Session, terminal *term.Terminal, p
 			log.Printf("ERROR: Node %d: %q send failed for %s: %v", nodeNumber, proto.Name, names[i], sendErr)
 			if errors.Is(sendErr, transfer.ErrBinaryNotFound) {
 				terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
-				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See docs/sysop/files/file-transfer.md for setup instructions.\r\n")), outputMode)
 				return successCount, failCount + (len(paths) - i)
 			}
 			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
@@ -8313,7 +8313,7 @@ func (e *MenuExecutor) runUploadFiles(
 	if transferErr != nil {
 		if errors.Is(transferErr, transfer.ErrBinaryNotFound) {
 			log.Printf("ERROR: Node %d: Transfer binary not found: %v", nodeNumber, transferErr)
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See documentation/file-transfer-protocols.md for setup instructions.\r\n")), outputMode)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01File transfer program not found!|07\r\n|07The SysOp needs to install the transfer binary (sexyz).\r\n|07See docs/sysop/files/file-transfer.md for setup instructions.\r\n")), outputMode)
 			return nil
 		}
 		log.Printf("WARN: Node %d: %q receive returned error: %v (checking for partial receives)", nodeNumber, proto.Name, transferErr)

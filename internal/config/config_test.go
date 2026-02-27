@@ -257,15 +257,17 @@ func TestLoadFTNConfig_MissingFile(t *testing.T) {
 func TestLoadFTNConfig_ValidFile(t *testing.T) {
 	tmpDir := t.TempDir()
 	cfg := FTNConfig{
-		DupeDBPath: "data/ftn/dupes.json",
+		DupeDBPath:        "data/ftn/dupes.json",
+		InboundPath:       "data/ftn/in",
+		OutboundPath:      "data/ftn/temp_out",
+		BinkdOutboundPath: "data/ftn/out",
+		TempPath:          "data/ftn/temp",
 		Networks: map[string]FTNNetworkConfig{
 			"fsxnet": {
 				InternalTosserEnabled: true,
 				OwnAddress:            "21:3/110",
-				InboundPath:           "data/ftn/fsxnet/inbound",
-				OutboundPath:          "data/ftn/fsxnet/outbound",
 				Links: []FTNLinkConfig{
-					{Address: "21:1/100", Password: "secret", Name: "Hub"},
+					{Address: "21:1/100", PacketPassword: "secret", Name: "Hub"},
 				},
 			},
 		},
@@ -286,6 +288,52 @@ func TestLoadFTNConfig_ValidFile(t *testing.T) {
 	}
 	if len(net.Links) != 1 {
 		t.Fatalf("expected 1 link, got %d", len(net.Links))
+	}
+	if !net.InternalTosserEnabled {
+		t.Error("expected InternalTosserEnabled true")
+	}
+	link := net.Links[0]
+	if link.Address != "21:1/100" {
+		t.Errorf("expected link address 21:1/100, got %s", link.Address)
+	}
+	if link.PacketPassword != "secret" {
+		t.Errorf("expected PacketPassword 'secret', got %s", link.PacketPassword)
+	}
+	if link.Name != "Hub" {
+		t.Errorf("expected link name 'Hub', got %s", link.Name)
+	}
+	if result.DupeDBPath != "data/ftn/dupes.json" {
+		t.Errorf("expected DupeDBPath 'data/ftn/dupes.json', got %s", result.DupeDBPath)
+	}
+	if result.InboundPath != "data/ftn/in" {
+		t.Errorf("expected InboundPath 'data/ftn/in', got %s", result.InboundPath)
+	}
+	if result.OutboundPath != "data/ftn/temp_out" {
+		t.Errorf("expected OutboundPath 'data/ftn/temp_out', got %s", result.OutboundPath)
+	}
+}
+
+func TestFTNLinkConfig_LegacyPasswordMigration(t *testing.T) {
+	// Legacy config uses "password"; new config uses "packet_password".
+	// When packet_password is absent (omitted), the legacy password should be used.
+	// When packet_password is explicitly empty "", legacy password must NOT override it.
+	legacy := []byte(`{"address":"21:1/100","password":"legacypass","name":"Hub"}`)
+	var link FTNLinkConfig
+	if err := json.Unmarshal(legacy, &link); err != nil {
+		t.Fatalf("unmarshal legacy: %v", err)
+	}
+	if link.PacketPassword != "legacypass" {
+		t.Errorf("expected legacy password migration, got %q", link.PacketPassword)
+	}
+
+	// Explicit empty packet_password should NOT be overridden by legacy password.
+	explicit := []byte(`{"address":"21:1/100","packet_password":"","password":"legacypass","name":"Hub"}`)
+	var link2 FTNLinkConfig
+	if err := json.Unmarshal(explicit, &link2); err != nil {
+		t.Fatalf("unmarshal explicit empty: %v", err)
+	}
+	if link2.PacketPassword != "" {
+		t.Errorf("expected explicit empty password to be preserved, got %q", link2.PacketPassword)
 	}
 }
 

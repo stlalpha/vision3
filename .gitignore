@@ -49,6 +49,9 @@ tmp/
 /configs/*.json
 /configs/*.txt
 
+# FTN NA (nodelist area) files — site-specific, not tracked in git
+*.na
+
 # SSH host keys (generated during setup, not tracked in git)
 /configs/ssh_host_*
 
