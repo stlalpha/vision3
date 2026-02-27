@@ -26,21 +26,27 @@ func joinArgs(args []string) string {
 // splitArgs parses a JSON-encoded string into an array of arguments.
 // Falls back to simple space-splitting for backward compatibility with old configs.
 // Empty strings return an empty array.
-func splitArgs(s string) []string {
+// Returns an error if the input looks like JSON but fails to parse.
+func splitArgs(s string) ([]string, error) {
 	s = strings.TrimSpace(s)
 	if s == "" {
-		return []string{}
+		return []string{}, nil
 	}
 
 	// Try JSON decoding first
 	var args []string
 	if err := json.Unmarshal([]byte(s), &args); err == nil {
-		return args
+		return args, nil
+	}
+
+	// If input looks like JSON (starts with [, {, or "), reject it
+	if len(s) > 0 && (s[0] == '[' || s[0] == '{' || s[0] == '"') {
+		return nil, fmt.Errorf("malformed JSON array: %s", s)
 	}
 
 	// Fallback: treat as space-separated for backward compatibility
 	// (simple split, no quote handling - users should re-save to upgrade to JSON)
-	return strings.Fields(s)
+	return strings.Fields(s), nil
 }
 
 // fieldsProtocol returns fields for editing a transfer protocol.
@@ -75,7 +81,11 @@ func (m *Model) fieldsProtocol() []fieldDef {
 			Label: "Send Args", Help: "Arguments for send command (JSON array, e.g. [\"arg1\",\"arg with space\"])", Type: ftString, Col: 3, Row: 5, Width: 40,
 			Get: func() string { return joinArgs(p.SendArgs) },
 			Set: func(val string) error {
-				p.SendArgs = splitArgs(val)
+				args, err := splitArgs(val)
+				if err != nil {
+					return err
+				}
+				p.SendArgs = args
 				return nil
 			},
 		},
@@ -88,7 +98,11 @@ func (m *Model) fieldsProtocol() []fieldDef {
 			Label: "Recv Args", Help: "Arguments for receive command (JSON array, e.g. [\"arg1\",\"arg with space\"])", Type: ftString, Col: 3, Row: 7, Width: 40,
 			Get: func() string { return joinArgs(p.RecvArgs) },
 			Set: func(val string) error {
-				p.RecvArgs = splitArgs(val)
+				args, err := splitArgs(val)
+				if err != nil {
+					return err
+				}
+				p.RecvArgs = args
 				return nil
 			},
 		},
@@ -159,10 +173,14 @@ func (m *Model) fieldsArchiver() []fieldDef {
 			Set: func(val string) error { a.Pack.Command = val; return nil },
 		},
 		{
-			Label: "Pack Args", Help: "Args for pack (space-sep, use {ARCHIVE} {FILES})", Type: ftString, Col: 3, Row: 8, Width: 40,
+			Label: "Pack Args", Help: "Args for pack (JSON array, e.g. [\"{ARCHIVE}\",\"{FILES}\"])", Type: ftString, Col: 3, Row: 8, Width: 40,
 			Get: func() string { return joinArgs(a.Pack.Args) },
 			Set: func(val string) error {
-				a.Pack.Args = splitArgs(val)
+				args, err := splitArgs(val)
+				if err != nil {
+					return err
+				}
+				a.Pack.Args = args
 				return nil
 			},
 		},
@@ -172,10 +190,14 @@ func (m *Model) fieldsArchiver() []fieldDef {
 			Set: func(val string) error { a.Unpack.Command = val; return nil },
 		},
 		{
-			Label: "Unpack Args", Help: "Args for unpack (space-sep, use {ARCHIVE} {OUTDIR})", Type: ftString, Col: 3, Row: 10, Width: 40,
+			Label: "Unpack Args", Help: "Args for unpack (JSON array, e.g. [\"{ARCHIVE}\",\"{OUTDIR}\"])", Type: ftString, Col: 3, Row: 10, Width: 40,
 			Get: func() string { return joinArgs(a.Unpack.Args) },
 			Set: func(val string) error {
-				a.Unpack.Args = splitArgs(val)
+				args, err := splitArgs(val)
+				if err != nil {
+					return err
+				}
+				a.Unpack.Args = args
 				return nil
 			},
 		},
@@ -185,10 +207,14 @@ func (m *Model) fieldsArchiver() []fieldDef {
 			Set: func(val string) error { a.Test.Command = val; return nil },
 		},
 		{
-			Label: "Test Args", Help: "Args for test (space-sep, use {ARCHIVE})", Type: ftString, Col: 3, Row: 12, Width: 40,
+			Label: "Test Args", Help: "Args for test (JSON array, e.g. [\"{ARCHIVE}\"])", Type: ftString, Col: 3, Row: 12, Width: 40,
 			Get: func() string { return joinArgs(a.Test.Args) },
 			Set: func(val string) error {
-				a.Test.Args = splitArgs(val)
+				args, err := splitArgs(val)
+				if err != nil {
+					return err
+				}
+				a.Test.Args = args
 				return nil
 			},
 		},
@@ -198,10 +224,14 @@ func (m *Model) fieldsArchiver() []fieldDef {
 			Set: func(val string) error { a.List.Command = val; return nil },
 		},
 		{
-			Label: "List Args", Help: "Args for list (space-sep, use {ARCHIVE})", Type: ftString, Col: 3, Row: 14, Width: 40,
+			Label: "List Args", Help: "Args for list (JSON array, e.g. [\"{ARCHIVE}\"])", Type: ftString, Col: 3, Row: 14, Width: 40,
 			Get: func() string { return joinArgs(a.List.Args) },
 			Set: func(val string) error {
-				a.List.Args = splitArgs(val)
+				args, err := splitArgs(val)
+				if err != nil {
+					return err
+				}
+				a.List.Args = args
 				return nil
 			},
 		},
@@ -211,10 +241,14 @@ func (m *Model) fieldsArchiver() []fieldDef {
 			Set: func(val string) error { a.Comment.Command = val; return nil },
 		},
 		{
-			Label: "Comment Args", Help: "Args for comment (space-sep, use {ARCHIVE} {FILE})", Type: ftString, Col: 3, Row: 16, Width: 40,
+			Label: "Comment Args", Help: "Args for comment (JSON array, e.g. [\"{ARCHIVE}\",\"{FILE}\"])", Type: ftString, Col: 3, Row: 16, Width: 40,
 			Get: func() string { return joinArgs(a.Comment.Args) },
 			Set: func(val string) error {
-				a.Comment.Args = splitArgs(val)
+				args, err := splitArgs(val)
+				if err != nil {
+					return err
+				}
+				a.Comment.Args = args
 				return nil
 			},
 		},
@@ -224,10 +258,14 @@ func (m *Model) fieldsArchiver() []fieldDef {
 			Set: func(val string) error { a.AddFile.Command = val; return nil },
 		},
 		{
-			Label: "AddFile Args", Help: "Args for addFile (space-sep, use {ARCHIVE} {FILE})", Type: ftString, Col: 3, Row: 18, Width: 40,
+			Label: "AddFile Args", Help: "Args for addFile (JSON array, e.g. [\"{ARCHIVE}\",\"{FILE}\"])", Type: ftString, Col: 3, Row: 18, Width: 40,
 			Get: func() string { return joinArgs(a.AddFile.Args) },
 			Set: func(val string) error {
-				a.AddFile.Args = splitArgs(val)
+				args, err := splitArgs(val)
+				if err != nil {
+					return err
+				}
+				a.AddFile.Args = args
 				return nil
 			},
 		},
