@@ -142,26 +142,36 @@ ViSiON/3 uses several key configuration values in `configs/config.json` to contr
 
 ### Login Flow and Level Checks
 
-When a user attempts to log in, the system performs three checks in order:
+When a user attempts to log in, the system performs two checks in order:
 
 1. **Username/Password Validation** → If fails: "Login incorrect"
-2. **Account Validated** → If fails: "Account requires validation by SysOp"
-3. **Meets LogonLevel** → If fails: "Access Denied"
+2. **Meets LogonLevel** → If fails: "Access Denied"
 
-Only after passing all three checks is the user granted access to the BBS.
+Access control is based solely on the user's **access level**. The `validated` flag is used for administrative purposes but does **not** block login.
+
+### What the `validated` Flag Does
+
+The `validated` flag serves these purposes:
+
+1. **Auto-Upgrade Trigger**: When you validate a user (set `validated: true`), their access level is automatically upgraded to `regularUserLevel` if they're below it
+2. **Administrative Tracking**: Shows which users have been manually reviewed by a SysOp in user lists
+3. **Informational Only**: Does NOT block login - access is controlled purely by `accessLevel >= logonLevel`
+
+**Key Point:** If you want to prevent new users from logging in until you review them, set `newUserLevel` below `logonLevel` (e.g., `newUserLevel: 1, logonLevel: 10`). Don't rely on the `validated` flag for access control.
 
 **Example with default config (newUserLevel=10, logonLevel=10, regularUserLevel=20):**
 
 - User registers → Gets AccessLevel: 10, Validated: false
-- User tries to log in → Denied at step 2 (not validated)
+- User logs in → Passes (level 10 meets logonLevel 10)
+- User has limited access via ACS `s10` restrictions
 - SysOp validates user → AccessLevel upgraded to 20, Validated: true
-- User logs in → Passes all checks, login successful
+- User now has full access via ACS `s20` permissions
 
 ### Creating Tiered Access Systems
 
 By adjusting `newUserLevel`, `logonLevel`, and `regularUserLevel`, you can create sophisticated multi-tier access systems:
 
-**Simple Configuration (Default - Manual Validation Required):**
+**Simple Configuration (Default - Immediate Login, Tiered Access):**
 ```json
 {
   "newUserLevel": 10,
@@ -170,33 +180,30 @@ By adjusting `newUserLevel`, `logonLevel`, and `regularUserLevel`, you can creat
 }
 ```
 
-- Level 0: Banned
+- Level 0: Banned (cannot log in)
 - Level 1-9: Locked out (below logonLevel threshold)
-- Level 10-19: New users with basic access
-- Level 20+: Validated users with full access
+- Level 10-19: New users (can log in with limited access via ACS `s10`)
+- Level 20+: Validated users (full access via ACS `s20`)
 
-**Workflow:** User signs up (level 10) → can log in with basic access → SysOp validates → upgraded to level 20 → full access granted
+**Workflow:** User signs up (level 10) → can log in immediately with limited access → SysOp validates → upgraded to level 20 → full access granted
 
-**Auto-Login Probationary Configuration:**
+**Manual Validation Required (Secure - No Auto-Login):**
 ```json
 {
-  "newUserLevel": 10,
+  "newUserLevel": 1,
   "logonLevel": 10,
-  "regularUserLevel": 20,
-  "allowNewUsers": true
+  "regularUserLevel": 20
 }
 ```
 
 - Level 0: Banned
-- Level 1-9: Below minimum (shouldn't occur)
-- Level 10-19: **New/probationary users** — once validated, can log in with limited access
-- Level 20+: **Validated regular users** — full access to standard areas
+- Level 1-9: New signups (cannot log in until SysOp manually upgrades to 10+)
+- Level 10-19: **Validated users** — limited access via ACS `s10`
+- Level 20+: **Regular users** — full access via ACS `s20`
 
-**Workflow:** User signs up (level 10, validated: false) → cannot log in until SysOp validates → once validated, can log in with limited access via ACS `s10` → SysOp later upgrades to level 20 → full access via ACS `s20`
+**Workflow:** User signs up (level 1) → cannot log in → SysOp manually upgrades to 10 → user can log in with limited access → SysOp later upgrades to 20 → full access
 
-> **Note:** In the current implementation, the `validated` flag is **always required** for login, even when `newUserLevel` equals `logonLevel`. To allow truly immediate login after signup, you would need to either:
-> - Automatically set `validated: true` during registration (code change required)
-> - Add an `autoValidateNewUsers` configuration option (feature not yet implemented)
+**Use Case:** Maximum security - SysOp must manually review and approve every new user before they can log in
 
 **Three-Tier Graduated System:**
 ```json
@@ -208,24 +215,26 @@ By adjusting `newUserLevel`, `logonLevel`, and `regularUserLevel`, you can creat
 ```
 
 - Level 0: Banned
-- Level 1-4: Below minimum
-- Level 5-9: **New users** — once validated, minimal access (read-only areas)
-- Level 10-19: **Intermediate users** — once validated, more access (can post in some areas)
-- Level 20+: **Regular users** — once validated, full access
+- Level 1-4: Below minimum (cannot log in)
+- Level 5-9: **New users** — minimal access via ACS `s5` (read-only areas)
+- Level 10-19: **Intermediate users** — more access via ACS `s10` (can post in some areas)
+- Level 20+: **Regular users** — full access via ACS `s20`
 
-**Workflow:** User signs up (level 5, validated: false) → SysOp validates → can log in with minimal access → SysOp manually promotes through tiers (5 → 10 → 20) based on user behavior/trust
+**Workflow:** User signs up (level 5) → can log in immediately with read-only access → SysOp manually promotes through tiers (5 → 10 → 20) based on user behavior/trust/time on system
+
+**Use Case:** Graduated trust system - users prove themselves at each level before getting more permissions
 
 **Use Cases for Tiered Access:**
 
-1. **Probationary New Users**: Set `newUserLevel: 10, regularUserLevel: 20` — New users get level 10 upon validation, then manually upgrade to 20 after probation period
+1. **Immediate Login, Probationary Access**: Set `newUserLevel: 10, logonLevel: 10, regularUserLevel: 20` — New users can log in immediately but have limited access (via ACS `s10`) until SysOp validates and upgrades them to level 20
 
-2. **Manual Validation Only**: Set `newUserLevel: 1, logonLevel: 10` to require SysOp approval before any access (default secure configuration)
+2. **Manual Review Before Login**: Set `newUserLevel: 1, logonLevel: 10` — New signups cannot log in until SysOp manually reviews and upgrades them to 10+
 
-3. **Differentiated Access Levels**: Use ACS strings (`s10`, `s20`, `s30`) to control what each validated level can access
+3. **Graduated Trust System**: Set `newUserLevel: 5, logonLevel: 5` with multiple ACS tiers — Users start at level 5 (read-only), prove themselves, then get promoted to 10 (can post), then 20 (full access)
 
-4. **Graduated Permissions**: Multiple tiers (5 = read-only, 10 = can post, 20 = full access) with manual promotion based on user trust/behavior
+4. **Ban Specific Users**: Set user's AccessLevel to 0 — They cannot log in regardless of other settings
 
-5. **Time-Based Upgrades**: Start validated users at level 10, then manually promote to 20 after they've been active for X days (requires manual monitoring)
+5. **VIP Fast Track**: Manually set trusted users to level 50+ for access to special VIP-only areas (via ACS `s50`)
 
 6. **Restricted Access Accounts**: Give someone level 15 to access specific areas but not everything
 

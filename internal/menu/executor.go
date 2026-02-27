@@ -1432,22 +1432,9 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return nil, "", nil         // Failed auth, but not a critical error. Let LOGIN menu handle retries.
 	}
 
-	// Check if user is validated
-	if !authUser.Validated {
-		log.Printf("INFO: Node %d: Login denied for user '%s' - account not validated", nodeNumber, username)
-		// Display specific message for validation issue
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-		errMsg := e.LoadedStrings.ExecNotValidated
-		// Use WriteProcessedBytes
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
-		if wErr != nil {
-			log.Printf("ERROR: Failed writing validation required message: %v", wErr)
-		}
-		time.Sleep(1 * time.Second)
-		return nil, "", nil // Not validated, treat as failed login for this attempt
-	}
-
 	// Check if user meets minimum logon level (if LogonLevel > 0)
+	// Note: We rely on accessLevel for access control, not the validated flag.
+	// The validated flag is used for auto-upgrading to regularUserLevel and showing validation status.
 	// Get thread-safe config snapshot
 	cfg := e.GetServerConfig()
 	if cfg.LogonLevel > 0 && authUser.AccessLevel < cfg.LogonLevel {
@@ -2413,20 +2400,9 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		return nil, nil             // Failed auth, but not a critical error. Let LOGIN menu handle retries.
 	}
 
-	if !authUser.Validated {
-		log.Printf("INFO: Node %d: Login denied for user '%s' - account not validated", nodeNumber, username)
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-		errMsg := e.LoadedStrings.ExecNotValidated
-		// Use WriteProcessedBytes with the passed outputMode
-		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
-		if wErr != nil {
-			log.Printf("ERROR: Failed writing validation required message: %v", wErr)
-		}
-		time.Sleep(1 * time.Second)
-		return nil, nil // Not validated, treat as failed login for this attempt
-	}
-
 	// Check if user meets minimum logon level (if LogonLevel > 0)
+	// Note: We rely on accessLevel for access control, not the validated flag.
+	// The validated flag is used for auto-upgrading to regularUserLevel and showing validation status.
 	// Get thread-safe config snapshot
 	cfg := e.GetServerConfig()
 	if cfg.LogonLevel > 0 && authUser.AccessLevel < cfg.LogonLevel {
