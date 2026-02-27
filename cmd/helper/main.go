@@ -554,6 +554,13 @@ func cmdFTNSetup(args []string) {
 
 	// 6. Check for existing link in the target network
 	networkKey := strings.ToLower(strings.ReplaceAll(*network, " ", "_"))
+	// Preserve the existing key's casing if it already exists (prevents duplicates like "Fidonet"/"fidonet")
+	for k := range ftn.Networks {
+		if strings.EqualFold(k, networkKey) {
+			networkKey = k
+			break
+		}
+	}
 	netCfg := ftn.Networks[networkKey] // zero value if new network
 	existingLinkIdx := -1
 	for i, link := range netCfg.Links {

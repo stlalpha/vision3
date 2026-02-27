@@ -70,6 +70,9 @@
 * [String Editor](advanced/string-editor.md)
 * [Encoding](advanced/encoding.md)
 
+* **HOW-TO GUIDES**
+* [How-To Guides](how-to-guides/README.md)
+
 * **REFERENCE**
 * [Architecture](reference/architecture.md)
 * [API Reference](reference/api-reference.md)
