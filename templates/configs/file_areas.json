@@ -5,9 +5,9 @@
         "name": "General Files",
         "description": "General purpose file area",
         "path": "general",
-        "acs_list": "s50",
-        "acs_upload": "s50",
-        "acs_download": "s50",
+        "acs_list": "s10",
+        "acs_upload": "s250",
+        "acs_download": "s20",
         "conference_id": 1
     },
     {
@@ -16,8 +16,8 @@
         "name": "Upload Queue",
         "description": "Upload files for sysop processing; downloads disabled",
         "path": "uploads",
-        "acs_list": "s50",
-        "acs_upload": "s50",
+        "acs_list": "s250",
+        "acs_upload": "s10",
         "acs_download": "s250",
         "conference_id": 1
     }

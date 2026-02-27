@@ -1,18 +1,20 @@
 {
   "boardName": "My BBS",
+  "sysOpName": "felonius",
   "timezone": "America/Chicago",
   "sysOpLevel": 255,
   "coSysOpLevel": 250,
   "invisibleLevel": 250,
-  "regularUserLevel": 10,
-  "logonLevel": 50,
-  "anonymousLevel": 60,
+  "newUserLevel": 10,
+  "regularUserLevel": 20,
+  "logonLevel": 10,
+  "anonymousLevel": 20,
   "sshEnabled": true,
-  "sshHost": "0.0.0.0",
   "sshPort": 2222,
+  "sshHost": "0.0.0.0",
   "telnetEnabled": true,
-  "telnetHost": "0.0.0.0",
   "telnetPort": 2323,
+  "telnetHost": "0.0.0.0",
   "maxNodes": 10,
   "maxConnectionsPerIP": 3,
   "ipBlocklistPath": "configs/blocklist.txt",
@@ -23,5 +25,6 @@
   "legacySSHAlgorithms": true,
   "allowNewUsers": true,
   "sessionIdleTimeoutMinutes": 5,
-  "transferTimeoutMinutes": 30
+  "transferTimeoutMinutes": 30,
+  "deletedUserRetentionDays": -1
 }

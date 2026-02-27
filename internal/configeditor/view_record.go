@@ -270,10 +270,15 @@ func (m Model) renderRecordField(fieldIdx int, f fieldDef) (string, int) {
 
 	if isActive && m.mode == modeRecordEdit {
 		v := value
-		if len(v) > f.Width {
-			v = v[:f.Width]
+		// For Y/N and integer fields, add padding space so fill characters are visible
+		effectiveWidth := f.Width
+		if f.Type == ftYesNo || f.Type == ftInteger {
+			effectiveWidth = f.Width + 2 // Add space for visual padding
 		}
-		fillStr := strings.Repeat(string(fieldFillChar), maxInt(0, f.Width-len(v)))
+		if len(v) > effectiveWidth {
+			v = v[:effectiveWidth]
+		}
+		fillStr := strings.Repeat(string(fieldFillChar), maxInt(0, effectiveWidth-len(v)))
 		return fieldLabelStyle.Render(label) + fieldEditStyle.Render(v+fillStr), rawW
 	}
 
@@ -294,6 +299,10 @@ func (m Model) renderFieldHelpLine(fields []fieldDef, padL, padR, boxW int) stri
 	}
 	if m.editField >= 0 && m.editField < len(fields) && fields[m.editField].Help != "" {
 		helpText := fields[m.editField].Help
+		// Add toggle hint for Y/N fields
+		if fields[m.editField].Type == ftYesNo {
+			helpText += " (Space toggles)"
+		}
 		return bgFillStyle.Render(strings.Repeat("░", padL)) +
 			editInfoLabelStyle.Render(centerText(helpText, boxW+1)) +
 			bgFillStyle.Render(strings.Repeat("░", maxInt(0, padR+1)))

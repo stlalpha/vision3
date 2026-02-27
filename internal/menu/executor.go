@@ -1447,6 +1447,20 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return nil, "", nil // Not validated, treat as failed login for this attempt
 	}
 
+	// Check if user meets minimum logon level (if LogonLevel > 0)
+	if e.ServerCfg.LogonLevel > 0 && authUser.AccessLevel < e.ServerCfg.LogonLevel {
+		log.Printf("INFO: Node %d: Login denied for user '%s' - insufficient access level (has %d, needs %d)",
+			nodeNumber, username, authUser.AccessLevel, e.ServerCfg.LogonLevel)
+		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode)
+		errMsg := e.LoadedStrings.ExecAccessDenied
+		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+		if wErr != nil {
+			log.Printf("ERROR: Failed writing access denied message: %v", wErr)
+		}
+		time.Sleep(1 * time.Second)
+		return nil, "", nil // Insufficient level, treat as failed login
+	}
+
 	// Authentication Successful!
 	log.Printf("INFO: Node %d: User '%s' (Handle: %s) authenticated successfully via RUN:AUTHENTICATE", nodeNumber, authUser.Username, authUser.Handle)
 
@@ -2408,6 +2422,20 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		}
 		time.Sleep(1 * time.Second)
 		return nil, nil // Not validated, treat as failed login for this attempt
+	}
+
+	// Check if user meets minimum logon level (if LogonLevel > 0)
+	if e.ServerCfg.LogonLevel > 0 && authUser.AccessLevel < e.ServerCfg.LogonLevel {
+		log.Printf("INFO: Node %d: Login denied for user '%s' - insufficient access level (has %d, needs %d)",
+			nodeNumber, username, authUser.AccessLevel, e.ServerCfg.LogonLevel)
+		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode)
+		errMsg := e.LoadedStrings.ExecAccessDenied
+		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
+		if wErr != nil {
+			log.Printf("ERROR: Failed writing access denied message: %v", wErr)
+		}
+		time.Sleep(1 * time.Second)
+		return nil, nil // Insufficient level, treat as failed login
 	}
 
 	log.Printf("INFO: Node %d: User '%s' (Handle: %s) authenticated successfully via LOGIN prompt", nodeNumber, authUser.Username, authUser.Handle)
@@ -5370,8 +5398,8 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 				}
 				if val, ok := pendingChanges["validated"]; ok {
 					target.Validated = val.(bool)
-					// When validating, ensure level is set to regular user level if currently 0
-					if target.Validated && target.AccessLevel == 0 {
+					// When validating, upgrade to regular user level if below it
+					if target.Validated && target.AccessLevel < e.ServerCfg.RegularUserLevel {
 						target.AccessLevel = e.ServerCfg.RegularUserLevel
 						if target.AccessLevel <= 0 {
 							target.AccessLevel = 10
@@ -6259,8 +6287,8 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 				}
 				if val, ok := pendingChanges["validated"]; ok {
 					target.Validated = val.(bool)
-					// When validating, ensure level is set to regular user level if currently 0
-					if target.Validated && target.AccessLevel == 0 {
+					// When validating, upgrade to regular user level if below it
+					if target.Validated && target.AccessLevel < e.ServerCfg.RegularUserLevel {
 						target.AccessLevel = e.ServerCfg.RegularUserLevel
 						if target.AccessLevel <= 0 {
 							target.AccessLevel = 10
