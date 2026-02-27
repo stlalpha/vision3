@@ -843,6 +843,25 @@ func LoadFTNConfig(configPath string) (FTNConfig, error) {
 	}
 	log.Printf("INFO: Loaded FTN configuration: %d network(s), %d with internal tosser enabled", len(config.Networks), enabledCount)
 
+	// Validate required global path fields when any network has the internal tosser enabled.
+	if enabledCount > 0 {
+		type requiredPath struct {
+			field string
+			value string
+		}
+		required := []requiredPath{
+			{"inbound_path", config.InboundPath},
+			{"outbound_path", config.OutboundPath},
+			{"binkd_outbound_path", config.BinkdOutboundPath},
+			{"temp_path", config.TempPath},
+		}
+		for _, r := range required {
+			if r.value == "" {
+				return defaultConfig, fmt.Errorf("ftn.json: %q is required when internal_tosser_enabled is true", r.field)
+			}
+		}
+	}
+
 	return config, nil
 }
 

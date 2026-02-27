@@ -60,7 +60,16 @@ func (m Model) updateRecordList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "i", "I", "insert":
 			m.insertRecord()
 			m.dirty = true
-			m.recordCursor = m.recordCount() - 1
+			// For ftnlink the new link is appended to the first (sorted) network,
+			// not necessarily at the end of the flat list; point at it directly.
+			if m.recordType == "ftnlink" {
+				nets := m.ftnNetworkKeys()
+				if len(nets) > 0 {
+					m.recordCursor = len(m.configs.FTN.Networks[nets[0]].Links) - 1
+				}
+			} else {
+				m.recordCursor = m.recordCount() - 1
+			}
 			m.clampRecordScroll()
 			return m, nil
 		case "g", "G":

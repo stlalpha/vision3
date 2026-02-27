@@ -462,39 +462,54 @@ See [event-scheduler.md](../advanced/event-scheduler.md) for the full recommende
 `configs/ftn.json` is the central configuration for the internal FTN tosser. It is
 read by `v3mail toss`, `v3mail scan`, and `v3mail ftn-pack`.
 
-**Fields:**
+**Global fields (top-level):**
 
-| Field                                    | Description                                                  |
-| ---------------------------------------- | ------------------------------------------------------------ |
-| `dupe_db_path`                           | Path to the dupe detection database (relative to BBS root)   |
-| `networks.<key>.internal_tosser_enabled` | Set `true` to enable `v3mail` for this network               |
-| `networks.<key>.own_address`             | Your FTN address (e.g., `21:4/158.1`)                        |
-| `networks.<key>.inbound_path`            | Unsecured inbound directory                                  |
-| `networks.<key>.secure_inbound_path`     | Secure inbound (where your mailer deposits received mail)    |
-| `networks.<key>.outbound_path`           | Staging dir for outbound `.pkt` files (`v3mail scan` output) |
-| `networks.<key>.binkd_outbound_path`     | Outbound bundles dir (your mailer picks up from here)        |
-| `networks.<key>.temp_path`               | Temp dir for bundle extraction during toss                   |
-| `networks.<key>.tearline`                | Optional tearline suffix (empty = use default)               |
-| `networks.<key>.links[].address`          | Hub FTN address                                              |
-| `networks.<key>.links[].packet_password`  | Packet password shared with hub                              |
-| `networks.<key>.links[].areafix_password` | Password for AreaFix netmail (subject line; set by hub)      |
-| `networks.<key>.links[].name`             | Human-readable hub label                                     |
-| `networks.<key>.links[].flavour`          | Delivery mode: `Normal`, `Crash`, `Hold`, `Direct`           |
+| Field                 | Description                                                  |
+| --------------------- | ------------------------------------------------------------ |
+| `dupe_db_path`        | Path to the dupe detection database (relative to BBS root)   |
+| `inbound_path`        | Unsecured inbound directory (binkd deposits bundles here)    |
+| `secure_inbound_path` | Secure inbound for password-authenticated mailer sessions    |
+| `outbound_path`       | Staging dir for outbound `.pkt` files (`v3mail scan` output) |
+| `binkd_outbound_path` | Outbound bundles dir (binkd picks up ZIP archives from here) |
+| `temp_path`           | Temp dir for bundle extraction during toss                   |
+| `bad_area_tag`        | Area tag for messages with unknown echo tags (e.g. `"BAD"`)  |
+| `dupe_area_tag`       | Area tag for duplicate MSGIDs (e.g. `"DUPE"`)                |
+
+**Per-network fields (`networks.<key>`):**
+
+| Field                     | Description                                         |
+| ------------------------- | --------------------------------------------------- |
+| `internal_tosser_enabled` | Set `true` to enable `v3mail` for this network      |
+| `own_address`             | Your FTN address (e.g., `21:4/158.1`)               |
+| `poll_interval_seconds`   | Auto-poll interval; `0` = manual only               |
+| `tearline`                | Optional tearline suffix (empty = use default)      |
+
+**Per-link fields (`networks.<key>.links[]`):**
+
+| Field              | Description                                              |
+| ------------------ | -------------------------------------------------------- |
+| `address`          | Hub FTN address                                          |
+| `packet_password`  | Packet password shared with hub                          |
+| `areafix_password` | Password for AreaFix netmail (subject line; set by hub)  |
+| `name`             | Human-readable hub label                                 |
+| `flavour`          | Delivery mode: `Normal`, `Crash`, `Hold`, `Direct`       |
 
 **Example:**
 
 ```json
 {
     "dupe_db_path": "data/ftn/dupes.json",
+    "inbound_path": "data/ftn/in",
+    "secure_inbound_path": "data/ftn/secure_in",
+    "outbound_path": "data/ftn/temp_out",
+    "binkd_outbound_path": "data/ftn/out",
+    "temp_path": "data/ftn/temp_in",
+    "bad_area_tag": "BAD",
+    "dupe_area_tag": "DUPE",
     "networks": {
         "fsxnet": {
             "internal_tosser_enabled": true,
             "own_address": "21:4/158.1",
-            "inbound_path": "data/ftn/in",
-            "secure_inbound_path": "data/ftn/secure_in",
-            "outbound_path": "data/ftn/temp_out",
-            "binkd_outbound_path": "data/ftn/out",
-            "temp_path": "data/ftn/temp_in",
             "tearline": "",
             "links": [
                 {
