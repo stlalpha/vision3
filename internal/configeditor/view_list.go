@@ -182,7 +182,7 @@ func (m Model) recordColumnHeader(boxW int) string {
 	case "door":
 		return "  Key                     Name                         I/O Mode"
 	case "event":
-		return "  ID                      Name                         Enabled"
+		return "  #  Name                                                     Enabled"
 	case "ftn":
 		return "  Network                 Own Address                  Tosser"
 	case "ftnlink":
@@ -228,7 +228,7 @@ func (m Model) renderRecordRow(idx, boxW int) string {
 	case "event":
 		if idx < len(m.configs.Events.Events) {
 			e := m.configs.Events.Events[idx]
-			content = fmt.Sprintf("  %-22s %-28s %s", padRight(e.ID, 22), padRight(e.Name, 28), boolToYN(e.Enabled))
+			content = fmt.Sprintf(" %3d  %-56s %s", idx+1, padRight(e.Name, 56), boolToYN(e.Enabled))
 		}
 	case "ftn":
 		keys := m.ftnNetworkKeys()

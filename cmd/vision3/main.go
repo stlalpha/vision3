@@ -1629,6 +1629,8 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to initialize user manager: %v", err)
 	}
+	// Set the new user level from config
+	userMgr.SetNewUserLevel(serverConfig.NewUserLevel)
 
 	// Initialize MessageManager (areas config from configs/, message data from data/)
 	messageMgr, err = message.NewMessageManager(dataPath, rootConfigPath, serverConfig.BoardName, networkTearlines)
@@ -1677,7 +1679,7 @@ func main() {
 
 	// Initialize configuration file watcher for hot reload
 	var serverConfigMu sync.RWMutex
-	configWatcher, err := NewConfigWatcher(rootConfigPath, menuSetPath, menuExecutor, &serverConfig, &serverConfigMu)
+	configWatcher, err := NewConfigWatcher(rootConfigPath, menuSetPath, menuExecutor, userMgr, &serverConfig, &serverConfigMu)
 	if err != nil {
 		log.Printf("WARN: Failed to start config file watcher: %v. Hot reload disabled.", err)
 	} else {

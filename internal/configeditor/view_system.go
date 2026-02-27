@@ -192,10 +192,15 @@ func (m Model) renderSysField(fieldIdx int, f fieldDef) (string, int) {
 
 	if isActive && m.mode == modeSysConfigEdit {
 		v := value
-		if len(v) > f.Width {
-			v = v[:f.Width]
+		// For Y/N and integer fields, add padding space so fill characters are visible
+		effectiveWidth := f.Width
+		if f.Type == ftYesNo || f.Type == ftInteger {
+			effectiveWidth = f.Width + 2 // Add space for visual padding
 		}
-		fillStr := strings.Repeat(string(fieldFillChar), maxInt(0, f.Width-len(v)))
+		if len(v) > effectiveWidth {
+			v = v[:effectiveWidth]
+		}
+		fillStr := strings.Repeat(string(fieldFillChar), maxInt(0, effectiveWidth-len(v)))
 		return fieldLabelStyle.Render(label) + fieldEditStyle.Render(v+fillStr), rawW
 	}
 

@@ -696,6 +696,7 @@ type ServerConfig struct {
 	SysOpLevel          int    `json:"sysOpLevel"`
 	CoSysOpLevel        int    `json:"coSysOpLevel"`
 	InvisibleLevel      int    `json:"invisibleLevel"` // Access level for invisible logon prompt; 0 = use coSysOpLevel
+	NewUserLevel        int    `json:"newUserLevel"`   // Access level assigned to new signups
 	RegularUserLevel    int    `json:"regularUserLevel"`
 	LogonLevel          int    `json:"logonLevel"`
 	AnonymousLevel      int    `json:"anonymousLevel"`
@@ -762,8 +763,9 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		Timezone:                  "",
 		SysOpLevel:                255,
 		CoSysOpLevel:              250,
+		NewUserLevel:              1,
 		RegularUserLevel:          10,
-		LogonLevel:                100,
+		LogonLevel:                10,
 		AnonymousLevel:            5,
 		SSHPort:                   2222,
 		SSHHost:                   "0.0.0.0",
@@ -777,7 +779,7 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		LockoutMinutes:            30,
 		AllowNewUsers:             true,
 		SessionIdleTimeoutMinutes: 5,
-		TransferTimeoutMinutes:    30,
+		TransferTimeoutMinutes:    10,
 		LegacySSHAlgorithms:       true,
 		DeletedUserRetentionDays:  30,
 	}

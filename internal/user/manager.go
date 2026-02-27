@@ -42,12 +42,12 @@ func StripUTF8BOM(data []byte) []byte {
 
 // UserMgr manages user data (Renamed from UserManager)
 type UserMgr struct {
-	users    map[string]*User
-	mu       sync.RWMutex
-	path     string // Path to users.json
-	dataPath string // Path to the data directory (for callhistory.json etc)
-	// LastLogins  []LoginEvent // Removed LastLogins field
-	nextUserID     int             // Added to track the next available user ID
+	users          map[string]*User
+	mu             sync.RWMutex
+	path           string // Path to users.json
+	dataPath       string // Path to the data directory (for callhistory.json etc)
+	newUserLevel   int    // Access level assigned to new signups (from config)
+	nextUserID     int    // Added to track the next available user ID
 	callHistory    []CallRecord    // Added slice for call history
 	nextCallNumber uint64          // Added counter for overall calls
 	activeUserIDs  map[int32]bool  // Track which user IDs are currently online
@@ -56,8 +56,9 @@ type UserMgr struct {
 // NewUserManager creates and initializes a new user manager
 func NewUserManager(dataPath string) (*UserMgr, error) { // Return renamed type
 	um := &UserMgr{ // Use renamed type
-		users:    make(map[string]*User),
-		path:     filepath.Join(dataPath, userFile), // userFile path uses dataPath now
+		users:        make(map[string]*User),
+		path:         filepath.Join(dataPath, userFile), // userFile path uses dataPath now
+		newUserLevel: 1,                                 // Default to 1, will be overridden by SetNewUserLevel
 		dataPath: dataPath,                          // Store the data path
 		// LastLogins:  make([]LoginEvent, 0, MaxLastLogins), // Removed LastLogins initialization
 		callHistory:    make([]CallRecord, 0, callHistoryLimit), // Initialize call history
@@ -506,17 +507,17 @@ func (um *UserMgr) AddUser(username, password, handle, realName, phoneNum, group
 
 	// Create new user
 	newUser := &User{
-		ID:            um.nextUserID, // Assign the next available ID
+		ID:            um.nextUserID,    // Assign the next available ID
 		Username:      username,
 		PasswordHash:  string(hashedPassword),
 		Handle:        handle,
 		RealName:      realName,
 		PhoneNumber:   phoneNum,
 		GroupLocation: groupLocation,
-		AccessLevel:   1,           // Default access level for new users
-		TimeLimit:     60,          // Default time limit (e.g., 60 minutes)
-		Validated:     false,       // New users require validation
-		LastLogin:     time.Time{}, // Initialize zero time
+		AccessLevel:   um.newUserLevel, // Access level from config (default: 1)
+		TimeLimit:     60,               // Default time limit (e.g., 60 minutes)
+		Validated:     false,            // New users require validation
+		LastLogin:     time.Time{},      // Initialize zero time
 		// Initialize other fields as needed
 	}
 
@@ -608,6 +609,25 @@ func (um *UserMgr) GetTotalCalls() uint64 {
 		return 0
 	}
 	return um.nextCallNumber - 1
+}
+
+// SetNewUserLevel sets the access level assigned to new user signups.
+// This should be called after loading the server config.
+// Level is clamped to the valid range of 0-255.
+func (um *UserMgr) SetNewUserLevel(level int) {
+	um.mu.Lock()
+	defer um.mu.Unlock()
+
+	// Validate and clamp to 0-255 range
+	if level < 0 {
+		log.Printf("WARN: invalid newUserLevel %d; clamping to 0", level)
+		level = 0
+	} else if level > 255 {
+		log.Printf("WARN: invalid newUserLevel %d; clamping to 255", level)
+		level = 255
+	}
+
+	um.newUserLevel = level
 }
 
 // MarkUserOnline marks a user as currently online/connected

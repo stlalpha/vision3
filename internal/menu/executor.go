@@ -1432,19 +1432,22 @@ func runAuthenticate(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 		return nil, "", nil         // Failed auth, but not a critical error. Let LOGIN menu handle retries.
 	}
 
-	// Check if user is validated
-	if !authUser.Validated {
-		log.Printf("INFO: Node %d: Login denied for user '%s' - account not validated", nodeNumber, username)
-		// Display specific message for validation issue
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-		errMsg := e.LoadedStrings.ExecNotValidated
-		// Use WriteProcessedBytes
+	// Check if user meets minimum logon level (if LogonLevel > 0)
+	// Note: We rely on accessLevel for access control, not the validated flag.
+	// The validated flag is used for auto-upgrading to regularUserLevel and showing validation status.
+	// Get thread-safe config snapshot
+	cfg := e.GetServerConfig()
+	if cfg.LogonLevel > 0 && authUser.AccessLevel < cfg.LogonLevel {
+		log.Printf("INFO: Node %d: Login denied for user '%s' - insufficient access level (has %d, needs %d)",
+			nodeNumber, username, authUser.AccessLevel, cfg.LogonLevel)
+		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode)
+		errMsg := e.LoadedStrings.ExecAccessDenied
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		if wErr != nil {
-			log.Printf("ERROR: Failed writing validation required message: %v", wErr)
+			log.Printf("ERROR: Failed writing access denied message: %v", wErr)
 		}
 		time.Sleep(1 * time.Second)
-		return nil, "", nil // Not validated, treat as failed login for this attempt
+		return nil, "", nil // Insufficient level, treat as failed login
 	}
 
 	// Authentication Successful!
@@ -2397,17 +2400,22 @@ func (e *MenuExecutor) handleLoginPrompt(s ssh.Session, terminal *term.Terminal,
 		return nil, nil             // Failed auth, but not a critical error. Let LOGIN menu handle retries.
 	}
 
-	if !authUser.Validated {
-		log.Printf("INFO: Node %d: Login denied for user '%s' - account not validated", nodeNumber, username)
-		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode) // Move cursor for message
-		errMsg := e.LoadedStrings.ExecNotValidated
-		// Use WriteProcessedBytes with the passed outputMode
+	// Check if user meets minimum logon level (if LogonLevel > 0)
+	// Note: We rely on accessLevel for access control, not the validated flag.
+	// The validated flag is used for auto-upgrading to regularUserLevel and showing validation status.
+	// Get thread-safe config snapshot
+	cfg := e.GetServerConfig()
+	if cfg.LogonLevel > 0 && authUser.AccessLevel < cfg.LogonLevel {
+		log.Printf("INFO: Node %d: Login denied for user '%s' - insufficient access level (has %d, needs %d)",
+			nodeNumber, username, authUser.AccessLevel, cfg.LogonLevel)
+		terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(errorRow, 1)), outputMode)
+		errMsg := e.LoadedStrings.ExecAccessDenied
 		wErr := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(errMsg)), outputMode)
 		if wErr != nil {
-			log.Printf("ERROR: Failed writing validation required message: %v", wErr)
+			log.Printf("ERROR: Failed writing access denied message: %v", wErr)
 		}
 		time.Sleep(1 * time.Second)
-		return nil, nil // Not validated, treat as failed login for this attempt
+		return nil, nil // Insufficient level, treat as failed login
 	}
 
 	log.Printf("INFO: Node %d: User '%s' (Handle: %s) authenticated successfully via LOGIN prompt", nodeNumber, authUser.Username, authUser.Handle)
@@ -5370,11 +5378,17 @@ func runAdminListUsers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, 
 				}
 				if val, ok := pendingChanges["validated"]; ok {
 					target.Validated = val.(bool)
-					// When validating, ensure level is set to regular user level if currently 0
-					if target.Validated && target.AccessLevel == 0 {
-						target.AccessLevel = e.ServerCfg.RegularUserLevel
-						if target.AccessLevel <= 0 {
-							target.AccessLevel = 10
+					// When validating, upgrade to regular user level if below it
+					if target.Validated {
+						// Get thread-safe config snapshot
+						cfg := e.GetServerConfig()
+						// Normalize RegularUserLevel to ensure it's positive
+						desiredLevel := cfg.RegularUserLevel
+						if desiredLevel <= 0 {
+							desiredLevel = 10
+						}
+						if target.AccessLevel < desiredLevel {
+							target.AccessLevel = desiredLevel
 						}
 					}
 				}
@@ -6259,11 +6273,17 @@ func runValidateUser(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, us
 				}
 				if val, ok := pendingChanges["validated"]; ok {
 					target.Validated = val.(bool)
-					// When validating, ensure level is set to regular user level if currently 0
-					if target.Validated && target.AccessLevel == 0 {
-						target.AccessLevel = e.ServerCfg.RegularUserLevel
-						if target.AccessLevel <= 0 {
-							target.AccessLevel = 10
+					// When validating, upgrade to regular user level if below it
+					if target.Validated {
+						// Get thread-safe config snapshot
+						cfg := e.GetServerConfig()
+						// Normalize RegularUserLevel to ensure it's positive
+						desiredLevel := cfg.RegularUserLevel
+						if desiredLevel <= 0 {
+							desiredLevel = 10
+						}
+						if target.AccessLevel < desiredLevel {
+							target.AccessLevel = desiredLevel
 						}
 					}
 				}

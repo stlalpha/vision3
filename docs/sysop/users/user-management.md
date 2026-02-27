@@ -111,6 +111,169 @@ Access levels range from 0-255, with common levels being:
 - **50-99**: Co-SysOps
 - **100-255**: SysOp level
 
+### System Access Levels
+
+ViSiON/3 uses several key configuration values in `configs/config.json` to control user access:
+
+```json
+{
+  "sysOpLevel": 255,
+  "coSysOpLevel": 250,
+  "newUserLevel": 1,
+  "regularUserLevel": 10,
+  "logonLevel": 10,
+  "anonymousLevel": 5
+}
+```
+
+**Configuration Values:**
+
+- **sysOpLevel (255)**: Full system administrator access. Users at this level can access admin menus, edit configurations, manage users, and have unrestricted access to all areas.
+
+- **coSysOpLevel (250)**: Co-SysOp privileges. Users at this level have elevated permissions for moderation and user management, but may be restricted from certain system administration functions.
+
+- **newUserLevel (10)**: The access level assigned to users when they first sign up. This is an *assignment value* — when someone registers a new account, they get this level. Default is 10 (allows immediate login after registration).
+
+- **regularUserLevel (20)**: The access level assigned to users when they are validated by the SysOp. This is an *assignment value* — when you validate a user, their level is upgraded to this value (if they're below it).
+
+- **logonLevel (10)**: Minimum access level required to log in to the BBS. This is a *threshold check* — users below this level are denied login even if their password is correct. Set to `0` to disable this check.
+
+- **anonymousLevel (5)**: Minimum access level required to post messages/oneliners anonymously. This is a *threshold check* — users at or above this level can choose to post as "Anonymous" instead of their real name. Set to `0` to disable anonymous posting entirely, or `255` to restrict to SysOps only.
+
+### Login Flow and Level Checks
+
+When a user attempts to log in, the system performs two checks in order:
+
+1. **Username/Password Validation** → If fails: "Login incorrect"
+2. **Meets LogonLevel** → If fails: "Access Denied"
+
+Access control is based solely on the user's **access level**. The `validated` flag is used for administrative purposes but does **not** block login.
+
+### What the `validated` Flag Does
+
+The `validated` flag serves these purposes:
+
+1. **Auto-Upgrade Trigger**: When you validate a user (set `validated: true`), their access level is automatically upgraded to `regularUserLevel` if they're below it
+2. **Administrative Tracking**: Shows which users have been manually reviewed by a SysOp in user lists
+3. **Informational Only**: Does NOT block login - access is controlled purely by `accessLevel >= logonLevel`
+
+**Key Point:** If you want to prevent new users from logging in until you review them, set `newUserLevel` below `logonLevel` (e.g., `newUserLevel: 1, logonLevel: 10`). Don't rely on the `validated` flag for access control.
+
+**Example with default config (newUserLevel=10, logonLevel=10, regularUserLevel=20):**
+
+- User registers → Gets AccessLevel: 10, Validated: false
+- User logs in → Passes (level 10 meets logonLevel 10)
+- User has limited access via ACS `s10` restrictions
+- SysOp validates user → AccessLevel upgraded to 20, Validated: true
+- User now has full access via ACS `s20` permissions
+
+### Creating Tiered Access Systems
+
+By adjusting `newUserLevel`, `logonLevel`, and `regularUserLevel`, you can create sophisticated multi-tier access systems:
+
+**Simple Configuration (Default - Immediate Login, Tiered Access):**
+```json
+{
+  "newUserLevel": 10,
+  "logonLevel": 10,
+  "regularUserLevel": 20
+}
+```
+
+- Level 0: Banned (cannot log in)
+- Level 1-9: Locked out (below logonLevel threshold)
+- Level 10-19: New users (can log in with limited access via ACS `s10`)
+- Level 20+: Validated users (full access via ACS `s20`)
+
+**Workflow:** User signs up (level 10) → can log in immediately with limited access → SysOp validates → upgraded to level 20 → full access granted
+
+**Manual Validation Required (Secure - No Auto-Login):**
+```json
+{
+  "newUserLevel": 1,
+  "logonLevel": 10,
+  "regularUserLevel": 20
+}
+```
+
+- Level 0: Banned
+- Level 1-9: New signups (cannot log in until SysOp manually upgrades to 10+)
+- Level 10-19: **Validated users** — limited access via ACS `s10`
+- Level 20+: **Regular users** — full access via ACS `s20`
+
+**Workflow:** User signs up (level 1) → cannot log in → SysOp manually upgrades to 10 → user can log in with limited access → SysOp later upgrades to 20 → full access
+
+**Use Case:** Maximum security - SysOp must manually review and approve every new user before they can log in
+
+**Three-Tier Graduated System:**
+```json
+{
+  "newUserLevel": 5,
+  "logonLevel": 5,
+  "regularUserLevel": 20
+}
+```
+
+- Level 0: Banned
+- Level 1-4: Below minimum (cannot log in)
+- Level 5-9: **New users** — minimal access via ACS `s5` (read-only areas)
+- Level 10-19: **Intermediate users** — more access via ACS `s10` (can post in some areas)
+- Level 20+: **Regular users** — full access via ACS `s20`
+
+**Workflow:** User signs up (level 5) → can log in immediately with read-only access → SysOp manually promotes through tiers (5 → 10 → 20) based on user behavior/trust/time on system
+
+**Use Case:** Graduated trust system - users prove themselves at each level before getting more permissions
+
+**Use Cases for Tiered Access:**
+
+1. **Immediate Login, Probationary Access**: Set `newUserLevel: 10, logonLevel: 10, regularUserLevel: 20` — New users can log in immediately but have limited access (via ACS `s10`) until SysOp validates and upgrades them to level 20
+
+2. **Manual Review Before Login**: Set `newUserLevel: 1, logonLevel: 10` — New signups cannot log in until SysOp manually reviews and upgrades them to 10+
+
+3. **Graduated Trust System**: Set `newUserLevel: 5, logonLevel: 5` with multiple ACS tiers — Users start at level 5 (read-only), prove themselves, then get promoted to 10 (can post), then 20 (full access)
+
+4. **Ban Specific Users**: Set user's AccessLevel to 0 — They cannot log in regardless of other settings
+
+5. **VIP Fast Track**: Manually set trusted users to level 50+ for access to special VIP-only areas (via ACS `s50`)
+
+6. **Restricted Access Accounts**: Give someone level 15 to access specific areas but not everything
+
+7. **Temporary/Guest Accounts**: Create accounts at level 10 for visitors, below regular user level
+
+8. **Demotion/Suspension**: Temporarily lower a problematic user without full ban (20 → 10 → 5)
+
+### Setting User Levels
+
+User levels can be changed through:
+
+1. **Admin Menu** (in-BBS): Press `G` to edit access level
+2. **User Editor** (`./ue`): Edit the Access Level field
+3. **Manual editing**: Modify `accessLevel` in `data/users/users.json` (not recommended)
+
+When validating a user through the Admin Menu with the `H` key, their level is automatically set to `regularUserLevel`.
+
+### Disabling LogonLevel Check
+
+To allow any validated user to log in regardless of level:
+
+```json
+{
+  "logonLevel": 0
+}
+```
+
+With `logonLevel: 0`, the level check is disabled and only username/password and validation status are checked.
+
+### Security Logging
+
+Level-based login denials are logged for security monitoring:
+
+```text
+INFO: Login denied for user 'bob' - insufficient access level (has 5, needs 10)
+```
+
+These logs help track unauthorized access attempts and verify your access control configuration is working correctly.
+
 ## User Flags
 
 Flags are single characters (A-Z) that grant specific permissions:

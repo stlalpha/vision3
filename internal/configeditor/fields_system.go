@@ -6,6 +6,74 @@ import (
 	"github.com/stlalpha/vision3/internal/config"
 )
 
+// buildTimezoneLookupItems returns a list of common IANA timezones.
+func buildTimezoneLookupItems() []LookupItem {
+	timezones := []string{
+		// Americas
+		"America/New_York",
+		"America/Chicago",
+		"America/Denver",
+		"America/Phoenix",
+		"America/Los_Angeles",
+		"America/Anchorage",
+		"America/Toronto",
+		"America/Vancouver",
+		"America/Mexico_City",
+		"America/Sao_Paulo",
+		"America/Argentina/Buenos_Aires",
+		// Europe
+		"Europe/London",
+		"Europe/Paris",
+		"Europe/Berlin",
+		"Europe/Rome",
+		"Europe/Madrid",
+		"Europe/Amsterdam",
+		"Europe/Brussels",
+		"Europe/Vienna",
+		"Europe/Warsaw",
+		"Europe/Moscow",
+		"Europe/Istanbul",
+		"Europe/Athens",
+		// Asia
+		"Asia/Dubai",
+		"Asia/Karachi",
+		"Asia/Kolkata",
+		"Asia/Bangkok",
+		"Asia/Shanghai",
+		"Asia/Hong_Kong",
+		"Asia/Tokyo",
+		"Asia/Seoul",
+		"Asia/Singapore",
+		"Asia/Manila",
+		// Pacific
+		"Pacific/Auckland",
+		"Pacific/Fiji",
+		"Pacific/Honolulu",
+		// Australia
+		"Australia/Sydney",
+		"Australia/Melbourne",
+		"Australia/Brisbane",
+		"Australia/Perth",
+		"Australia/Adelaide",
+		// Africa
+		"Africa/Cairo",
+		"Africa/Johannesburg",
+		"Africa/Lagos",
+		"Africa/Nairobi",
+		// UTC
+		"UTC",
+	}
+
+	items := make([]LookupItem, len(timezones))
+	for i, tz := range timezones {
+		items[i] = LookupItem{
+			Value:   tz,
+			Display: tz,
+		}
+	}
+	return items
+}
+
 // buildSysFields returns field definitions for the given system config sub-screen.
 func (m *Model) buildSysFields(screen int) []fieldDef {
 	cfg := &m.configs.Server
@@ -40,9 +108,31 @@ func sysFieldsRegistration(cfg *config.ServerConfig) []fieldDef {
 			Set: func(val string) error { cfg.SysOpName = val; return nil },
 		},
 		{
-			Label: "Timezone", Help: "IANA timezone (e.g. America/Chicago)", Type: ftString, Col: 3, Row: 3, Width: 30,
+			Label: "Timezone", Help: "IANA timezone (press Enter to select)", Type: ftLookup, Col: 3, Row: 3, Width: 30,
 			Get: func() string { return cfg.Timezone },
 			Set: func(val string) error { cfg.Timezone = val; return nil },
+			LookupItems: func() []LookupItem {
+				items := buildTimezoneLookupItems()
+
+				// If current timezone is not empty and not in the curated list, append it
+				if cfg.Timezone != "" {
+					found := false
+					for _, item := range items {
+						if item.Value == cfg.Timezone || item.Display == cfg.Timezone {
+							found = true
+							break
+						}
+					}
+					if !found {
+						items = append(items, LookupItem{
+							Value:   cfg.Timezone,
+							Display: cfg.Timezone + " (current)",
+						})
+					}
+				}
+
+				return items
+			},
 		},
 	}
 }
@@ -166,7 +256,7 @@ func sysFieldsLimits(cfg *config.ServerConfig) []fieldDef {
 			},
 		},
 		{
-			Label: "Xfer Timeout", Help: "File transfer timeout in minutes", Type: ftInteger, Col: 3, Row: 6, Width: 5, Min: 0, Max: 999,
+			Label: "Xfer Timeout", Help: "Max minutes for active file transfers (0=unlimited)", Type: ftInteger, Col: 3, Row: 6, Width: 5, Min: 0, Max: 999,
 			Get: func() string { return strconv.Itoa(cfg.TransferTimeoutMinutes) },
 			Set: func(val string) error {
 				n, err := strconv.Atoi(val)
@@ -220,7 +310,19 @@ func sysFieldsLevels(cfg *config.ServerConfig) []fieldDef {
 			},
 		},
 		{
-			Label: "Regular Level", Help: "Default level for validated users", Type: ftInteger, Col: 3, Row: 4, Width: 3, Min: 0, Max: 255,
+			Label: "New User Level", Help: "Level assigned to new signups", Type: ftInteger, Col: 3, Row: 4, Width: 3, Min: 0, Max: 255,
+			Get: func() string { return strconv.Itoa(cfg.NewUserLevel) },
+			Set: func(val string) error {
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return err
+				}
+				cfg.NewUserLevel = n
+				return nil
+			},
+		},
+		{
+			Label: "Regular Level", Help: "Level assigned when user is validated", Type: ftInteger, Col: 3, Row: 5, Width: 3, Min: 0, Max: 255,
 			Get: func() string { return strconv.Itoa(cfg.RegularUserLevel) },
 			Set: func(val string) error {
 				n, err := strconv.Atoi(val)
@@ -232,7 +334,7 @@ func sysFieldsLevels(cfg *config.ServerConfig) []fieldDef {
 			},
 		},
 		{
-			Label: "Logon Level", Help: "Minimum level required to log in", Type: ftInteger, Col: 3, Row: 5, Width: 3, Min: 0, Max: 255,
+			Label: "Logon Level", Help: "Minimum access level required to log in (0=disabled)", Type: ftInteger, Col: 3, Row: 6, Width: 3, Min: 0, Max: 255,
 			Get: func() string { return strconv.Itoa(cfg.LogonLevel) },
 			Set: func(val string) error {
 				n, err := strconv.Atoi(val)
@@ -244,7 +346,7 @@ func sysFieldsLevels(cfg *config.ServerConfig) []fieldDef {
 			},
 		},
 		{
-			Label: "Anonymous Lvl", Help: "Level assigned to anonymous/guest users", Type: ftInteger, Col: 3, Row: 6, Width: 3, Min: 0, Max: 255,
+			Label: "Anonymous Lvl", Help: "Minimum level required to post anonymously (0=disabled)", Type: ftInteger, Col: 3, Row: 7, Width: 3, Min: 0, Max: 255,
 			Get: func() string { return strconv.Itoa(cfg.AnonymousLevel) },
 			Set: func(val string) error {
 				n, err := strconv.Atoi(val)
@@ -267,9 +369,15 @@ func sysFieldsDefaults(cfg *config.ServerConfig) []fieldDef {
 			Set: func(val string) error { cfg.AllowNewUsers = ynToBool(val); return nil },
 		},
 		{
-			Label: "File List Mode", Help: "File listing style: lightbar or classic", Type: ftString, Col: 3, Row: 2, Width: 15,
+			Label: "File List Mode", Help: "File listing style (press Enter to select)", Type: ftLookup, Col: 3, Row: 2, Width: 15,
 			Get: func() string { return cfg.FileListingMode },
 			Set: func(val string) error { cfg.FileListingMode = val; return nil },
+			LookupItems: func() []LookupItem {
+				return []LookupItem{
+					{Value: "lightbar", Display: "lightbar - Interactive arrow-key navigation"},
+					{Value: "classic", Display: "classic - Traditional numbered list"},
+				}
+			},
 		},
 		{
 			Label: "Del User Days", Help: "Days to keep deleted user records (0=purge now, -1=forever)", Type: ftInteger, Col: 3, Row: 3, Width: 5, Min: -1, Max: 9999,

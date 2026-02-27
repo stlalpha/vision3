@@ -113,6 +113,7 @@ func (m *Model) insertRecord() {
 			Position: maxPos + 1,
 			Name:     "New Message Area",
 			AreaType: "local",
+			BasePath: fmt.Sprintf("msgbases/area_%d", newID),
 		})
 	case "filearea":
 		newID := 1
@@ -124,6 +125,7 @@ func (m *Model) insertRecord() {
 		m.configs.FileAreas = append(m.configs.FileAreas, file.FileArea{
 			ID:   newID,
 			Name: "New File Area",
+			Path: fmt.Sprintf("files/area_%d", newID),
 		})
 	case "conference":
 		newID := 1
@@ -178,7 +180,8 @@ func (m *Model) insertRecord() {
 		m.configs.FTN.Networks[key] = nc
 	case "event":
 		for i := 1; ; i++ {
-			newID := fmt.Sprintf("event_%d", i)
+			newName := fmt.Sprintf("New Event %d", i)
+			newID := fmt.Sprintf("new_event_%d", i)
 			exists := false
 			for _, e := range m.configs.Events.Events {
 				if e.ID == newID {
@@ -189,7 +192,7 @@ func (m *Model) insertRecord() {
 			if !exists {
 				m.configs.Events.Events = append(m.configs.Events.Events, config.EventConfig{
 					ID:      newID,
-					Name:    "New Event",
+					Name:    newName,
 					Enabled: false,
 				})
 				break

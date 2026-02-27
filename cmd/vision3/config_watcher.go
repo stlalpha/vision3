@@ -12,6 +12,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/stlalpha/vision3/internal/config"
 	"github.com/stlalpha/vision3/internal/menu"
+	"github.com/stlalpha/vision3/internal/user"
 )
 
 // ConfigWatcher watches configuration files for changes and hot-reloads them.
@@ -22,12 +23,13 @@ type ConfigWatcher struct {
 	rootConfigPath string
 	menuSetPath    string
 	menuExecutor   *menu.MenuExecutor
+	userMgr        *user.UserMgr
 	serverConfig   *config.ServerConfig
 	serverConfigMu *sync.RWMutex // External mutex for server config
 }
 
 // NewConfigWatcher creates a new configuration file watcher.
-func NewConfigWatcher(rootConfigPath, menuSetPath string, menuExecutor *menu.MenuExecutor, serverConfig *config.ServerConfig, serverConfigMu *sync.RWMutex) (*ConfigWatcher, error) {
+func NewConfigWatcher(rootConfigPath, menuSetPath string, menuExecutor *menu.MenuExecutor, userMgr *user.UserMgr, serverConfig *config.ServerConfig, serverConfigMu *sync.RWMutex) (*ConfigWatcher, error) {
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file watcher: %w", err)
@@ -39,6 +41,7 @@ func NewConfigWatcher(rootConfigPath, menuSetPath string, menuExecutor *menu.Men
 		rootConfigPath: rootConfigPath,
 		menuSetPath:    menuSetPath,
 		menuExecutor:   menuExecutor,
+		userMgr:        userMgr,
 		serverConfig:   serverConfig,
 		serverConfigMu: serverConfigMu,
 	}
@@ -238,6 +241,12 @@ func (cw *ConfigWatcher) reloadServerConfig() {
 
 	// Also update MenuExecutor's ServerCfg
 	cw.menuExecutor.SetServerConfig(newServerConfig)
+
+	// Update UserManager's new user level
+	if cw.userMgr != nil {
+		cw.userMgr.SetNewUserLevel(newServerConfig.NewUserLevel)
+		log.Printf("INFO: Updated new user level to %d", newServerConfig.NewUserLevel)
+	}
 
 	log.Printf("INFO: config.json reloaded successfully")
 	log.Printf("WARN: Some config.json changes (ports, keys, IP limits) require a full restart")
