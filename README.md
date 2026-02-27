@@ -232,7 +232,7 @@ vision3/
 ├── output/                 # Output support files
 ├── scripts/                # Utility scripts
 ├── docs/                   # GitHub Pages website (vision3bbs.com)
-├── documentation/          # Project documentation
+├── docs/sysop/             # Sysop documentation
 └── tasks/                  # Development task tracking
 ```
 
@@ -267,7 +267,7 @@ cd vision3
 docker-compose up -d
 ```
 
-See [Docker Deployment Guide](documentation/docker-deployment.md) for detailed instructions.
+See [Docker Deployment Guide](docs/sysop/getting-started/docker.md) for detailed instructions.
 
 ### Option 3: Build from Source
 
