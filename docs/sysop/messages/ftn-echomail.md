@@ -20,6 +20,8 @@ The tosser is built into Vision/3 via the `v3mail` command, conceptually similar
 
 Configured via `configs/ftn.json`. The [Configuration Editor](../configuration/configuration.md#configuration-editor-tui) (`./config`, section 7 — Echomail Networks, section 8 — Echomail Links) manages network and link settings interactively.
 
+> **Current limitation — single uplink per network:** Vision/3 currently supports one uplink (hub) per FTN network. All outbound echomail for a network is sent to every configured link, so defining more than one link will result in duplicate packets being delivered to each. Multi-link routing (hub/downlink operation) is planned for a future release.
+
 ### Mailer (External) — `binkd`
 
 The mailer handles network transport — BinkP sessions with your hub to send and receive mail bundles. Vision/3 works with **any FTN-compatible mailer** that uses standard inbound/outbound directory conventions.
@@ -485,6 +487,8 @@ read by `v3mail toss`, `v3mail scan`, and `v3mail ftn-pack`.
 | `tearline`                | Optional tearline suffix (empty = use default)      |
 
 **Per-link fields (`networks.<key>.links[]`):**
+
+> **Note:** Only one link (your uplink/hub) is supported per network at this time. Defining multiple links will cause all outbound echomail to be sent to each of them. Multi-link hub/downlink routing is planned for a future release.
 
 | Field              | Description                                              |
 | ------------------ | -------------------------------------------------------- |
