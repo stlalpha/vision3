@@ -25,12 +25,12 @@ func (m Model) bgLine() string {
 
 // boxTopBorder renders the top border of a box at given width.
 func boxTopBorder(boxW int, borderStyle interface{ Render(...string) string }) string {
-	return borderStyle.Render("╒" + strings.Repeat("═", boxW) + "╕")
+	return borderStyle.Render("┌" + strings.Repeat("─", boxW) + "┐")
 }
 
 // boxBotBorder renders the bottom border of a box at given width.
 func boxBotBorder(boxW int, borderStyle interface{ Render(...string) string }) string {
-	return borderStyle.Render("╘" + strings.Repeat("═", boxW) + "╛")
+	return borderStyle.Render("└" + strings.Repeat("─", boxW) + "┘")
 }
 
 // padToCol truncates or pads a line to reach a specific visible column.

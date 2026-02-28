@@ -36,7 +36,7 @@ func (m Model) viewMenuListScreen() string {
 	// === Top border ===
 	// MENUEDIT.PAS: Color(3,11) GrowBox → cyan bg, light cyan fg
 	topBorder := bgFillStyle.Render(strings.Repeat("░", padL)) +
-		listBorderStyle.Render("╒"+strings.Repeat("═", boxW)+"╕") +
+		listBorderStyle.Render("┌"+strings.Repeat("─", boxW)+"┐") +
 		bgFillStyle.Render(strings.Repeat("░", max(0, padR)))
 	b.WriteString(topBorder)
 	b.WriteByte('\n')
@@ -83,7 +83,7 @@ func (m Model) viewMenuListScreen() string {
 
 	// === Bottom border ===
 	botBorder := bgFillStyle.Render(strings.Repeat("░", padL)) +
-		listBorderStyle.Render("╘"+strings.Repeat("═", boxW)+"╛") +
+		listBorderStyle.Render("└"+strings.Repeat("─", boxW)+"┘") +
 		bgFillStyle.Render(strings.Repeat("░", max(0, padR)))
 	b.WriteString(botBorder)
 	b.WriteByte('\n')

@@ -41,7 +41,7 @@ func (m Model) viewMenuEditScreen() string {
 	// === Top border ===
 	// MENUEDIT.PAS: Color(15,8) → dark gray bg, white fg for box
 	topBorder := bgFillStyle.Render(strings.Repeat("░", padL)) +
-		editBorderStyle.Render("╒"+strings.Repeat("═", boxW)+"╕") +
+		editBorderStyle.Render("┌"+strings.Repeat("─", boxW)+"┐") +
 		bgFillStyle.Render(strings.Repeat("░", max(0, padR)))
 	b.WriteString(topBorder)
 	b.WriteByte('\n')
@@ -94,7 +94,7 @@ func (m Model) viewMenuEditScreen() string {
 
 	// === Bottom border ===
 	botBorder := bgFillStyle.Render(strings.Repeat("░", padL)) +
-		editBorderStyle.Render("╘"+strings.Repeat("═", boxW)+"╛") +
+		editBorderStyle.Render("└"+strings.Repeat("─", boxW)+"┘") +
 		bgFillStyle.Render(strings.Repeat("░", max(0, padR)))
 	b.WriteString(botBorder)
 	b.WriteByte('\n')
