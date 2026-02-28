@@ -117,6 +117,9 @@ func (m Model) updateCommandEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cmdCursor = m.cmdEditIdx
 		return m, nil
 	case tea.KeyF2:
+		if len(m.cmds) == 0 {
+			return m, nil
+		}
 		m.mode = modeDeleteCmdConfirm
 		m.confirmYes = false
 		return m, nil
