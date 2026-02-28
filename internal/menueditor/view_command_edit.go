@@ -27,7 +27,7 @@ func (m Model) viewCommandEditScreen() string {
 
 	bg := m.bgLine()
 
-	// Box dimensions: MENUEDIT.PAS GrowBox(2,9,78,16) → 74 cols wide, ~9 rows
+	// Box dimensions: MENUEDIT.PAS GrowBox(2,9,78,16) → 74 cols wide
 	boxW := 74
 	padL := max(0, (m.width-boxW-2)/2)
 	padR := max(0, m.width-padL-boxW-2)
@@ -43,7 +43,6 @@ func (m Model) viewCommandEditScreen() string {
 	}
 
 	// === Top border ===
-	// MENUEDIT.PAS: Color(15,8) GrowBox → dark gray bg, white fg
 	topBorder := bgFillStyle.Render(strings.Repeat("░", padL)) +
 		editBorderStyle.Render("╒"+strings.Repeat("═", boxW)+"╕") +
 		bgFillStyle.Render(strings.Repeat("░", max(0, padR)))
@@ -71,11 +70,8 @@ func (m Model) viewCommandEditScreen() string {
 	b.WriteByte('\n')
 
 	// === Field rows ===
-	// Left column fields; right side shows info (file/number)
-	rightColStart := 50 // approximate right column start for info labels
-
 	for i, f := range m.cmdFields {
-		row := m.renderCmdField(i, f, &cmd, boxW, rightColStart, i == 0, i == len(m.cmdFields)-3)
+		row := m.renderCmdField(i, f, &cmd, boxW)
 		line := bgFillStyle.Render(strings.Repeat("░", padL)) +
 			editBorderStyle.Render("│") +
 			row +
@@ -85,8 +81,12 @@ func (m Model) viewCommandEditScreen() string {
 		b.WriteByte('\n')
 	}
 
-	// === Info row ===
-	infoText := fmt.Sprintf("  Command %d of %d", m.cmdEditIdx+1, len(m.cmds))
+	// === Info row: file + command number ===
+	// MENUEDIT.PAS shows file at col 50 row 11 and number at col 50 row 15;
+	// consolidated here to avoid per-field right-column overflow.
+	infoFile := fmt.Sprintf("  File: %s.CFG", menuName)
+	infoNum := fmt.Sprintf("Cmd: %d of %d", m.cmdEditIdx+1, len(m.cmds))
+	infoText := padRight(infoFile, 40) + infoNum
 	infoRow := bgFillStyle.Render(strings.Repeat("░", padL)) +
 		editBorderStyle.Render("│") +
 		editInfoLabelStyle.Render(padRight(infoText, boxW)) +
@@ -112,7 +112,6 @@ func (m Model) viewCommandEditScreen() string {
 	}
 
 	// === Help bar ===
-	// MENUEDIT.PAS: 'PgUp/PgDn Scrolls  F8 Aborts  F2 Delete  F5 Add New  ESC Exits'
 	helpText := centerText("PgUp/PgDn Prev/Next  F2 Delete  F5 Add New  F8 Abort  ESC Save+Back", m.width)
 	b.WriteString(helpBarStyle.Render(helpText))
 
@@ -132,10 +131,8 @@ func (m Model) viewCommandEditScreen() string {
 }
 
 // renderCmdField renders a single command field row inside the edit box.
-// showFileInfo: show "Current File: ..." on the right side of this row.
-// showNumInfo:  show "Current Number: ..." on the right side of this row.
-// Two spaces of left padding are applied to match the Pascal x=4 column offset.
-func (m Model) renderCmdField(fieldIdx int, f fieldDef, d *CmdData, boxW, rightColStart int, showFileInfo, showNumInfo bool) string {
+// Uses the full box width — max value width = boxW - lpad(2) - labelLen(17).
+func (m Model) renderCmdField(fieldIdx int, f fieldDef, d *CmdData, boxW int) string {
 	const lpad = 2
 	isActive := m.cmdEditFld == fieldIdx
 
@@ -147,52 +144,42 @@ func (m Model) renderCmdField(fieldIdx int, f fieldDef, d *CmdData, boxW, rightC
 		value = f.GetC(d)
 	}
 
-	// Right-side info text
-	var rightInfo string
-	menuName := ""
-	if m.cmdsMenuIdx >= 0 && m.cmdsMenuIdx < len(m.menus) {
-		menuName = m.menus[m.cmdsMenuIdx].Name
+	// Cap display/input width to available space inside the box
+	maxW := boxW - lpad - labelLen
+	if maxW < 0 {
+		maxW = 0
 	}
-	if showFileInfo {
-		rightInfo = fmt.Sprintf("File: %s.CFG", menuName)
-	} else if showNumInfo {
-		rightInfo = fmt.Sprintf("Num: %d of %d", m.cmdEditIdx+1, len(m.cmds))
+	dispW := f.Width
+	if dispW > maxW {
+		dispW = maxW
 	}
 
-	// Left column width available for content (minus left padding)
-	leftW := rightColStart - lpad
+	rawW := lpad + labelLen + dispW
 	leftPadStr := fieldDisplayStyle.Render(strings.Repeat(" ", lpad))
 
-	var leftContent string
+	// Actively editing this field
 	if isActive && m.mode == modeCommandEditField {
 		inputW := m.textInput.Width
-		leftContent = fieldLabelStyle.Render(label) + m.textInput.View()
-		usedW := labelLen + inputW
-		if usedW < leftW {
-			leftContent += fieldDisplayStyle.Render(strings.Repeat(" ", leftW-usedW))
+		if inputW > maxW {
+			inputW = maxW
 		}
-	} else {
-		displayValue := padRight(value, f.Width)
-		if isActive {
-			fillStr := strings.Repeat(string(fieldFillChar), max(0, f.Width-len(value)))
-			leftContent = fieldLabelStyle.Render(label) + fieldEditStyle.Render(value+fillStr)
-		} else {
-			leftContent = fieldLabelStyle.Render(label) + fieldDisplayStyle.Render(displayValue)
-		}
-		usedW := labelLen + f.Width
-		if usedW < leftW {
-			leftContent += fieldDisplayStyle.Render(strings.Repeat(" ", leftW-usedW))
-		}
+		fillW := max(0, boxW-lpad-labelLen-inputW)
+		return leftPadStr + fieldLabelStyle.Render(label) + m.textInput.View() +
+			fieldDisplayStyle.Render(strings.Repeat(" ", fillW))
 	}
 
-	// Build right part
-	rightW := boxW - rightColStart
-	var rightPart string
-	if rightInfo != "" {
-		rightPart = editInfoLabelStyle.Render(padRight(rightInfo, rightW))
-	} else {
-		rightPart = fieldDisplayStyle.Render(strings.Repeat(" ", rightW))
+	// Display value
+	displayValue := padRight(value, dispW)
+
+	if isActive {
+		// Highlighted (ready to edit)
+		fillStr := strings.Repeat(string(fieldFillChar), max(0, dispW-len(value)))
+		result := leftPadStr + fieldLabelStyle.Render(label) + fieldEditStyle.Render(value+fillStr)
+		result += fieldDisplayStyle.Render(strings.Repeat(" ", max(0, boxW-rawW)))
+		return result
 	}
 
-	return leftPadStr + leftContent + rightPart
+	result := leftPadStr + fieldLabelStyle.Render(label) + fieldDisplayStyle.Render(displayValue)
+	result += fieldDisplayStyle.Render(strings.Repeat(" ", max(0, boxW-rawW)))
+	return result
 }

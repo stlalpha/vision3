@@ -41,12 +41,13 @@ func menuFields() []fieldDef {
 			SetM: func(d *MenuData, val string) error { d.UsePrompt = ynToBool(val); return nil },
 		},
 		{
-			Label: "Prompt Line 1  ", Type: ftString, Row: 5, Width: 57,
+			// Max width: boxW(74) - lpad(2) - labelLen(17) = 55
+			Label: "Prompt Line 1  ", Type: ftString, Row: 5, Width: 55,
 			GetM: func(d *MenuData) string { return d.Prompt1 },
 			SetM: func(d *MenuData, val string) error { d.Prompt1 = val; return nil },
 		},
 		{
-			Label: "Prompt Line 2  ", Type: ftString, Row: 6, Width: 57,
+			Label: "Prompt Line 2  ", Type: ftString, Row: 6, Width: 55,
 			GetM: func(d *MenuData) string { return d.Prompt2 },
 			SetM: func(d *MenuData, val string) error { d.Prompt2 = val; return nil },
 		},
