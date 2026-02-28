@@ -47,6 +47,9 @@ BUILT+=("  ue        — user editor")
 if ! go build -o config ./cmd/config; then echo "Build failed (config)!"; exit 1; fi
 BUILT+=("  config    — config editor")
 
+if ! go build -o menuedit ./cmd/menuedit; then echo "Build failed (menuedit)!"; exit 1; fi
+BUILT+=("  menuedit  — menu editor")
+
 echo "============================="
 echo "Build successful!"
 echo
