@@ -1,9 +1,10 @@
 {
+    "TITLE": "Login",
     "CLR": true,
-    "PROMPT": false,
+    "USEPROMPT": false,
     "PROMPT1": "",
     "PROMPT2": "",
     "FALLBACK": "LOGIN",
     "ACS": "",
     "PASS": ""
-} 
+}

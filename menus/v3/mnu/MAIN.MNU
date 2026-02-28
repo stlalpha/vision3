@@ -1,9 +1,10 @@
 {
-  "CLR": true,
-  "USEPROMPT": true,
-  "PROMPT1": " |10|UH |12from |GL (|04|UN|12)|07",
-  "PROMPT2": " |08[|07|TIME|08] |08[|15TL:|07|TL|08]|15 |08-|15>|07 ",
-  "FALLBACK": "MAIN",
-  "ACS": "",
-  "PASS": ""
-} 
+    "TITLE": "Main Menu",
+    "CLR": true,
+    "USEPROMPT": true,
+    "PROMPT1": " |10|UH |12from |GL (|04|UN|12)|07",
+    "PROMPT2": " |08[|07|TIME|08] |08[|15TL:|07|TL|08]|15 |08-|15>|07 ",
+    "FALLBACK": "MAIN",
+    "ACS": "",
+    "PASS": ""
+}
