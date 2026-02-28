@@ -126,7 +126,9 @@ func (m Model) viewMenuEditScreen() string {
 }
 
 // renderMenuField renders a single menu field row inside the edit box.
+// Two spaces of left padding are applied to match the Pascal x=4 column offset.
 func (m Model) renderMenuField(fieldIdx int, f fieldDef, d *MenuData, boxW int) string {
+	const lpad = 2
 	isActive := m.menuEditFld == fieldIdx
 
 	label := f.Label + ": "
@@ -137,16 +139,15 @@ func (m Model) renderMenuField(fieldIdx int, f fieldDef, d *MenuData, boxW int) 
 		value = f.GetM(d)
 	}
 
-	rawW := labelLen + f.Width
+	rawW := lpad + labelLen + f.Width
+	leftPad := fieldDisplayStyle.Render(strings.Repeat(" ", lpad))
 
 	// Actively editing this field
 	if isActive && m.mode == modeMenuEditField {
-		left := fieldLabelStyle.Render(label) + m.textInput.View()
-		// Pad to box width
 		inputW := m.textInput.Width
-		fillW := max(0, boxW-labelLen-inputW)
-		left += fieldDisplayStyle.Render(strings.Repeat(" ", fillW))
-		return left
+		fillW := max(0, boxW-lpad-labelLen-inputW)
+		return leftPad + fieldLabelStyle.Render(label) + m.textInput.View() +
+			fieldDisplayStyle.Render(strings.Repeat(" ", fillW))
 	}
 
 	// Display value
@@ -155,15 +156,13 @@ func (m Model) renderMenuField(fieldIdx int, f fieldDef, d *MenuData, boxW int) 
 	if isActive {
 		// Highlighted field (ready to edit)
 		fillStr := strings.Repeat(string(fieldFillChar), max(0, f.Width-len(value)))
-		result := fieldLabelStyle.Render(label) + fieldEditStyle.Render(value+fillStr)
-		fillW := max(0, boxW-rawW)
-		result += fieldDisplayStyle.Render(strings.Repeat(" ", fillW))
+		result := leftPad + fieldLabelStyle.Render(label) + fieldEditStyle.Render(value+fillStr)
+		result += fieldDisplayStyle.Render(strings.Repeat(" ", max(0, boxW-rawW)))
 		return result
 	}
 
 	// Normal display
-	result := fieldLabelStyle.Render(label) + fieldDisplayStyle.Render(displayValue)
-	fillW := max(0, boxW-rawW)
-	result += fieldDisplayStyle.Render(strings.Repeat(" ", fillW))
+	result := leftPad + fieldLabelStyle.Render(label) + fieldDisplayStyle.Render(displayValue)
+	result += fieldDisplayStyle.Render(strings.Repeat(" ", max(0, boxW-rawW)))
 	return result
 }

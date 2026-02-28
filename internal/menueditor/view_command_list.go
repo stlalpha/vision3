@@ -58,7 +58,7 @@ func (m Model) viewCommandListScreen() string {
 
 	// === Column header ===
 	// MENUEDIT.PAS: 'Command Description   Keystroke(s)    Command(s)'
-	colText := padRight(" Node Activity          Keys       Command", boxW)
+	colText := padRight("   Node Activity          Keys       Command", boxW)
 	colLine := bgFillStyle.Render(strings.Repeat("░", padL)) +
 		listBorderStyle.Render("│") +
 		listColTitleStyle.Render(colText) +
@@ -149,8 +149,8 @@ func (m Model) renderCmdRow(idx int, boxW int) string {
 	// Columns: node activity (22), keys (10), command (rest)
 	activity := padRight(cmd.NodeActivity, 22)
 	keys := padRight(cmd.Keys, 10)
-	command := padRight(cmd.Command, boxW-34)
-	content := " " + activity + keys + command
+	command := padRight(cmd.Command, boxW-36)
+	content := "   " + activity + keys + command
 	if len(content) < boxW {
 		content += strings.Repeat(" ", boxW-len(content))
 	} else if len(content) > boxW {

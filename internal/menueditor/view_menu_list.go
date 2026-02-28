@@ -43,7 +43,7 @@ func (m Model) viewMenuListScreen() string {
 
 	// === Column header ===
 	// MENUEDIT.PAS: Color(11,3) ' Menu Title           File Names'
-	colHeader := padRight(" Menu Name           File Names                ", boxW)
+	colHeader := padRight("   Menu Name           File Names              ", boxW)
 	colLine := bgFillStyle.Render(strings.Repeat("░", padL)) +
 		listBorderStyle.Render("│") +
 		listColTitleStyle.Render(colHeader) +
@@ -140,11 +140,11 @@ func (m Model) renderMenuRow(idx int, boxW int) string {
 	entry := m.menus[idx]
 	isHighlight := idx == m.menuCursor
 
-	// Build: " {name:20} {name}.MNU / {name}.CFG"
+	// Build: "   {name:20} {name}.MNU / {name}.CFG"
 	name := padRight(entry.Name, 20)
 	files := fmt.Sprintf("%s.MNU / %s.CFG", entry.Name, entry.Name)
-	files = padRight(files, boxW-22)
-	content := " " + name + " " + files
+	files = padRight(files, boxW-24)
+	content := "   " + name + " " + files
 	if len(content) < boxW {
 		content += strings.Repeat(" ", boxW-len(content))
 	} else if len(content) > boxW {

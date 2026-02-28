@@ -134,7 +134,9 @@ func (m Model) viewCommandEditScreen() string {
 // renderCmdField renders a single command field row inside the edit box.
 // showFileInfo: show "Current File: ..." on the right side of this row.
 // showNumInfo:  show "Current Number: ..." on the right side of this row.
+// Two spaces of left padding are applied to match the Pascal x=4 column offset.
 func (m Model) renderCmdField(fieldIdx int, f fieldDef, d *CmdData, boxW, rightColStart int, showFileInfo, showNumInfo bool) string {
+	const lpad = 2
 	isActive := m.cmdEditFld == fieldIdx
 
 	label := f.Label + ": "
@@ -157,40 +159,40 @@ func (m Model) renderCmdField(fieldIdx int, f fieldDef, d *CmdData, boxW, rightC
 		rightInfo = fmt.Sprintf("Num: %d of %d", m.cmdEditIdx+1, len(m.cmds))
 	}
 
-	// Build left part (label + field)
-	var leftPart string
-	leftW := rightColStart // width available for left column
+	// Left column width available for content (minus left padding)
+	leftW := rightColStart - lpad
+	leftPadStr := fieldDisplayStyle.Render(strings.Repeat(" ", lpad))
 
+	var leftContent string
 	if isActive && m.mode == modeCommandEditField {
-		inputView := m.textInput.View()
 		inputW := m.textInput.Width
-		leftPart = fieldLabelStyle.Render(label) + inputView
+		leftContent = fieldLabelStyle.Render(label) + m.textInput.View()
 		usedW := labelLen + inputW
 		if usedW < leftW {
-			leftPart += fieldDisplayStyle.Render(strings.Repeat(" ", leftW-usedW))
+			leftContent += fieldDisplayStyle.Render(strings.Repeat(" ", leftW-usedW))
 		}
 	} else {
 		displayValue := padRight(value, f.Width)
 		if isActive {
 			fillStr := strings.Repeat(string(fieldFillChar), max(0, f.Width-len(value)))
-			leftPart = fieldLabelStyle.Render(label) + fieldEditStyle.Render(value+fillStr)
+			leftContent = fieldLabelStyle.Render(label) + fieldEditStyle.Render(value+fillStr)
 		} else {
-			leftPart = fieldLabelStyle.Render(label) + fieldDisplayStyle.Render(displayValue)
+			leftContent = fieldLabelStyle.Render(label) + fieldDisplayStyle.Render(displayValue)
 		}
 		usedW := labelLen + f.Width
 		if usedW < leftW {
-			leftPart += fieldDisplayStyle.Render(strings.Repeat(" ", leftW-usedW))
+			leftContent += fieldDisplayStyle.Render(strings.Repeat(" ", leftW-usedW))
 		}
 	}
 
 	// Build right part
-	var rightPart string
 	rightW := boxW - rightColStart
+	var rightPart string
 	if rightInfo != "" {
 		rightPart = editInfoLabelStyle.Render(padRight(rightInfo, rightW))
 	} else {
 		rightPart = fieldDisplayStyle.Render(strings.Repeat(" ", rightW))
 	}
 
-	return leftPart + rightPart
+	return leftPadStr + leftContent + rightPart
 }
