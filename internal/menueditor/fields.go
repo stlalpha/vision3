@@ -3,6 +3,8 @@ package menueditor
 import (
 	"fmt"
 	"strings"
+
+	"github.com/stlalpha/vision3/internal/stringeditor"
 )
 
 // fieldType defines the edit behaviour for a field.
@@ -24,6 +26,10 @@ type fieldDef struct {
 	SetM   func(d *MenuData, val string) error
 	GetC   func(d *CmdData) string
 	SetC   func(d *CmdData, val string) error
+	// Render, if non-nil, renders the display value with pipe-code translation.
+	// Called only in the normal (non-active) display path; active/edit paths
+	// always show the raw value so the user can see what they're editing.
+	Render func(val string, width int) string
 }
 
 // menuFields returns the ordered editable fields for a MenuData record.
@@ -43,13 +49,15 @@ func menuFields() []fieldDef {
 		{
 			// Max width: boxW(74) - lpad(2) - labelLen(17) = 55
 			Label: "Prompt Line 1  ", Type: ftString, Row: 5, Width: 55,
-			GetM: func(d *MenuData) string { return d.Prompt1 },
-			SetM: func(d *MenuData, val string) error { d.Prompt1 = val; return nil },
+			GetM:   func(d *MenuData) string { return d.Prompt1 },
+			SetM:   func(d *MenuData, val string) error { d.Prompt1 = val; return nil },
+			Render: stringeditor.RenderColorString,
 		},
 		{
 			Label: "Prompt Line 2  ", Type: ftString, Row: 6, Width: 55,
-			GetM: func(d *MenuData) string { return d.Prompt2 },
-			SetM: func(d *MenuData, val string) error { d.Prompt2 = val; return nil },
+			GetM:   func(d *MenuData) string { return d.Prompt2 },
+			SetM:   func(d *MenuData, val string) error { d.Prompt2 = val; return nil },
+			Render: stringeditor.RenderColorString,
 		},
 		{
 			Label: "Fallback Menu  ", Type: ftString, Row: 7, Width: 12,

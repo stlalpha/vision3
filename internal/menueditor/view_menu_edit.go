@@ -3,6 +3,8 @@ package menueditor
 import (
 	"fmt"
 	"strings"
+
+	"github.com/stlalpha/vision3/internal/stringeditor"
 )
 
 // viewMenuEditScreen renders the per-menu field editor.
@@ -178,7 +180,18 @@ func (m Model) renderMenuField(fieldIdx int, f fieldDef, d *MenuData, boxW int) 
 		return result
 	}
 
-	// Normal display
+	// Normal display — use pipe-code renderer if defined (e.g. Prompt Line fields)
+	if f.Render != nil {
+		rendered := f.Render(value, dispW)
+		visLen := stringeditor.PlainTextLength(value)
+		if visLen > dispW {
+			visLen = dispW
+		}
+		fill := fieldDisplayStyle.Render(strings.Repeat(" ", max(0, dispW-visLen)))
+		result := leftPad + fieldLabelStyle.Render(label) + rendered + fill
+		result += fieldDisplayStyle.Render(strings.Repeat(" ", max(0, boxW-rawW)))
+		return result
+	}
 	result := leftPad + fieldLabelStyle.Render(label) + fieldDisplayStyle.Render(displayValue)
 	result += fieldDisplayStyle.Render(strings.Repeat(" ", max(0, boxW-rawW)))
 	return result
