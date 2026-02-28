@@ -1,8 +1,15 @@
 {
-  "CLR": true,
-  "USEPROMPT": true,
-  "PROMPT1": "|08[|07User Konfig|08] |15>|07 ",
-  "FALLBACK": "USERCFG",
-  "ACS": "",
-  "PASS": ""
+    "TITLE": "User Config",
+    "CLR": true,
+    "USEPROMPT": true,
+    "PROMPT1": "|08[|07User Konfig|08] |15>|07 ",
+    "PROMPT2": "",
+    "FALLBACK": "USERCFG",
+    "ACS": "",
+    "PASS": "",
+    "HELPMENU": "",
+    "FORCEHELPLEVEL": 0,
+    "MES_CONF": 0,
+    "FILE_CONF": 0,
+    "FORCEHOTKEY": false
 }

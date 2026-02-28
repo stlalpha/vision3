@@ -1,9 +1,15 @@
 {
-  "CLR": true,
-  "USEPROMPT": true,
-  "PROMPT1": " |08[|07Area|08] |11|CFAN|00 ",
-  "PROMPT2": " |08[|15Transfer Menu|08] |07Command |08->|15 ",
-  "FALLBACK": "MAIN",
-  "ACS": "",
-  "PASS": ""
-} 
+    "TITLE": "File Menu",
+    "CLR": true,
+    "USEPROMPT": true,
+    "PROMPT1": " |08[|07Area|08] |11|CFAN|00 ",
+    "PROMPT2": " |08[|15Transfer Menu|08] |07Command |08->|15 ",
+    "FALLBACK": "MAIN",
+    "ACS": "",
+    "PASS": "",
+    "HELPMENU": "",
+    "FORCEHELPLEVEL": 0,
+    "MES_CONF": 0,
+    "FILE_CONF": 0,
+    "FORCEHOTKEY": false
+}

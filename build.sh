@@ -13,6 +13,21 @@
 # Usage: ./build.sh
 # The server will continue running until stopped with Ctrl+C
 
+# Check Go is installed and meets the minimum required version
+MIN_GO_MAJOR=1
+MIN_GO_MINOR=24
+if ! command -v go &>/dev/null; then
+    echo "Error: Go is not installed. Download it from https://go.dev/dl/"
+    exit 1
+fi
+GO_VERSION=$(go version | awk '{print $3}' | sed 's/go//')
+GO_MAJOR=$(echo "$GO_VERSION" | cut -d. -f1)
+GO_MINOR=$(echo "$GO_VERSION" | cut -d. -f2)
+if [ "$GO_MAJOR" -lt "$MIN_GO_MAJOR" ] || { [ "$GO_MAJOR" -eq "$MIN_GO_MAJOR" ] && [ "$GO_MINOR" -lt "$MIN_GO_MINOR" ]; }; then
+    echo "Error: Go $MIN_GO_MAJOR.$MIN_GO_MINOR or later is required (found $GO_VERSION). Download from https://go.dev/dl/"
+    exit 1
+fi
+
 # Check if this is the first time building (setup needed)
 if [ ! -f "configs/ssh_host_rsa_key" ] || [ ! -f "data/users/users.json" ]; then
     echo "=== First-time setup detected ==="
@@ -46,6 +61,9 @@ BUILT+=("  ue        — user editor")
 
 if ! go build -o config ./cmd/config; then echo "Build failed (config)!"; exit 1; fi
 BUILT+=("  config    — config editor")
+
+if ! go build -o menuedit ./cmd/menuedit; then echo "Build failed (menuedit)!"; exit 1; fi
+BUILT+=("  menuedit  — menu editor")
 
 echo "============================="
 echo "Build successful!"

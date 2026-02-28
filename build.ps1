@@ -42,7 +42,8 @@ $targets = @(
     @{ Cmd = "v3mail"; Desc = "mail processor" },
     @{ Cmd = "strings"; Desc = "strings editor" },
     @{ Cmd = "ue"; Desc = "user editor" },
-    @{ Cmd = "config"; Desc = "config editor" }
+    @{ Cmd = "config"; Desc = "config editor" },
+    @{ Cmd = "menuedit"; Desc = "menu editor" }
 )
 foreach ($t in $targets) {
     $exe = $t.Cmd + ".exe"
