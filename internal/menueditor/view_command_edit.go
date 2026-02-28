@@ -172,9 +172,13 @@ func (m Model) renderCmdField(fieldIdx int, f fieldDef, d *CmdData, boxW int) st
 	displayValue := padRight(value, dispW)
 
 	if isActive {
-		// Highlighted (ready to edit)
-		fillStr := strings.Repeat(string(fieldFillChar), max(0, dispW-len(value)))
-		result := leftPadStr + fieldLabelStyle.Render(label) + fieldEditStyle.Render(value+fillStr)
+		// Highlighted (ready to edit) — truncate to dispW to prevent overflow
+		displayVal := value
+		if len(displayVal) > dispW {
+			displayVal = displayVal[:dispW]
+		}
+		fillStr := strings.Repeat(string(fieldFillChar), max(0, dispW-len(displayVal)))
+		result := leftPadStr + fieldLabelStyle.Render(label) + fieldEditStyle.Render(displayVal+fillStr)
 		result += fieldDisplayStyle.Render(strings.Repeat(" ", max(0, boxW-rawW)))
 		return result
 	}

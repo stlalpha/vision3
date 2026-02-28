@@ -139,24 +139,41 @@ func (m Model) renderMenuField(fieldIdx int, f fieldDef, d *MenuData, boxW int) 
 		value = f.GetM(d)
 	}
 
-	rawW := lpad + labelLen + f.Width
+	// Cap display width to available space inside the box
+	maxW := boxW - lpad - labelLen
+	if maxW < 0 {
+		maxW = 0
+	}
+	dispW := f.Width
+	if dispW > maxW {
+		dispW = maxW
+	}
+
+	rawW := lpad + labelLen + dispW
 	leftPad := fieldDisplayStyle.Render(strings.Repeat(" ", lpad))
 
 	// Actively editing this field
 	if isActive && m.mode == modeMenuEditField {
 		inputW := m.textInput.Width
+		if inputW > maxW {
+			inputW = maxW
+		}
 		fillW := max(0, boxW-lpad-labelLen-inputW)
 		return leftPad + fieldLabelStyle.Render(label) + m.textInput.View() +
 			fieldDisplayStyle.Render(strings.Repeat(" ", fillW))
 	}
 
-	// Display value
-	displayValue := padRight(value, f.Width)
+	// Display value (truncated to dispW)
+	displayValue := padRight(value, dispW)
 
 	if isActive {
-		// Highlighted field (ready to edit)
-		fillStr := strings.Repeat(string(fieldFillChar), max(0, f.Width-len(value)))
-		result := leftPad + fieldLabelStyle.Render(label) + fieldEditStyle.Render(value+fillStr)
+		// Highlighted field (ready to edit) — truncate to dispW to prevent overflow
+		displayVal := value
+		if len(displayVal) > dispW {
+			displayVal = displayVal[:dispW]
+		}
+		fillStr := strings.Repeat(string(fieldFillChar), max(0, dispW-len(displayVal)))
+		result := leftPad + fieldLabelStyle.Render(label) + fieldEditStyle.Render(displayVal+fillStr)
 		result += fieldDisplayStyle.Render(strings.Repeat(" ", max(0, boxW-rawW)))
 		return result
 	}
