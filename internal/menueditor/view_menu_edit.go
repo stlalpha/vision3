@@ -139,8 +139,8 @@ func (m Model) renderMenuField(fieldIdx int, f fieldDef, d *MenuData, boxW int) 
 		value = f.GetM(d)
 	}
 
-	// Cap display width to available space inside the box
-	maxW := boxW - lpad - labelLen
+	// Cap display width to available space inside the box, -1 for right margin
+	maxW := boxW - lpad - labelLen - 1
 	if maxW < 0 {
 		maxW = 0
 	}

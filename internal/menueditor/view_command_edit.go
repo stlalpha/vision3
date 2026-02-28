@@ -144,8 +144,8 @@ func (m Model) renderCmdField(fieldIdx int, f fieldDef, d *CmdData, boxW int) st
 		value = f.GetC(d)
 	}
 
-	// Cap display/input width to available space inside the box
-	maxW := boxW - lpad - labelLen
+	// Cap display/input width to available space inside the box, -1 for right margin
+	maxW := boxW - lpad - labelLen - 1
 	if maxW < 0 {
 		maxW = 0
 	}
