@@ -144,11 +144,7 @@ func (m Model) overlayHelpScreen(background string) string {
 	lines := strings.Split(background, "\n")
 
 	dialogW := 50
-	startRow := (m.height - 20) / 2
 	startCol := (m.width - dialogW) / 2
-	if startRow < 0 {
-		startRow = 0
-	}
 	if startCol < 0 {
 		startCol = 0
 	}
@@ -178,6 +174,11 @@ func (m Model) overlayHelpScreen(background string) string {
 		side + helpBoxStyle.Render(strings.Repeat(" ", dialogW-2)) + side,
 		side + helpTitleStyle.Render(centerText("Press any key to close.", dialogW-2)) + side,
 		borderBot,
+	}
+
+	startRow := (m.height - len(helpLines)) / 2
+	if startRow < 0 {
+		startRow = 0
 	}
 
 	endCol := startCol + dialogW

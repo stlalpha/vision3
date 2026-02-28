@@ -93,6 +93,9 @@ func (m Model) updateCommandEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case tea.KeyEnter:
 		return m.startCmdFieldEdit()
 	case tea.KeyPgDown:
+		if len(m.cmds) == 0 {
+			return m, nil
+		}
 		m.saveCurrentCmdEdit()
 		m.cmdEditIdx++
 		if m.cmdEditIdx >= len(m.cmds) {
@@ -102,6 +105,9 @@ func (m Model) updateCommandEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cmdCursor = m.cmdEditIdx
 		return m, nil
 	case tea.KeyPgUp:
+		if len(m.cmds) == 0 {
+			return m, nil
+		}
 		m.saveCurrentCmdEdit()
 		m.cmdEditIdx--
 		if m.cmdEditIdx < 0 {
