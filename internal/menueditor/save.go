@@ -27,30 +27,41 @@ func (m *Model) saveCurrentCmdEdit() {
 	m.dirtyCmds = true
 }
 
-func (m *Model) saveCurrentCommands() {
+// saveCurrentCommands writes the current command set to disk.
+// Returns an error if the save fails (message is also set on m).
+func (m *Model) saveCurrentCommands() error {
 	if m.cmdsMenuIdx < 0 || m.cmdsMenuIdx >= len(m.menus) {
-		return
+		return nil
 	}
 	name := m.menus[m.cmdsMenuIdx].Name
 	if err := SaveCommands(m.menuBase, name, m.cmds); err != nil {
 		m.message = fmt.Sprintf("Save error: %v", err)
-		return
+		return err
 	}
 	m.dirtyCmds = false
+	return nil
 }
 
-func (m *Model) saveAll() {
+// saveAll attempts to save all dirty menus and the current command set.
+// Returns true only if every save succeeded; failed entries remain dirty.
+func (m *Model) saveAll() bool {
+	ok := true
 	for _, entry := range m.menus {
 		if m.dirtyMenus[entry.Name] {
 			if err := SaveMenu(m.menuBase, entry.Name, entry.Data); err != nil {
 				m.message = fmt.Sprintf("Save error: %v", err)
+				ok = false
+				continue
 			}
+			delete(m.dirtyMenus, entry.Name)
 		}
 	}
-	m.dirtyMenus = make(map[string]bool)
 	if m.dirtyCmds {
-		m.saveCurrentCommands()
+		if err := m.saveCurrentCommands(); err != nil {
+			ok = false
+		}
 	}
+	return ok
 }
 
 func (m Model) openCommandList(menuIdx int) (Model, tea.Cmd) {

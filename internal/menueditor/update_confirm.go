@@ -70,7 +70,11 @@ func (m Model) executeConfirm() (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case modeExitConfirm:
-		m.saveAll()
+		if !m.saveAll() {
+			// Save failed — stay in the editor so the user can see the error.
+			m.mode = modeMenuList
+			return m, nil
+		}
 		return m, tea.Quit
 	}
 	m.mode = modeMenuList

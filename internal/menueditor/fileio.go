@@ -146,6 +146,7 @@ func DeleteMenu(menuBase, name string) error {
 }
 
 // CreateMenu writes a new empty .MNU and empty .CFG for the given name.
+// If writing the .CFG fails, the .MNU is removed so no half-created state is left on disk.
 func CreateMenu(menuBase, name string) error {
 	d := MenuData{
 		CLR:       false,
@@ -155,7 +156,12 @@ func CreateMenu(menuBase, name string) error {
 	if err := SaveMenu(menuBase, name, d); err != nil {
 		return err
 	}
-	return SaveCommands(menuBase, name, []CmdData{})
+	if err := SaveCommands(menuBase, name, []CmdData{}); err != nil {
+		// Best-effort rollback: remove the .MNU we just wrote.
+		os.Remove(filepath.Join(mnuDir(menuBase), name+".MNU")) //nolint:errcheck
+		return err
+	}
+	return nil
 }
 
 // MenuExists reports whether a .MNU file with the given name exists.

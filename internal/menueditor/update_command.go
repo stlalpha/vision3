@@ -65,7 +65,9 @@ func (m Model) updateCommandList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case tea.KeyEscape:
 		if m.dirtyCmds {
-			m.saveCurrentCommands()
+			if err := m.saveCurrentCommands(); err != nil {
+				return m, nil // stay in command list so user can retry
+			}
 		}
 		m.mode = modeMenuEdit
 		m.menuEditIdx = m.cmdsMenuIdx

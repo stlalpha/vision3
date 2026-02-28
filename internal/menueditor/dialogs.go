@@ -109,8 +109,10 @@ func (m Model) overlayInputDialog(background, title, prompt, inputView string) s
 		side
 
 	promptPad := 1
+	innerW := dialogW - 2
+	promptContent := strings.Repeat(" ", promptPad) + prompt
 	promptLine := side +
-		inputDialogTextStyle.Render(strings.Repeat(" ", promptPad)+prompt) +
+		inputDialogTextStyle.Render(promptContent+strings.Repeat(" ", max(0, innerW-len(promptContent)))) +
 		side
 
 	inputLine := side +
