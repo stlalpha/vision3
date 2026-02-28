@@ -82,7 +82,7 @@ func (m Model) overlayInputDialog(background, title, prompt, inputView string) s
 	lines := strings.Split(background, "\n")
 
 	dialogW := 54
-	dialogH := 6
+	dialogH := 7 // border + title + empty + prompt + input + hint + border
 	startRow := (m.height - dialogH) / 2
 	startCol := (m.width - dialogW) / 2
 	if startRow < 0 {
@@ -146,6 +146,9 @@ func (m Model) overlayHelpScreen(background string) string {
 	startCol := (m.width - dialogW) / 2
 	if startRow < 0 {
 		startRow = 0
+	}
+	if startCol < 0 {
+		startCol = 0
 	}
 
 	border := helpBoxStyle.Render("╔" + strings.Repeat("═", dialogW-2) + "╗")

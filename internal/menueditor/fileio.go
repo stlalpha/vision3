@@ -70,8 +70,7 @@ func LoadMenus(menuBase string) ([]menuEntry, error) {
 		if !strings.HasSuffix(strings.ToUpper(name), ".MNU") {
 			continue
 		}
-		stem := strings.TrimSuffix(strings.ToUpper(strings.TrimSuffix(name, filepath.Ext(name))), "")
-		stem = strings.ToUpper(stem)
+		stem := strings.ToUpper(strings.TrimSuffix(name, filepath.Ext(name)))
 
 		data, err := loadMenuFile(filepath.Join(dir, name))
 		if err != nil {
@@ -183,16 +182,21 @@ func atomicWriteJSON(path string, v any) error {
 	tmpPath := tmp.Name()
 
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		tmp.Close()            // best-effort; already returning a write error
+		os.Remove(tmpPath)     // best-effort cleanup
 		return fmt.Errorf("write temp: %w", err)
 	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()        // best-effort
+		os.Remove(tmpPath) // best-effort cleanup
+		return fmt.Errorf("sync temp: %w", err)
+	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		os.Remove(tmpPath) // best-effort cleanup
 		return fmt.Errorf("close temp: %w", err)
 	}
 	if err := os.Rename(tmpPath, path); err != nil {
-		os.Remove(tmpPath)
+		os.Remove(tmpPath) // best-effort cleanup
 		return fmt.Errorf("rename to %s: %w", path, err)
 	}
 	return nil

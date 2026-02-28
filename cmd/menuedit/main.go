@@ -30,28 +30,36 @@ func main() {
 	if path == "" {
 		cwd, err := os.Getwd()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err) //nolint:errcheck
 			os.Exit(1)
 		}
 		path = filepath.Join(cwd, "menus", "v3")
 	}
 
-	// Verify the directory exists
+	// Verify the directory exists and is accessible
 	info, err := os.Stat(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: menus directory not found: %s\n", path)
+		if os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Error: menus directory not found: %s\n", path) //nolint:errcheck
+		} else {
+			fmt.Fprintf(os.Stderr, "Error: cannot access menus directory %s: %v\n", path, err) //nolint:errcheck
+		}
 		os.Exit(1)
 	}
 	if !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "Error: %s is not a directory\n", path)
+		fmt.Fprintf(os.Stderr, "Error: %s is not a directory\n", path) //nolint:errcheck
 		os.Exit(1)
 	}
 
-	// Verify mnu/ and cfg/ subdirectories exist
+	// Verify mnu/ and cfg/ subdirectories exist and are accessible
 	for _, sub := range []string{"mnu", "cfg"} {
 		subPath := filepath.Join(path, sub)
-		if _, err := os.Stat(subPath); os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "Error: required subdirectory not found: %s\n", subPath)
+		if _, err := os.Stat(subPath); err != nil {
+			if os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "Error: required subdirectory not found: %s\n", subPath) //nolint:errcheck
+			} else {
+				fmt.Fprintf(os.Stderr, "Error: cannot access subdirectory %s: %v\n", subPath, err) //nolint:errcheck
+			}
 			os.Exit(1)
 		}
 	}
@@ -59,14 +67,14 @@ func main() {
 	// Create the editor model
 	model, err := menueditor.New(path)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error initializing editor: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error initializing editor: %v\n", err) //nolint:errcheck
 		os.Exit(1)
 	}
 
 	// Run the BubbleTea TUI
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err) //nolint:errcheck
 		os.Exit(1)
 	}
 }

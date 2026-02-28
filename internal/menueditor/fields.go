@@ -202,9 +202,3 @@ func intFieldLabel(label string) string {
 	return fmt.Sprintf("%s : ", label)
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
