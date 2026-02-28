@@ -37,40 +37,45 @@ type fieldDef struct {
 func menuFields() []fieldDef {
 	return []fieldDef{
 		{
-			Label: "Clear Screen   ", Type: ftYesNo, Row: 3, Width: 1,
+			Label: "Menu Title     ", Type: ftString, Row: 3, Width: 20,
+			GetM: func(d *MenuData) string { return d.Title },
+			SetM: func(d *MenuData, val string) error { d.Title = val; return nil },
+		},
+		{
+			Label: "Clear Screen   ", Type: ftYesNo, Row: 4, Width: 1,
 			GetM: func(d *MenuData) string { return boolToYN(d.CLR) },
 			SetM: func(d *MenuData, val string) error { d.CLR = ynToBool(val); return nil },
 		},
 		{
-			Label: "Use Prompt     ", Type: ftYesNo, Row: 4, Width: 1,
+			Label: "Use Prompt     ", Type: ftYesNo, Row: 5, Width: 1,
 			GetM: func(d *MenuData) string { return boolToYN(d.UsePrompt) },
 			SetM: func(d *MenuData, val string) error { d.UsePrompt = ynToBool(val); return nil },
 		},
 		{
 			// Max width: boxW(74) - lpad(2) - labelLen(17) = 55
-			Label: "Prompt Line 1  ", Type: ftString, Row: 5, Width: 55,
+			Label: "Prompt Line 1  ", Type: ftString, Row: 6, Width: 55,
 			GetM:   func(d *MenuData) string { return d.Prompt1 },
 			SetM:   func(d *MenuData, val string) error { d.Prompt1 = val; return nil },
 			Render: stringeditor.RenderColorString,
 		},
 		{
-			Label: "Prompt Line 2  ", Type: ftString, Row: 6, Width: 55,
+			Label: "Prompt Line 2  ", Type: ftString, Row: 7, Width: 55,
 			GetM:   func(d *MenuData) string { return d.Prompt2 },
 			SetM:   func(d *MenuData, val string) error { d.Prompt2 = val; return nil },
 			Render: stringeditor.RenderColorString,
 		},
 		{
-			Label: "Fallback Menu  ", Type: ftString, Row: 7, Width: 12,
+			Label: "Fallback Menu  ", Type: ftString, Row: 8, Width: 12,
 			GetM: func(d *MenuData) string { return d.Fallback },
 			SetM: func(d *MenuData, val string) error { d.Fallback = strings.ToUpper(val); return nil },
 		},
 		{
-			Label: "ACS Required   ", Type: ftString, Row: 8, Width: 30,
+			Label: "ACS Required   ", Type: ftString, Row: 9, Width: 30,
 			GetM: func(d *MenuData) string { return d.ACS },
 			SetM: func(d *MenuData, val string) error { d.ACS = strings.ToUpper(val); return nil },
 		},
 		{
-			Label: "Menu Password  ", Type: ftString, Row: 9, Width: 30,
+			Label: "Menu Password  ", Type: ftString, Row: 10, Width: 30,
 			GetM: func(d *MenuData) string { return d.Password },
 			SetM: func(d *MenuData, val string) error { d.Password = val; return nil },
 		},

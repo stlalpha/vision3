@@ -12,9 +12,15 @@ func (m Model) viewCommandEditScreen() string {
 		return m.viewCommandListScreen()
 	}
 
-	menuName := ""
+	menuName := ""  // filename stem, used for file references
+	menuTitle := "" // friendly title for display headings
 	if m.cmdsMenuIdx >= 0 && m.cmdsMenuIdx < len(m.menus) {
-		menuName = m.menus[m.cmdsMenuIdx].Name
+		e := m.menus[m.cmdsMenuIdx]
+		menuName = e.Name
+		menuTitle = e.Data.Title
+		if menuTitle == "" {
+			menuTitle = e.Name
+		}
 	}
 
 	cmd := m.cmds[m.cmdEditIdx]
@@ -51,7 +57,7 @@ func (m Model) viewCommandEditScreen() string {
 
 	// === Title row inside box ===
 	// MENUEDIT.PAS: Color(15,12) Center_Write('Command Editing (MenuTitle)')
-	boxTitle := fmt.Sprintf("Command Editing (%s)", menuName)
+	boxTitle := fmt.Sprintf("Command Editing (%s)", menuTitle)
 	titleRow := bgFillStyle.Render(strings.Repeat("░", padL)) +
 		editBorderStyle.Render("│") +
 		editTitleStyle.Render(centerText(boxTitle, boxW)) +

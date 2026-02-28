@@ -8,9 +8,13 @@ import (
 // viewCommandListScreen renders the command list browser for the selected menu.
 // Faithfully recreates MENUEDIT.PAS Select_Command.
 func (m Model) viewCommandListScreen() string {
-	menuName := ""
+	menuTitle := "" // friendly title for display headings
 	if m.cmdsMenuIdx >= 0 && m.cmdsMenuIdx < len(m.menus) {
-		menuName = m.menus[m.cmdsMenuIdx].Name
+		e := m.menus[m.cmdsMenuIdx]
+		menuTitle = e.Data.Title
+		if menuTitle == "" {
+			menuTitle = e.Name
+		}
 	}
 
 	var b strings.Builder
@@ -47,7 +51,7 @@ func (m Model) viewCommandListScreen() string {
 
 	// === Section title inside box ===
 	// MENUEDIT.PAS: Color(4,14) Center_Write('Editing Menu Commands for: ...')
-	sectionTitle := fmt.Sprintf("Editing Menu Commands for: %s", menuName)
+	sectionTitle := fmt.Sprintf("Editing Menu Commands for: %s", menuTitle)
 	titleRow := bgFillStyle.Render(strings.Repeat("░", padL)) +
 		listBorderStyle.Render("│") +
 		listHeaderStyle.Render(centerText(sectionTitle, boxW)) +

@@ -11,6 +11,7 @@ import (
 
 // MenuData represents the JSON stored in a .MNU file.
 type MenuData struct {
+	Title     string `json:"TITLE,omitempty"`
 	CLR       bool   `json:"CLR"`
 	UsePrompt bool   `json:"USEPROMPT"`
 	Prompt1   string `json:"PROMPT1"`

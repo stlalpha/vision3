@@ -50,7 +50,10 @@ func (m Model) viewMenuEditScreen() string {
 
 	// === Title row inside box ===
 	// MENUEDIT.PAS: Color(15,12) center_write 'Command Editing...'
-	boxTitle := fmt.Sprintf("Editing Menu: %s.MNU", entry.Name)
+	boxTitle := "Editing Menu: " + entry.Name + ".MNU"
+	if entry.Data.Title != "" {
+		boxTitle = entry.Data.Title + " (" + entry.Name + ".MNU)"
+	}
 	titleRow := bgFillStyle.Render(strings.Repeat("░", padL)) +
 		editBorderStyle.Render("│") +
 		editTitleStyle.Render(centerText(boxTitle, boxW)) +
