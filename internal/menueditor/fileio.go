@@ -11,14 +11,19 @@ import (
 
 // MenuData represents the JSON stored in a .MNU file.
 type MenuData struct {
-	Title     string `json:"TITLE"`
-	CLR       bool   `json:"CLR"`
-	UsePrompt bool   `json:"USEPROMPT"`
-	Prompt1   string `json:"PROMPT1"`
-	Prompt2   string `json:"PROMPT2"`
-	Fallback  string `json:"FALLBACK"`
-	ACS       string `json:"ACS"`
-	Password  string `json:"PASS"`
+	Title          string `json:"TITLE"`
+	CLR            bool   `json:"CLR"`
+	UsePrompt      bool   `json:"USEPROMPT"`
+	Prompt1        string `json:"PROMPT1"`
+	Prompt2        string `json:"PROMPT2"`
+	Fallback       string `json:"FALLBACK"`
+	ACS            string `json:"ACS"`
+	Password       string `json:"PASS"`
+	HelpMenu       string `json:"HELPMENU"`
+	ForceHelpLevel int    `json:"FORCEHELPLEVEL"`
+	MesConf        int    `json:"MES_CONF"`
+	FileConf       int    `json:"FILE_CONF"`
+	ForceHotKey    bool   `json:"FORCEHOTKEY"`
 }
 
 // CmdData represents a single entry in a .CFG JSON array.

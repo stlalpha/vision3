@@ -6,5 +6,10 @@
     "PROMPT2": "",
     "FALLBACK": "ADMIN",
     "ACS": "S255",
-    "PASS": ""
+    "PASS": "",
+    "HELPMENU": "",
+    "FORCEHELPLEVEL": 0,
+    "MES_CONF": 0,
+    "FILE_CONF": 0,
+    "FORCEHOTKEY": false
 }

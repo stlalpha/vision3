@@ -6,5 +6,10 @@
     "PROMPT2": " |08[|15Transfer Menu|08] |07Command |08->|15 ",
     "FALLBACK": "MAIN",
     "ACS": "",
-    "PASS": ""
+    "PASS": "",
+    "HELPMENU": "",
+    "FORCEHELPLEVEL": 0,
+    "MES_CONF": 0,
+    "FILE_CONF": 0,
+    "FORCEHOTKEY": false
 }

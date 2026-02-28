@@ -30,10 +30,10 @@ func (m Model) viewMenuEditScreen() string {
 	padL := max(0, (m.width-boxW-2)/2)
 	padR := max(0, m.width-padL-boxW-2)
 
-	// Vertical centering: title(1) + gap(4) + box(14) + gap(4) + help(1) = 24
-	extraV := max(0, m.height-24)
-	topPad := max(4, extraV/2+4)
-	bottomPad := max(1, m.height-1-topPad-14)
+	// Vertical centering: title(1) + gap(2) + box(20) + gap(2) + help(1) = 26
+	extraV := max(0, m.height-26)
+	topPad := max(2, extraV/2+2)
+	bottomPad := max(1, m.height-1-topPad-20)
 
 	for i := 0; i < topPad; i++ {
 		b.WriteString(bg)
@@ -83,17 +83,21 @@ func (m Model) viewMenuEditScreen() string {
 		b.WriteByte('\n')
 	}
 
-	// === Info row: current file + number ===
-	infoText := fmt.Sprintf("  Menu %d of %d", m.menuEditIdx+1, len(m.menus))
+	// === Empty row above info ===
+	b.WriteString(emptyRow)
+	b.WriteByte('\n')
+
+	// === Info row: current file + number (centered) ===
+	infoText := centerText(fmt.Sprintf("Menu %d of %d", m.menuEditIdx+1, len(m.menus)), boxW)
 	infoRow := bgFillStyle.Render(strings.Repeat("░", padL)) +
 		editBorderStyle.Render("│") +
-		editInfoLabelStyle.Render(padRight(infoText, boxW)) +
+		editInfoLabelStyle.Render(infoText) +
 		editBorderStyle.Render("│") +
 		bgFillStyle.Render(strings.Repeat("░", max(0, padR)))
 	b.WriteString(infoRow)
 	b.WriteByte('\n')
 
-	// === Empty row at bottom of box ===
+	// === Empty row below info ===
 	b.WriteString(emptyRow)
 	b.WriteByte('\n')
 

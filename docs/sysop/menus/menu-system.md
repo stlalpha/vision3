@@ -27,18 +27,25 @@ Menu configuration files are JSON files that define menu behavior and prompts.
 
 ```json
 {
+  "TITLE": "Main Menu",
   "CLR": true,
   "USEPROMPT": true,
   "PROMPT1": "|15Main Menu: ",
   "PROMPT2": "",
   "FALLBACK": "MAIN",
   "ACS": "",
-  "PASS": ""
+  "PASS": "",
+  "HELPMENU": "",
+  "FORCEHELPLEVEL": 0,
+  "MES_CONF": 0,
+  "FILE_CONF": 0,
+  "FORCEHOTKEY": false
 }
 ```
 
 ### Configuration Fields
 
+- `TITLE` - Friendly display name shown in the menu editor
 - `CLR` - Clear screen before displaying menu
 - `USEPROMPT` - Whether to show the prompt
 - `PROMPT1` - Primary prompt text (supports pipe codes and placeholders)
@@ -46,6 +53,11 @@ Menu configuration files are JSON files that define menu behavior and prompts.
 - `FALLBACK` - Menu to go to if no command matches
 - `ACS` - Access control string for menu access
 - `PASS` - Password required to access menu
+- `HELPMENU` - Tutorial help file name *(currently unused — reserved from Pascal `MenuRec.HelpMenu`)*
+- `FORCEHELPLEVEL` - Force help display for users at or below this level *(currently unused — reserved from Pascal `MenuRec.ForceHelpLevel`)*
+- `MES_CONF` - Auto-switch user's active message conference when entering this menu; 0 = no change *(currently unused — reserved from Pascal `MenuRec.Mes_Conf`)*
+- `FILE_CONF` - Auto-switch user's active file conference when entering this menu; 0 = no change *(currently unused — reserved from Pascal `MenuRec.File_Conf`)*
+- `FORCEHOTKEY` - Force single-keypress (hotkey) input mode regardless of user preference *(currently unused — reserved from Pascal `MenuRec.Force_HotKey`)*
 
 ## Command Definition Files (.CFG)
 
@@ -256,13 +268,19 @@ Create `menus/v3/mnu/MYMENU.MNU`:
 
 ```json
 {
+  "TITLE": "My Menu",
   "CLR": true,
   "USEPROMPT": true,
   "PROMPT1": "|15Select: ",
   "PROMPT2": "",
   "FALLBACK": "MAIN",
   "ACS": "",
-  "PASS": ""
+  "PASS": "",
+  "HELPMENU": "",
+  "FORCEHELPLEVEL": 0,
+  "MES_CONF": 0,
+  "FILE_CONF": 0,
+  "FORCEHOTKEY": false
 }
 ```
 

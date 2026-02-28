@@ -570,12 +570,20 @@ func TestPackFlowFileCreated(t *testing.T) {
 func makePktSimpleNetmail(t *testing.T, from, to, subject, body, msgID string) []byte {
 	t.Helper()
 
+	// From 21:4/100 to 21:4/158.1 (point)
 	hdr := ftn.NewPacketHeader(21, 4, 100, 0, 21, 4, 158, 1, "")
+
+	// Netmail requires INTL, TOPT (destination is a point)
+	kludges := []string{
+		"INTL 21:4/158 21:4/100", // INTL dest orig
+		"TOPT 1",                  // Destination point
+		"MSGID: " + msgID,
+	}
 
 	parsedBody := &ftn.ParsedBody{
 		Area:    "", // No AREA for netmail
 		Text:    body,
-		Kludges: []string{"MSGID: " + msgID},
+		Kludges: kludges,
 	}
 
 	packed := &ftn.PackedMessage{

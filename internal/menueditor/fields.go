@@ -2,6 +2,7 @@ package menueditor
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/stlalpha/vision3/internal/stringeditor"
@@ -78,6 +79,53 @@ func menuFields() []fieldDef {
 			Label: "Menu Password  ", Type: ftString, Row: 10, Width: 30,
 			GetM: func(d *MenuData) string { return d.Password },
 			SetM: func(d *MenuData, val string) error { d.Password = val; return nil },
+		},
+		// Fields below are reserved from Pascal MenuRec but currently unused in V3.
+		{
+			Label: "Help Menu      ", Type: ftString, Row: 11, Width: 12,
+			GetM: func(d *MenuData) string { return d.HelpMenu },
+			SetM: func(d *MenuData, val string) error { d.HelpMenu = strings.ToUpper(val); return nil },
+		},
+		{
+			Label: "Force Hlp Lvl  ", Type: ftString, Row: 12, Width: 5,
+			GetM: func(d *MenuData) string { return strconv.Itoa(d.ForceHelpLevel) },
+			SetM: func(d *MenuData, val string) error {
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return fmt.Errorf("invalid number: %w", err)
+				}
+				d.ForceHelpLevel = n
+				return nil
+			},
+		},
+		{
+			Label: "Msg Conference ", Type: ftString, Row: 13, Width: 5,
+			GetM: func(d *MenuData) string { return strconv.Itoa(d.MesConf) },
+			SetM: func(d *MenuData, val string) error {
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return fmt.Errorf("invalid number: %w", err)
+				}
+				d.MesConf = n
+				return nil
+			},
+		},
+		{
+			Label: "File Conference", Type: ftString, Row: 14, Width: 5,
+			GetM: func(d *MenuData) string { return strconv.Itoa(d.FileConf) },
+			SetM: func(d *MenuData, val string) error {
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return fmt.Errorf("invalid number: %w", err)
+				}
+				d.FileConf = n
+				return nil
+			},
+		},
+		{
+			Label: "Force HotKey   ", Type: ftYesNo, Row: 15, Width: 1,
+			GetM: func(d *MenuData) string { return boolToYN(d.ForceHotKey) },
+			SetM: func(d *MenuData, val string) error { d.ForceHotKey = ynToBool(val); return nil },
 		},
 	}
 }
