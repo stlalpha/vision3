@@ -167,8 +167,22 @@ func (t *Tosser) processBundle(path, name string, result *TossResult) {
 	log.Printf("INFO: Unpacked bundle %s: %d .PKT files", name, len(pktPaths))
 
 	// tossPktFile handles cleanup of each extracted .PKT (removes on success, moves to temp on error).
+	allSkipped := true
 	for _, pktPath := range pktPaths {
-		t.tossPktFile(pktPath, filepath.Base(pktPath), result)
+		skipped := t.tossPktFile(pktPath, filepath.Base(pktPath), result)
+		if !skipped {
+			allSkipped = false
+		}
+	}
+
+	// If all packets in the bundle belong to a different network, leave the
+	// bundle in place for the correct tosser and clean up extracted temp files.
+	if allSkipped && len(pktPaths) > 0 {
+		for _, pktPath := range pktPaths {
+			os.Remove(pktPath)
+		}
+		log.Printf("TRACE: tosser[%s]: skipping foreign bundle %s", t.networkName, name)
+		return
 	}
 
 	// Remove the bundle itself after processing all packets.
@@ -178,10 +192,11 @@ func (t *Tosser) processBundle(path, name string, result *TossResult) {
 }
 
 // tossPktFile processes a single .PKT file at path and updates result.
-func (t *Tosser) tossPktFile(path, displayName string, result *TossResult) {
+// Returns true if the packet was skipped (foreign network).
+func (t *Tosser) tossPktFile(path, displayName string, result *TossResult) bool {
 	imported, dupes, errs, skipped := t.tossPacket(path)
 	if skipped {
-		return // packet doesn't belong to this network; leave for correct tosser
+		return true // packet doesn't belong to this network; leave for correct tosser
 	}
 
 	result.PacketsProcessed++
@@ -199,6 +214,7 @@ func (t *Tosser) tossPktFile(path, displayName string, result *TossResult) {
 			log.Printf("WARN: Failed to move bad packet %s to %s: %v", path, badPath, err)
 		}
 	}
+	return false
 }
 
 // tossPacket processes a single .PKT file, returning counts and errors.
@@ -222,6 +238,12 @@ func (t *Tosser) tossPacket(path string) (imported, dupes int, errs []string, sk
 	// against our known links. This prevents cross-contamination when multiple
 	// networks share the same inbound directory.
 	if !t.isPacketFromKnownLink(pktHdr) {
+		pktZone := pktHdr.OrigZone
+		if pktZone == 0 {
+			pktZone = pktHdr.QOrigZone
+		}
+		log.Printf("TRACE: tosser[%s]: skipping packet %s from unknown link %d:%d/%d",
+			t.networkName, filepath.Base(path), pktZone, pktHdr.OrigNet, pktHdr.OrigNode)
 		return 0, 0, nil, true
 	}
 
@@ -251,16 +273,26 @@ func (t *Tosser) isPacketFromKnownLink(hdr *ftn.PacketHeader) bool {
 		pktZone = hdr.QOrigZone
 	}
 
+	hasValidLink := false
 	for _, link := range t.config.Links {
 		addr, err := jam.ParseAddress(link.Address)
 		if err != nil {
+			log.Printf("WARN: tosser[%s]: invalid link address %q: %v", t.networkName, link.Address, err)
 			continue
 		}
+		hasValidLink = true
 		if uint16(addr.Zone) == pktZone &&
 			uint16(addr.Net) == hdr.OrigNet &&
 			uint16(addr.Node) == hdr.OrigNode {
 			return true
 		}
+	}
+	// If no configured link addresses could be parsed, accept the packet
+	// to avoid silently stalling all inbound processing.
+	if !hasValidLink {
+		log.Printf("WARN: tosser[%s]: no valid link addresses configured; accepting packet from %d:%d/%d",
+			t.networkName, pktZone, hdr.OrigNet, hdr.OrigNode)
+		return true
 	}
 	return false
 }
@@ -415,6 +447,8 @@ func (t *Tosser) tossMessage(msg *ftn.PackedMessage, pktHdr *ftn.PacketHeader) e
 		if uerr := base.UpdateMessageHeader(msgNum, hdr); uerr != nil {
 			log.Printf("WARN: toss: failed to mark msg %d as processed in area %s: %v", msgNum, area.Tag, uerr)
 		}
+	} else {
+		log.Printf("WARN: toss: failed to read header for msg %d in area %s to mark as processed: %v", msgNum, area.Tag, herr)
 	}
 
 	log.Printf("INFO: Tossed message from %s to %s in %s (MSGID: %s)", msg.From, msg.To, parsed.Area, msgID)
@@ -494,6 +528,8 @@ func (t *Tosser) writeMsgToArea(areaTag string, msg *ftn.PackedMessage, pktHdr *
 		if uerr := base.UpdateMessageHeader(msgNum, hdr); uerr != nil {
 			log.Printf("WARN: toss: failed to mark routed msg %d in %s as processed: %v", msgNum, areaTag, uerr)
 		}
+	} else {
+		log.Printf("WARN: toss: failed to read header for routed msg %d in %s to mark as processed: %v", msgNum, areaTag, herr)
 	}
 	return nil
 }
