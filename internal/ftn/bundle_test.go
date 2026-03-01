@@ -24,6 +24,8 @@ func TestBundleExtension(t *testing.T) {
 		{"00000001.fra", true},
 		{"00000001.saa", true},
 		{"00000001.moa", true},
+		{"00000001.saz", true},
+		{"00000001.SAZ", true},
 		{"0003007b.out", true},
 		{"0003007b.zip", true},
 		{"message.pkt", false},
