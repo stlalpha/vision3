@@ -487,8 +487,25 @@ func (mm *MessageManager) MoveAreaPositionInConference(areaID int, newIndex int)
 	return nil
 }
 
+// splitNetmailTo splits a "user@zone:net/node" string into the username and
+// FTN address parts. If the string doesn't contain a valid FTN address after
+// the '@', it returns the original string unchanged with an empty address.
+func splitNetmailTo(to string) (name, addr string) {
+	idx := strings.LastIndex(to, "@")
+	if idx <= 0 {
+		return to, ""
+	}
+	candidate := strings.TrimSpace(to[idx+1:])
+	if _, err := jam.ParseAddress(candidate); err != nil {
+		return to, "" // not a valid FTN address, keep as-is
+	}
+	return strings.TrimSpace(to[:idx]), candidate
+}
+
 // AddMessage creates and writes a new message to the specified area.
 // For echomail areas, it automatically handles MSGID, kludges, tearline, and origin.
+// For netmail areas, "user@zone:net/node" in the To field is automatically split
+// into the username and destination address.
 // Returns the 1-based message number assigned.
 func (mm *MessageManager) AddMessage(areaID int, from, to, subject, body, replyToMsgID string) (int, error) {
 	b, area, err := mm.openBase(areaID)
@@ -510,6 +527,15 @@ func (mm *MessageManager) AddMessage(areaID int, from, to, subject, body, replyT
 
 	msgType := jam.DetermineMessageType(area.AreaType, area.EchoTag)
 
+	// For netmail, split "user@address" into separate To and DestAddr fields
+	if msgType.IsNetmail() {
+		name, addr := splitNetmailTo(to)
+		msg.To = name
+		if addr != "" {
+			msg.DestAddr = addr
+		}
+	}
+
 	var msgNum int
 	if msgType.IsEchomail() || msgType.IsNetmail() {
 		msg.OrigAddr = area.OriginAddr
@@ -526,6 +552,8 @@ func (mm *MessageManager) AddMessage(areaID int, from, to, subject, body, replyT
 
 // AddPrivateMessage creates and writes a new private message to the specified area.
 // It sets the MSG_PRIVATE flag on the message to indicate it's private user-to-user mail.
+// For netmail areas, "user@zone:net/node" in the To field is automatically split
+// into the username and destination address.
 // Returns the 1-based message number assigned.
 func (mm *MessageManager) AddPrivateMessage(areaID int, from, to, subject, body, replyToMsgID string) (int, error) {
 	b, area, err := mm.openBase(areaID)
@@ -551,6 +579,15 @@ func (mm *MessageManager) AddPrivateMessage(areaID int, from, to, subject, body,
 	}
 
 	msgType := jam.DetermineMessageType(area.AreaType, area.EchoTag)
+
+	// For netmail, split "user@address" into separate To and DestAddr fields
+	if msgType.IsNetmail() {
+		name, addr := splitNetmailTo(to)
+		msg.To = name
+		if addr != "" {
+			msg.DestAddr = addr
+		}
+	}
 
 	var msgNum int
 	if msgType.IsEchomail() || msgType.IsNetmail() {

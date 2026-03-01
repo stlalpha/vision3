@@ -526,6 +526,60 @@ func TestTossDupeArea(t *testing.T) {
 	}
 }
 
+// TestPacketFromUnknownLinkSkipped verifies that a packet from a node not in
+// this network's links is left untouched (not processed, not deleted).
+// This prevents cross-contamination when multiple networks share an inbound directory.
+func TestPacketFromUnknownLinkSkipped(t *testing.T) {
+	env, extCfg := setupExtendedTestEnv(t)
+	tosser, err := New("testnet", extCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Create a packet from a node NOT in our links (zone 3, different network).
+	hdr := ftn.NewPacketHeader(3, 633, 2744, 0, 21, 4, 158, 1, "")
+	parsedBody := &ftn.ParsedBody{
+		Area:    "SOME_AREA",
+		Text:    "Hello from another network\r",
+		Kludges: []string{"MSGID: 3:633/2744 12345678"},
+		SeenBy:  []string{"633/2744"},
+		Path:    []string{"633/2744"},
+	}
+	packed := &ftn.PackedMessage{
+		MsgType:  2,
+		OrigNode: 2744,
+		DestNode: 158,
+		OrigNet:  633,
+		DestNet:  4,
+		DateTime: "01 Mar 26  12:00:00",
+		To:       "All",
+		From:     "Remote User",
+		Subject:  "Cross-network test",
+		Body:     ftn.FormatPackedMessageBody(parsedBody),
+	}
+	var buf bytes.Buffer
+	if err := ftn.WritePacket(&buf, hdr, []*ftn.PackedMessage{packed}); err != nil {
+		t.Fatalf("WritePacket: %v", err)
+	}
+	pktPath := filepath.Join(env.inboundDir, "foreign.pkt")
+	os.WriteFile(pktPath, buf.Bytes(), 0644)
+
+	result := tosser.ProcessInbound()
+
+	// No packets should have been processed
+	if result.PacketsProcessed != 0 {
+		t.Errorf("expected 0 packets processed, got %d", result.PacketsProcessed)
+	}
+	if result.MessagesImported != 0 {
+		t.Errorf("expected 0 imported, got %d", result.MessagesImported)
+	}
+
+	// The file should still exist (not deleted)
+	if _, err := os.Stat(pktPath); os.IsNotExist(err) {
+		t.Error("packet file was deleted; should have been left for the correct network's tosser")
+	}
+}
+
 // TestPackFlowFileCreated verifies that a .clo flow file is written when link flavour is Crash.
 func TestPackFlowFileCreated(t *testing.T) {
 	env := setupTestEnv(t)
@@ -566,11 +620,160 @@ func TestPackFlowFileCreated(t *testing.T) {
 	}
 }
 
+// TestTossedMessagesNotReExported verifies that inbound messages tossed from the
+// network are not re-exported by v3mail scan. This is the core invariant: only
+// locally-written messages (DateProcessed=0) should be exported; inbound messages
+// must be marked processed immediately after toss so scan skips them.
+func TestTossedMessagesNotReExported(t *testing.T) {
+	env := setupTestEnv(t)
+	tosser, err := New("testnet", env.netCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Toss an inbound echomail message from the network
+	pktData := makePktSimple(t, "FSX_TEST", "Remote User", "All", "Inbound Message", "From the network!\r", "21:4/100 AABBCCDD")
+	pktPath := filepath.Join(env.inboundDir, "inbound.pkt")
+	os.WriteFile(pktPath, pktData, 0644)
+
+	r := tosser.ProcessInbound()
+	if r.MessagesImported != 1 {
+		t.Fatalf("expected 1 imported, got %d (errors: %v)", r.MessagesImported, r.Errors)
+	}
+
+	// Now run scan — the tossed message must NOT be exported back to the uplink
+	scanResult := tosser.ScanAndExport()
+	if scanResult.MessagesExported != 0 {
+		t.Errorf("scan exported %d messages after toss; inbound messages must not be re-exported", scanResult.MessagesExported)
+	}
+
+	// Confirm no .PKT files were created
+	entries, _ := os.ReadDir(env.outboundDir)
+	for _, e := range entries {
+		if strings.ToLower(filepath.Ext(e.Name())) == ".pkt" {
+			t.Errorf("unexpected outbound .PKT after scan: %s", e.Name())
+		}
+	}
+}
+
+// TestScanExportNetmail verifies that a BBS-written netmail (DateProcessed=0) is
+// exported as an outbound .PKT with correct INTL kludge and no AREA tag.
+func TestScanExportNetmail(t *testing.T) {
+	env, extCfg := setupExtendedTestEnv(t)
+	tosser, err := New("testnet", extCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Write a netmail directly to the JAM base with DateProcessed=0 (simulates BBS compose)
+	base, err := env.msgMgr.GetBase(2) // NETMAIL is area ID 2
+	if err != nil {
+		t.Fatalf("GetBase(NETMAIL): %v", err)
+	}
+	msg := jam.NewMessage()
+	msg.From = "Local Sysop"
+	msg.To = "AreaFix"
+	msg.Subject = "areapassword"
+	msg.Text = "%LIST\r---\r"
+	msg.OrigAddr = "21:4/158.1"
+	msg.DestAddr = "21:4/158" // hub address
+
+	area, _ := env.msgMgr.GetAreaByTag("NETMAIL")
+	msgType := jam.DetermineMessageType(area.AreaType, area.EchoTag)
+	_, err = base.WriteMessageExt(msg, msgType, area.EchoTag, "TestBBS", "")
+	if err != nil {
+		t.Fatalf("WriteMessageExt: %v", err)
+	}
+	base.Close()
+
+	result := tosser.ScanAndExport()
+
+	if result.MessagesExported != 1 {
+		t.Errorf("expected 1 netmail exported, got %d (errors: %v)", result.MessagesExported, result.Errors)
+	}
+
+	// Verify a .PKT was created
+	entries, _ := os.ReadDir(env.outboundDir)
+	var pktFiles []string
+	for _, e := range entries {
+		if strings.ToLower(filepath.Ext(e.Name())) == ".pkt" {
+			pktFiles = append(pktFiles, filepath.Join(env.outboundDir, e.Name()))
+		}
+	}
+	if len(pktFiles) != 1 {
+		t.Fatalf("expected 1 .PKT in outbound, got %d", len(pktFiles))
+	}
+
+	// Parse the packet and verify netmail structure
+	f, err := os.Open(pktFiles[0])
+	if err != nil {
+		t.Fatalf("open pkt: %v", err)
+	}
+	defer f.Close()
+
+	_, pktMsgs, err := ftn.ReadPacket(f)
+	if err != nil {
+		t.Fatalf("ReadPacket: %v", err)
+	}
+	if len(pktMsgs) != 1 {
+		t.Fatalf("expected 1 message in packet, got %d", len(pktMsgs))
+	}
+
+	parsed := ftn.ParsePackedMessageBody(pktMsgs[0].Body)
+
+	// Netmail must have no AREA kludge
+	if parsed.Area != "" {
+		t.Errorf("netmail must have no AREA kludge, got %q", parsed.Area)
+	}
+
+	// Must have INTL kludge
+	hasINTL := false
+	for _, k := range parsed.Kludges {
+		if strings.HasPrefix(k, "INTL ") {
+			hasINTL = true
+			break
+		}
+	}
+	if !hasINTL {
+		t.Errorf("netmail missing INTL kludge; kludges: %v", parsed.Kludges)
+	}
+
+	if pktMsgs[0].To != "AreaFix" {
+		t.Errorf("To: got %q, want %q", pktMsgs[0].To, "AreaFix")
+	}
+}
+
+// TestNetmailNotReExported verifies that an inbound netmail stored in the JAM base
+// is not re-exported (DateProcessed is set by writeMsgToArea on import).
+func TestNetmailNotReExported(t *testing.T) {
+	env, extCfg := setupExtendedTestEnv(t)
+	tosser, err := New("testnet", extCfg, env.globalCfg, env.dupeDB, env.msgMgr)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Toss an inbound netmail
+	pktData := makePktSimpleNetmail(t, "Remote User", "Local Sysop", "Private Note", "Hello!\r", "21:4/100 FEEDFACE")
+	os.WriteFile(filepath.Join(env.inboundDir, "netmail_in.pkt"), pktData, 0644)
+	r := tosser.ProcessInbound()
+	if r.MessagesImported != 1 {
+		t.Fatalf("expected 1 imported, got %d (errors: %v)", r.MessagesImported, r.Errors)
+	}
+
+	// Scan should not re-export it
+	scan := tosser.ScanAndExport()
+	if scan.MessagesExported != 0 {
+		t.Errorf("scan exported %d messages; inbound netmail must not be re-exported", scan.MessagesExported)
+	}
+}
+
 // makePktSimpleNetmail creates a netmail packet (no AREA tag).
 func makePktSimpleNetmail(t *testing.T, from, to, subject, body, msgID string) []byte {
 	t.Helper()
 
-	hdr := ftn.NewPacketHeader(21, 4, 100, 0, 21, 4, 158, 1, "")
+	// Packet header: from the hub (21:4/158) to our point (21:4/158.1).
+	// The hub relays the packet, so the packet header shows the hub as source.
+	hdr := ftn.NewPacketHeader(21, 4, 158, 0, 21, 4, 158, 1, "")
 
 	parsedBody := &ftn.ParsedBody{
 		Area:    "", // No AREA for netmail
@@ -603,7 +806,8 @@ func makePktSimpleNetmail(t *testing.T, from, to, subject, body, msgID string) [
 func makePktSimple(t *testing.T, areaTag, from, to, subject, body, msgID string) []byte {
 	t.Helper()
 
-	hdr := ftn.NewPacketHeader(21, 4, 100, 0, 21, 4, 158, 1, "")
+	// Packet header: from the hub (21:4/158) to our point (21:4/158.1).
+	hdr := ftn.NewPacketHeader(21, 4, 158, 0, 21, 4, 158, 1, "")
 
 	parsedBody := &ftn.ParsedBody{
 		Area:    areaTag,

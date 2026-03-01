@@ -22,11 +22,11 @@ var zipMagic = []byte{0x50, 0x4B, 0x03, 0x04}
 // based on its extension. Binkd uses day-of-week suffixes for bundles:
 //
 //	.mo0 .tu0 .we0 .th0 .fr0 .sa0 .su0  (day-based, normal)
-//	.mo1 .tu1 ...                          (day-based, overflow)
-//	.out                                   (normal outbound bundle)
-//	.zip                                   (explicit ZIP bundle)
+//	.mo1 .tu1 ... .mo9 ... .saZ         (day-based, overflow: 0-9, a-z)
+//	.out                                 (normal outbound bundle)
+//	.zip                                 (explicit ZIP bundle)
 //
-// It also handles uppercase variants.
+// The trailing character is alphanumeric per FTS-5005; overflow uses 0-9 then a-z.
 func BundleExtension(name string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
 	switch ext {
@@ -36,13 +36,13 @@ func BundleExtension(name string) bool {
 		// .out files can be flow files (text) or bundles; we test for ZIP magic.
 		return true
 	}
-	// Day-of-week bundle extensions: .mo0-.su9
+	// Day-of-week bundle extensions: .mo0-.su9, .moa-.saz (overflow)
 	if len(ext) == 4 && ext[0] == '.' {
 		day := ext[1:3]
-		digit := ext[3]
+		ch := ext[3]
 		switch day {
 		case "mo", "tu", "we", "th", "fr", "sa", "su":
-			if digit >= '0' && digit <= '9' {
+			if (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') {
 				return true
 			}
 		}
