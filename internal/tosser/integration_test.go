@@ -775,17 +775,10 @@ func makePktSimpleNetmail(t *testing.T, from, to, subject, body, msgID string) [
 	// The hub relays the packet, so the packet header shows the hub as source.
 	hdr := ftn.NewPacketHeader(21, 4, 158, 0, 21, 4, 158, 1, "")
 
-	// Netmail requires INTL, TOPT (destination is a point)
-	kludges := []string{
-		"INTL 21:4/158 21:4/100", // INTL dest orig
-		"TOPT 1",                  // Destination point
-		"MSGID: " + msgID,
-	}
-
 	parsedBody := &ftn.ParsedBody{
 		Area:    "", // No AREA for netmail
 		Text:    body,
-		Kludges: kludges,
+		Kludges: []string{"MSGID: " + msgID},
 	}
 
 	packed := &ftn.PackedMessage{

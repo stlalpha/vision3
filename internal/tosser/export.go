@@ -332,9 +332,16 @@ func (t *Tosser) createOutboundNetmailPacket(link *linkConfig, msgs []pendingNet
 
 		// Strip any "@address" suffix from To — the address belongs in the
 		// packet header and INTL/TOPT kludges, not the username field.
+		// Only strip when the suffix is a valid FTN address to avoid
+		// corrupting legitimate usernames containing '@'.
 		toName := pm.msg.To
 		if idx := strings.LastIndex(toName, "@"); idx > 0 {
-			toName = strings.TrimSpace(toName[:idx])
+			suffix := strings.TrimSpace(toName[idx+1:])
+			if suffix != "" {
+				if _, perr := jam.ParseAddress(suffix); perr == nil {
+					toName = strings.TrimSpace(toName[:idx])
+				}
+			}
 		}
 
 		packedMsgs = append(packedMsgs, &ftn.PackedMessage{
@@ -343,7 +350,7 @@ func (t *Tosser) createOutboundNetmailPacket(link *linkConfig, msgs []pendingNet
 			DestNode: uint16(pm.destAddr.Node),
 			OrigNet:  uint16(t.ownAddr.Net),
 			DestNet:  uint16(pm.destAddr.Net),
-			Attr:     ftn.MsgAttrLocal | ftn.MsgAttrPrivate,
+			Attr:     linkMsgAttr(link.Flavour) | ftn.MsgAttrPrivate,
 			DateTime: ftn.FormatFTNDateTime(pm.msg.DateTime),
 			To:       toName,
 			From:     pm.msg.From,
