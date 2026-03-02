@@ -55,8 +55,8 @@ serial3=disabled
 serial4=disabled
 
 [autoexec]
-MOUNT C {{.DriveCPath}}
-MOUNT D {{.NodePath}}
+MOUNT C "{{.DriveCPath}}"
+MOUNT D "{{.NodePath}}"
 C:
 CALL D:\EXTERNAL.BAT
 EXIT
