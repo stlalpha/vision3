@@ -665,7 +665,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return s + strings.Repeat(" ", width-len(s))
 	}
 
-	// Format single area line (matching  layout)
+	// Format a single area line to match the menu layout
 	formatAreaLine := func(item areaListItem, selected bool, tagged bool) string {
 		paddingStr := strings.Repeat(" ", leftPadding)
 

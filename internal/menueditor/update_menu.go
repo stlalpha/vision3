@@ -62,8 +62,8 @@ func (m Model) updateMenuList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Prompt for new menu filename
 		m.textInput.SetValue("")
 		m.textInput.Placeholder = "NEWMENU"
-		m.textInput.CharLimit = 12
-		m.textInput.Width = 12
+		m.textInput.CharLimit = 8
+		m.textInput.Width = 8
 		m.textInput.Focus()
 		m.mode = modeAddMenu
 		return m, textinput.Blink
@@ -78,6 +78,7 @@ func (m Model) updateMenuList(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	default:
 		switch msg.String() {
 		case "alt+h":
+			m.helpReturnMode = m.mode
 			m.mode = modeHelp
 		}
 	}
@@ -129,8 +130,8 @@ func (m Model) updateMenuEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Add new menu
 		m.textInput.SetValue("")
 		m.textInput.Placeholder = "NEWMENU"
-		m.textInput.CharLimit = 12
-		m.textInput.Width = 12
+		m.textInput.CharLimit = 8
+		m.textInput.Width = 8
 		m.textInput.Focus()
 		m.mode = modeAddMenu
 		return m, textinput.Blink

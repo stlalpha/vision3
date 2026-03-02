@@ -5,9 +5,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
+
+// validMenuName matches a safe 1-8 character uppercase alphanumeric + underscore name.
+var validMenuName = regexp.MustCompile(`^[A-Z0-9_]{1,8}$`)
+
+// normalizeMenuName uppercases and validates a menu name to prevent path traversal.
+func normalizeMenuName(name string) (string, error) {
+	n := strings.ToUpper(strings.TrimSpace(name))
+	if !validMenuName.MatchString(n) {
+		return "", fmt.Errorf("invalid menu name %q: must be 1-8 chars [A-Z0-9_]", name)
+	}
+	return n, nil
+}
 
 // MenuData represents the JSON stored in a .MNU file.
 type MenuData struct {
@@ -101,7 +114,11 @@ func loadMenuFile(path string) (MenuData, error) {
 // LoadCommands reads the .CFG file for the given menu name from {menuBase}/cfg/.
 // Returns an empty slice if no .CFG exists.
 func LoadCommands(menuBase, name string) ([]CmdData, error) {
-	path := filepath.Join(cfgDir(menuBase), name+".CFG")
+	n, err := normalizeMenuName(name)
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(cfgDir(menuBase), n+".CFG")
 	raw, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
 		return []CmdData{}, nil
@@ -121,20 +138,32 @@ func LoadCommands(menuBase, name string) ([]CmdData, error) {
 
 // SaveMenu writes a MenuData record atomically to {menuBase}/mnu/{name}.MNU.
 func SaveMenu(menuBase, name string, data MenuData) error {
-	path := filepath.Join(mnuDir(menuBase), name+".MNU")
+	n, err := normalizeMenuName(name)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(mnuDir(menuBase), n+".MNU")
 	return atomicWriteJSON(path, data)
 }
 
 // SaveCommands writes a command slice atomically to {menuBase}/cfg/{name}.CFG.
 func SaveCommands(menuBase, name string, cmds []CmdData) error {
-	path := filepath.Join(cfgDir(menuBase), name+".CFG")
+	n, err := normalizeMenuName(name)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(cfgDir(menuBase), n+".CFG")
 	return atomicWriteJSON(path, cmds)
 }
 
 // DeleteMenu removes the .MNU and .CFG files for the given menu name.
 func DeleteMenu(menuBase, name string) error {
-	mnuPath := filepath.Join(mnuDir(menuBase), name+".MNU")
-	cfgPath := filepath.Join(cfgDir(menuBase), name+".CFG")
+	n, err := normalizeMenuName(name)
+	if err != nil {
+		return err
+	}
+	mnuPath := filepath.Join(mnuDir(menuBase), n+".MNU")
+	cfgPath := filepath.Join(cfgDir(menuBase), n+".CFG")
 
 	if err := os.Remove(mnuPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("removing %s: %w", mnuPath, err)
@@ -148,6 +177,11 @@ func DeleteMenu(menuBase, name string) error {
 // CreateMenu writes a new empty .MNU and empty .CFG for the given name.
 // If writing the .CFG fails, the .MNU is removed so no half-created state is left on disk.
 func CreateMenu(menuBase, name string) error {
+	n, err := normalizeMenuName(name)
+	if err != nil {
+		return err
+	}
+	name = n
 	d := MenuData{
 		CLR:       false,
 		UsePrompt: true,
@@ -166,8 +200,12 @@ func CreateMenu(menuBase, name string) error {
 
 // MenuExists reports whether a .MNU file with the given name exists.
 func MenuExists(menuBase, name string) bool {
-	path := filepath.Join(mnuDir(menuBase), name+".MNU")
-	_, err := os.Stat(path)
+	n, err := normalizeMenuName(name)
+	if err != nil {
+		return false
+	}
+	path := filepath.Join(mnuDir(menuBase), n+".MNU")
+	_, err = os.Stat(path)
 	return err == nil
 }
 

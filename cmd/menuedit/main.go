@@ -54,12 +54,17 @@ func main() {
 	// Verify mnu/ and cfg/ subdirectories exist and are accessible
 	for _, sub := range []string{"mnu", "cfg"} {
 		subPath := filepath.Join(path, sub)
-		if _, err := os.Stat(subPath); err != nil {
+		subInfo, err := os.Stat(subPath)
+		if err != nil {
 			if os.IsNotExist(err) {
 				fmt.Fprintf(os.Stderr, "Error: required subdirectory not found: %s\n", subPath) //nolint:errcheck
 			} else {
 				fmt.Fprintf(os.Stderr, "Error: cannot access subdirectory %s: %v\n", subPath, err) //nolint:errcheck
 			}
+			os.Exit(1)
+		}
+		if !subInfo.IsDir() {
+			fmt.Fprintf(os.Stderr, "Error: %s is not a directory\n", subPath) //nolint:errcheck
 			os.Exit(1)
 		}
 	}

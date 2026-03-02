@@ -190,7 +190,7 @@ func (m Model) renderMenuField(fieldIdx int, f fieldDef, d *MenuData, boxW int) 
 	// Normal display — use pipe-code renderer if defined (e.g. Prompt Line fields)
 	if f.Render != nil {
 		rendered := f.Render(value, dispW)
-		visLen := stringeditor.PlainTextLength(value)
+		visLen := stringeditor.PlainTextLength(rendered)
 		if visLen > dispW {
 			visLen = dispW
 		}

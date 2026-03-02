@@ -72,6 +72,9 @@ type Model struct {
 	dirtyMenus map[string]bool // menu names with unsaved changes
 	dirtyCmds  bool            // current command set has unsaved changes
 
+	// Help overlay
+	helpReturnMode editorMode // mode to restore when help is dismissed
+
 	// Terminal dimensions
 	width  int
 	height int
@@ -145,7 +148,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case modeAddMenu:
 			return m.updateAddMenu(msg)
 		case modeHelp:
-			m.mode = modeMenuList
+			m.mode = m.helpReturnMode
 			return m, nil
 		}
 	}

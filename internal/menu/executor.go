@@ -7985,8 +7985,9 @@ func writeProcessedStringWithManualEncoding(terminal *term.Terminal, processedBy
 func runNewscan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running NEWSCAN for user %s", nodeNumber, currentUser.Handle)
 
-	// Reload user from disk so we pick up any newscan setting changes
-	// (e.g. tagged areas modified by sysop or another session).
+	// Refresh user from the in-process manager so we pick up any newscan
+	// setting changes saved during this session (e.g. tagged areas modified
+	// via newscan config or by another goroutine on the same node).
 	if reloaded, exists := userManager.GetUser(strings.ToLower(currentUser.Username)); exists {
 		currentUser = reloaded
 	}

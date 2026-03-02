@@ -20,8 +20,8 @@ func (m Model) viewMenuListScreen() string {
 
 	// Vertical centering: 1 title + box(19) + message(1) + help(1) = 22 rows
 	extraV := max(0, m.height-22)
-	topPad := max(1, extraV/2)
-	bottomPad := max(1, extraV-topPad)
+	topPad := extraV / 2
+	bottomPad := extraV - topPad
 
 	for i := 0; i < topPad; i++ {
 		b.WriteString(bg)
