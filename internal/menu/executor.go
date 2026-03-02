@@ -7985,6 +7985,12 @@ func writeProcessedStringWithManualEncoding(terminal *term.Terminal, processedBy
 func runNewscan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running NEWSCAN for user %s", nodeNumber, currentUser.Handle)
 
+	// Reload user from disk so we pick up any newscan setting changes
+	// (e.g. tagged areas modified by sysop or another session).
+	if reloaded, exists := userManager.GetUser(strings.ToLower(currentUser.Username)); exists {
+		currentUser = reloaded
+	}
+
 	// Determine if this is a "current area only" scan based on args
 	currentOnly := strings.ToUpper(strings.TrimSpace(args)) == "CURRENT"
 
