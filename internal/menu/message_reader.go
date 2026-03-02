@@ -647,7 +647,6 @@ func hasANSICursorMovement(text string) bool {
 }
 
 // detectAnsiArtInMessage checks if message body contains ANSI art
-// using the same logic as Retrograde
 func detectAnsiArtInMessage(text string) bool {
 	// Must contain ANSI codes
 	if !strings.Contains(text, "\x1b[") {

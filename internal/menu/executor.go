@@ -2811,7 +2811,7 @@ func normalizePipeCodeDelimiters(input []byte) []byte {
 
 	// Only normalize likely pipe-code delimiters (e.g. ¦CR, ¦08, │DE).
 	// Do NOT blanket-convert ANSI line-art bytes (such as CP437 0xB3), which
-	// can corrupt imported Retrograde art templates.
+	// can corrupt imported art templates.
 	normalized := make([]byte, 0, len(input))
 
 	isPipeCodeLead := func(b byte) bool {

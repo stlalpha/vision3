@@ -517,7 +517,6 @@ type areaListItem struct {
 }
 
 // runNewscanConfig allows users to tag/untag message areas for their personal newscan.
-// Similar to retrograde's subscription system but using Vision3 styling.
 func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
@@ -666,7 +665,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return s + strings.Repeat(" ", width-len(s))
 	}
 
-	// Format single area line (matching Retrograde layout)
+	// Format single area line (matching  layout)
 	formatAreaLine := func(item areaListItem, selected bool, tagged bool) string {
 		paddingStr := strings.Repeat(" ", leftPadding)
 
@@ -866,7 +865,7 @@ func runNewscanConfig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	footerLine := termHeight // Footer on last line, blank line naturally above it
 	terminalio.WriteProcessedBytes(terminal, []byte(fmt.Sprintf("\x1b[%d;1H", footerLine)), outputMode)
 
-	// Match Retrograde footer style: Cyan command + Yellow colon + White description
+	// Match footer style: Cyan command + Yellow colon + White description
 	footerText := "\x1b[36mSPACE\x1b[93m:\x1b[37mToggle  " +
 		"\x1b[36mA\x1b[93m:\x1b[37mAll  " +
 		"\x1b[36mN\x1b[93m:\x1b[37mNone  " +

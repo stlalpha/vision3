@@ -29,8 +29,8 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
     *   **Files:** `internal/telnetserver/telnet.go`, `internal/telnetserver/adapter.go`, `cmd/vision3/main.go`, `documentation/telnet-server.md`
     *   **Status:** COMPLETE.
 
-*   **[DONE] Retrograde-Style One Liners (2026-02-13):**
-    *   **Goal:** Replace legacy one-liner flow with Retrograde-style template UX while preserving anonymous posting and sysop traceability.
+*   **[DONE] One Liners (2026-02-13):**
+    *   **Goal:** Replace legacy one-liner flow with template UX while preserving anonymous posting and sysop traceability.
     *   **Implementation:**
         *   Reworked `RUN:ONELINER` to use `ONELINER.TOP/MID/BOT` template flow.
         *   Added JSON object model in `data/oneliners.json` with backward compatibility for legacy string entries.

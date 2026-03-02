@@ -1,6 +1,5 @@
 // Package jam implements the JAM message base format (JAM-001 specification).
-// This is a fresh implementation for Vision3 BBS, using the retrograde BBS
-// implementation as an architectural reference.
+
 package jam
 
 import "errors"
