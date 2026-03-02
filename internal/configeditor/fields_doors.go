@@ -105,7 +105,7 @@ func (m *Model) fieldsDoor() []fieldDef {
 
 	row++
 	fields = append(fields, fieldDef{
-		Label: "Is DOS", Help: "Y=DOS door via dosemu2, N=native Linux program", Type: ftYesNo, Col: 3, Row: row, Width: 1,
+		Label: "Is DOS", Help: "Y=DOS door (dosemu2 or dosbox-x), N=native program", Type: ftYesNo, Col: 3, Row: row, Width: 1,
 		Get: func() string { return boolToYN(dPtr.IsDOS) },
 		Set: func(val string) error { dPtr.IsDOS = ynToBool(val); save(); return nil },
 	})
@@ -128,9 +128,15 @@ func (m *Model) fieldsDoor() []fieldDef {
 		// DOS-specific fields
 		row++
 		fields = append(fields, fieldDef{
-			Label: "Drive C Path", Help: "dosemu drive_c path (blank=~/.dosemu/drive_c)", Type: ftString, Col: 3, Row: row, Width: 45,
+			Label: "Drive C Path", Help: "drive_c directory path (blank=~/.dosemu/drive_c)", Type: ftString, Col: 3, Row: row, Width: 45,
 			Get: func() string { return dPtr.DriveCPath },
 			Set: func(val string) error { dPtr.DriveCPath = val; save(); return nil },
+		})
+		row++
+		fields = append(fields, fieldDef{
+			Label: "DOS Emulator", Help: "Emulator: blank=auto, dosemu=dosemu2 (Linux x86), dosbox=DOSBox-X (cross-platform)", Type: ftString, Col: 3, Row: row, Width: 10,
+			Get: func() string { return dPtr.DOSEmulator },
+			Set: func(val string) error { dPtr.DOSEmulator = val; save(); return nil },
 		})
 		row++
 		fields = append(fields, fieldDef{
@@ -143,6 +149,18 @@ func (m *Model) fieldsDoor() []fieldDef {
 			Label: "DOSemu Config", Help: "Custom .dosemurc config file (optional)", Type: ftString, Col: 3, Row: row, Width: 45,
 			Get: func() string { return dPtr.DosemuConfig },
 			Set: func(val string) error { dPtr.DosemuConfig = val; save(); return nil },
+		})
+		row++
+		fields = append(fields, fieldDef{
+			Label: "DOSBox Path", Help: "Path to dosbox-x binary (blank=auto-detect dosbox-x or dosbox)", Type: ftString, Col: 3, Row: row, Width: 45,
+			Get: func() string { return dPtr.DOSBoxPath },
+			Set: func(val string) error { dPtr.DOSBoxPath = val; save(); return nil },
+		})
+		row++
+		fields = append(fields, fieldDef{
+			Label: "DOSBox Config", Help: "Base dosbox-x.conf template path (blank=built-in BBS template)", Type: ftString, Col: 3, Row: row, Width: 45,
+			Get: func() string { return dPtr.DOSBoxConfig },
+			Set: func(val string) error { dPtr.DOSBoxConfig = val; save(); return nil },
 		})
 	} else {
 		// Native-specific fields
