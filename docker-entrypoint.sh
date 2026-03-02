@@ -20,10 +20,11 @@ do
     mkdir -p "$d"
 done
 
-# Copy binkd.conf template to data/ftn/ if not present
+# Copy binkd.conf template to data/ftn/ if not present, rewriting paths
+# for the Docker layout (/vision3 instead of /opt/vision3)
 if [ ! -f "/vision3/data/ftn/binkd.conf" ] && [ -f "/vision3/templates/configs/binkd.conf" ]; then
-    echo "Copying binkd.conf template to data/ftn/..."
-    cp /vision3/templates/configs/binkd.conf /vision3/data/ftn/binkd.conf
+    echo "Copying binkd.conf template to data/ftn/ (adjusting paths for Docker)..."
+    sed 's|/opt/vision3|/vision3|g' /vision3/templates/configs/binkd.conf > /vision3/data/ftn/binkd.conf
 fi
 
 # Create per-node temp directories (used by doors and session temp files)
