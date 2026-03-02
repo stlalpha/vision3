@@ -20,6 +20,12 @@ do
     mkdir -p "$d"
 done
 
+# Copy binkd.conf template to data/ftn/ if not present
+if [ ! -f "/vision3/data/ftn/binkd.conf" ] && [ -f "/vision3/templates/configs/binkd.conf" ]; then
+    echo "Copying binkd.conf template to data/ftn/..."
+    cp /vision3/templates/configs/binkd.conf /vision3/data/ftn/binkd.conf
+fi
+
 # Create per-node temp directories (used by doors and session temp files)
 for i in $(seq 1 10); do
     mkdir -p /vision3/temp/node${i}

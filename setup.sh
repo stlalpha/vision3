@@ -107,6 +107,12 @@ mkdir -p data/logs
 mkdir -p data/msgbases
 mkdir -p data/ftn/{in,secure_in,temp_in,temp_out,out,dupehist,dloads,dloads/pass}
 mkdir -p configs
+
+# Copy binkd.conf template to data/ftn/ if not present
+if [ -f "templates/configs/binkd.conf" ] && [ ! -f "data/ftn/binkd.conf" ]; then
+    echo "  Creating data/ftn/binkd.conf from template..."
+    cp templates/configs/binkd.conf data/ftn/binkd.conf
+fi
 mkdir -p bin
 mkdir -p scripts
 echo "Directories created."
