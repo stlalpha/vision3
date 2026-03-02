@@ -123,7 +123,7 @@ Your reward? The satisfaction of knowing that somewhere, someone is reliving the
 | FTN Echomail/Netmail          | ✅ Working     | JAM-backed, tosser, import/export, dupe checking                                                                    |
 | **Admin & Tools**             |               |                                                                                                                     |
 | Event Scheduler               | ✅ Working     | Cron-style, automated maintenance, FTN polling                                                                      |
-| One-liner System              | ✅ Working     | Retrograde-style                                                                                                    |
+| One-liner System              | ✅ Working     |                                                                                                    |
 | TUI String Editor (`strings`) | ✅ Working     | Full-screen BBS string customizations                                                                               |
 | Config Hot Reload             | ✅ Working     | Live reload via fsnotify, no restart required                                                                       |
 | Invisible SysOp Login         | ✅ Working     | SysOp/CoSysOp login without appearing in caller log                                                                 |

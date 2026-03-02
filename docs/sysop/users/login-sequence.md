@@ -60,7 +60,7 @@ Displays the last callers list using templates from `menus/v3/templates/` (`LAST
 
 ### ONELINERS
 
-Displays recent oneliners and prompts the user to add a new one. Uses templates from `menus/v3/templates/` (`ONELINER.TOP`, `ONELINER.MID`, `ONELINER.BOT`) with Retrograde-style layout/colors. Data is stored in `data/oneliners.json` as object entries. Anonymous posts display using `strings.json` → `anonymousName` (for example, "Anonymous Coward") while preserving poster identity fields in JSON for sysop visibility.
+Displays recent oneliners and prompts the user to add a new one. Uses templates from `menus/v3/templates/` (`ONELINER.TOP`, `ONELINER.MID`, `ONELINER.BOT`) with layout/colors. Data is stored in `data/oneliners.json` as object entries. Anonymous posts display using `strings.json` → `anonymousName` (for example, "Anonymous Coward") while preserving poster identity fields in JSON for sysop visibility.
 
 ```json
 {"command": "ONELINERS"}

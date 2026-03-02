@@ -2,7 +2,7 @@ package menu
 
 // processTemplate detects the placeholder format and routes to the appropriate processor.
 // Supports two formats:
-//   - New format: @CODE@, @CODE:20@, @CODE###@, @CODE*@ (Retrograde-style)
+//   - New format: @CODE@, @CODE:20@, @CODE###@, @CODE*@
 //   - Legacy format: |X (Vision/2 Pascal-style)
 //
 // Format detection is based on presence of @-delimited codes (@T@, @F@, @S@).

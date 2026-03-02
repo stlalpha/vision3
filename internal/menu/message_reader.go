@@ -223,6 +223,9 @@ readerLoop:
 		needsBodyRedraw := false
 
 		drawBody := func() {
+			// Reset to grey before drawing body to prevent inherited colors (e.g. cyan
+			// from the |11 reading suffix) from bleeding into plain body text lines.
+			terminalio.WriteProcessedBytes(terminal, []byte("\x1b[0;37m"), outputMode)
 			// Display visible portion of message body using explicit cursor positioning
 			for i := 0; i < bodyAvailHeight; i++ {
 				lineNum := bodyStartRow + i
@@ -644,7 +647,6 @@ func hasANSICursorMovement(text string) bool {
 }
 
 // detectAnsiArtInMessage checks if message body contains ANSI art
-// using the same logic as Retrograde
 func detectAnsiArtInMessage(text string) bool {
 	// Must contain ANSI codes
 	if !strings.Contains(text, "\x1b[") {

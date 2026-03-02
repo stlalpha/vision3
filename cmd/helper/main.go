@@ -861,11 +861,33 @@ func cmdAreafix(args []string) {
 		body = strings.TrimRight(*command, "\r\n") + "\r---\r"
 	}
 
-	// Netmail has no AREA kludge; add MSGID, PID for routing
+	// Netmail has no AREA kludge; add INTL, FMPT/TOPT (for points), MSGID, PID for routing
+	var kludges []string
+
+	// INTL kludge (required for all netmail)
+	intl := fmt.Sprintf("INTL %d:%d/%d %d:%d/%d",
+		destAddr.Zone, destAddr.Net, destAddr.Node,
+		ownAddr.Zone, ownAddr.Net, ownAddr.Node)
+	kludges = append(kludges, intl)
+
+	// FMPT kludge (required when origin is a point)
+	if ownAddr.Point != 0 {
+		kludges = append(kludges, fmt.Sprintf("FMPT %d", ownAddr.Point))
+	}
+
+	// TOPT kludge (required when destination is a point)
+	if destAddr.Point != 0 {
+		kludges = append(kludges, fmt.Sprintf("TOPT %d", destAddr.Point))
+	}
+
+	// MSGID and PID
 	msgID := fmt.Sprintf("%s %08X", netCfg.OwnAddress, uint32(time.Now().UnixNano()&0xFFFFFFFF))
+	kludges = append(kludges, "MSGID: "+msgID)
+	kludges = append(kludges, "PID: "+jam.FormatPID())
+
 	parsed := &ftn.ParsedBody{
 		Text:    body,
-		Kludges: []string{"MSGID: " + msgID, "PID: " + jam.FormatPID()},
+		Kludges: kludges,
 	}
 	bodyBytes := ftn.FormatPackedMessageBody(parsed)
 

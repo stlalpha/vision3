@@ -2811,7 +2811,7 @@ func normalizePipeCodeDelimiters(input []byte) []byte {
 
 	// Only normalize likely pipe-code delimiters (e.g. ¦CR, ¦08, │DE).
 	// Do NOT blanket-convert ANSI line-art bytes (such as CP437 0xB3), which
-	// can corrupt imported Retrograde art templates.
+	// can corrupt imported art templates.
 	normalized := make([]byte, 0, len(input))
 
 	isPipeCodeLead := func(b byte) bool {
@@ -7984,6 +7984,13 @@ func writeProcessedStringWithManualEncoding(terminal *term.Terminal, processedBy
 // runNewscan handles the message newscan with Pascal-style GetScanType setup and multi-area flow.
 func runNewscan(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running NEWSCAN for user %s", nodeNumber, currentUser.Handle)
+
+	// Refresh user from the in-process manager so we pick up any newscan
+	// setting changes saved during this session (e.g. tagged areas modified
+	// via newscan config or by another goroutine on the same node).
+	if reloaded, exists := userManager.GetUser(strings.ToLower(currentUser.Username)); exists {
+		currentUser = reloaded
+	}
 
 	// Determine if this is a "current area only" scan based on args
 	currentOnly := strings.ToUpper(strings.TrimSpace(args)) == "CURRENT"
