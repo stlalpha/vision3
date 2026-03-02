@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"text/template"
+	"time"
 )
 
 // dosboxConfTemplate is the built-in DOSBox-X config used when no base config is provided.
@@ -243,6 +244,8 @@ func executeDOSBoxDoor(ctx *DoorCtx) error {
 
 	// Accept the serial connection from DOSBox-X.
 	// Use a channel so we can handle DOSBox-X dying before it connects.
+	// Race against: (1) Accept, (2) timeout, (3) DOSBox-X exiting before connecting.
+	const acceptTimeout = 60 * time.Second
 	type acceptResult struct {
 		conn net.Conn
 		err  error
@@ -253,15 +256,28 @@ func executeDOSBoxDoor(ctx *DoorCtx) error {
 		acceptCh <- acceptResult{conn, err}
 	}()
 
+	waitCh := make(chan error, 1)
+	go func() {
+		waitCh <- cmd.Wait()
+	}()
+
 	var conn net.Conn
 	select {
 	case res := <-acceptCh:
 		if res.err != nil {
 			cmd.Process.Kill() //nolint:errcheck
-			cmd.Wait()         //nolint:errcheck
+			<-waitCh
 			return fmt.Errorf("DOSBox-X serial connection failed: %w", res.err)
 		}
 		conn = res.conn
+	case <-time.After(acceptTimeout):
+		cmd.Process.Kill() //nolint:errcheck
+		<-waitCh
+		listener.Close()
+		return fmt.Errorf("timeout waiting for DOSBox-X to connect (%v)", acceptTimeout)
+	case waitErr := <-waitCh:
+		listener.Close()
+		return fmt.Errorf("DOSBox-X exited before connecting: %w", waitErr)
 	}
 	defer conn.Close()
 
@@ -293,7 +309,7 @@ func executeDOSBoxDoor(ctx *DoorCtx) error {
 	}()
 
 	// Wait for DOSBox-X to exit, then clean up I/O goroutines
-	cmdErr := cmd.Wait()
+	cmdErr := <-waitCh
 	log.Printf("DEBUG: Node %d: DOSBox-X process exited for door %q", ctx.NodeNumber, ctx.DoorName)
 
 	close(readInterrupt)
