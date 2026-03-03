@@ -29,6 +29,8 @@ Door programs are stored in `configs/doors.json`. Each entry is keyed by a uniqu
 
 ## Configuration Fields
 
+### Native Doors
+
 | Field | Description |
 |-------|-------------|
 | `name` | Display name for the door |
@@ -39,6 +41,79 @@ Door programs are stored in `configs/doors.json`. Each entry is keyed by a uniqu
 | `io_mode` | I/O handling: `STDIO` |
 | `requires_raw_terminal` | Whether raw terminal mode is needed |
 | `environment_variables` | Additional environment variables to set |
+
+### DOS Doors
+
+Set `is_dos: true` to run a 16-bit DOS door game via a DOS emulator.
+
+| Field | Description |
+|-------|-------------|
+| `is_dos` | `true` = DOS door |
+| `dos_commands` | Array of DOS commands to run (supports placeholders) |
+| `drive_c_path` | Host path mounted as DOS C: drive (default: `~/.dosemu/drive_c`) |
+| `dos_emulator` | Emulator selection: `""` or `"auto"` (default), `"dosemu"`, `"dosbox"` |
+| `dosemu_path` | Path to dosemu2 binary (default: `/usr/bin/dosemu`) |
+| `dosemu_config` | Custom `.dosemurc` config file path (optional) |
+| `dosbox_path` | Path to dosbox-x binary (default: auto-detect `dosbox-x` or `dosbox` in `$PATH`) |
+| `dosbox_config` | Base `dosbox-x.conf` template path (default: built-in BBS template) |
+
+#### Emulator Selection
+
+| `dos_emulator` value | Behaviour |
+|---|---|
+| `""` or `"auto"` | Prefer dosemu2 on Linux x86 if installed; otherwise use DOSBox-X |
+| `"dosemu"` | Always use dosemu2 (Linux x86 only) |
+| `"dosbox"` | Always use DOSBox-X (cross-platform: Linux, macOS, Windows) |
+
+#### Platform Support
+
+| Platform | dosemu2 | DOSBox-X |
+|---|---|---|
+| Linux x86 / x86-64 | Yes | Yes |
+| Linux ARM / ARM64 | No | Yes |
+| macOS (Intel or Apple Silicon) | No | Yes |
+| Windows 64-bit | No | Yes |
+
+#### I/O
+
+Both emulators connect the door's COM1 serial port back to the user's SSH session:
+- **dosemu2** — via a PTY pair (`serial { virtual com 1 }`)
+- **DOSBox-X** — via a TCP loopback socket (`serial1=nullmodem`, raw CP437 bytes)
+
+The user's terminal sees identical raw byte streams from both paths.
+
+#### DOS Door Example (DOSBox-X)
+
+```json
+{
+  "name": "LORD",
+  "is_dos": true,
+  "dos_emulator": "dosbox",
+  "dos_commands": [
+    "cd C:\\DOORS\\LORD",
+    "LORD.EXE /N{NODE} /T{TIMELEFT}"
+  ],
+  "drive_c_path": "/opt/bbs/drive_c",
+  "dropfile_type": "DOOR.SYS"
+}
+```
+
+#### DOS Door Example (auto-detect)
+
+```json
+{
+  "name": "USURPER",
+  "is_dos": true,
+  "dos_commands": [
+    "cd C:\\DOORS\\USURPER",
+    "USR.EXE /N{NODE}"
+  ],
+  "drive_c_path": "/opt/bbs/drive_c",
+  "dropfile_type": "DOOR.SYS"
+}
+```
+
+With no `dos_emulator` set, dosemu2 is used on Linux x86 if available, otherwise DOSBox-X is used automatically.
 
 ## Placeholders
 
