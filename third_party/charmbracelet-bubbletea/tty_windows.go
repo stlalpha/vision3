@@ -8,7 +8,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/x/term"
-	ansicon "github.com/seppestas/go-ansicon"
+	ansicon "github.com/bitbored/go-ansicon"
 	"golang.org/x/sys/windows"
 )
 
@@ -76,7 +76,19 @@ func (p *Program) prepareOutput() {
 		return
 	}
 	if windows.SetConsoleMode(windows.Handle(f.Fd()), mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING) != nil {
-		// VT processing unsupported — wrap output with ANSI→Win32 translator.
+		// VT processing unsupported — preserve the underlying console file for
+		// window sizing and terminal state restoration, then wrap the writer.
+		// Without this, initInput can't set p.ttyOutput/p.previousOutputState
+		// (the wrapped writer no longer satisfies term.File), which would break
+		// resize events and output state restore on shutdown.
+		if p.ttyOutput == nil {
+			p.ttyOutput = f
+		}
+		if p.previousOutputState == nil {
+			if state, err := term.GetState(f.Fd()); err == nil {
+				p.previousOutputState = state
+			}
+		}
 		p.output = ansicon.Convert(p.output)
 		return
 	}
