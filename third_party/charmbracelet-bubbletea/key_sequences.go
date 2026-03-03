@@ -118,15 +118,16 @@ func detectBracketedPaste(input []byte) (hasBp bool, width int, msg Msg) {
 	return true, inputLen, KeyMsg(k)
 }
 
-// detectReportFocus detects a focus report sequence.
+// detectReportFocus detects a focus report sequence. Uses prefix match so input
+// with trailing bytes (e.g. multiple sequences) is handled correctly.
 func detectReportFocus(input []byte) (hasRF bool, width int, msg Msg) {
 	if len(input) < 3 { //nolint:mnd
 		return false, 0, nil
 	}
 	switch {
-	case input[0] == '\x1b' && input[1] == '[' && input[2] == 'I':
+	case bytes.HasPrefix(input, []byte("\x1b[I")):
 		return true, 3, FocusMsg{} //nolint:mnd
-	case input[0] == '\x1b' && input[1] == '[' && input[2] == 'O':
+	case bytes.HasPrefix(input, []byte("\x1b[O")):
 		return true, 3, BlurMsg{} //nolint:mnd
 	}
 	return false, 0, nil

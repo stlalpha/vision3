@@ -310,7 +310,9 @@ func (p *Program) handleSignals() chan struct{} {
 					}
 					select {
 					case p.msgs <- msg:
-					case <-p.ctx.Done():
+						// delivered
+					default:
+						// drop if event loop is blocked or shutting down
 					}
 					return
 				}
@@ -935,9 +937,14 @@ func (p *Program) RestoreTerminal() error {
 //
 // If the altscreen is active no output will be printed.
 func (p *Program) Println(args ...interface{}) {
+	msg := printLineMessage{messageBody: fmt.Sprint(args...)}
 	select {
-	case p.msgs <- printLineMessage{messageBody: fmt.Sprint(args...)}:
+	case p.msgs <- msg:
+		// delivered
 	case <-p.ctx.Done():
+		// program shutting down, drop
+	default:
+		// event loop blocked, drop to avoid blocking caller
 	}
 }
 
@@ -950,8 +957,13 @@ func (p *Program) Println(args ...interface{}) {
 //
 // If the altscreen is active no output will be printed.
 func (p *Program) Printf(template string, args ...interface{}) {
+	msg := printLineMessage{messageBody: fmt.Sprintf(template, args...)}
 	select {
-	case p.msgs <- printLineMessage{messageBody: fmt.Sprintf(template, args...)}:
+	case p.msgs <- msg:
+		// delivered
 	case <-p.ctx.Done():
+		// program shutting down, drop
+	default:
+		// event loop blocked, drop to avoid blocking caller
 	}
 }

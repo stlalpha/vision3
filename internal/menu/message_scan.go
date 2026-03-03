@@ -422,12 +422,14 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		// the message reader's separator/lightbar left on screen.
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 
-		// Display scan area header: ANSI art template or plain text fallback
+		// Display scan area header: ANSI art template or plain text fallback.
+		// Both paths write exactly one trailing newline before the nonStop block.
 		if len(scanHeaderTemplate) > 0 {
 			scanInfo := fmt.Sprintf("|09Scanning |01(|13%s|01)... |07[|15%d|07/|15%d|07 msgs]",
 				area.Tag, startMsg, totalCount)
 			merged := bytes.ReplaceAll(scanHeaderTemplate, []byte("|@"), []byte(scanInfo))
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(merged), outputMode)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		} else {
 			boardMsg := fmt.Sprintf(e.LoadedStrings.ScanAreaProgress,
 				area.Tag, startMsg, totalCount)
