@@ -79,6 +79,7 @@ func (p *Program) initCancelReader(cancel bool) error {
 	if cancel && p.cancelReader != nil {
 		p.cancelReader.Cancel()
 		p.waitForReadLoop()
+		_ = p.cancelReader.Close()
 	}
 
 	var err error

@@ -502,6 +502,8 @@ func (r *standardRenderer) reportFocus() bool {
 
 // setWindowTitle sets the terminal window title.
 func (r *standardRenderer) setWindowTitle(title string) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 	r.execute(ansi.SetWindowTitle(title))
 }
 
@@ -538,6 +540,8 @@ func (r *standardRenderer) setIgnoredLines(from int, to int) {
 // Bubble Tea renderer. That is, any lines previously set to be ignored can be
 // rendered to again.
 func (r *standardRenderer) clearIgnoredLines() {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 	r.ignoreLines = nil
 }
 

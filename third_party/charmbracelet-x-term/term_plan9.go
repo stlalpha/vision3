@@ -1,6 +1,7 @@
 package term
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,6 +48,7 @@ func makeRaw(fd uintptr) (*State, error) {
 		return nil, err
 	}
 	if _, err := ctl.Write([]byte("rawon")); err != nil {
+		ctl.Close() //nolint:errcheck
 		return nil, err
 	}
 	return &State{state: state{termName: t, raw: true, ctl: ctl}}, nil
@@ -66,6 +68,9 @@ func getState(fd uintptr) (*State, error) {
 }
 
 func restore(_ uintptr, state *State) error {
+	if state == nil {
+		return errors.New("term: invalid state")
+	}
 	if _, err := state.ctl.Write([]byte("rawoff")); err != nil {
 		return err
 	}
@@ -97,6 +102,9 @@ func getSize(fd uintptr) (int, int, error) {
 }
 
 func setState(_ uintptr, state *State) error {
+	if state == nil {
+		return errors.New("term: invalid state")
+	}
 	raw := "rawoff"
 	if state.raw {
 		raw = "rawon"
@@ -108,7 +116,12 @@ func setState(_ uintptr, state *State) error {
 }
 
 func readPassword(fd uintptr) ([]byte, error) {
-	f := os.NewFile(fd, "cons")
+	// Open a fresh /dev/cons fd rather than wrapping the caller's fd,
+	// so Close does not affect the caller's descriptor.
+	f, err := os.Open("/dev/cons")
+	if err != nil {
+		return nil, err
+	}
 	defer f.Close()
 	var b [128]byte
 	n, err := f.Read(b[:])

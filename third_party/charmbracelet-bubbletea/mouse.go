@@ -55,12 +55,13 @@ func (m MouseEvent) String() (s string) {
 		s += mouseButtons[m.Button]
 	} else {
 		btn := mouseButtons[m.Button]
-		if btn != "" {
-			s += btn
-		}
 		act := mouseActions[m.Action]
-		if act != "" {
-			s += " " + act
+		if btn != "" && act != "" {
+			s += btn + " " + act
+		} else if btn != "" {
+			s += btn
+		} else if act != "" {
+			s += act
 		}
 	}
 

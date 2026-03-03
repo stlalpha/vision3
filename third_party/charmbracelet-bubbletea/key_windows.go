@@ -187,18 +187,19 @@ func mouseEvent(p coninput.ButtonState, e coninput.MouseEventRecord) MouseMsg {
 		ev.Button, ev.Action = mouseEventButton(p, e.ButtonState)
 		if ev.Action == MouseActionRelease {
 			ev.Type = MouseRelease
-		}
-		switch ev.Button { //nolint:exhaustive
-		case MouseButtonLeft:
-			ev.Type = MouseLeft
-		case MouseButtonMiddle:
-			ev.Type = MouseMiddle
-		case MouseButtonRight:
-			ev.Type = MouseRight
-		case MouseButtonBackward:
-			ev.Type = MouseBackward
-		case MouseButtonForward:
-			ev.Type = MouseForward
+		} else {
+			switch ev.Button { //nolint:exhaustive
+			case MouseButtonLeft:
+				ev.Type = MouseLeft
+			case MouseButtonMiddle:
+				ev.Type = MouseMiddle
+			case MouseButtonRight:
+				ev.Type = MouseRight
+			case MouseButtonBackward:
+				ev.Type = MouseBackward
+			case MouseButtonForward:
+				ev.Type = MouseForward
+			}
 		}
 	case coninput.MOUSE_WHEELED:
 		if e.WheelDirection > 0 {

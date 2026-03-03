@@ -26,8 +26,7 @@ func (p *Program) listenForResize(done chan struct{}) {
 		case <-p.ctx.Done():
 			return
 		case <-sig:
+			p.checkResize()
 		}
-
-		p.checkResize()
 	}
 }

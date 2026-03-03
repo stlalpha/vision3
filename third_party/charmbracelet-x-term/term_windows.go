@@ -33,7 +33,7 @@ func makeRaw(fd uintptr) (*State, error) {
 		// to read Windows console events directly and does not require VT input mode.
 		raw &^= windows.ENABLE_VIRTUAL_TERMINAL_INPUT
 		if err2 := windows.SetConsoleMode(windows.Handle(fd), raw); err2 != nil {
-			return nil, err
+			return nil, err2
 		}
 	}
 	return &State{state{st}}, nil
@@ -55,6 +55,9 @@ func getState(fd uintptr) (*State, error) {
 }
 
 func restore(fd uintptr, state *State) error {
+	if state == nil {
+		return errors.New("term: invalid state")
+	}
 	return windows.SetConsoleMode(windows.Handle(fd), state.Mode)
 }
 

@@ -43,7 +43,12 @@ const suspendSupported = true
 func suspendProcess() {
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, syscall.SIGCONT)
-	_ = syscall.Kill(0, syscall.SIGTSTP)
+	if err := syscall.Kill(0, syscall.SIGTSTP); err != nil {
+		// Kill failed; clean up and return rather than blocking forever on <-c.
+		signal.Stop(c)
+		close(c)
+		return
+	}
 	// blocks until a CONT happens...
 	<-c
 	signal.Stop(c)

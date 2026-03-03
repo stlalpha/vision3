@@ -124,9 +124,9 @@ func detectReportFocus(input []byte) (hasRF bool, width int, msg Msg) {
 		return false, 0, nil
 	}
 	switch {
-	case bytes.HasPrefix(input, []byte("\x1b[I")):
+	case input[0] == '\x1b' && input[1] == '[' && input[2] == 'I':
 		return true, 3, FocusMsg{} //nolint:mnd
-	case bytes.HasPrefix(input, []byte("\x1b[O")):
+	case input[0] == '\x1b' && input[1] == '[' && input[2] == 'O':
 		return true, 3, BlurMsg{} //nolint:mnd
 	}
 	return false, 0, nil
