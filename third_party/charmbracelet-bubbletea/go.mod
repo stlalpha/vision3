@@ -3,6 +3,7 @@ module github.com/charmbracelet/bubbletea
 go 1.24.0
 
 require (
+	github.com/bitbored/go-ansicon v0.0.0-20150813185003-cc47149d371d
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.10.1
 	github.com/charmbracelet/x/term v0.2.1

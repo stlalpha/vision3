@@ -650,6 +650,10 @@ func (p *Program) Run() (returnModel Model, returnErr error) {
 		}()
 	}
 
+	// Wrap p.output with a platform-specific ANSI handler if needed
+	// (e.g. Win32 API translation on Windows consoles that lack VT processing).
+	p.prepareOutput()
+
 	// If no renderer is set use the standard one.
 	if p.renderer == nil {
 		p.renderer = newRenderer(p.output, p.startupOptions.has(withANSICompressor), p.fps)
