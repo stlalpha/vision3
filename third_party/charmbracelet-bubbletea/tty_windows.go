@@ -39,13 +39,12 @@ func (p *Program) initInput() (err error) {
 			return fmt.Errorf("error getting state: %w", err)
 		}
 
+		// Enable VT output processing (best-effort: not available on Windows pre-1709
+		// or some 32-bit builds). Without it the console will not render ANSI escape
+		// sequences, but at least the program will not crash on startup.
 		var mode uint32
-		if err := windows.GetConsoleMode(windows.Handle(p.ttyOutput.Fd()), &mode); err != nil {
-			return fmt.Errorf("error getting console mode: %w", err)
-		}
-
-		if err := windows.SetConsoleMode(windows.Handle(p.ttyOutput.Fd()), mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING); err != nil {
-			return fmt.Errorf("error setting console mode: %w", err)
+		if err := windows.GetConsoleMode(windows.Handle(p.ttyOutput.Fd()), &mode); err == nil {
+			_ = windows.SetConsoleMode(windows.Handle(p.ttyOutput.Fd()), mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING)
 		}
 	}
 
