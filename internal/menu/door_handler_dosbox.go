@@ -63,9 +63,23 @@ EXIT
 `))
 
 type dosboxConfData struct {
-	Port      int
+	Port       int
 	DriveCPath string
 	NodePath   string
+}
+
+// escapeDOSBoxPath sanitizes a filesystem path for use in a DOSBox config file.
+// It strips control characters and double-quote characters to prevent breaking
+// the quoted MOUNT arguments in the [autoexec] section.
+func escapeDOSBoxPath(p string) string {
+	var b strings.Builder
+	for _, r := range p {
+		if r < 0x20 || r == '"' {
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // resolveDOSEmulator returns "dosemu" or "dosbox" based on the door config,
@@ -139,8 +153,8 @@ func writeDOSBoxBatch(ctx *DoorCtx, batchPath string) error {
 func writeDOSBoxNodeConf(confPath string, port int, driveCPath, nodePath, baseConf string) error {
 	data := dosboxConfData{
 		Port:       port,
-		DriveCPath: driveCPath,
-		NodePath:   nodePath,
+		DriveCPath: escapeDOSBoxPath(driveCPath),
+		NodePath:   escapeDOSBoxPath(nodePath),
 	}
 
 	if baseConf != "" {

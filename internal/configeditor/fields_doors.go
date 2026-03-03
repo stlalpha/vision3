@@ -1,6 +1,7 @@
 package configeditor
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/stlalpha/vision3/internal/config"
@@ -128,7 +129,7 @@ func (m *Model) fieldsDoor() []fieldDef {
 		// DOS-specific fields
 		row++
 		fields = append(fields, fieldDef{
-			Label: "Drive C Path", Help: "drive_c directory path (blank=~/.dosemu/drive_c)", Type: ftString, Col: 3, Row: row, Width: 45,
+			Label: "Drive C Path", Help: "Drive C directory path (blank=emulator default: dosemu=~/.dosemu/drive_c, dosbox=auto)", Type: ftString, Col: 3, Row: row, Width: 45,
 			Get: func() string { return dPtr.DriveCPath },
 			Set: func(val string) error { dPtr.DriveCPath = val; save(); return nil },
 		})
@@ -136,7 +137,17 @@ func (m *Model) fieldsDoor() []fieldDef {
 		fields = append(fields, fieldDef{
 			Label: "DOS Emulator", Help: "Emulator: blank=auto, dosemu=dosemu2 (Linux x86), dosbox=DOSBox-X (cross-platform)", Type: ftString, Col: 3, Row: row, Width: 10,
 			Get: func() string { return dPtr.DOSEmulator },
-			Set: func(val string) error { dPtr.DOSEmulator = val; save(); return nil },
+			Set: func(val string) error {
+				val = strings.ToLower(strings.TrimSpace(val))
+				switch val {
+				case "", "auto", "dosemu", "dosbox":
+					dPtr.DOSEmulator = val
+					save()
+					return nil
+				default:
+					return fmt.Errorf("invalid emulator %q: must be blank, auto, dosemu, or dosbox", val)
+				}
+			},
 		})
 		row++
 		fields = append(fields, fieldDef{

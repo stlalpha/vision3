@@ -729,7 +729,14 @@ func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userMa
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		doorType := "Native Linux"
 		if doorConfig.IsDOS {
-			doorType = "DOS (dosemu2)"
+			switch strings.ToLower(strings.TrimSpace(doorConfig.DOSEmulator)) {
+			case "dosemu":
+				doorType = "DOS (dosemu2)"
+			case "dosbox":
+				doorType = "DOS (dosbox-x)"
+			default:
+				doorType = "DOS (auto)"
+			}
 		}
 
 		info := fmt.Sprintf("|15Door: |07%s\r\n|15Type: |07%s\r\n", upperInput, doorType)

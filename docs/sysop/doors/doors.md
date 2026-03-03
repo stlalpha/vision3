@@ -117,7 +117,7 @@ With no `dos_emulator` set, dosemu2 is used on Linux x86 if available, otherwise
 
 ## Placeholders
 
-The following placeholders can be used in `args` and are substituted at runtime:
+The following placeholders can be used in `args` (native doors) and `dos_commands` (DOS doors) and are substituted at runtime:
 
 | Placeholder | Value |
 |-------------|-------|

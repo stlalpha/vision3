@@ -204,7 +204,7 @@ func generateDorInfo(ctx *DoorCtx, dir string) error {
 	b.WriteString(" " + crlf)                                // 3: Blank
 	b.WriteString("COM1" + crlf)                             // 4: COM port
 	b.WriteString("115200 BAUD,N,8,1" + crlf)                // 5: Baud, parity, data, stop
-	b.WriteString("0" + crlf)                                // 6: Networked (0=not local)
+	b.WriteString("0" + crlf)                                // 6: Networked (0=local/no network, 1=networked)
 	b.WriteString(firstName + crlf)                          // 7: User first name
 	b.WriteString(lastName + crlf)                           // 8: User last name
 	b.WriteString(location + crlf)                           // 9: Location
@@ -229,8 +229,8 @@ func generateChainTxt(ctx *DoorCtx, dir string) error {
 	b.WriteString(ctx.UserIDStr + crlf)     // 1: User number
 	b.WriteString(ctx.User.Handle + crlf)   // 2: User alias
 	b.WriteString(ctx.User.RealName + crlf) // 3: Real name
-	b.WriteString("NONE" + crlf)            // 4: Default protocol
-	b.WriteString("21" + crlf)              // 5: Time on (minutes)
+	b.WriteString("NONE" + crlf)                                                    // 4: Default protocol
+	b.WriteString(strconv.Itoa(int(time.Since(ctx.SessionStartTime).Minutes())) + crlf) // 5: Time on (minutes)
 	b.WriteString("M" + crlf)               // 6: Gender
 	b.WriteString("0" + crlf)               // 7: Pause (0=no)
 	b.WriteString("01/01/71" + crlf)        // 8: Last call date
