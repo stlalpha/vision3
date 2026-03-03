@@ -46,4 +46,6 @@ func suspendProcess() {
 	_ = syscall.Kill(0, syscall.SIGTSTP)
 	// blocks until a CONT happens...
 	<-c
+	signal.Stop(c)
+	close(c)
 }

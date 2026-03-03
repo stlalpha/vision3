@@ -92,7 +92,7 @@ func getSize(fd uintptr) (int, int, error) {
 		return w, h, fmt.Errorf("scanning %q:%d of 4 items scanned:%w", string(b[:48]), n, err)
 	}
 
-	w, h = lrx-lrx, lry-uly
+	w, h = lrx-ulx, lry-uly
 	return w, h, nil
 }
 
@@ -109,6 +109,7 @@ func setState(_ uintptr, state *State) error {
 
 func readPassword(fd uintptr) ([]byte, error) {
 	f := os.NewFile(fd, "cons")
+	defer f.Close()
 	var b [128]byte
 	n, err := f.Read(b[:])
 	if err != nil {

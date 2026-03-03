@@ -75,11 +75,16 @@ const (
 // String implements the stringer interface for [inputType]. It is intended to
 // be used in testing.
 func (i inputType) String() string {
-	return [...]string{
-		"default input",
-		"tty input",
-		"custom input",
-	}[i]
+	switch i {
+	case defaultInput:
+		return "default input"
+	case ttyInput:
+		return "tty input"
+	case customInput:
+		return "custom input"
+	default:
+		return fmt.Sprintf("inputType(%d)", i)
+	}
 }
 
 // Options to customize the program during its initialization. These are
@@ -296,11 +301,16 @@ func (p *Program) handleSignals() chan struct{} {
 
 			case s := <-sig:
 				if atomic.LoadUint32(&p.ignoreSignals) == 0 {
+					var msg Msg
 					switch s {
 					case syscall.SIGINT:
-						p.msgs <- InterruptMsg{}
+						msg = InterruptMsg{}
 					default:
-						p.msgs <- QuitMsg{}
+						msg = QuitMsg{}
+					}
+					select {
+					case p.msgs <- msg:
+					case <-p.ctx.Done():
 					}
 					return
 				}
@@ -921,8 +931,9 @@ func (p *Program) RestoreTerminal() error {
 //
 // If the altscreen is active no output will be printed.
 func (p *Program) Println(args ...interface{}) {
-	p.msgs <- printLineMessage{
-		messageBody: fmt.Sprint(args...),
+	select {
+	case p.msgs <- printLineMessage{messageBody: fmt.Sprint(args...)}:
+	case <-p.ctx.Done():
 	}
 }
 
@@ -935,7 +946,8 @@ func (p *Program) Println(args ...interface{}) {
 //
 // If the altscreen is active no output will be printed.
 func (p *Program) Printf(template string, args ...interface{}) {
-	p.msgs <- printLineMessage{
-		messageBody: fmt.Sprintf(template, args...),
+	select {
+	case p.msgs <- printLineMessage{messageBody: fmt.Sprintf(template, args...)}:
+	case <-p.ctx.Done():
 	}
 }

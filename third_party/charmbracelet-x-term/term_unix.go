@@ -4,6 +4,8 @@
 package term
 
 import (
+	"errors"
+
 	"golang.org/x/sys/unix"
 )
 
@@ -41,11 +43,10 @@ func makeRaw(fd uintptr) (*State, error) {
 }
 
 func setState(fd uintptr, state *State) error {
-	var termios *unix.Termios
-	if state != nil {
-		termios = &state.Termios
+	if state == nil {
+		return errors.New("term: invalid state")
 	}
-	return unix.IoctlSetTermios(int(fd), ioctlWriteTermios, termios) //nolint:wrapcheck
+	return unix.IoctlSetTermios(int(fd), ioctlWriteTermios, &state.Termios) //nolint:wrapcheck
 }
 
 func getState(fd uintptr) (*State, error) {
@@ -58,6 +59,9 @@ func getState(fd uintptr) (*State, error) {
 }
 
 func restore(fd uintptr, state *State) error {
+	if state == nil {
+		return errors.New("term: invalid state")
+	}
 	return unix.IoctlSetTermios(int(fd), ioctlWriteTermios, &state.Termios) //nolint:wrapcheck
 }
 

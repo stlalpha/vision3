@@ -508,12 +508,8 @@ func (r *standardRenderer) setWindowTitle(title string) {
 // setIgnoredLines specifies lines not to be touched by the standard Bubble Tea
 // renderer.
 func (r *standardRenderer) setIgnoredLines(from int, to int) {
-	// Lock if we're going to be clearing some lines since we don't want
-	// anything jacking our cursor.
-	if r.lastLinesRendered() > 0 {
-		r.mtx.Lock()
-		defer r.mtx.Unlock()
-	}
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 
 	if r.ignoreLines == nil {
 		r.ignoreLines = make(map[int]struct{})

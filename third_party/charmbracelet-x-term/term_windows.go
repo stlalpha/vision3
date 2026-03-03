@@ -4,6 +4,7 @@
 package term
 
 import (
+	"errors"
 	"os"
 
 	"golang.org/x/sys/windows"
@@ -39,11 +40,10 @@ func makeRaw(fd uintptr) (*State, error) {
 }
 
 func setState(fd uintptr, state *State) error {
-	var mode uint32
-	if state != nil {
-		mode = state.Mode
+	if state == nil {
+		return errors.New("term: invalid state")
 	}
-	return windows.SetConsoleMode(windows.Handle(fd), mode)
+	return windows.SetConsoleMode(windows.Handle(fd), state.Mode)
 }
 
 func getState(fd uintptr) (*State, error) {
