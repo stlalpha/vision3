@@ -10,11 +10,13 @@ require (
 	github.com/mattn/go-localereader v0.0.1
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6
 	github.com/muesli/cancelreader v0.2.2
+	github.com/seppestas/go-ansicon v0.0.0-20150813185003-cc47149d371d
 	golang.org/x/sys v0.36.0
 )
 
 require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
+	github.com/bitbored/go-ansicon v0.0.0-20150813185003-cc47149d371d // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
 	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect

@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/x/term"
+	ansicon "github.com/seppestas/go-ansicon"
 	"golang.org/x/sys/windows"
 )
 
@@ -58,6 +59,29 @@ func openInputTTY() (*os.File, error) {
 		return nil, fmt.Errorf("error opening file: %w", err)
 	}
 	return f, nil
+}
+
+// prepareOutput wraps p.output with an ANSI→Win32 API translator when the
+// Windows console does not support ENABLE_VIRTUAL_TERMINAL_PROCESSING (e.g.
+// Windows 10 pre-1709 or some 32-bit builds). On consoles that do support VT
+// processing this is a no-op — the mode is probed and immediately restored so
+// that initInput can set it properly during terminal initialisation.
+func (p *Program) prepareOutput() {
+	f, ok := p.output.(term.File)
+	if !ok {
+		return
+	}
+	var mode uint32
+	if err := windows.GetConsoleMode(windows.Handle(f.Fd()), &mode); err != nil {
+		return
+	}
+	if windows.SetConsoleMode(windows.Handle(f.Fd()), mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING) != nil {
+		// VT processing unsupported — wrap output with ANSI→Win32 translator.
+		p.output = ansicon.Convert(p.output)
+		return
+	}
+	// VT supported: restore mode; initInput will set it again properly.
+	_ = windows.SetConsoleMode(windows.Handle(f.Fd()), mode)
 }
 
 const suspendSupported = false
