@@ -122,6 +122,7 @@ func setState(_ uintptr, state *State) error {
 }
 
 func readPassword(fd uintptr) ([]byte, error) {
+	_ = fd // Plan 9 reads from /dev/cons directly.
 	// Open a fresh /dev/cons fd rather than wrapping the caller's fd,
 	// so Close does not affect the caller's descriptor.
 	f, err := os.Open("/dev/cons")
@@ -129,10 +130,8 @@ func readPassword(fd uintptr) ([]byte, error) {
 		return nil, err
 	}
 	defer f.Close()
-	var b [128]byte
-	n, err := f.Read(b[:])
-	if err != nil {
-		return nil, err
-	}
-	return b[:n], nil
+	// Delegate to readPasswordLine so the trailing newline is stripped and
+	// arbitrarily-long passwords are handled correctly (matches ReadPassword
+	// contract in term.go and the Unix/Windows implementations).
+	return readPasswordLine(f)
 }

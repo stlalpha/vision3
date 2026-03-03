@@ -214,6 +214,9 @@ const x10MouseByteOffset = 32
 //
 // See: http://www.xfree86.org/current/ctlseqs.html#Mouse%20Tracking
 func parseX10MouseEvent(buf []byte) MouseEvent {
+	if len(buf) < 6 { //nolint:mnd
+		return MouseEvent{Type: MouseUnknown}
+	}
 	v := buf[3:6]
 	m := parseMouseButton(int(v[0]), false)
 
