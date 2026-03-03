@@ -48,9 +48,13 @@ func (p *Program) initInput() (err error) {
 	// Save output screen buffer state and enable VT processing.
 	if f, ok := p.output.(term.File); ok && term.IsTerminal(f.Fd()) {
 		p.ttyOutput = f
-		p.previousOutputState, err = term.GetState(f.Fd())
-		if err != nil {
-			return fmt.Errorf("error getting state: %w", err)
+		// prepareOutput may have already saved the original state (before it
+		// modified the console mode) so only capture it if not yet set.
+		if p.previousOutputState == nil {
+			p.previousOutputState, err = term.GetState(f.Fd())
+			if err != nil {
+				return fmt.Errorf("error getting state: %w", err)
+			}
 		}
 
 		// Enable VT output processing (best-effort: not available on Windows pre-1709
@@ -91,10 +95,25 @@ func (p *Program) prepareOutput() {
 		return
 	}
 	if windows.SetConsoleMode(windows.Handle(f.Fd()), mode|windows.ENABLE_VIRTUAL_TERMINAL_PROCESSING) != nil {
-		// VT processing unsupported — wrap p.output with an ANSI→Win32 translator.
-		// vtWriter embeds the original term.File so p.output still satisfies
-		// term.File after wrapping; initInput can then correctly set p.ttyOutput
-		// and p.previousOutputState via the normal type assertion.
+		// VT processing unsupported — save the original console mode now so that
+		// shutdown can restore it correctly (initInput will skip the save when it
+		// sees p.previousOutputState is already set).
+		if state, err := term.GetState(f.Fd()); err == nil {
+			p.previousOutputState = state
+		}
+
+		// Disable auto-wrap at end-of-line.  Without VT processing the console
+		// cannot interpret the ANSI cursor-movement sequences that BubbleTea uses
+		// to position text, so it falls back to raw \r\n line advances.  On old
+		// consoles ENABLE_WRAP_AT_EOL_OUTPUT causes an implicit CR+LF whenever
+		// text reaches the last column, and the subsequent explicit \r\n from the
+		// renderer then advances a second row — producing blank rows between every
+		// line of output.  Clearing the flag prevents that double-advance.
+		_ = windows.SetConsoleMode(windows.Handle(f.Fd()), mode&^windows.ENABLE_WRAP_AT_EOL_OUTPUT)
+
+		// Wrap p.output with an ANSI→Win32 translator. vtWriter embeds the
+		// original term.File so p.output still satisfies term.File after wrapping;
+		// initInput can then correctly set p.ttyOutput via the normal type assertion.
 		p.output = &vtWriter{File: f, writer: ansicon.Convert(f)}
 		return
 	}
