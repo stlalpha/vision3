@@ -120,7 +120,7 @@ func findDOSBoxBinary(configured string) (string, error) {
 			return path, nil
 		}
 	}
-	return "", errors.New("no DOSBox-X binary found; install dosbox-x or set dosbox_path in the door config")
+	return "", errors.New("no DOSBox binary found; install dosbox-x or dosbox, or set dosbox_path in the door config")
 }
 
 // writeDOSBoxBatch writes EXTERNAL.BAT for DOSBox-X execution.
@@ -284,6 +284,7 @@ func executeDOSBoxDoor(ctx *DoorCtx) error {
 			return fmt.Errorf("DOSBox-X serial connection failed: %w", res.err)
 		}
 		conn = res.conn
+		listener.Close() // port no longer needed; single connection expected
 	case <-time.After(acceptTimeout):
 		cmd.Process.Kill() //nolint:errcheck
 		<-waitCh

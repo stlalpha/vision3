@@ -476,7 +476,7 @@ type DoorConfig struct {
 	// DOS door fields
 	IsDOS        bool     `json:"is_dos,omitempty"`        // true = DOS door launched via a DOS emulator
 	DOSCommands  []string `json:"dos_commands,omitempty"`  // DOS commands to run (e.g. ["cd c:\\doors\\lord\\", "lord /n{NODE}"])
-	DriveCPath   string   `json:"drive_c_path,omitempty"`  // Path to drive_c directory (default: ~/.dosemu/drive_c or ~/bbs/drive_c)
+	DriveCPath   string   `json:"drive_c_path,omitempty"`  // Path to drive_c directory (default: ~/.dosemu/drive_c)
 	DOSEmulator  string   `json:"dos_emulator,omitempty"`  // Emulator to use: "auto" (default), "dosemu", or "dosbox"
 	// dosemu2-specific fields (Linux x86 only)
 	DosemuPath   string `json:"dosemu_path,omitempty"`   // Path to dosemu binary (default: /usr/bin/dosemu)

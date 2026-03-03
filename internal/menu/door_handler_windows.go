@@ -29,11 +29,13 @@ func executeDoor(ctx *DoorCtx) error {
 	return fmt.Errorf("native doors are not supported on Windows")
 }
 
-// doorErrorMessage writes a formatted error message to the terminal.
+// doorErrorMessage writes a formatted error message to the session.
 func doorErrorMessage(ctx *DoorCtx, msg string) {
-	terminalio.WriteProcessedBytes(ctx.Terminal,
-		ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|12%s|07\r\n", msg))),
-		ctx.OutputMode)
+	errMsg := fmt.Sprintf(ctx.Executor.LoadedStrings.DoorErrorFormat, msg)
+	wErr := terminalio.WriteProcessedBytes(ctx.Session.Stderr(), ansi.ReplacePipeCodes([]byte(errMsg)), ctx.OutputMode)
+	if wErr != nil {
+		log.Printf("ERROR: Failed writing door error message: %v", wErr)
+	}
 }
 
 // runListDoors lists configured DOS doors from the door registry. Native doors are not
