@@ -414,6 +414,10 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		currentUser.CurrentMessageAreaTag = area.Tag
 		e.setUserMsgConference(currentUser, area.ConferenceID)
 
+		// Clear screen before showing area progress to avoid overwriting
+		// the message reader's separator/lightbar left on screen.
+		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+
 		// Display "Current (AreaName)..."
 		boardMsg := fmt.Sprintf(e.LoadedStrings.ScanAreaProgress,
 			area.Tag, startMsg, totalCount)
