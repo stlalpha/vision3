@@ -46,6 +46,11 @@ func readConInputs(ctx context.Context, msgsch chan<- Msg, con *conInputReader) 
 					// This mimics the behavior in readAnsiInputs where the character is also removed.
 					// We don't need to handle KeySpace here. See the comment in keyType().
 					if eventKeyType == KeyRunes {
+						if e.Char == 0 {
+							// Modifier-only key records (Alt, Menu, etc.) pass the VK_SHIFT
+							// filter but carry a NUL char. Skip to avoid emitting []rune{0}.
+							continue
+						}
 						runes = []rune{e.Char}
 					}
 

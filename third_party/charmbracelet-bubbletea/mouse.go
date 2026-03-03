@@ -174,8 +174,9 @@ func parseSGRMouseEvent(buf []byte) MouseEvent {
 	str := string(buf[3:])
 	matches := mouseSGRRegex.FindStringSubmatch(str)
 	if len(matches) != 5 { //nolint:mnd
-		// Unreachable, we already checked the regex in `detectOneMsg`.
-		panic("invalid mouse event")
+		// Should be unreachable: caller already checked the regex. Return a
+		// safe zero-value rather than panicking.
+		return MouseEvent{Type: MouseUnknown}
 	}
 
 	b, _ := strconv.Atoi(matches[1])

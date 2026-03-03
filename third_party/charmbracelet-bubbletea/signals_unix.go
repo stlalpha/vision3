@@ -9,9 +9,8 @@ import (
 	"syscall"
 )
 
-// listenForResize sends messages (or errors) when the terminal resizes.
-// Argument output should be the file descriptor for the terminal; usually
-// os.Stdout.
+// listenForResize listens for SIGWINCH and triggers a resize check.
+// It exits when the program context is canceled and then closes done.
 func (p *Program) listenForResize(done chan struct{}) {
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGWINCH)

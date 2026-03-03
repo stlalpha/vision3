@@ -5,10 +5,10 @@ import (
 )
 
 func init() {
-	// XXX: This is a workaround to make assure that Lip Gloss and Termenv
+	// XXX: This is a workaround to make sure that Lip Gloss and Termenv
 	// query the terminal before any Bubble Tea Program runs and acquires the
 	// terminal. Without this, Programs that use Lip Gloss/Termenv might hang
-	// while waiting for a a [termenv.OSCTimeout] while querying the terminal
+	// while waiting for a [termenv.OSCTimeout] response when querying the terminal
 	// for its background/foreground colors.
 	//
 	// This happens because Bubble Tea acquires the terminal before termenv

@@ -68,10 +68,13 @@ func getState(fd uintptr) (*State, error) {
 }
 
 func restore(_ uintptr, state *State) error {
-	if state == nil {
+	if state == nil || state.ctl == nil {
 		return errors.New("term: invalid state")
 	}
-	if _, err := state.ctl.Write([]byte("rawoff")); err != nil {
+	ctl := state.ctl
+	state.ctl = nil
+	defer ctl.Close() //nolint:errcheck
+	if _, err := ctl.Write([]byte("rawoff")); err != nil {
 		return err
 	}
 	return nil
@@ -93,6 +96,9 @@ func getSize(fd uintptr) (int, int, error) {
 	// The contents of wctl, as defined in the driver, are
 	// 4 12-char fields: upper left x, y; and lower-right x, y
 	var ulx, uly, lrx, lry int
+	if len(b) < 48 {
+		return w, h, fmt.Errorf("wctl too short: got %d bytes: %w", len(b), os.ErrInvalid)
+	}
 	if n, err := fmt.Sscanf(string(b[:48]), "%d%d%d%d", &ulx, &uly, &lrx, &lry); n != 4 || err != nil {
 		return w, h, fmt.Errorf("scanning %q:%d of 4 items scanned:%w", string(b[:48]), n, err)
 	}
@@ -102,7 +108,7 @@ func getSize(fd uintptr) (int, int, error) {
 }
 
 func setState(_ uintptr, state *State) error {
-	if state == nil {
+	if state == nil || state.ctl == nil {
 		return errors.New("term: invalid state")
 	}
 	raw := "rawoff"

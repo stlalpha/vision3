@@ -71,7 +71,7 @@ func newRenderer(out io.Writer, useANSICompressor bool, fps int) renderer {
 	r := &standardRenderer{
 		out:                out,
 		mtx:                &sync.Mutex{},
-		done:               make(chan struct{}),
+		done:               make(chan struct{}, 1),
 		framerate:          time.Second / time.Duration(fps),
 		useANSICompressor:  useANSICompressor,
 		queuedMessageLines: []string{},
@@ -96,6 +96,13 @@ func (r *standardRenderer) start() {
 	// the done channel and its corresponding sync.Once.
 	r.once = sync.Once{}
 
+	// Drain any stale signal from a previous lifecycle so the new listener
+	// does not exit immediately.
+	select {
+	case <-r.done:
+	default:
+	}
+
 	go r.listen()
 }
 
@@ -103,7 +110,10 @@ func (r *standardRenderer) start() {
 func (r *standardRenderer) stop() {
 	// Stop the renderer before acquiring the mutex to avoid a deadlock.
 	r.once.Do(func() {
-		r.done <- struct{}{}
+		select {
+		case r.done <- struct{}{}:
+		default:
+		}
 	})
 
 	// flush locks the mutex
@@ -132,7 +142,10 @@ func (r *standardRenderer) execute(seq string) {
 func (r *standardRenderer) kill() {
 	// Stop the renderer before acquiring the mutex to avoid a deadlock.
 	r.once.Do(func() {
-		r.done <- struct{}{}
+		select {
+		case r.done <- struct{}{}:
+		default:
+		}
 	})
 
 	r.mtx.Lock()
