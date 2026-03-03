@@ -42,3 +42,11 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	golang.org/x/sys v0.38.0 // indirect
 )
+
+// Patched copies of upstream packages to fix ENABLE_VIRTUAL_TERMINAL_INPUT
+// failures on Windows 10 32-bit / pre-1709 builds where the console does not
+// support VT input mode. Input still works via coninput (raw console events).
+replace (
+	github.com/charmbracelet/bubbletea v1.3.10 => ./third_party/charmbracelet-bubbletea
+	github.com/charmbracelet/x/term => ./third_party/charmbracelet-x-term
+)
