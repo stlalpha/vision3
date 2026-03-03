@@ -509,8 +509,20 @@ func determineStartMessage(e *MenuExecutor, cfg *ScanConfig, areaID int, usernam
 		return totalCount - newCount + 1
 	}
 
-	// Date-based scan: start from message 1, filtering will happen in reader
-	return 1
+	// Date-based scan: find the first message on or after the target date.
+	// Messages in a JAM base are stored chronologically, so we scan forward
+	// until we find one with DateTime >= start of the target day.
+	targetDate := time.Unix(cfg.ScanDate, 0).Truncate(24 * time.Hour)
+	for i := 1; i <= totalCount; i++ {
+		msg, err := e.MessageMgr.GetMessage(areaID, i)
+		if err != nil || msg.IsDeleted {
+			continue
+		}
+		if !msg.DateTime.Truncate(24 * time.Hour).Before(targetDate) {
+			return i
+		}
+	}
+	return totalCount + 1 // No messages on or after the target date; skip area
 }
 
 // areaListItem represents an item in the newscan config list (area or conference header)
