@@ -5,7 +5,11 @@ package menu
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"path/filepath"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/gliderlabs/ssh"
@@ -16,98 +20,194 @@ import (
 	"golang.org/x/term"
 )
 
-// DoorCtx is the actual context used throughout door_handler.go.
-type DoorCtx struct {
-	Executor         *MenuExecutor
-	Session          ssh.Session
-	Terminal         *term.Terminal
-	User             doorUserInfo
-	NodeNumber       int
-	SessionStartTime time.Time
-	OutputMode       ansi.OutputMode
-	Config           config.DoorConfig
-	DoorName         string
-	// Pre-computed values
-	NodeNumStr  string
-	PortStr     string
-	TimeLeftMin int
-	TimeLeftStr string
-	BaudStr     string
-	UserIDStr   string
-	Subs        map[string]string
+// executeDoor dispatches to the appropriate executor.
+// DOS doors use DOSBox-X (cross-platform). Native POSIX doors are not supported on Windows.
+func executeDoor(ctx *DoorCtx) error {
+	if ctx.Config.IsDOS {
+		return executeDOSBoxDoor(ctx)
+	}
+	return fmt.Errorf("native doors are not supported on Windows")
 }
 
-// doorUserInfo holds the user fields needed for dropfile generation.
-type doorUserInfo struct {
-	ID            int
-	Handle        string
-	RealName      string
-	AccessLevel   int
-	TimeLimit     int
-	TimesCalled   int
-	PhoneNumber   string
-	GroupLocation string
-	ScreenWidth   int
-	ScreenHeight  int
-}
-
-var errDoorsNotSupported = errors.New("doors are not supported on Windows")
-
-// buildDoorCtx creates a DoorCtx (stub on Windows).
-func buildDoorCtx(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
-	userID int, handle, realName string, accessLevel, timeLimit, timesCalled int,
-	phoneNumber, groupLocation string, screenWidth, screenHeight int,
-	nodeNumber int, sessionStartTime time.Time, outputMode ansi.OutputMode,
-	doorConfig config.DoorConfig, doorName string) *DoorCtx {
-	return &DoorCtx{
-		Executor:         e,
-		Session:          s,
-		Terminal:         terminal,
-		NodeNumber:       nodeNumber,
-		SessionStartTime: sessionStartTime,
-		OutputMode:       outputMode,
-		Config:           doorConfig,
-		DoorName:         doorName,
+// doorErrorMessage writes a formatted error message to the session.
+func doorErrorMessage(ctx *DoorCtx, msg string) {
+	errMsg := fmt.Sprintf(ctx.Executor.LoadedStrings.DoorErrorFormat, msg)
+	wErr := terminalio.WriteProcessedBytes(ctx.Session.Stderr(), ansi.ReplacePipeCodes([]byte(errMsg)), ctx.OutputMode)
+	if wErr != nil {
+		log.Printf("ERROR: Failed writing door error message: %v", wErr)
 	}
 }
 
-// executeDoor is not supported on Windows.
-func executeDoor(ctx *DoorCtx) error {
-	return errDoorsNotSupported
-}
-
-// doorErrorMessage writes an error to the terminal.
-func doorErrorMessage(ctx *DoorCtx, msg string) {
-	terminalio.WriteProcessedBytes(ctx.Terminal,
-		ansi.ReplacePipeCodes([]byte(fmt.Sprintf("|12%s|07\r\n", msg))),
-		ctx.OutputMode)
-}
-
-// runListDoors displays a message that doors are not supported on Windows.
+// runListDoors lists configured DOS doors from the door registry. Native doors are not
+// supported on Windows and are excluded; only DOSBox-X-capable entries are shown.
 func runListDoors(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Doors are not supported on Windows", nodeNumber)
-	terminalio.WriteProcessedBytes(terminal,
-		ansi.ReplacePipeCodes([]byte("|12Doors are not supported on Windows.|07\r\n")),
-		outputMode)
-	time.Sleep(1 * time.Second)
+	log.Printf("DEBUG: Node %d: runListDoors (Windows)", nodeNumber)
+
+	if currentUser == nil {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorLoginRequired)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	// Load templates (same as non-Windows)
+	topPath := filepath.Join(e.MenuSetPath, "templates", "DOORLIST.TOP")
+	midPath := filepath.Join(e.MenuSetPath, "templates", "DOORLIST.MID")
+	botPath := filepath.Join(e.MenuSetPath, "templates", "DOORLIST.BOT")
+
+	topBytes, errTop := readTemplateFile(topPath)
+	midBytes, errMid := readTemplateFile(midPath)
+	botBytes, errBot := readTemplateFile(botPath)
+
+	if errTop != nil || errMid != nil || errBot != nil {
+		log.Printf("ERROR: Node %d: Failed to load DOORLIST templates: TOP(%v), MID(%v), BOT(%v)", nodeNumber, errTop, errMid, errBot)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorTemplateError)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
+	// Display header
+	processedTop := ansi.ReplacePipeCodes(topBytes)
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(processedTop)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, processedTop, outputMode)
+	}
+
+	// Get door registry and filter to DOS doors only (native doors not supported on Windows)
+	e.configMu.RLock()
+	doorRegistryCopy := make(map[string]config.DoorConfig, len(e.DoorRegistry))
+	for k, v := range e.DoorRegistry {
+		if v.IsDOS {
+			doorRegistryCopy[k] = v
+		}
+	}
+	e.configMu.RUnlock()
+
+	doorNames := make([]string, 0, len(doorRegistryCopy))
+	for name := range doorRegistryCopy {
+		doorNames = append(doorNames, name)
+	}
+	sort.Strings(doorNames)
+
+	// Display each DOS door
+	midTemplate := string(ansi.ReplacePipeCodes(midBytes))
+	for i, name := range doorNames {
+		line := midTemplate
+		line = strings.ReplaceAll(line, "^ID", fmt.Sprintf("%-3d", i+1))
+		line = strings.ReplaceAll(line, "^NA", fmt.Sprintf("%-30s", name))
+		line = strings.ReplaceAll(line, "^TY", "DOS")
+		terminalio.WriteProcessedBytes(terminal, []byte(line), outputMode)
+	}
+
+	if len(doorNames) == 0 {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorNoneConfigured)), outputMode)
+	}
+
+	// Display footer
+	processedBot := ansi.ReplacePipeCodes(botBytes)
+	if outputMode == ansi.OutputModeCP437 {
+		terminal.Write(processedBot)
+	} else {
+		terminalio.WriteProcessedBytes(terminal, processedBot, outputMode)
+	}
+
 	return currentUser, "", nil
 }
 
-// runOpenDoor is not supported on Windows.
+// runOpenDoor prompts for a door name and launches it via DOSBox-X on Windows. Native
+// doors are not supported; only DOS doors can be launched.
 func runOpenDoor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Doors are not supported on Windows", nodeNumber)
-	terminalio.WriteProcessedBytes(terminal,
-		ansi.ReplacePipeCodes([]byte("|12Doors are not supported on Windows.|07\r\n")),
-		outputMode)
-	time.Sleep(1 * time.Second)
-	return currentUser, "", nil
+	log.Printf("DEBUG: Node %d: runOpenDoor (Windows)", nodeNumber)
+
+	if currentUser == nil {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorLoginRequired)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	renderedPrompt := ansi.ReplacePipeCodes([]byte(e.LoadedStrings.DoorPrompt))
+	curUpClear := "\x1b[A\r\x1b[2K"
+
+	terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+
+	for {
+		inputName, err := readLineFromSessionIH(s, terminal)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			log.Printf("ERROR: Node %d: Error reading OPENDOOR input: %v", nodeNumber, err)
+			return currentUser, "", err
+		}
+
+		inputClean := strings.TrimSpace(inputName)
+		upperInput := strings.ToUpper(inputClean)
+
+		if upperInput == "Q" {
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			return currentUser, "", nil
+		}
+		if upperInput == "" {
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		if upperInput == "?" {
+			runListDoors(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, "", outputMode, termWidth, termHeight)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		doorConfig, exists := e.GetDoorConfig(upperInput)
+		if !exists {
+			terminalio.WriteProcessedBytes(terminal, []byte(curUpClear), outputMode)
+			msg := fmt.Sprintf(e.LoadedStrings.DoorNotFoundFormat, inputClean)
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		if !doorConfig.IsDOS {
+			terminalio.WriteProcessedBytes(terminal, []byte(curUpClear), outputMode)
+			terminalio.WriteProcessedBytes(terminal,
+				ansi.ReplacePipeCodes([]byte("|12Native doors are not supported on Windows. Choose a DOS door.|07\r\n")),
+				outputMode)
+			time.Sleep(1 * time.Second)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\x1b[2K"), outputMode)
+			terminalio.WriteProcessedBytes(terminal, renderedPrompt, outputMode)
+			continue
+		}
+
+		ctx := buildDoorCtx(e, s, terminal,
+			currentUser.ID, currentUser.Handle, currentUser.RealName,
+			currentUser.AccessLevel, currentUser.TimeLimit, currentUser.TimesCalled,
+			currentUser.PhoneNumber, currentUser.GroupLocation,
+			termWidth, termHeight,
+			nodeNumber, sessionStartTime, outputMode,
+			doorConfig, upperInput)
+
+		resetSessionIH(s)
+		cmdErr := executeDoor(ctx)
+		_ = getSessionIH(s)
+
+		if cmdErr != nil {
+			log.Printf("ERROR: Node %d: Door execution failed for user %s, door %s: %v", nodeNumber, currentUser.Handle, upperInput, cmdErr)
+			doorErrorMessage(ctx, fmt.Sprintf("Error running door '%s': %v", upperInput, cmdErr))
+		} else {
+			log.Printf("INFO: Node %d: Door completed for user %s, door %s", nodeNumber, currentUser.Handle, upperInput)
+		}
+
+		return currentUser, "", nil
+	}
 }
 
-// runDoorInfo is not supported on Windows.
+// runDoorInfo shows door configuration details on Windows.
 func runDoorInfo(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
-	log.Printf("DEBUG: Node %d: Doors are not supported on Windows", nodeNumber)
+	log.Printf("DEBUG: Node %d: runDoorInfo (Windows)", nodeNumber)
 	terminalio.WriteProcessedBytes(terminal,
-		ansi.ReplacePipeCodes([]byte("|12Doors are not supported on Windows.|07\r\n")),
+		ansi.ReplacePipeCodes([]byte("|12Native doors are not supported on Windows. DOS doors via DOSBox-X are available.|07\r\n")),
 		outputMode)
 	time.Sleep(1 * time.Second)
 	return currentUser, "", nil
