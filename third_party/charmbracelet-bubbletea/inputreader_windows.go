@@ -6,7 +6,6 @@ package tea
 import (
 	"fmt"
 	"io"
-	"os"
 	"sync"
 
 	"github.com/charmbracelet/x/term"
@@ -29,12 +28,18 @@ func newInputReader(r io.Reader, enableMouse bool) (cancelreader.CancelReader, e
 	fallback := func(io.Reader) (cancelreader.CancelReader, error) {
 		return cancelreader.NewReader(r)
 	}
-	if f, ok := r.(term.File); !ok || f.Fd() != os.Stdin.Fd() {
+	f, ok := r.(term.File)
+	if !ok {
 		return fallback(r)
 	}
 
-	conin, err := coninput.NewStdinHandle()
-	if err != nil {
+	// Use the provided file descriptor instead of always opening stdin.
+	// This allows WithInputTTY() to work correctly when it opens CONIN$.
+	conin := windows.Handle(f.Fd())
+
+	// Verify it's actually a console handle
+	var testMode uint32
+	if err := windows.GetConsoleMode(conin, &testMode); err != nil {
 		return fallback(r)
 	}
 

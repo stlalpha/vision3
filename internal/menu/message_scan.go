@@ -444,7 +444,13 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 					sessionStartTime, "", outputMode, tw, th)
 				continue
 			case 'J': // Jump to message #
+				prevStart := startMsg
 				handleJump(reader, terminal, outputMode, &startMsg, totalCount, e.LoadedStrings.MsgJumpPrompt, e.LoadedStrings.MsgInvalidMsgNum)
+				// Match Pascal: if the jump succeeded, mark everything before
+				// the new start as read (NScan.LastRead[Cb] := Valu(Inpt)-1).
+				if startMsg != prevStart && startMsg > 1 {
+					_ = e.MessageMgr.SetLastRead(area.ID, currentUser.Handle, startMsg-1)
+				}
 			case 'S': // Skip this area
 				continue
 			case 'Q': // Quit scanning
