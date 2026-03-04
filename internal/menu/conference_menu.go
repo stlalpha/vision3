@@ -306,7 +306,8 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 		}
 	}
 	topStr = strings.ReplaceAll(topStr, "^CN", confName)
-	processedTopTemplate := ansi.ReplacePipeCodes([]byte(topStr))
+	withTokens := e.applyCommonTemplateTokens([]byte(topStr), currentUser, nodeNumber)
+	processedTopTemplate := ansi.ReplacePipeCodes(withTokens)
 	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
 	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
 
@@ -366,8 +367,8 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 			displayedAreas = append(displayedAreas, area)
 			line := processedMidTemplate
 			line = strings.ReplaceAll(line, "^ID", padRight(strconv.Itoa(len(displayedAreas)), 3))
-			line = strings.ReplaceAll(line, "^TAG", padRight(area.Tag, 12))
-			line = strings.ReplaceAll(line, "^NA", padRight(truncateStr(area.Name, 30), 30))
+			line = strings.ReplaceAll(line, "^TAG", padRight(truncateStr(area.Tag, 16), 16))
+			line = strings.ReplaceAll(line, "^NA", padRight(truncateStr(area.Name, 38), 38))
 			line = strings.ReplaceAll(line, "^DS", area.AreaType)
 			outputBuffer.WriteString(line)
 		}
