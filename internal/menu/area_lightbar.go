@@ -614,18 +614,23 @@ func runChangeMsgConferenceLightbar(e *MenuExecutor, s ssh.Session, terminal *te
 				log.Printf("ERROR: Node %d: Failed to save user after conference change: %v", nodeNumber, err)
 			}
 
-			conf, _ := e.ConferenceMgr.GetByID(chosen.id)
+			confName := chosen.name
+			confTag := ""
+			if conf, ok := e.ConferenceMgr.GetByID(chosen.id); ok {
+				confName = conf.Name
+				confTag = conf.Tag
+			}
 			joinedMsg := e.LoadedStrings.JoinedMsgConf
 			if joinedMsg == "" {
 				joinedMsg = "\r\n|07(|15^CN|07) |15Conference Joined!|07\r\n"
 			}
-			joinedMsg = strings.ReplaceAll(joinedMsg, "^CN", conf.Name)
-			joinedMsg = strings.ReplaceAll(joinedMsg, "^CT", conf.Tag)
+			joinedMsg = strings.ReplaceAll(joinedMsg, "^CN", confName)
+			joinedMsg = strings.ReplaceAll(joinedMsg, "^CT", confTag)
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(joinedMsg)), outputMode)
 			time.Sleep(1 * time.Second)
 
 			log.Printf("INFO: Node %d: User %s changed to conference %d (%s), area: %s",
-				nodeNumber, currentUser.Handle, chosen.id, conf.Tag, currentUser.CurrentMessageAreaTag)
+				nodeNumber, currentUser.Handle, chosen.id, confTag, currentUser.CurrentMessageAreaTag)
 			return currentUser, "", nil
 
 		case editor.KeyEsc:
