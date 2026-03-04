@@ -2,10 +2,12 @@ package menu
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -339,6 +341,12 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return nil, "", nil
 	}
 
+	// Load scan area header template (ANSI art) if available
+	scanHeaderTemplate, headerErr := readTemplateFile(filepath.Join(e.MenuSetPath, "templates", "system_header", "HEADER"))
+	if headerErr != nil && !os.IsNotExist(headerErr) {
+		log.Printf("WARN: Node %d: Failed to load scan header template: %v", nodeNumber, headerErr)
+	}
+
 	// Multi-area scan: iterate through accessible areas
 	allAreas := e.MessageMgr.ListAreas()
 
@@ -418,17 +426,28 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		// the message reader's separator/lightbar left on screen.
 		terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 
-		// Display "Current (AreaName)..."
-		boardMsg := fmt.Sprintf(e.LoadedStrings.ScanAreaProgress,
-			area.Tag, startMsg, totalCount)
-		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardMsg)), outputMode)
-		terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		// Display scan area header: ANSI art template or plain text fallback.
+		// Both paths write exactly one trailing newline before the nonStop block.
+		if len(scanHeaderTemplate) > 0 {
+			scanInfo := fmt.Sprintf("|09Scanning |01(|13%s|01)... |07[|15%d|07/|15%d|07 msgs]",
+				area.Tag, startMsg, totalCount)
+			merged := bytes.ReplaceAll(scanHeaderTemplate, []byte("|@"), []byte(scanInfo))
+			merged = bytes.TrimRight(merged, "\r\n")
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(merged), outputMode)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		} else {
+			boardMsg := fmt.Sprintf(e.LoadedStrings.ScanAreaProgress,
+				area.Tag, startMsg, totalCount)
+			boardMsg = strings.TrimRight(boardMsg, "\r\n")
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardMsg)), outputMode)
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		}
 
 		if !nonStop {
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 			// Show per-area lightbar: Read/Post/Jump/Skip/Quit/NonStop
-			scanSuffix := fmt.Sprintf(" [%d/%d]", startMsg, totalCount)
 			selectedKey, lbErr := runMsgLightbar(reader, terminal, scanAreaOptions, outputMode,
-				hiColor, loColor, scanSuffix, 0, false, 0)
+				hiColor, loColor, "", 0, false, 0)
 			if lbErr != nil {
 				if errors.Is(lbErr, io.EOF) {
 					return nil, "LOGOFF", io.EOF

@@ -1,0 +1,4 @@
+; Message conference list highlight bar colors
+; FORMAT: X,Y,HiLitedColor,RegularColor,HotKey,ReturnValue,HiLitedString
+; Only HighlightColor and RegularColor fields are used.
+0,0,31,7,*,*,MsgConfHighlight

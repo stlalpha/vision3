@@ -511,8 +511,8 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["TYPE_TEXT_FILE"] = runTypeTextFile                     // Type text file with paging
 	registry["LISTFILEAR"] = runListFileAreas                        // <-- ADDED: Register file area list runnable
 	registry["SELECTFILEAREA"] = runSelectFileArea                   // <-- ADDED: Register file area selection runnable
-	registry["SELECTMSGAREA"] = runSelectMessageArea                 // Register message area selection runnable
-	registry["CHANGEMSGCONF"] = runChangeMsgConference               // Change message conference
+	registry["SELECTMSGAREA"] = runSelectMessageAreaLightbar         // Register message area selection runnable (lightbar)
+	registry["CHANGEMSGCONF"] = runChangeMsgConferenceLightbar       // Change message conference (lightbar)
 	registry["NEXTMSGAREA"] = runNextMsgArea                         // Navigate to next message area
 	registry["PREVMSGAREA"] = runPrevMsgArea                         // Navigate to previous message area
 	registry["NEWUSER"] = runNewUser                                 // Register new user application runnable
