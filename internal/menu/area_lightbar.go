@@ -663,7 +663,9 @@ func runChangeMsgConferenceLightbar(e *MenuExecutor, s ssh.Session, terminal *te
 			}
 			joinedMsg = strings.ReplaceAll(joinedMsg, "^CN", confName)
 			joinedMsg = strings.ReplaceAll(joinedMsg, "^CT", confTag)
-			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(joinedMsg)), outputMode)
+			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(joinedMsg)), outputMode); err != nil {
+				log.Printf("WARN: Node %d: Failed to write joined conference message: %v", nodeNumber, err)
+			}
 			time.Sleep(1 * time.Second)
 
 			log.Printf("INFO: Node %d: User %s changed to conference %d (%s), area: %s",
