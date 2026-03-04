@@ -306,7 +306,8 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 		}
 	}
 	topStr = strings.ReplaceAll(topStr, "^CN", confName)
-	processedTopTemplate := ansi.ReplacePipeCodes([]byte(topStr))
+	withTokens := e.applyCommonTemplateTokens([]byte(topStr), currentUser, nodeNumber)
+	processedTopTemplate := ansi.ReplacePipeCodes(withTokens)
 	processedMidTemplate := string(ansi.ReplacePipeCodes(midTemplateBytes))
 	processedBotTemplate := ansi.ReplacePipeCodes(botTemplateBytes)
 
