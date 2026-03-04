@@ -366,7 +366,7 @@ func displayMessageAreaListFiltered(e *MenuExecutor, s ssh.Session, terminal *te
 			displayedAreas = append(displayedAreas, area)
 			line := processedMidTemplate
 			line = strings.ReplaceAll(line, "^ID", padRight(strconv.Itoa(len(displayedAreas)), 3))
-			line = strings.ReplaceAll(line, "^TAG", padRight(area.Tag, 12))
+			line = strings.ReplaceAll(line, "^TAG", padRight(truncateStr(area.Tag, 12), 12))
 			line = strings.ReplaceAll(line, "^NA", padRight(truncateStr(area.Name, 30), 30))
 			line = strings.ReplaceAll(line, "^DS", area.AreaType)
 			outputBuffer.WriteString(line)
