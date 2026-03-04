@@ -28,6 +28,20 @@ func runSelectMessageAreaLightbar(e *MenuExecutor, s ssh.Session, terminal *term
 
 	log.Printf("DEBUG: Node %d: Running SELECTMSGAREA (lightbar)", nodeNumber)
 
+	// Resolve terminal dimensions: prefer passed values, then user prefs, then defaults.
+	if termWidth <= 0 && currentUser != nil {
+		termWidth = currentUser.ScreenWidth
+	}
+	if termWidth <= 0 {
+		termWidth = 80
+	}
+	if termHeight <= 0 && currentUser != nil {
+		termHeight = currentUser.ScreenHeight
+	}
+	if termHeight <= 0 {
+		termHeight = 24
+	}
+
 	if currentUser == nil {
 		msg := "\r\n|01Error: You must be logged in to select a message area.|07\r\n"
 		_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
@@ -179,7 +193,11 @@ func runSelectMessageAreaLightbar(e *MenuExecutor, s ssh.Session, terminal *term
 			}
 			line := buildItemLine(areas[idx], idx+1)
 			if idx == selectedIndex {
-				rendered := hiColorSeq + padRight(stripAreaAnsi(line), termWidth) + "\x1b[0m"
+				stripped := stripAreaAnsi(line)
+				if len(stripped) > termWidth {
+					stripped = stripped[:termWidth]
+				}
+				rendered := hiColorSeq + padRight(stripped, termWidth) + "\x1b[0m"
 				if err := terminalio.WriteProcessedBytes(terminal, []byte(rendered), outputMode); err != nil {
 					return err
 				}

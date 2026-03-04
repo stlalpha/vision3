@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -341,7 +342,10 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	// Load scan area header template (ANSI art) if available
-	scanHeaderTemplate, _ := readTemplateFile(filepath.Join(e.MenuSetPath, "templates", "system_header", "HEADER"))
+	scanHeaderTemplate, headerErr := readTemplateFile(filepath.Join(e.MenuSetPath, "templates", "system_header", "HEADER"))
+	if headerErr != nil && !os.IsNotExist(headerErr) {
+		log.Printf("WARN: Node %d: Failed to load scan header template: %v", nodeNumber, headerErr)
+	}
 
 	// Multi-area scan: iterate through accessible areas
 	allAreas := e.MessageMgr.ListAreas()
@@ -428,11 +432,13 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			scanInfo := fmt.Sprintf("|09Scanning |01(|13%s|01)... |07[|15%d|07/|15%d|07 msgs]",
 				area.Tag, startMsg, totalCount)
 			merged := bytes.ReplaceAll(scanHeaderTemplate, []byte("|@"), []byte(scanInfo))
+			merged = bytes.TrimRight(merged, "\r\n")
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes(merged), outputMode)
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		} else {
 			boardMsg := fmt.Sprintf(e.LoadedStrings.ScanAreaProgress,
 				area.Tag, startMsg, totalCount)
+			boardMsg = strings.TrimRight(boardMsg, "\r\n")
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(boardMsg)), outputMode)
 			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
 		}
