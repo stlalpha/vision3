@@ -85,8 +85,8 @@ func runSelectMessageAreaLightbar(e *MenuExecutor, s ssh.Session, terminal *term
 	buildItemLine := func(area *message.MessageArea, displayIdx int) string {
 		line := processedMidTemplate
 		line = strings.ReplaceAll(line, "^ID", padRight(strconv.Itoa(displayIdx), 3))
-		line = strings.ReplaceAll(line, "^TAG", padRight(truncateStr(area.Tag, 12), 12))
-		line = strings.ReplaceAll(line, "^NA", padRight(truncateStr(area.Name, 30), 30))
+		line = strings.ReplaceAll(line, "^TAG", padRight(truncateStr(area.Tag, 16), 16))
+		line = strings.ReplaceAll(line, "^NA", padRight(truncateStr(area.Name, 38), 38))
 		line = strings.ReplaceAll(line, "^DS", area.AreaType)
 		return strings.TrimRight(line, "\r\n")
 	}
@@ -246,11 +246,15 @@ func runSelectMessageAreaLightbar(e *MenuExecutor, s ssh.Session, terminal *term
 	for {
 		clampSelection()
 
-		if needFullRedraw || topIndex != prevTopIndex {
+		if needFullRedraw {
 			if err := renderFull(areas, confName, topIndex, selectedIndex); err != nil {
 				return nil, "", err
 			}
 			needFullRedraw = false
+		} else if topIndex != prevTopIndex {
+			if err := renderItemArea(areas, topIndex, selectedIndex); err != nil {
+				return nil, "", err
+			}
 		} else if selectedIndex != prevSelectedIndex {
 			// Redraw only the two changed rows.
 			if prevSelectedIndex >= topIndex && prevSelectedIndex < topIndex+visibleRows {
@@ -565,11 +569,15 @@ func runChangeMsgConferenceLightbar(e *MenuExecutor, s ssh.Session, terminal *te
 	for {
 		clampSelection()
 
-		if needFullRedraw || topIndex != prevTopIndex {
+		if needFullRedraw {
 			if err := renderFull(topIndex, selectedIndex); err != nil {
 				return nil, "", err
 			}
 			needFullRedraw = false
+		} else if topIndex != prevTopIndex {
+			if err := renderItemArea(topIndex, selectedIndex); err != nil {
+				return nil, "", err
+			}
 		} else if selectedIndex != prevSelectedIndex {
 			if prevSelectedIndex >= topIndex && prevSelectedIndex < topIndex+visibleRows {
 				oldRow := itemAreaStartRow + (prevSelectedIndex - topIndex)
