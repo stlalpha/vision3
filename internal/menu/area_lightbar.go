@@ -103,9 +103,28 @@ func runSelectMessageAreaLightbar(e *MenuExecutor, s ssh.Session, terminal *term
 	// Load optional highlight BAR file (MSGAREAHI.BAR) — same pattern as FILELISTHI.BAR.
 	hiBarOptions, _ := loadBarFile("MSGAREAHI", e)
 
-	// Measure header rows from the TOP template (rendered once with a sample conf name).
+	// Measure header rows using the same pipeline as renderTop so the count
+	// is accurate even when applyCommonTemplateTokens expands multi-line tokens.
 	sampleTop := strings.ReplaceAll(string(topBytes), "^CN", "")
-	headerLines := strings.Count(string(ansi.ReplacePipeCodes([]byte(sampleTop))), "\n")
+	sampleWithTokens := e.applyCommonTemplateTokens([]byte(sampleTop), currentUser, nodeNumber)
+	processedSample := string(ansi.ReplacePipeCodes(sampleWithTokens))
+	headerLines := strings.Count(processedSample, "\n")
+	// If the template's last row has no trailing \n, the cursor stays on that
+	// row and headerLines is undercounted by 1 — causing itemAreaStartRow to
+	// land on the separator line, which renderItemArea then overwrites.
+	// Detect visible content after the last \n and bump headerLines if found.
+	{
+		lastNL := strings.LastIndex(processedSample, "\n")
+		tail := processedSample
+		if lastNL >= 0 {
+			tail = processedSample[lastNL+1:]
+		}
+		tail = areaLightbarAnsiRe.ReplaceAllString(tail, "")
+		tail = strings.Trim(tail, "\r")
+		if len(tail) > 0 {
+			headerLines++
+		}
+	}
 	if headerLines < 1 {
 		headerLines = 1
 	}
@@ -128,7 +147,8 @@ func runSelectMessageAreaLightbar(e *MenuExecutor, s ssh.Session, terminal *term
 
 	renderTop := func(confName string) error {
 		topStr := strings.ReplaceAll(string(topBytes), "^CN", confName)
-		processed := ansi.ReplacePipeCodes([]byte(topStr))
+		withTokens := e.applyCommonTemplateTokens([]byte(topStr), currentUser, nodeNumber)
+		processed := ansi.ReplacePipeCodes(withTokens)
 		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(1, 1)), outputMode); err != nil {
 			return err
 		}
@@ -400,9 +420,25 @@ func runChangeMsgConferenceLightbar(e *MenuExecutor, s ssh.Session, terminal *te
 	// Load optional highlight BAR file (MSGCONFHI.BAR) — same pattern as FILELISTHI.BAR.
 	hiBarOptions, _ := loadBarFile("MSGCONFHI", e)
 
-	// Measure header rows from the TOP template.
+	// Measure header rows using the same pipeline as renderTop.
 	sampleTop := strings.ReplaceAll(string(topBytes), "^CN", "")
-	headerLines := strings.Count(string(ansi.ReplacePipeCodes([]byte(sampleTop))), "\n")
+	sampleWithTokens := e.applyCommonTemplateTokens([]byte(sampleTop), currentUser, nodeNumber)
+	processedSample := string(ansi.ReplacePipeCodes(sampleWithTokens))
+	headerLines := strings.Count(processedSample, "\n")
+	// If the template's last row has no trailing \n, bump headerLines so
+	// itemAreaStartRow is placed past the separator, not on it.
+	{
+		lastNL := strings.LastIndex(processedSample, "\n")
+		tail := processedSample
+		if lastNL >= 0 {
+			tail = processedSample[lastNL+1:]
+		}
+		tail = areaLightbarAnsiRe.ReplaceAllString(tail, "")
+		tail = strings.Trim(tail, "\r")
+		if len(tail) > 0 {
+			headerLines++
+		}
+	}
 	if headerLines < 1 {
 		headerLines = 1
 	}
@@ -425,7 +461,8 @@ func runChangeMsgConferenceLightbar(e *MenuExecutor, s ssh.Session, terminal *te
 
 	renderTop := func(confName string) error {
 		topStr := strings.ReplaceAll(string(topBytes), "^CN", confName)
-		processed := ansi.ReplacePipeCodes([]byte(topStr))
+		withTokens := e.applyCommonTemplateTokens([]byte(topStr), currentUser, nodeNumber)
+		processed := ansi.ReplacePipeCodes(withTokens)
 		if err := terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(1, 1)), outputMode); err != nil {
 			return err
 		}
