@@ -1,8 +1,10 @@
 # ViSiON/3 Development Guidelines
 
+> **Team Mode**: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is enabled. See `AGENTS.md` for multi-agent coordination, task ownership, and communication protocols.
+
 ## Task Tracking
 
-- Use 'bd' (beads) for **active task tracking**. Read `AGENTS.md` for instructions.
+- Use `bd` (beads) for **active task tracking** — see `AGENTS.md` for full protocol.
 - Update `tasks/tasks.md` as a **changelog/summary** when major features are completed.
 
 ## Core Philosophy
