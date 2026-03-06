@@ -22,6 +22,9 @@ From the **Main Menu**, press `X`. You are taken to the Admin Menu (`ADMIN.MNU`)
 | `E` | Edit Users | Full user browser — view and edit any account |
 | `N` | Toggle New Users | Open or close new user registrations |
 | `P` | Purge Deleted Users | Permanently remove soft-deleted accounts past retention period |
+| `W` | Edit News | Add, delete, edit, list, and view system news items |
+| `T` | Voting | Manage voting topics (add, delete, edit questions and options) |
+| `U` | NUV Queue | View New User Voting candidates and vote tallies |
 | `Q` | Quit | Return to Main Menu |
 
 ---
@@ -133,6 +136,31 @@ See [User Management — Soft Delete and Purge](user-management.md#soft-deleting
 
 ---
 
+## W — Edit News
+
+Opens the system news management interface. See [News](../menus/news.md) for full details on news items, the `NEWSHDR.ANS` header template, and data file format.
+
+| Key | Action |
+|-----|--------|
+| `A` | Add a new news item (title, level range, always flag, author, body) |
+| `D` | Delete an item |
+| `E` | Edit an item's fields or body |
+| `L` | List all items with title, level range, and display mode |
+| `V` | View item(s) as users see them |
+| `Q` | Quit |
+
+You can also type an item number directly to jump to that item.
+
+---
+
+## U — NUV Queue
+
+Displays a read-only list of all pending New User Voting candidates with their current yes/no tallies and whether you have voted on each. Use `SCANNUV` (or the `CHECKNUV` login prompt) to cast votes.
+
+See [New User Voting](nuv.md) for full configuration and usage details.
+
+---
+
 ## Admin Activity Logging
 
 All changes made through the admin screens (both `V` and `E`) are logged to `data/users/admin_activity.log`. Each entry records:
@@ -151,3 +179,5 @@ Password changes are logged as `********` — the actual values are never writte
 
 - [User Management](user-management.md) — accounts, access levels, soft delete, and purge configuration
 - [User Editor (`ue`)](user-editor.md) — offline TUI for bulk operations and detailed field editing
+- [News](../menus/news.md) — system news items, `NEWSHDR.ANS` template, and `EDITNEWS` reference
+- [New User Voting (NUV)](nuv.md) — NUV configuration, thresholds, and voting commands

@@ -90,6 +90,8 @@ func (m *Model) buildSysFields(screen int) []fieldDef {
 		return sysFieldsDefaults(cfg)
 	case 5:
 		return sysFieldsIPLists(cfg)
+	case 6:
+		return sysFieldsNUV(cfg)
 	}
 	return nil
 }
@@ -406,6 +408,80 @@ func sysFieldsIPLists(cfg *config.ServerConfig) []fieldDef {
 			Label: "Allowlist Path", Help: "Path to IP allowlist file (one IP per line)", Type: ftString, Col: 3, Row: 2, Width: 45,
 			Get: func() string { return cfg.IPAllowlistPath },
 			Set: func(val string) error { cfg.IPAllowlistPath = val; return nil },
+		},
+	}
+}
+
+// sysFieldsNUV returns fields for the New User Voting sub-screen.
+func sysFieldsNUV(cfg *config.ServerConfig) []fieldDef {
+	return []fieldDef{
+		{
+			Label: "Use NUV", Help: "Enable New User Voting system", Type: ftYesNo, Col: 3, Row: 1, Width: 1,
+			Get: func() string { return boolToYN(cfg.UseNUV) },
+			Set: func(val string) error { cfg.UseNUV = ynToBool(val); return nil },
+		},
+		{
+			Label: "Auto Add NUV", Help: "Automatically queue new registrations for voting", Type: ftYesNo, Col: 3, Row: 2, Width: 1,
+			Get: func() string { return boolToYN(cfg.AutoAddNUV) },
+			Set: func(val string) error { cfg.AutoAddNUV = ynToBool(val); return nil },
+		},
+		{
+			Label: "NUV Use Level", Help: "Minimum access level required to vote", Type: ftInteger, Col: 3, Row: 3, Width: 3, Min: 0, Max: 255,
+			Get: func() string { return strconv.Itoa(cfg.NUVUseLevel) },
+			Set: func(val string) error {
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return err
+				}
+				cfg.NUVUseLevel = n
+				return nil
+			},
+		},
+		{
+			Label: "NUV Yes Votes", Help: "YES votes required to trigger yes threshold", Type: ftInteger, Col: 3, Row: 4, Width: 3, Min: 1, Max: 999,
+			Get: func() string { return strconv.Itoa(cfg.NUVYesVotes) },
+			Set: func(val string) error {
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return err
+				}
+				cfg.NUVYesVotes = n
+				return nil
+			},
+		},
+		{
+			Label: "NUV No Votes", Help: "NO votes required to trigger no threshold", Type: ftInteger, Col: 3, Row: 5, Width: 3, Min: 1, Max: 999,
+			Get: func() string { return strconv.Itoa(cfg.NUVNoVotes) },
+			Set: func(val string) error {
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return err
+				}
+				cfg.NUVNoVotes = n
+				return nil
+			},
+		},
+		{
+			Label: "NUV Validate", Help: "Auto-validate user when yes threshold reached", Type: ftYesNo, Col: 3, Row: 6, Width: 1,
+			Get: func() string { return boolToYN(cfg.NUVValidate) },
+			Set: func(val string) error { cfg.NUVValidate = ynToBool(val); return nil },
+		},
+		{
+			Label: "NUV Kill", Help: "Auto-delete user when no threshold reached", Type: ftYesNo, Col: 3, Row: 7, Width: 1,
+			Get: func() string { return boolToYN(cfg.NUVKill) },
+			Set: func(val string) error { cfg.NUVKill = ynToBool(val); return nil },
+		},
+		{
+			Label: "NUV Level", Help: "Access level assigned to auto-validated NUV users", Type: ftInteger, Col: 3, Row: 8, Width: 3, Min: 0, Max: 255,
+			Get: func() string { return strconv.Itoa(cfg.NUVLevel) },
+			Set: func(val string) error {
+				n, err := strconv.Atoi(val)
+				if err != nil {
+					return err
+				}
+				cfg.NUVLevel = n
+				return nil
+			},
 		},
 	}
 }

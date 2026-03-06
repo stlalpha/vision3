@@ -71,6 +71,14 @@ func LoadCommands(menuName string, configPath string) ([]CommandRecord, error) {
 	return commands, nil
 }
 
+// HasBarFile returns true if a .BAR lightbar definition file exists for the
+// given menu name inside the menu set's bar/ directory.
+func HasBarFile(menuName string, menuSetPath string) bool {
+	barPath := filepath.Join(menuSetPath, "bar", menuName+".BAR")
+	_, err := os.Stat(barPath)
+	return err == nil
+}
+
 // NOTE: Removed duplicate struct definitions here. They should exist elsewhere.
 /*
 type MenuRecord struct {

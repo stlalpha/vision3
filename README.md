@@ -127,7 +127,7 @@ Your reward? The satisfaction of knowing that somewhere, someone is reliving the
 | TUI String Editor (`strings`) | ✅ Working     | Full-screen BBS string customizations                                                                               |
 | Config Hot Reload             | ✅ Working     | Live reload via fsnotify, no restart required                                                                       |
 | Invisible SysOp Login         | ✅ Working     | SysOp/CoSysOp login without appearing in caller log                                                                 |
-| SysOp Config TUI              | 📋 Planned     | System configuration editor                                                                                         |
+| SysOp Config TUI (`config`)   | ✅ Working     | Full-screen TUI configuration editor (`cmd/config`)                                                                 |
 | **Quality**                   |               |                                                                                                                     |
 | Comprehensive Testing         | 📋 Planned     |                                                                                                                     |
 | Complete Documentation        | 📋 Planned     |                                                                                                                     |
@@ -167,6 +167,7 @@ Pre-built releases are available for all major platforms. Linux x86_64 is the pr
 vision3/
 ├── cmd/
 │   ├── ansitest/           # ANSI color test utility
+│   ├── config/             # TUI system configuration editor
 │   ├── helper/             # FTN setup utility (import echomail areas)
 │   ├── strings/            # TUI string configuration editor
 │   ├── ue/                 # TUI user editor
@@ -200,6 +201,7 @@ vision3/
 │   ├── ansi/               # ANSI/pipe code processing
 │   ├── chat/               # Inter-node chat and sysop paging
 │   ├── config/             # Configuration loading
+│   ├── configeditor/       # TUI configuration editor (BubbleTea)
 │   ├── conference/         # Conference management
 │   ├── editor/             # Full-screen text editor (BubbleTea)
 │   ├── file/               # File area management
@@ -281,7 +283,7 @@ See [Docker Deployment Guide](docs/sysop/getting-started/docker.md) for detailed
     .\setup.ps1         # Windows (PowerShell)
     ```
 
-    `setup.sh` will generate SSH host keys, copy template configs to `configs/`, create the required directory structure, and build all binaries (`vision3`, `helper`, `v3mail`, `strings`, `ue`).
+    `setup.sh` will generate SSH host keys, copy template configs to `configs/`, create the required directory structure, and build all binaries (`vision3`, `helper`, `v3mail`, `strings`, `ue`, `config`).
 
 2. **Configure your BBS:**
     ```bash

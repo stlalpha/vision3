@@ -534,11 +534,22 @@ Functions available via `RUN:` command:
 - `READPRIVMAIL` - Read private mail addressed to current user
 - `LISTPRIVMAIL` - List private mail messages
 
+### News
+
+- `PRINTNEWS` - Display news items new since last login (login sequence use)
+- `LISTNEWS` - Browse all visible news items; user selects to read
+- `EDITNEWS` - SysOp news management: add, delete, edit, list, view (SysOp only)
+
 ### Other Functions
 
 - `ONELINER` - One-liner system
 - `SHOWVERSION` - Display BBS version
 - `TOGGLEALLOWNEWUSERS` - Toggle new user registration open/closed (SysOp only)
+- `VOTE` - Voting booths
+- `VOTEMANDATORY` - Force vote on mandatory topics not yet voted on (login sequence use)
+- `LISTNUV` - View NUV candidate queue with vote tallies (read-only)
+- `SCANNUV` - Vote on pending NUV candidates
+- `CHECKNUV` - Login hook: notify eligible users of unvoted NUV candidates (login sequence use)
 
 ## Template Files (.TOP / .MID / .BOT)
 

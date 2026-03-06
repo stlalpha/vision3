@@ -974,8 +974,9 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				failCount = len(currentUser.TaggedFileIDs)
 			}
 
-			// Clear tags and save.
+			// Clear tags, update download count, and save.
 			currentUser.TaggedFileIDs = nil
+			currentUser.NumDownloads += successCount
 			if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
 				log.Printf("ERROR: Node %d: Failed to save user data after download: %v", nodeNumber, saveErr)
 			}

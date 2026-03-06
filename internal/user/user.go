@@ -33,6 +33,7 @@ type User struct {
 	Validated        bool      `json:"validated"`
 	FilePoints       int       `json:"filePoints"`    // Added for P
 	NumUploads       int       `json:"numUploads"`    // Added for E
+	NumDownloads     int       `json:"numDownloads,omitempty"` // Download count for ACS 'B' ratio
 	MessagesPosted   int       `json:"messagesPosted,omitempty"` // Number of messages posted by user
 	// NumLogons is TimesCalled
 	TimeLimit   int    `json:"timeLimit"`   // Added for T (in minutes)

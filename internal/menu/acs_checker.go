@@ -410,9 +410,21 @@ func evaluateCondition(condition string, u *user.User, s ssh.Session, _ *term.Te
 				log.Printf("DEBUG: ACS 'Y' check: Range='%s' Start=%s End=%s Now=%s -> %t", value, startDateTime, endDateTime, now, result)
 			}
 		}
-	case "B":
-		log.Printf("WARN: ACS 'B' (Baud Rate) check is not supported and will always pass.")
-		result = true
+	case "B": // Upload/Download ratio >= value (as percentage)
+		ratioThreshold, err := strconv.Atoi(value)
+		if err != nil {
+			log.Printf("WARN: Invalid ratio value in ACS condition '%s': %v", condition, err)
+			result = false
+		} else {
+			if u.NumDownloads <= 0 {
+				// No downloads: ratio is infinite (always passes)
+				result = true
+			} else {
+				ratio := (float64(u.NumUploads) / float64(u.NumDownloads)) * 100
+				result = int(ratio) >= ratioThreshold
+			}
+			log.Printf("DEBUG: ACS 'B' check: Uploads=%d, Downloads=%d, Threshold=%d%% -> %t", u.NumUploads, u.NumDownloads, ratioThreshold, result)
+		}
 	case "C": // Message Conference == value
 		confID, err := strconv.Atoi(value)
 		if err != nil {
@@ -421,9 +433,9 @@ func evaluateCondition(condition string, u *user.User, s ssh.Session, _ *term.Te
 		} else {
 			result = u.CurrentMsgConferenceID == confID
 		}
-	case "I":
-		log.Printf("WARN: ACS 'I' (Last Input) check is not implementable in the current context (check occurs before input) and will always fail.")
-		result = false
+	case "I": // Internet access flag — user has flag "I" set
+		result = strings.Contains(strings.ToUpper(u.Flags), "I")
+		log.Printf("DEBUG: ACS 'I' check: Flags=%q -> %t", u.Flags, result)
 	case "X": // File Conference == value
 		confID, err := strconv.Atoi(value)
 		if err != nil {

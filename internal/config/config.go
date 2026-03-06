@@ -732,6 +732,16 @@ type ServerConfig struct {
 	// Number of days to retain soft-deleted user accounts before they are eligible
 	// for permanent purge. 0 = purge immediately; -1 = never purge automatically.
 	DeletedUserRetentionDays int `json:"deletedUserRetentionDays"`
+
+	// New User Voting (NUV) — community-based new user approval (V2 NUV system).
+	UseNUV      bool `json:"useNuv"`      // enable NUV system
+	AutoAddNUV  bool `json:"autoAddNuv"`  // automatically add new registrants to NUV queue
+	NUVUseLevel int  `json:"nuvUseLevel"` // minimum access level required to vote
+	NUVYesVotes int  `json:"nuvYesVotes"` // yes votes required to auto-validate
+	NUVNoVotes  int  `json:"nuvNoVotes"`  // no votes required to auto-delete
+	NUVValidate bool `json:"nuvValidate"` // auto-validate user when yes threshold reached
+	NUVKill     bool `json:"nuvKill"`     // auto-delete user when no threshold reached
+	NUVLevel    int  `json:"nuvLevel"`    // access level assigned on NUV auto-validation
 }
 
 // EventConfig defines a scheduled event configuration
@@ -787,6 +797,14 @@ func LoadServerConfig(configPath string) (ServerConfig, error) {
 		TransferTimeoutMinutes:    10,
 		LegacySSHAlgorithms:       true,
 		DeletedUserRetentionDays:  30,
+		UseNUV:                    false,
+		AutoAddNUV:                false,
+		NUVUseLevel:               25,
+		NUVYesVotes:               5,
+		NUVNoVotes:                5,
+		NUVValidate:               true,
+		NUVKill:                   false,
+		NUVLevel:                  25,
 	}
 
 	data, err := os.ReadFile(filePath)

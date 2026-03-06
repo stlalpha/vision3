@@ -226,6 +226,12 @@ func (e *MenuExecutor) handleNewUserApplication(
 
 	log.Printf("INFO: Node %d: New user '%s' created (ID: %d, Handle: %s)", nodeNumber, newUser.Username, newUser.ID, newUser.Handle)
 
+	// Add to NUV queue if configured.
+	cfg := e.GetServerConfig()
+	if cfg.UseNUV && cfg.AutoAddNUV {
+		nuvAddCandidate(e.RootConfigPath, newUser.Handle)
+	}
+
 	// 11. Show validation message
 	validationMsg := e.LoadedStrings.NewUserAccountCreated
 	terminalio.WriteStringCP437(terminal, ansi.ReplacePipeCodes([]byte(validationMsg)), outputMode)

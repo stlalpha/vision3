@@ -55,7 +55,11 @@ type ProtocolConfig struct {
 
 // defaultProtocols returns built-in defaults.
 func defaultProtocols() []ProtocolConfig {
-	return []ProtocolConfig{{Key: "Z", Name: "Zmodem", Description: "Zmodem (lrzsz)", SendCmd: "sz", SendArgs: []string{"-b", "-e"}, RecvCmd: "rz", RecvArgs: []string{"-b", "-r"}, BatchSend: true, UsePTY: true, Default: true}}
+	return []ProtocolConfig{
+		{Key: "Z", Name: "Zmodem", Description: "Zmodem (lrzsz)", SendCmd: "sz", SendArgs: []string{"-b", "-e"}, RecvCmd: "rz", RecvArgs: []string{"-b", "-r"}, BatchSend: true, UsePTY: true, Default: true},
+		{Key: "Y", Name: "Ymodem", Description: "Ymodem batch transfer", SendCmd: "sb", SendArgs: []string{"{filePath}"}, RecvCmd: "rb", RecvArgs: nil, BatchSend: true, UsePTY: true},
+		{Key: "X", Name: "Xmodem", Description: "Xmodem single-file transfer", SendCmd: "sx", SendArgs: []string{"{filePath}"}, RecvCmd: "rx", RecvArgs: nil, BatchSend: false, UsePTY: true},
+	}
 }
 
 // LoadProtocols reads a JSON array of ProtocolConfig definitions from path.

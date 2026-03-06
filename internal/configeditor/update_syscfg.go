@@ -41,7 +41,7 @@ func (m Model) updateSysConfigMenu(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.mode = modeTopMenu
 			return m, nil
 		}
-		if len(key) == 1 && key[0] >= '1' && key[0] <= '6' {
+		if len(key) == 1 && key[0] >= '1' && key[0] <= '7' {
 			idx := int(key[0] - '1')
 			if idx < len(m.sysMenuItems) {
 				m.sysMenuCursor = idx

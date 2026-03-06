@@ -48,7 +48,7 @@ type sysConfigMenuItem struct {
 // Model is the BubbleTea model for the config editor TUI.
 type Model struct {
 	// Config data
-	configs    allConfigs
+	configs    *allConfigs
 	origServer config.ServerConfig // snapshot for dirty tracking
 	configPath string
 	dirty      bool
@@ -64,7 +64,7 @@ type Model struct {
 	sysFields     []fieldDef // current sub-screen fields
 
 	// Record list state
-	recordType    string     // "msgarea", "filearea", "conference", etc.
+	recordType    string // "msgarea", "filearea", "conference", etc.
 	recordCursor  int
 	recordScroll  int
 	recordFields  []fieldDef // fields for current record
@@ -99,10 +99,11 @@ type Model struct {
 
 // New creates a new config editor model.
 func New(configPath string) (Model, error) {
-	configs, err := loadAllConfigs(configPath)
+	cfgs, err := loadAllConfigs(configPath)
 	if err != nil {
 		return Model{}, fmt.Errorf("loading configs: %w", err)
 	}
+	configs := &cfgs
 
 	ti := textinput.New()
 	ti.Prompt = ""
@@ -131,6 +132,7 @@ func New(configPath string) (Model, error) {
 		{"Access Levels"},
 		{"Default Settings"},
 		{"IP Blocklist/Allowlist"},
+		{"New User Voting (NUV)"},
 	}
 
 	return Model{

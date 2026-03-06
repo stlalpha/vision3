@@ -530,6 +530,8 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["OPENDOOR"] = runOpenDoor                               // Prompt and open a door
 	registry["DOORINFO"] = runDoorInfo                               // Show door information
 	registry["UPLOADFILE"] = runUploadFile                           // ZMODEM file upload
+	registry["QWKDOWNLOAD"] = runQWKDownload                         // QWK mail packet download
+	registry["QWKUPLOAD"] = runQWKUpload                             // QWK REP packet upload
 	registry["WHOISONLINE"] = runWhoIsOnline                         // Who's online display
 	registry["CFG_HOTKEYS"] = runCfgHotKeys
 	registry["CFG_MOREPROMPTS"] = runCfgMorePrompts
@@ -548,6 +550,13 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["PAGE"] = runPage
 	registry["SPONSORMENU"] = runSponsorMenu         // Sponsor menu (% key in Messages Menu)
 	registry["SPONSOREDITAREA"] = runSponsorEditArea // Edit current message area fields
+	registry["PRINTNEWS"] = runPrintNews   // Display news new since last login (login sequence)
+	registry["LISTNEWS"] = runListNews     // List/read all news items
+	registry["EDITNEWS"] = runEditNews     // SysOp: news management (Add/Delete/Edit/List/View)
+	registry["VOTE"] = runVote                       // Voting booths system
+	registry["VOTEMANDATORY"] = runVoteOnMandatory   // Mandatory voting check (login sequence)
+	registry["LISTNUV"] = runNUVList                 // List NUV candidates and vote tallies
+	registry["SCANNUV"] = runNUVScan                 // Vote on pending NUV candidates
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
@@ -1951,13 +1960,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 		// --- Check for Lightbar Menu (.BAR) ---
 		// Check if a .BAR file exists for this menu in the MENU SET directory
-		barFilename := currentMenuName + ".BAR"
-		barPath := filepath.Join(e.MenuSetPath, "bar", barFilename)
-		_, barErr := os.Stat(barPath)
-		isLightbarMenu := barErr == nil // Treat as lightbar if .BAR exists and is accessible
-		if barErr != nil && !os.IsNotExist(barErr) {
-			log.Printf("WARN: Error checking for BAR file %s: %v. Assuming standard menu.", barPath, barErr)
-		}
+		isLightbarMenu := HasBarFile(currentMenuName, e.MenuSetPath)
 
 		// Variable declarations for command handling
 		// var userInput string // REMOVE this redeclaration
@@ -1968,7 +1971,6 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			log.Printf("DEBUG: Entering Lightbar input mode for %s", currentMenuName)
 
 			// Load lightbar options from the config directory
-			// Pass 'e' (MenuExecutor) to the updated function
 			lightbarOptions, loadErr := loadLightbarOptions(currentMenuName, e)
 			if loadErr != nil {
 				log.Printf("ERROR: Failed to load lightbar options for %s: %v", currentMenuName, loadErr)
@@ -1978,15 +1980,18 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 				isLightbarMenu = false
 			}
 
-			if isLightbarMenu { // Double check after loading options
-				// Save background for redrawing during selection changes
-				ansBackgroundBytes := ansiProcessResult.DisplayBytes // Use the already processed bytes
+			if isLightbarMenu {
+				// Hide cursor during lightbar navigation; restore on exit
+				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+
+				ansBackgroundBytes := ansiProcessResult.DisplayBytes
 
 				// Initially draw with first option selected
 				selectedIndex := 0
 				drawErr := drawLightbarMenu(terminal, ansBackgroundBytes, lightbarOptions, selectedIndex, outputMode, false)
 				if drawErr != nil {
 					log.Printf("ERROR: Failed to draw lightbar menu for %s: %v", currentMenuName, drawErr)
+					_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 					isLightbarMenu = false
 				} else {
 					// Process keyboard navigation for lightbar.
@@ -2001,6 +2006,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 					for inputLoop {
 						key, err := sessionIH.ReadKey()
 						if err != nil {
+							_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 							if errors.Is(err, io.EOF) {
 								log.Printf("INFO: User disconnected during lightbar input for %s", currentMenuName)
 								return "LOGOFF", nil, nil
@@ -2016,16 +2022,37 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 						switch key {
 						case editor.KeyArrowUp:
-							if selectedIndex > 0 {
-								prevIndex := selectedIndex
-								selectedIndex--
+							prevIndex := selectedIndex
+							selectedIndex--
+							if selectedIndex < 0 {
+								selectedIndex = len(lightbarOptions) - 1
+							}
+							if prevIndex != selectedIndex {
 								_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
 								_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
 							}
 						case editor.KeyArrowDown:
-							if selectedIndex < len(lightbarOptions)-1 {
+							prevIndex := selectedIndex
+							selectedIndex++
+							if selectedIndex >= len(lightbarOptions) {
+								selectedIndex = 0
+							}
+							if prevIndex != selectedIndex {
+								_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
+								_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+							}
+						case editor.KeyHome:
+							if selectedIndex != 0 {
 								prevIndex := selectedIndex
-								selectedIndex++
+								selectedIndex = 0
+								_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
+								_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
+							}
+						case editor.KeyEnd:
+							lastIdx := len(lightbarOptions) - 1
+							if selectedIndex != lastIdx {
+								prevIndex := selectedIndex
+								selectedIndex = lastIdx
 								_ = drawLightbarOption(terminal, lightbarOptions[prevIndex], false, outputMode)
 								_ = drawLightbarOption(terminal, lightbarOptions[selectedIndex], true, outputMode)
 							}
@@ -2065,6 +2092,8 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 						}
 					}
 					log.Printf("DEBUG: Processed Lightbar input as: '%s'", lightbarResult)
+					// Restore cursor after lightbar interaction
+					_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 					// Set userInput to lightbar result if a selection was made
 					if lightbarResult != "" {
 						userInput = lightbarResult
@@ -2177,13 +2206,38 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 
 				keys := strings.Split(cmdRec.Keys, " ") // Use string directly
 				for _, key := range keys {
-					// Handle empty userInput from lightbar mode if non-mapped key was pressed
+					// ^M matches when user presses Enter with no input (classic BBS default command)
+					if key == "^M" && userInput == "" {
+						nextAction = cmdRec.Command
+						matchedNodeActivity = cmdRec.NodeActivity
+						log.Printf("DEBUG: Matched ^M (Enter/default) to command action: '%s'", nextAction)
+						matched = true
+						break
+					}
+					// ## matches any numeric input (classic BBS numeric wildcard)
+					if key == "##" && userInput != "" {
+						isNumeric := true
+						for _, ch := range userInput {
+							if ch < '0' || ch > '9' {
+								isNumeric = false
+								break
+							}
+						}
+						if isNumeric {
+							nextAction = cmdRec.Command
+							matchedNodeActivity = cmdRec.NodeActivity
+							log.Printf("DEBUG: Matched ## (numeric wildcard, input='%s') to command action: '%s'", userInput, nextAction)
+							matched = true
+							break
+						}
+					}
+					// Standard exact key match
 					if key != "" && userInput != "" && userInput == key {
-						nextAction = cmdRec.Command // Store the action string
+						nextAction = cmdRec.Command
 						matchedNodeActivity = cmdRec.NodeActivity
 						log.Printf("DEBUG: Matched key '%s' to command action: '%s'", key, nextAction)
 						matched = true
-						break // Found match, break inner key loop
+						break
 					}
 				}
 				if matched {
@@ -3222,6 +3276,10 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 		data = append([]byte(ansi.ClearScreen()), data...)
 	}
 
+	// Process pipe codes before output — ANSI escape sequences produced are
+	// ASCII-safe and work correctly in both CP437 and UTF-8 output modes.
+	data = ansi.ReplacePipeCodes(data)
+
 	// For CP437 mode, write raw bytes directly to avoid UTF-8 false positives
 	var writeErr error
 	if outputMode == ansi.OutputModeCP437 {
@@ -3833,15 +3891,18 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 	type loginHandler func(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error)
 
 	handlers := map[string]loginHandler{
-		"LASTCALLS":   runLastCallers,
-		"ONELINERS":   runOneliners,
-		"USERSTATS":   runShowStats,
-		"NMAILSCAN":   runNewMailScan,
-		"DISPLAYFILE": runLoginDisplayFile,
-		"RUNDOOR":     runLoginDoor,
-		"FASTLOGIN":   runFastLogin,
-		"NEWUSERVAL":  runNewUserValidation,
-		"WHOISONLINE": runLoginWhosOnline,
+		"LASTCALLS":      runLastCallers,
+		"ONELINERS":      runOneliners,
+		"USERSTATS":      runShowStats,
+		"NMAILSCAN":      runNewMailScan,
+		"DISPLAYFILE":    runLoginDisplayFile,
+		"RUNDOOR":        runLoginDoor,
+		"FASTLOGIN":      runFastLogin,
+		"NEWUSERVAL":     runNewUserValidation,
+		"WHOISONLINE":    runLoginWhosOnline,
+		"PRINTNEWS":      runPrintNews,
+		"VOTEMANDATORY":  runVoteOnMandatory,
+		"CHECKNUV":       runCheckNUV,
 	}
 
 	for i, item := range loginSequence {
@@ -8987,9 +9048,10 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 				time.Sleep(1 * time.Second)
 			}
 
-			// 4. Clear tags and save user state
+			// 4. Clear tags, update download count, and save user state
 			log.Printf("DEBUG: Node %d: Clearing %d tagged file IDs for user %s.", nodeNumber, len(currentUser.TaggedFileIDs), currentUser.Handle)
 			currentUser.TaggedFileIDs = nil // Clear the list
+			currentUser.NumDownloads += successCount
 			if err := userManager.UpdateUser(currentUser); err != nil {
 				log.Printf("ERROR: Node %d: Failed to save user data after download attempt: %v", nodeNumber, err)
 				// Inform user? State might be inconsistent.

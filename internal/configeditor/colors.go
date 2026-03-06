@@ -98,9 +98,9 @@ var editInfoValueStyle = dosColor(1, 14)
 // --- Dialog styles ---
 var dialogBorderStyle = dosStyle(95) // magenta bg, white fg
 var dialogTitleStyle = lipgloss.NewStyle().
-	Foreground(lipgloss.Color(dosColors[15])).
-	Background(lipgloss.Color(dosColors[13])).
-	Bold(true)
+					Foreground(lipgloss.Color(dosColors[15])).
+					Background(lipgloss.Color(dosColors[13])).
+					Bold(true)
 var dialogTextStyle = dosStyle(94) // magenta bg, yellow fg
 
 // --- Help screen ---

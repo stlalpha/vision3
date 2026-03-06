@@ -2,6 +2,8 @@ package ftn
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -235,6 +237,67 @@ func TestTruncatedPacket(t *testing.T) {
 	_, _, err := ReadPacket(bytes.NewReader([]byte{0, 1, 2}))
 	if err == nil {
 		t.Error("expected error for truncated packet")
+	}
+}
+
+func TestReadPacketHeaderFromFile(t *testing.T) {
+	hdr := NewPacketHeader(1, 103, 705, 0, 1, 104, 56, 0, "testpw")
+
+	msgs := []*PackedMessage{
+		{MsgType: 2, OrigNode: 705, DestNode: 56, OrigNet: 103, DestNet: 104,
+			DateTime: "09 Feb 26  12:00:00", To: "All", From: "Tester",
+			Subject: "Test", Body: "Hello\\r"},
+	}
+
+	// Write packet to a temp file
+	dir := t.TempDir()
+	pktPath := filepath.Join(dir, "test.pkt")
+	f, err := os.Create(pktPath)
+	if err != nil {
+		t.Fatalf("create temp file: %v", err)
+	}
+	if err := WritePacket(f, hdr, msgs); err != nil {
+		f.Close()
+		t.Fatalf("WritePacket: %v", err)
+	}
+	f.Close()
+
+	// Read header back from file
+	hdr2, err := ReadPacketHeaderFromFile(pktPath)
+	if err != nil {
+		t.Fatalf("ReadPacketHeaderFromFile: %v", err)
+	}
+
+	if hdr2.OrigNode != 705 || hdr2.DestNode != 56 {
+		t.Errorf("nodes: got %d->%d, want 705->56", hdr2.OrigNode, hdr2.DestNode)
+	}
+	if hdr2.OrigNet != 103 || hdr2.DestNet != 104 {
+		t.Errorf("nets: got %d->%d, want 103->104", hdr2.OrigNet, hdr2.DestNet)
+	}
+	if hdr2.OrigZone != 1 || hdr2.DestZone != 1 {
+		t.Errorf("zones: got %d->%d, want 1->1", hdr2.OrigZone, hdr2.DestZone)
+	}
+	if string(bytes.TrimRight(hdr2.Password[:], "\x00")) != "testpw" {
+		t.Errorf("password: got %q, want %q", hdr2.Password, "testpw")
+	}
+}
+
+func TestReadPacketHeaderFromFile_NotExist(t *testing.T) {
+	_, err := ReadPacketHeaderFromFile("/nonexistent/path/test.pkt")
+	if err == nil {
+		t.Error("expected error for nonexistent file")
+	}
+}
+
+func TestReadPacketHeaderFromFile_TooShort(t *testing.T) {
+	dir := t.TempDir()
+	pktPath := filepath.Join(dir, "short.pkt")
+	if err := os.WriteFile(pktPath, []byte{0, 1, 2, 3}, 0644); err != nil {
+		t.Fatalf("write short file: %v", err)
+	}
+	_, err := ReadPacketHeaderFromFile(pktPath)
+	if err == nil {
+		t.Error("expected error for too-short file")
 	}
 }
 
