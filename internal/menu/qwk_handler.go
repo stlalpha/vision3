@@ -134,6 +134,19 @@ func runQWKDownload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	statusMsg := fmt.Sprintf("\r\n|14%d|07 message(s) packed into QWK packet.\r\n", totalMsgs)
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(statusMsg)), outputMode)
 
+	// Prompt user to send or quit
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+e.LoadedStrings.SendQWKPacketPrompt)), outputMode)
+	promptInput, promptErr := readLineFromSessionIH(s, terminal)
+	if promptErr != nil {
+		if errors.Is(promptErr, io.EOF) {
+			return nil, "LOGOFF", promptErr
+		}
+		return currentUser, "", nil
+	}
+	if strings.ToUpper(strings.TrimSpace(promptInput)) == "Q" {
+		return currentUser, "", nil
+	}
+
 	// Write packet to temp file
 	tmpFile, err := os.CreateTemp("", "qwk-*.zip")
 	if err != nil {
@@ -291,6 +304,9 @@ func runQWKUpload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 			log.Printf("WARN: Node %d: QWK REP: user lacks write ACS for area %s", nodeNumber, area.Tag)
 			continue
 		}
+
+		postMsg := strings.ReplaceAll(e.LoadedStrings.PostingQWKMsg, "|BN", area.Name)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+postMsg)), outputMode)
 
 		_, err := e.MessageMgr.AddMessage(area.ID, currentUser.Handle, msg.To, msg.Subject, msg.Body, "")
 		if err != nil {
