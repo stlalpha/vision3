@@ -138,8 +138,17 @@ func newsAddItem(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		return
 	}
 
+	// Prepend newest first (matches V2: seek(0), shift all down, write at position 0)
+	newsMu.Lock()
+	fresh, loadErr := loadNewsData(e.RootConfigPath)
+	if loadErr != nil {
+		newsMu.Unlock()
+		log.Printf("ERROR: Failed to load news data before add: %v", loadErr)
+		wv(terminal, "|04Error adding news item.\r\n", outputMode)
+		return
+	}
 	item := NewsItem{
-		ID:       len(nd.Items) + 1,
+		ID:       len(fresh.Items) + 1,
 		Title:    title,
 		From:     from,
 		When:     time.Now(),
@@ -148,17 +157,16 @@ func newsAddItem(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		Always:   always,
 		Body:     strings.Join(bodyLines, "\n"),
 	}
-
-	// Prepend newest first (matches V2: seek(0), shift all down, write at position 0)
-	newsMu.Lock()
-	fresh, loadErr := loadNewsData(e.RootConfigPath)
-	if loadErr == nil {
-		fresh.Items = append([]NewsItem{item}, fresh.Items...)
-		_ = saveNewsData(e.RootConfigPath, fresh)
-	}
+	fresh.Items = append([]NewsItem{item}, fresh.Items...)
+	saveErr := saveNewsData(e.RootConfigPath, fresh)
 	newsMu.Unlock()
+	if saveErr != nil {
+		log.Printf("ERROR: Failed to save news data after add: %v", saveErr)
+		wv(terminal, "|04Error saving news item.\r\n", outputMode)
+		return
+	}
 
-	wv(terminal, fmt.Sprintf("|10News item added!\r\n"), outputMode)
+	wv(terminal, "|10News item added!\r\n", outputMode)
 }
 
 func newsDeleteItem(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
@@ -187,11 +195,25 @@ func newsDeleteItem(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	newsMu.Lock()
 	fresh, loadErr := loadNewsData(e.RootConfigPath)
-	if loadErr == nil && n <= len(fresh.Items) {
-		fresh.Items = append(fresh.Items[:n-1], fresh.Items[n:]...)
-		_ = saveNewsData(e.RootConfigPath, fresh)
+	if loadErr != nil {
+		newsMu.Unlock()
+		log.Printf("ERROR: Failed to load news data before delete: %v", loadErr)
+		wv(terminal, "|04Error deleting news item.\r\n", outputMode)
+		return
 	}
+	if n > len(fresh.Items) {
+		newsMu.Unlock()
+		wv(terminal, "|04Unable to delete item; please try again.\r\n", outputMode)
+		return
+	}
+	fresh.Items = append(fresh.Items[:n-1], fresh.Items[n:]...)
+	saveErr := saveNewsData(e.RootConfigPath, fresh)
 	newsMu.Unlock()
+	if saveErr != nil {
+		log.Printf("ERROR: Failed to save news data after delete: %v", saveErr)
+		wv(terminal, "|04Error deleting news item.\r\n", outputMode)
+		return
+	}
 	wv(terminal, "|10Item deleted.\r\n", outputMode)
 }
 
@@ -236,11 +258,25 @@ func newsEditItem(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		case "Q", "":
 			newsMu.Lock()
 			fresh, loadErr := loadNewsData(e.RootConfigPath)
-			if loadErr == nil && n <= len(fresh.Items) {
-				fresh.Items[n-1] = item
-				_ = saveNewsData(e.RootConfigPath, fresh)
+			if loadErr != nil {
+				newsMu.Unlock()
+				log.Printf("ERROR: Failed to load news data before edit save: %v", loadErr)
+				wv(terminal, "|04Error saving news item.\r\n", outputMode)
+				return
 			}
+			if n > len(fresh.Items) {
+				newsMu.Unlock()
+				wv(terminal, "|04News item no longer exists.\r\n", outputMode)
+				return
+			}
+			fresh.Items[n-1] = item
+			saveErr := saveNewsData(e.RootConfigPath, fresh)
 			newsMu.Unlock()
+			if saveErr != nil {
+				log.Printf("ERROR: Failed to save news data after edit: %v", saveErr)
+				wv(terminal, "|04Error saving news item.\r\n", outputMode)
+				return
+			}
 			wv(terminal, "|10Item saved.\r\n", outputMode)
 			return
 		case "T":

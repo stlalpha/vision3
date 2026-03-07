@@ -59,8 +59,8 @@ func (pw *PacketWriter) MessageCount() int {
 	return len(pw.messages)
 }
 
-// WriteTo writes the complete QWK ZIP packet to w.
-func (pw *PacketWriter) WriteTo(w io.Writer) error {
+// WritePacket writes the complete QWK ZIP packet to w.
+func (pw *PacketWriter) WritePacket(w io.Writer) error {
 	zw := zip.NewWriter(w)
 	defer zw.Close()
 
@@ -111,7 +111,11 @@ func (pw *PacketWriter) writeControlDAT(zw *zip.Writer) error {
 	}
 
 	// Line 11: number of conferences - 1 (0-based)
-	lines = append(lines, fmt.Sprintf("%d", len(pw.conferences)-1))
+	confCount := len(pw.conferences)
+	if confCount > 0 {
+		confCount = confCount - 1
+	}
+	lines = append(lines, fmt.Sprintf("%d", confCount))
 
 	// Conference entries: number then name, alternating lines
 	for _, c := range pw.conferences {

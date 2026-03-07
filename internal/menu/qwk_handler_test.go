@@ -75,7 +75,9 @@ func TestFindREPFile_FallbackToAnyREP(t *testing.T) {
 
 func TestFindREPFile_NoREPFile(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "VISION3.QWK"), []byte("data"), 0644)
+	if err := os.WriteFile(filepath.Join(dir, "VISION3.QWK"), []byte("data"), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
 
 	got := findREPFile(dir, "VISION3")
 	if got != "" {

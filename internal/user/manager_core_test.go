@@ -879,6 +879,7 @@ func TestConcurrentAuthenticate(t *testing.T) {
 	seed := []User{{ID: 1, Username: "alice", Handle: "Alice", PasswordHash: hashPassword(t, pw), AccessLevel: 5}}
 	um := newTestManager(t, seed)
 
+	failures := make(chan string, 5)
 	var wg sync.WaitGroup
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
@@ -886,11 +887,15 @@ func TestConcurrentAuthenticate(t *testing.T) {
 			defer wg.Done()
 			_, ok := um.Authenticate("alice", pw)
 			if !ok {
-				t.Error("concurrent auth should succeed")
+				failures <- "concurrent auth should succeed"
 			}
 		}()
 	}
 	wg.Wait()
+	close(failures)
+	for msg := range failures {
+		t.Error(msg)
+	}
 }
 
 // --- loadNextCallNumber ---

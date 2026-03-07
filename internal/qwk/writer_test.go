@@ -28,8 +28,8 @@ func TestPacketWriter_BasicPacket(t *testing.T) {
 	})
 
 	var buf bytes.Buffer
-	if err := pw.WriteTo(&buf); err != nil {
-		t.Fatalf("WriteTo failed: %v", err)
+	if err := pw.WritePacket(&buf); err != nil {
+		t.Fatalf("WritePacket failed: %v", err)
 	}
 
 	// Verify it's a valid ZIP
@@ -58,8 +58,8 @@ func TestPacketWriter_ControlDAT(t *testing.T) {
 	pw.AddConference(1, "Chat")
 
 	var buf bytes.Buffer
-	if err := pw.WriteTo(&buf); err != nil {
-		t.Fatalf("WriteTo failed: %v", err)
+	if err := pw.WritePacket(&buf); err != nil {
+		t.Fatalf("WritePacket failed: %v", err)
 	}
 
 	zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
@@ -74,7 +74,10 @@ func TestPacketWriter_ControlDAT(t *testing.T) {
 				t.Fatal(err)
 			}
 			var content bytes.Buffer
-			content.ReadFrom(rc)
+			if _, err := content.ReadFrom(rc); err != nil {
+				rc.Close()
+				t.Fatalf("ReadFrom CONTROL.DAT: %v", err)
+			}
 			rc.Close()
 
 			lines := strings.Split(content.String(), "\r\n")
@@ -218,8 +221,8 @@ func TestPacketWriter_NoMessages(t *testing.T) {
 	pw.AddConference(0, "Mail")
 
 	var buf bytes.Buffer
-	if err := pw.WriteTo(&buf); err != nil {
-		t.Fatalf("WriteTo failed: %v", err)
+	if err := pw.WritePacket(&buf); err != nil {
+		t.Fatalf("WritePacket failed: %v", err)
 	}
 
 	// Should still produce a valid ZIP with CONTROL.DAT and MESSAGES.DAT

@@ -153,7 +153,9 @@ func nuvApplyThresholds(e *MenuExecutor, nd *NUVData, idx int, userManager *user
 	no := len(c.Votes) - yes
 
 	if cfg.NUVYesVotes > 0 && yes >= cfg.NUVYesVotes {
+		shouldRemove := true
 		if cfg.NUVValidate {
+			shouldRemove = false
 			if u, ok := userManager.GetUserByHandle(c.Handle); ok {
 				u.AccessLevel = cfg.NUVLevel
 				u.Validated = true
@@ -161,21 +163,30 @@ func nuvApplyThresholds(e *MenuExecutor, nd *NUVData, idx int, userManager *user
 					log.Printf("ERROR: NUV: failed to validate user '%s': %v", c.Handle, err)
 				} else {
 					log.Printf("INFO: NUV: auto-validated '%s' (level %d)", c.Handle, cfg.NUVLevel)
+					shouldRemove = true
 				}
+			} else {
+				log.Printf("ERROR: NUV: user '%s' not found during validation", c.Handle)
 			}
 		} else {
 			log.Printf("INFO: NUV: '%s' reached YES threshold — notify SysOp to validate", c.Handle)
 		}
-		nd.Candidates = append(nd.Candidates[:idx], nd.Candidates[idx+1:]...)
-		return true
+		if shouldRemove {
+			nd.Candidates = append(nd.Candidates[:idx], nd.Candidates[idx+1:]...)
+			return true
+		}
+		return false
 	}
 
 	if cfg.NUVNoVotes > 0 && no >= cfg.NUVNoVotes {
 		if cfg.NUVKill {
 			if u, ok := userManager.GetUserByHandle(c.Handle); ok {
 				u.DeletedUser = true
-				_ = userManager.UpdateUser(u)
-				log.Printf("INFO: NUV: auto-deleted '%s' (voted off)", c.Handle)
+				if err := userManager.UpdateUser(u); err != nil {
+					log.Printf("ERROR: NUV: failed to delete user '%s': %v", c.Handle, err)
+				} else {
+					log.Printf("INFO: NUV: auto-deleted '%s' (voted off)", c.Handle)
+				}
 			}
 		} else {
 			log.Printf("INFO: NUV: '%s' reached NO threshold — notify SysOp to delete", c.Handle)

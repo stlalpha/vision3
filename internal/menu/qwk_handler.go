@@ -92,6 +92,7 @@ func runQWKDownload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		// Pack new messages (up to 500 per area to limit packet size)
 		maxPerArea := 500
 		packed := 0
+		highestPacked := lastRead
 		for msgNum := lastRead + 1; msgNum <= msgCount && packed < maxPerArea; msgNum++ {
 			msg, err := e.MessageMgr.GetMessage(area.ID, msgNum)
 			if err != nil {
@@ -113,11 +114,14 @@ func runQWKDownload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 			})
 			packed++
 			totalMsgs++
+			if msgNum > highestPacked {
+				highestPacked = msgNum
+			}
 		}
 
 		// Update last read pointer
 		if packed > 0 {
-			newLastRead := lastRead + packed
+			newLastRead := highestPacked
 			if newLastRead > msgCount {
 				newLastRead = msgCount
 			}
@@ -156,7 +160,7 @@ func runQWKDownload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 	tmpPath := tmpFile.Name()
 	defer os.Remove(tmpPath)
 
-	if err := pw.WriteTo(tmpFile); err != nil {
+	if err := pw.WritePacket(tmpFile); err != nil {
 		tmpFile.Close()
 		log.Printf("ERROR: Node %d: QWK: failed to write packet: %v", nodeNumber, err)
 		return currentUser, "", nil

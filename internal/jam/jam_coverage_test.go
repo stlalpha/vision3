@@ -276,7 +276,9 @@ func TestWriteMessageTextMixedLineEndings(t *testing.T) {
 	msg.To = "All"
 	msg.Subject = "Mixed"
 	msg.Text = "Line1\r\nLine2\nLine3\rLine4"
-	b.WriteMessage(msg)
+	if _, err := b.WriteMessage(msg); err != nil {
+		t.Fatalf("WriteMessage: %v", err)
+	}
 
 	got, err := b.ReadMessage(1)
 	if err != nil {
@@ -308,7 +310,9 @@ func TestScanMessagesWithDeletedInMiddle(t *testing.T) {
 			msg.ReplyID = fmt.Sprintf("1:1/1 %08x", i-1)
 		}
 		msg.OrigAddr = "1:1/1"
-		b.WriteMessage(msg)
+		if _, err := b.WriteMessage(msg); err != nil {
+			t.Fatalf("WriteMessage: %v", err)
+		}
 	}
 
 	// Delete messages 2, 4, 6, 8
@@ -338,7 +342,7 @@ func TestScanMessagesWithDeletedInMiddle(t *testing.T) {
 		}
 	}
 
-	// Scan with limit starting from msg 5 (deleted), should skip to 5 (live)
+	// Scan with limit starting from msg 5 (live), should skip to 5 (live)
 	msgs, err = b.ScanMessages(5, 3)
 	if err != nil {
 		t.Fatalf("ScanMessages from 5: %v", err)

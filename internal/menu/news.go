@@ -21,13 +21,13 @@ import (
 // NewsItem represents a single news item (maps to V2's newsrec).
 type NewsItem struct {
 	ID       int       `json:"id"`
-	Title    string    `json:"title"`    // max 28 chars (V2 String[28])
-	From     string    `json:"from"`     // author handle
+	Title    string    `json:"title"` // max 28 chars (V2 String[28])
+	From     string    `json:"from"`  // author handle
 	When     time.Time `json:"when"`
-	Level    int       `json:"level"`    // min access level
+	Level    int       `json:"level"`     // min access level
 	MaxLevel int       `json:"max_level"` // max access level (0 = no max / all)
-	Always   bool      `json:"always"`   // true = show every login; false = once (new since last login)
-	Body     string    `json:"body"`     // news text body
+	Always   bool      `json:"always"`    // true = show every login; false = once (new since last login)
+	Body     string    `json:"body"`      // news text body
 }
 
 // NewsData holds all news items.
@@ -66,8 +66,9 @@ func saveNewsData(rootConfigPath string, nd *NewsData) error {
 
 // displayNewsItem renders NEWSHDR.ANS with substitution vars, then the body text.
 // Substitution vars (V2-compatible mapping):
-//   ^NM = item number   ^TI = title    ^FR = from/author
-//   ^DT = date          ^TM = time     ^LV = min level   ^MX = max level
+//
+//	^NM = item number   ^TI = title    ^FR = from/author
+//	^DT = date          ^TM = time     ^LV = min level   ^MX = max level
 func displayNewsItem(e *MenuExecutor, terminal *term.Terminal, item *NewsItem, idx int, outputMode ansi.OutputMode) {
 	ansiPath := filepath.Join(e.MenuSetPath, "ansi", "NEWSHDR.ANS")
 	if raw, err := os.ReadFile(ansiPath); err == nil {
@@ -148,6 +149,9 @@ func runListNews(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
 	sessionStartTime time.Time, args string, outputMode ansi.OutputMode,
 	termWidth int, termHeight int) (*user.User, string, error) {
+	if currentUser == nil {
+		return currentUser, "", nil
+	}
 
 	log.Printf("DEBUG: Node %d: Running LISTNEWS for user %s", nodeNumber, currentUser.Handle)
 

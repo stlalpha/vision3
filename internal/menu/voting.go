@@ -184,7 +184,12 @@ func doVoteOnTopic(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		fresh, loadErr := loadVotingData(e.RootConfigPath)
 		if loadErr == nil && topicIdx < len(fresh.Topics) {
 			fresh.Topics[topicIdx].Options = append(fresh.Topics[topicIdx].Options, strings.TrimSpace(choice))
-			_ = saveVotingData(e.RootConfigPath, fresh)
+			if saveErr := saveVotingData(e.RootConfigPath, fresh); saveErr != nil {
+				log.Printf("ERROR: Failed to save voting data after adding choice: %v", saveErr)
+				votingMu.Unlock()
+				wv(terminal, "|04Error saving choice.\r\n", outputMode)
+				return false
+			}
 			*vd = *fresh
 		}
 		votingMu.Unlock()

@@ -246,7 +246,7 @@ func TestReadPacketHeaderFromFile(t *testing.T) {
 	msgs := []*PackedMessage{
 		{MsgType: 2, OrigNode: 705, DestNode: 56, OrigNet: 103, DestNet: 104,
 			DateTime: "09 Feb 26  12:00:00", To: "All", From: "Tester",
-			Subject: "Test", Body: "Hello\\r"},
+			Subject: "Test", Body: "Hello\r"},
 	}
 
 	// Write packet to a temp file
