@@ -210,7 +210,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		if size < 1024 {
 			return fmt.Sprintf("%dB", size)
 		}
-		return fmt.Sprintf("%dk", size/1024)
+		if size < 10*1024*1024 {
+			return fmt.Sprintf("%dk", size/1024)
+		}
+		return fmt.Sprintf("%dM", size/(1024*1024))
 	}
 
 	// stripAnsi removes all ANSI escape sequences from a string.
@@ -219,13 +222,21 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		return ansiRe.ReplaceAllString(s, "")
 	}
 
-	// Description widths used below are calculated dynamically from the MID
-	// template; the DIZ-level constraints (45 cols, 11 lines) are applied by
-	// formatDIZLines before the display-width pass.
-
-	// Description is rendered on separate continuation lines below the
-	// metadata row; the DIZ-level constraints (45 cols, 11 lines) are
-	// applied by formatDIZLines before any display-width truncation.
+	// All template placeholders are fixed-width, so the description column
+	// width is constant across all file entries. Precompute once for both
+	// fileEntryHeight and buildFileEntry.
+	sample := strings.ReplaceAll(processedMidTemplate, "^MARK", " ")
+	sample = strings.ReplaceAll(sample, "^NUM", "  1")
+	sample = strings.ReplaceAll(sample, "^NAME", "            ")
+	sample = strings.ReplaceAll(sample, "^DATE", "01/01/00")
+	sample = strings.ReplaceAll(sample, "^SIZE", "     ")
+	sample = strings.ReplaceAll(sample, "^DESC", "")
+	descPrefixLen := len(stripAnsi(string(ansi.ReplacePipeCodes([]byte(sample)))))
+	descColWidth := termWidth - descPrefixLen - 1
+	if descColWidth < 20 {
+		descColWidth = 20
+	}
+	descIndentStr := strings.Repeat(" ", descPrefixLen)
 
 	// fileEntryHeight returns the number of screen lines a file at idx takes:
 	// first line (metadata + first DIZ line) + continuation DIZ lines.
@@ -233,7 +244,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		if idx < 0 || idx >= len(allFiles) {
 			return 1
 		}
-		dizCount := len(formatDIZLines(allFiles[idx].Description, dizMaxWidth, dizMaxLines))
+		dizCount := len(formatDIZLines(allFiles[idx].Description, descColWidth, dizMaxLines))
 		if dizCount < 1 {
 			return 1
 		}
@@ -251,7 +262,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				break
 			}
 			if usedLines+h > visibleRows {
-				h = 1 // truncate DIZ, first line still fits
+				h = visibleRows - usedLines // show as many DIZ lines as fit
 			}
 			usedLines += h
 			count++
@@ -297,7 +308,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 					break
 				}
 				if usedLines+h > visibleRows {
-					h = 1
+					h = visibleRows - usedLines
 				}
 				usedLines += h
 				idx++
@@ -331,7 +342,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 		// Scroll down: advance topIndex until selectedIndex fits within the
 		// visible screen area, accounting for multi-line file entries.
-		for topIndex < selectedIndex {
+		// We keep advancing until the selected entry either fits at full
+		// height or is at the very top of the viewport (so large entries
+		// like 21-line ANS art are always shown from the top, not crammed
+		// at the bottom with only a few lines visible).
+		for topIndex <= selectedIndex {
 			usedLines := 0
 			fits := false
 			for idx := topIndex; idx < len(allFiles) && usedLines < visibleRows; idx++ {
@@ -339,16 +354,21 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				if usedLines+1 > visibleRows {
 					break // can't fit even the first line
 				}
+				fullH := h
 				if usedLines+h > visibleRows {
-					h = 1 // truncate continuation lines, first line still fits
+					h = visibleRows - usedLines
 				}
 				usedLines += h
 				if idx == selectedIndex {
-					fits = true
+					// Fits fully, or entry is already at top of viewport
+					// (can't scroll any higher without losing the selection).
+					if h == fullH || idx == topIndex {
+						fits = true
+					}
 					break
 				}
 			}
-			if fits {
+			if fits || topIndex >= selectedIndex {
 				break
 			}
 			topIndex++
@@ -382,9 +402,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 		fileNameStr := fmt.Sprintf("%-12s", name)
 		dateStr := fileRec.UploadedAt.Format("01/02/06")
-		sizeStr := fmt.Sprintf("%7s", formatSize(fileRec.Size))
-
-		dizLines := formatDIZLines(fileRec.Description, dizMaxWidth, dizMaxLines)
+		sizeStr := fmt.Sprintf("%5s", formatSize(fileRec.Size))
 
 		markStr := " "
 		if isFileTagged(fileRec.ID) {
@@ -398,42 +416,37 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		line = strings.ReplaceAll(line, "^DATE", dateStr)
 		line = strings.ReplaceAll(line, "^SIZE", sizeStr)
 
-		// Build prefix (everything except desc) for highlight and indent calc.
+		// Build prefix for highlight rendering (ANSI-stripped).
 		prefixLine := strings.ReplaceAll(line, "^DESC", "")
 		processedPrefix := string(ansi.ReplacePipeCodes([]byte(prefixLine)))
-		prefixLen := len(stripAnsi(processedPrefix))
-		descIndent := strings.Repeat(" ", prefixLen)
-		descWidth := termWidth - prefixLen - 1
-		if descWidth < 20 {
-			descWidth = 20
-		}
+
+		dizLines := formatDIZLines(fileRec.Description, descColWidth, dizMaxLines)
 
 		firstDesc := ""
 		if len(dizLines) > 0 {
 			firstDesc = dizLines[0]
-			if ansi.VisibleLength(firstDesc) > descWidth {
-				firstDesc = ansi.TruncateVisible(firstDesc, descWidth)
-			}
 		}
 
 		var contLines []string
 		for i := 1; i < len(dizLines); i++ {
-			cl := dizLines[i]
-			if ansi.VisibleLength(cl) > descWidth {
-				cl = ansi.TruncateVisible(cl, descWidth)
-			}
-			contLines = append(contLines, cl)
+			contLines = append(contLines, dizLines[i])
 		}
 
-		if 1+len(contLines) > maxLines {
-			contLines = nil
+		if len(contLines) > maxLines-1 {
+			contLines = contLines[:maxLines-1]
 		}
 
 		var result []string
 
 		if highlighted {
 			plainPrefix := stripAnsi(processedPrefix)
-			result = append(result, hiColorSeq+plainPrefix+"\x1b[0m"+firstDesc)
+			plainDesc := stripAnsi(firstDesc)
+			rowText := plainPrefix + plainDesc
+			visLen := ansi.VisibleLength(rowText)
+			if visLen < termWidth {
+				rowText += strings.Repeat(" ", termWidth-visLen)
+			}
+			result = append(result, hiColorSeq+rowText+"\x1b[0m")
 		} else {
 			fullLine := strings.ReplaceAll(line, "^DESC", firstDesc)
 			processed := string(ansi.ReplacePipeCodes([]byte(fullLine)))
@@ -441,7 +454,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 
 		for _, cl := range contLines {
-			result = append(result, string(ansi.ReplacePipeCodes([]byte("|07"+descIndent+cl))))
+			result = append(result, string(ansi.ReplacePipeCodes([]byte("|07"+descIndentStr+cl))))
 		}
 
 		return result
@@ -458,7 +471,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			h := fileEntryHeight(idx)
 			remaining := visibleRows - (row - fileAreaStartRow)
 			if h > remaining {
-				h = 1
+				h = remaining
 			}
 			if remaining < 1 {
 				break
@@ -527,7 +540,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				h := fileEntryHeight(idx)
 				remaining := visibleRows - linesUsed
 				if h > remaining {
-					h = 1
+					h = remaining
 				}
 				if remaining < 1 {
 					break
@@ -1018,7 +1031,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 const (
 	dizMaxWidth = 45
-	dizMaxLines = 11
+	dizMaxLines = 22
 )
 
 // formatDIZLines splits FILE_ID.DIZ content into display-ready lines.

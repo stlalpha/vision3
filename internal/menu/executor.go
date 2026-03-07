@@ -8856,7 +8856,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 				}
 				fileNameStr = fmt.Sprintf("%-12s", fileNameStr)
 				dateStr := fileRec.UploadedAt.Format("01/02/06")
-				sizeStr := fmt.Sprintf("%7s", fmt.Sprintf("%dk", fileRec.Size/1024))
+				sizeStr := fmt.Sprintf("%5s", fmt.Sprintf("%dk", fileRec.Size/1024))
 
 				markStr := " "
 				if currentUser.TaggedFileIDs != nil {
@@ -8895,7 +8895,7 @@ func runListFiles(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 				prefixLine = strings.ReplaceAll(prefixLine, "^NUM", "   ")
 				prefixLine = strings.ReplaceAll(prefixLine, "^NAME", strings.Repeat(" ", 12))
 				prefixLine = strings.ReplaceAll(prefixLine, "^DATE", strings.Repeat(" ", 8))
-				prefixLine = strings.ReplaceAll(prefixLine, "^SIZE", strings.Repeat(" ", 7))
+				prefixLine = strings.ReplaceAll(prefixLine, "^SIZE", strings.Repeat(" ", 5))
 				prefixLine = strings.ReplaceAll(prefixLine, "^DESC", "")
 				processedPrefix := string(ansi.ReplacePipeCodes([]byte(prefixLine)))
 				prefixLen := ansi.VisibleLength(processedPrefix)
