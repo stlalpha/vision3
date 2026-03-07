@@ -78,7 +78,7 @@ func TestReplacePipeCodes(t *testing.T) {
 		{
 			name: "pipe P save cursor",
 			in:   []byte("|P "),
-			want: []byte("|P "), // |P is 2-char code but ReplacePipeCodes only matches 3+ char codes
+			want: []byte("\x1B[s "),
 		},
 		{
 			name: "pipe PP restore cursor",
@@ -613,25 +613,24 @@ func TestProcessAnsiAndExtractCoords_CursorPosition(t *testing.T) {
 }
 
 func TestProcessAnsiAndExtractCoords_ClearScreenResetsCursor(t *testing.T) {
-	// Note: |CL is captured as a placeholder "CL" before being checked as a command,
-	// so the cursor doesn't actually reset. |CD also becomes a placeholder at (3,1).
+	// |CL is a known pipe command (clear screen + cursor home), not a field placeholder.
+	// After |CL the cursor resets to (1,1), so |CD is recorded at (1,1).
 	input := []byte("AB|CL|CD")
 	result, err := ProcessAnsiAndExtractCoords(input, OutputModeCP437)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// CL is treated as a placeholder (uppercase letters), recorded at cursor position after "AB"
-	_, clOk := result.FieldCoords["CL"]
-	if !clOk {
-		t.Fatal("expected field coord 'CL' to be recorded as placeholder")
+	// |CL must NOT be captured as a placeholder
+	if _, ok := result.FieldCoords["CL"]; ok {
+		t.Error("'CL' should not be recorded as a placeholder (it is a pipe command)")
 	}
 	coord, ok := result.FieldCoords["CD"]
 	if !ok {
 		t.Fatal("expected field coord 'CD' to be recorded")
 	}
-	// Both CL and CD are recorded as placeholders at (3,1) since cursor isn't reset
-	if coord.X != 3 || coord.Y != 1 {
-		t.Errorf("field coord CD = (%d, %d), want (3, 1)", coord.X, coord.Y)
+	// Cursor resets to (1,1) after |CL, so CD is at (1,1)
+	if coord.X != 1 || coord.Y != 1 {
+		t.Errorf("field coord CD = (%d, %d), want (1, 1)", coord.X, coord.Y)
 	}
 }
 
@@ -1264,19 +1263,24 @@ func TestProcessAnsiAndExtractCoords_PipeColorUpdatesState(t *testing.T) {
 }
 
 func TestProcessAnsiAndExtractCoords_PipeCLResetsCoords(t *testing.T) {
-	// |CL is first matched as uppercase placeholder "CL", so it gets captured.
-	// But since it also matches pipeCodeReplacements, it also resets cursor.
-	// Due to the code structure, |CL with two uppercase letters is captured as
-	// a placeholder first. Let's test what actually happens with a non-placeholder pipe code.
-	// Use pipe code that's only in the replacement map: |CR (newline)
+	// |CR is a known pipe command (newline), not a field placeholder.
+	// After |CR the cursor advances to (1,2), so |AB is recorded at (1,2).
 	input := []byte("|CR|AB")
 	result, err := ProcessAnsiAndExtractCoords(input, OutputModeCP437)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// |CR is captured as a placeholder "CR" (two uppercase letters)
-	if _, ok := result.FieldCoords["CR"]; !ok {
-		t.Error("expected field coord 'CR' (captured as placeholder)")
+	// |CR must NOT be captured as a placeholder
+	if _, ok := result.FieldCoords["CR"]; ok {
+		t.Error("'CR' should not be recorded as a placeholder (it is a pipe command)")
+	}
+	coord, ok := result.FieldCoords["AB"]
+	if !ok {
+		t.Fatal("expected field coord 'AB' to be recorded")
+	}
+	// After |CR (newline), cursor is at (1,2)
+	if coord.X != 1 || coord.Y != 2 {
+		t.Errorf("field coord AB = (%d, %d), want (1, 2)", coord.X, coord.Y)
 	}
 }
 

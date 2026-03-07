@@ -277,49 +277,49 @@ func TestFindEditorPlaceholderPos_SGRTracking(t *testing.T) {
 			name:      "bold + red fg",
 			tmpl:      "\x1b[1;31m@T@",
 			code:      'T',
-			wantColor: "\x1b[0;1;31;0m",
+			wantColor: (&sgrState{bold: true, fg: 31, bg: -1}).escape(),
 		},
 		{
 			name:      "reset clears state",
 			tmpl:      "\x1b[1;31m\x1b[0m@T@",
 			code:      'T',
-			wantColor: "\x1b[0m",
+			wantColor: (&sgrState{fg: -1, bg: -1}).escape(),
 		},
 		{
 			name:      "faint attribute",
 			tmpl:      "\x1b[2m@T@",
 			code:      'T',
-			wantColor: "\x1b[0;2;0;0m",
+			wantColor: (&sgrState{faint: true, fg: -1, bg: -1}).escape(),
 		},
 		{
 			name:      "blink attribute",
 			tmpl:      "\x1b[5m@T@",
 			code:      'T',
-			wantColor: "\x1b[0;5;0;0m",
+			wantColor: (&sgrState{blink: true, fg: -1, bg: -1}).escape(),
 		},
 		{
 			name:      "background color",
 			tmpl:      "\x1b[42m@T@",
 			code:      'T',
-			wantColor: "\x1b[0;0;42m",
+			wantColor: (&sgrState{fg: -1, bg: 42}).escape(),
 		},
 		{
 			name:      "bright fg",
 			tmpl:      "\x1b[91m@T@",
 			code:      'T',
-			wantColor: "\x1b[0;91;0m",
+			wantColor: (&sgrState{fg: 91, bg: -1}).escape(),
 		},
 		{
 			name:      "bright bg",
 			tmpl:      "\x1b[104m@T@",
 			code:      'T',
-			wantColor: "\x1b[0;0;104m",
+			wantColor: (&sgrState{fg: -1, bg: 104}).escape(),
 		},
 		{
 			name:      "empty params resets (ESC[m)",
 			tmpl:      "\x1b[1;31m\x1b[m@T@",
 			code:      'T',
-			wantColor: "\x1b[0m",
+			wantColor: (&sgrState{fg: -1, bg: -1}).escape(),
 		},
 	}
 
@@ -350,21 +350,21 @@ func TestFindEditorColorAtPos_Basic(t *testing.T) {
 			tmpl:      "Hello",
 			row:       1,
 			col:       1,
-			wantColor: "\x1b[0;0;0m",
+			wantColor: (&sgrState{fg: -1, bg: -1}).escape(),
 		},
 		{
 			name:      "red fg at position",
 			tmpl:      "\x1b[31mHello",
 			row:       1,
 			col:       1,
-			wantColor: "\x1b[0;31;0m",
+			wantColor: (&sgrState{fg: 31, bg: -1}).escape(),
 		},
 		{
 			name:      "color at second row",
 			tmpl:      "Line1\n\x1b[32mLine2",
 			row:       2,
 			col:       1,
-			wantColor: "\x1b[0;32;0m",
+			wantColor: (&sgrState{fg: 32, bg: -1}).escape(),
 		},
 		{
 			name:      "position not reached",
@@ -385,14 +385,14 @@ func TestFindEditorColorAtPos_Basic(t *testing.T) {
 			tmpl:      "\x1b[33m\tX",
 			row:       1,
 			col:       9,
-			wantColor: "\x1b[0;33;0m",
+			wantColor: (&sgrState{fg: 33, bg: -1}).escape(),
 		},
 		{
 			name:      "carriage return resets col",
 			tmpl:      "Hello\r\x1b[34mX",
 			row:       1,
 			col:       1,
-			wantColor: "\x1b[0;0;0m", // returns color at first encounter of col=1 ('H'), before \r
+			wantColor: (&sgrState{fg: -1, bg: -1}).escape(), // returns color at first encounter of col=1 ('H'), before \r
 		},
 	}
 
@@ -420,63 +420,63 @@ func TestFindEditorColorAtPos_CursorMovements(t *testing.T) {
 			tmpl:      "\x1b[31m\x1b[3;5HX",
 			row:       3,
 			col:       5,
-			wantColor: "\x1b[0;31;0m",
+			wantColor: (&sgrState{fg: 31, bg: -1}).escape(),
 		},
 		{
 			name:      "cursor position f",
 			tmpl:      "\x1b[32m\x1b[2;3fX",
 			row:       2,
 			col:       3,
-			wantColor: "\x1b[0;32;0m",
+			wantColor: (&sgrState{fg: 32, bg: -1}).escape(),
 		},
 		{
 			name:      "cursor up",
 			tmpl:      "\x1b[33m\x1b[5;1H\x1b[2AX",
 			row:       3,
 			col:       1,
-			wantColor: "\x1b[0;33;0m",
+			wantColor: (&sgrState{fg: 33, bg: -1}).escape(),
 		},
 		{
 			name:      "cursor down",
 			tmpl:      "\x1b[34m\x1b[1;1H\x1b[2BX",
 			row:       3,
 			col:       1,
-			wantColor: "\x1b[0;34;0m",
+			wantColor: (&sgrState{fg: 34, bg: -1}).escape(),
 		},
 		{
 			name:      "cursor forward",
 			tmpl:      "\x1b[35m\x1b[1;1H\x1b[4CX",
 			row:       1,
 			col:       5,
-			wantColor: "\x1b[0;35;0m",
+			wantColor: (&sgrState{fg: 35, bg: -1}).escape(),
 		},
 		{
 			name:      "cursor back",
 			tmpl:      "\x1b[36m\x1b[1;10H\x1b[3DX",
 			row:       1,
 			col:       7,
-			wantColor: "\x1b[0;36;0m",
+			wantColor: (&sgrState{fg: 36, bg: -1}).escape(),
 		},
 		{
 			name:      "cursor back clamped",
 			tmpl:      "\x1b[37m\x1b[1;2H\x1b[10DX",
 			row:       1,
 			col:       1,
-			wantColor: "\x1b[0;37;0m",
+			wantColor: (&sgrState{fg: 37, bg: -1}).escape(),
 		},
 		{
 			name:      "cursor up clamped",
 			tmpl:      "\x1b[31m\x1b[1;1H\x1b[10AX",
 			row:       1,
 			col:       1,
-			wantColor: "\x1b[0;31;0m",
+			wantColor: (&sgrState{fg: 31, bg: -1}).escape(),
 		},
 		{
 			name:      "cursor row only (no semicolon)",
 			tmpl:      "\x1b[32m\x1b[5HX",
 			row:       5,
 			col:       1,
-			wantColor: "\x1b[0;32;0m",
+			wantColor: (&sgrState{fg: 32, bg: -1}).escape(),
 		},
 	}
 
@@ -493,18 +493,20 @@ func TestFindEditorColorAtPos_CursorMovements(t *testing.T) {
 func TestFindEditorColorAtPos_DECPrivateMode(t *testing.T) {
 	// ESC[?25l should be consumed without error
 	tmpl := []byte("\x1b[?25l\x1b[31mHi")
+	want := (&sgrState{fg: 31, bg: -1}).escape()
 	got := FindEditorColorAtPos(tmpl, 1, 1)
-	if got != "\x1b[0;31;0m" {
-		t.Errorf("got %q, want %q", got, "\x1b[0;31;0m")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
 func TestFindEditorColorAtPos_NonCSIEscape(t *testing.T) {
 	// ESC without [ should skip 2 bytes
 	tmpl := []byte("\x1bM\x1b[31mHi")
+	want := (&sgrState{fg: 31, bg: -1}).escape()
 	got := FindEditorColorAtPos(tmpl, 1, 1)
-	if got != "\x1b[0;31;0m" {
-		t.Errorf("got %q, want %q", got, "\x1b[0;31;0m")
+	if got != want {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }
 
@@ -523,16 +525,16 @@ func TestFindEditorColorAtPos_SGRAttributes(t *testing.T) {
 		tmpl      string
 		wantColor string
 	}{
-		{"bold", "\x1b[1mX", "\x1b[0;1;0;0m"},
-		{"faint", "\x1b[2mX", "\x1b[0;2;0;0m"},
-		{"blink", "\x1b[5mX", "\x1b[0;5;0;0m"},
-		{"reset bold (22)", "\x1b[1m\x1b[22mX", "\x1b[0;0;0m"},
-		{"reset blink (25)", "\x1b[5m\x1b[25mX", "\x1b[0;0;0m"},
-		{"default fg (39)", "\x1b[31m\x1b[39mX", "\x1b[0;0m"},
-		{"default bg (49)", "\x1b[41m\x1b[49mX", "\x1b[0;0m"},
-		{"bright fg", "\x1b[91mX", "\x1b[0;91;0m"},
-		{"bright bg", "\x1b[104mX", "\x1b[0;0;104m"},
-		{"empty params reset", "\x1b[1;31m\x1b[mX", "\x1b[0m"},
+		{"bold", "\x1b[1mX", (&sgrState{bold: true, fg: -1, bg: -1}).escape()},
+		{"faint", "\x1b[2mX", (&sgrState{faint: true, fg: -1, bg: -1}).escape()},
+		{"blink", "\x1b[5mX", (&sgrState{blink: true, fg: -1, bg: -1}).escape()},
+		{"reset bold (22)", "\x1b[1m\x1b[22mX", (&sgrState{fg: -1, bg: -1}).escape()},
+		{"reset blink (25)", "\x1b[5m\x1b[25mX", (&sgrState{fg: -1, bg: -1}).escape()},
+		{"default fg (39)", "\x1b[31m\x1b[39mX", (&sgrState{fg: -1, bg: -1}).escape()},
+		{"default bg (49)", "\x1b[41m\x1b[49mX", (&sgrState{fg: -1, bg: -1}).escape()},
+		{"bright fg", "\x1b[91mX", (&sgrState{fg: 91, bg: -1}).escape()},
+		{"bright bg", "\x1b[104mX", (&sgrState{fg: -1, bg: 104}).escape()},
+		{"empty params reset", "\x1b[1;31m\x1b[mX", (&sgrState{fg: -1, bg: -1}).escape()},
 	}
 
 	for _, tt := range tests {
