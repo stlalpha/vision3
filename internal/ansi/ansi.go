@@ -43,6 +43,51 @@ var cp437ToVT100 = map[byte]byte{
 	0xDB: '0', // █ full block (approximate)
 }
 
+// ConvertCP437ToUTF8 converts raw CP437-encoded bytes to valid UTF-8.
+// ANSI escape sequences (ESC [ ... <letter>) are preserved unchanged.
+// Bytes < 0x80 are passed through as-is (ASCII).
+// Bytes 0x80–0xFF are converted via the CP437→Unicode table strictly
+// one byte at a time — no UTF-8 auto-detection — so that CP437 byte
+// pairs that happen to form valid UTF-8 sequences (e.g. 0xDB 0xB2 = U+06F2)
+// are correctly rendered as two separate CP437 glyphs (█ ▓) instead of
+// an Arabic digit.
+func ConvertCP437ToUTF8(data []byte) []byte {
+	out := make([]byte, 0, len(data)*2)
+	i := 0
+	for i < len(data) {
+		b := data[i]
+		if b == 0x1b {
+			// ANSI escape sequence — pass through untouched.
+			out = append(out, b)
+			i++
+			if i < len(data) && data[i] == '[' {
+				out = append(out, data[i])
+				i++
+				for i < len(data) && !((data[i] >= 'A' && data[i] <= 'Z') || (data[i] >= 'a' && data[i] <= 'z')) {
+					out = append(out, data[i])
+					i++
+				}
+				if i < len(data) {
+					out = append(out, data[i])
+					i++
+				}
+			}
+			continue
+		}
+		if b < 0x80 {
+			out = append(out, b)
+			i++
+			continue
+		}
+		// CP437 high byte: convert to UTF-8 via the Unicode map.
+		if r := Cp437ToUnicode[b]; r != 0 {
+			out = append(out, []byte(string(r))...)
+		}
+		i++
+	}
+	return out
+}
+
 // This array maps CP437 bytes (0-255) to their Unicode equivalents
 var Cp437ToUnicode = [256]rune{
 	// ASCII characters (0-127)
