@@ -353,15 +353,10 @@ func runChangeMsgConferenceLightbar(e *MenuExecutor, s ssh.Session, terminal *te
 				confName = conf.Name
 				confTag = conf.Tag
 			}
-			joinedMsg := e.LoadedStrings.JoinedMsgConf
-			if joinedMsg == "" {
-				joinedMsg = "\r\n|07(|15^CN|07) |15Conference Joined!|07\r\n"
-			}
-			joinedMsg = strings.ReplaceAll(joinedMsg, "^CN", confName)
-			joinedMsg = strings.ReplaceAll(joinedMsg, "^CT", confTag)
-			if err := terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(joinedMsg)), outputMode); err != nil {
-				log.Printf("WARN: Node %d: Failed to write joined conference message: %v", nodeNumber, err)
-			}
+
+			confirmMsg := "|08[ |15" + confName + " |08] |15Conference Joined!|07"
+			hintLine := ansi.MoveCursor(hintRow, 1) + "\x1b[2K" + string(ansi.ReplacePipeCodes([]byte(confirmMsg)))
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(hintLine), outputMode)
 			time.Sleep(1 * time.Second)
 
 			log.Printf("INFO: Node %d: User %s changed to conference %d (%s), area: %s",

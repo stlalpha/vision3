@@ -502,11 +502,16 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 	}
 
-	// Newscan complete — restore original conf/area before returning
+	// Newscan complete — restore original conf/area before returning.
+	// The scan loop may have called UpdateUser with a scanned area, so we must
+	// persist the restored state back to DB as well.
 	currentUser.CurrentMessageAreaID = origAreaID
 	currentUser.CurrentMessageAreaTag = origAreaTag
 	currentUser.CurrentMsgConferenceID = origConfID
 	currentUser.CurrentMsgConferenceTag = origConfTag
+	if err := userManager.UpdateUser(currentUser); err != nil {
+		log.Printf("ERROR: Node %d: Failed to restore user area after newscan: %v", nodeNumber, err)
+	}
 
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanComplete)), outputMode)
 	time.Sleep(1 * time.Second)

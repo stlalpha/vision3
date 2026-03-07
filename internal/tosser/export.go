@@ -14,12 +14,14 @@ import (
 )
 
 // getBaseHWM reads the export high-water mark from a JAM base's .jlr file.
-// Returns 0 if no mark has been recorded yet (first scan is normal).
-// Logs a warning if the read fails so the silent reset is visible in logs.
+// Returns 0 if no mark has been recorded yet (normal for new/unscanned areas).
+// Logs a warning only for unexpected I/O errors, not for the normal ErrNotFound case.
 func getBaseHWM(base *jam.Base) int {
 	lr, err := base.GetLastRead(ScannerUser)
 	if err != nil {
-		log.Printf("WARN: Export: failed to read HWM from .jlr, resetting to 0 (area will be fully re-scanned): %v", err)
+		if err != jam.ErrNotFound {
+			log.Printf("WARN: Export: failed to read HWM from .jlr, resetting to 0 (area will be fully re-scanned): %v", err)
+		}
 		return 0
 	}
 	return int(lr.LastReadMsg)

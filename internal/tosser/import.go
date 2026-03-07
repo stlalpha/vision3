@@ -168,10 +168,13 @@ func (t *Tosser) processBundle(path, name string, result *TossResult) {
 
 	// tossPktFile handles cleanup of each extracted .PKT (removes on success, moves to temp on error).
 	allSkipped := true
+	var skippedPkts []string
 	for _, pktPath := range pktPaths {
 		skipped := t.tossPktFile(pktPath, filepath.Base(pktPath), result)
 		if !skipped {
 			allSkipped = false
+		} else {
+			skippedPkts = append(skippedPkts, pktPath)
 		}
 	}
 
@@ -183,6 +186,20 @@ func (t *Tosser) processBundle(path, name string, result *TossResult) {
 		}
 		log.Printf("TRACE: tosser[%s]: skipping foreign bundle %s", t.networkName, name)
 		return
+	}
+
+	// In the mixed-bundle case (some packets processed, some skipped), the bundle
+	// is removed below but skipped packets would otherwise strand in unpack/ forever
+	// since no tosser rescans that directory. Move them back to the inbound dir so
+	// the appropriate tosser picks them up on this or a future toss cycle.
+	for _, pktPath := range skippedPkts {
+		destPath := filepath.Join(t.paths.InboundPath, filepath.Base(pktPath))
+		if err := os.Rename(pktPath, destPath); err != nil {
+			log.Printf("WARN: tosser[%s]: failed to re-queue skipped packet %s: %v", t.networkName, filepath.Base(pktPath), err)
+			os.Remove(pktPath)
+		} else {
+			log.Printf("TRACE: tosser[%s]: re-queued skipped packet %s to inbound", t.networkName, filepath.Base(pktPath))
+		}
 	}
 
 	// Remove the bundle itself after processing all packets.
@@ -231,7 +248,13 @@ func (t *Tosser) tossPacket(path string) (imported, dupes int, errs []string, sk
 
 	pktHdr, msgs, err := ftn.ReadPacket(f)
 	if err != nil {
-		return 0, 0, []string{fmt.Sprintf("parse %s: %v", path, err)}, false
+		if len(msgs) == 0 {
+			return 0, 0, []string{fmt.Sprintf("parse %s: %v", path, err)}, false
+		}
+		// Partial parse: packet is truncated but some messages were read before the
+		// bad offset. Process what we have and treat the truncation as a warning.
+		log.Printf("WARN: tosser[%s]: truncated packet %s (%v) — processing %d message(s) before truncation",
+			t.networkName, filepath.Base(path), err, len(msgs))
 	}
 
 	// Check if this packet belongs to our network by matching the source address
