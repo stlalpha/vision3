@@ -89,12 +89,16 @@ const (
 	cursorHideContextPromptYesNo
 )
 
+// shouldHideCursorForSoftwareKeyboard returns true when the cursor should be
+// hidden. Default contexts (lightbar menus, admin lists) hide the cursor;
+// promptYesNoLightbar keeps it visible so iOS/MuffinTerm software keyboards
+// remain active.
 func (e *MenuExecutor) shouldHideCursorForSoftwareKeyboard(ctx cursorHideContext) bool {
 	switch ctx {
 	case cursorHideContextPromptYesNo:
-		return true
-	default:
 		return false
+	default:
+		return true
 	}
 }
 

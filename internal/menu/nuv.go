@@ -291,9 +291,7 @@ func nuvVoteOn(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				c = &nd.Candidates[idx]
 				voterIdx = nuvVoteIndex(c, currentUser.Handle)
 				removed = nuvApplyThresholds(e, nd, idx, userManager)
-				if !removed {
-					_ = saveNUVData(e.RootConfigPath, nd)
-				}
+				_ = saveNUVData(e.RootConfigPath, nd)
 			}
 			nuvMu.Unlock()
 			if removed {
