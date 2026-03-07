@@ -86,7 +86,7 @@ func runQWKDownload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		pw.AddConference(area.ID, area.Name)
 
 		// Get last read for this user in this area
-		lastRead, err := e.MessageMgr.GetLastRead(area.ID, strings.ToLower(currentUser.Username))
+		lastRead, err := e.MessageMgr.GetLastRead(area.ID, currentUser.Handle)
 		if err != nil {
 			log.Printf("WARN: Node %d: QWK: failed to get lastread for area %d: %v", nodeNumber, area.ID, err)
 			continue
@@ -213,9 +213,8 @@ func runQWKDownload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 		}
 	} else {
 		// Transfer succeeded — commit the newscan pointer advances.
-		username := strings.ToLower(currentUser.Username)
 		for _, upd := range pendingLastRead {
-			if err := e.MessageMgr.SetLastRead(upd.areaID, username, upd.msgNum); err != nil {
+			if err := e.MessageMgr.SetLastRead(upd.areaID, currentUser.Handle, upd.msgNum); err != nil {
 				log.Printf("WARN: Node %d: QWK: failed to update lastread for area %d: %v", nodeNumber, upd.areaID, err)
 			}
 		}

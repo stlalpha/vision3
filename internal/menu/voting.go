@@ -140,8 +140,11 @@ func voteRecordVote(rootConfigPath string, topicIdx, optionIdx int, handle strin
 	votingMu.Lock()
 	defer votingMu.Unlock()
 	vd, err := loadVotingData(rootConfigPath)
-	if err != nil || topicIdx >= len(vd.Topics) {
+	if err != nil {
 		return nil, err
+	}
+	if topicIdx < 0 || topicIdx >= len(vd.Topics) {
+		return nil, fmt.Errorf("topic index %d out of range (have %d topics)", topicIdx, len(vd.Topics))
 	}
 	t := &vd.Topics[topicIdx]
 	if hasVoted(t, handle) {

@@ -508,7 +508,28 @@ searchLoop:
 		return fmt.Errorf("file record with ID %s not found", fileID)
 	}
 
-	// Remove record from slice.
+	// If requested, delete from disk first — before touching metadata.
+	// This way a failure leaves metadata intact and the operation is retryable.
+	if deleteFromDisk {
+		fm.muAreas.RLock()
+		area, areaExists := fm.fileAreas[foundAreaID]
+		fm.muAreas.RUnlock()
+		if !areaExists {
+			return fmt.Errorf("internal inconsistency: area %d not found", foundAreaID)
+		}
+		absBasePath, err := filepath.Abs(fm.basePath)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute base path: %w", err)
+		}
+		fullPath := filepath.Join(absBasePath, area.Path, filepath.Base(foundFilename))
+		if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+			log.Printf("WARN: Failed to delete file from disk at %s: %v", fullPath, err)
+			return fmt.Errorf("failed to delete file from disk: %w", err)
+		}
+		log.Printf("INFO: Deleted file from disk: %s", fullPath)
+	}
+
+	// Remove record from slice and persist.
 	records := fm.fileRecords[foundAreaID]
 	fm.fileRecords[foundAreaID] = append(records[:foundIndex], records[foundIndex+1:]...)
 
@@ -519,25 +540,6 @@ searchLoop:
 	if saveErr != nil {
 		log.Printf("ERROR: Failed to save file records after deleting %s (ID: %s): %v", foundFilename, fileID, saveErr)
 		return saveErr
-	}
-
-	if deleteFromDisk {
-		fm.muAreas.RLock()
-		area, areaExists := fm.fileAreas[foundAreaID]
-		fm.muAreas.RUnlock()
-		if !areaExists {
-			return fmt.Errorf("internal inconsistency: area %d not found after deleting record", foundAreaID)
-		}
-		absBasePath, err := filepath.Abs(fm.basePath)
-		if err != nil {
-			return fmt.Errorf("failed to get absolute base path: %w", err)
-		}
-		fullPath := filepath.Join(absBasePath, area.Path, filepath.Base(foundFilename))
-		if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
-			log.Printf("WARN: Failed to delete file from disk at %s: %v", fullPath, err)
-			return fmt.Errorf("record removed but failed to delete file from disk: %w", err)
-		}
-		log.Printf("INFO: Deleted file from disk: %s", fullPath)
 	}
 
 	log.Printf("INFO: Deleted file record '%s' (ID: %s) from area %d.", foundFilename, fileID, foundAreaID)
@@ -598,7 +600,7 @@ searchLoop:
 		return fmt.Errorf("failed to move file from %s to %s: %w", srcPath, dstPath, err)
 	}
 
-	// Remove from source, append to target with updated AreaID.
+	// Update in-memory state.
 	srcRecords := fm.fileRecords[srcAreaID]
 	fm.fileRecords[srcAreaID] = append(srcRecords[:srcIndex], srcRecords[srcIndex+1:]...)
 	record.AreaID = targetAreaID
@@ -609,11 +611,22 @@ searchLoop:
 	errDst := fm.saveFileRecords(targetAreaID)
 	fm.muFiles.Lock()
 
-	if errSrc != nil {
-		log.Printf("ERROR: Failed to save source area %d after moving %s: %v", srcAreaID, safeFilename, errSrc)
-		return errSrc
-	}
-	if errDst != nil {
+	if errSrc != nil || errDst != nil {
+		// Metadata save failed — roll back the filesystem rename so disk and
+		// metadata remain consistent and the operation is retryable.
+		if renameBackErr := os.Rename(dstPath, srcPath); renameBackErr != nil {
+			log.Printf("ERROR: Failed to roll back file rename after metadata save failure (%s -> %s): %v", dstPath, srcPath, renameBackErr)
+		} else {
+			// Restore in-memory state on successful rollback.
+			tgtRecords := fm.fileRecords[targetAreaID]
+			fm.fileRecords[targetAreaID] = tgtRecords[:len(tgtRecords)-1]
+			record.AreaID = srcAreaID
+			fm.fileRecords[srcAreaID] = append(fm.fileRecords[srcAreaID], record)
+		}
+		if errSrc != nil {
+			log.Printf("ERROR: Failed to save source area %d after moving %s: %v", srcAreaID, safeFilename, errSrc)
+			return errSrc
+		}
 		log.Printf("ERROR: Failed to save target area %d after moving %s: %v", targetAreaID, safeFilename, errDst)
 		return errDst
 	}
