@@ -356,6 +356,14 @@ func StringEntries() []StringEntry {
 		{Label: "Scan: Config Error", Key: "scanConfigError", Description: "Shown on newscan config save error"},
 		{Label: "Scan: Cfg Login Req", Key: "scanConfigLoginRequired", Description: "Shown when not logged in for scan config"},
 
+		// Update Newscan Pointers (V3)
+		{Label: "UpdPtr: Login Req", Key: "updatePtrsLoginRequired", Description: "Shown when not logged in for update newscan pointers"},
+		{Label: "UpdPtr: Cancelled", Key: "updatePtrsCancelled", Description: "Shown when update newscan pointers is cancelled"},
+		{Label: "UpdPtr: Date Prompt", Key: "updatePtrsDatePrompt", Description: "Prompt for target date (A=All New, N=Mark All Read, or MM/DD/YY)"},
+		{Label: "UpdPtr: Scope Prompt", Key: "updatePtrsScopePrompt", Description: "Prompt for scope: C=Current Conference, A=All Conferences, Enter=default Current"},
+		{Label: "UpdPtr: Success", Key: "updatePtrsSuccess", Description: "Shown after successful pointer update (%d=areas updated)"},
+		{Label: "UpdPtr: Error", Key: "updatePtrsError", Description: "Shown when one or more pointer updates fail"},
+
 		// Message List (V3)
 		{Label: "MsgList: Login Req", Key: "msgListLoginRequired", Description: "Shown when not logged in for message list"},
 		{Label: "MsgList: No Area", Key: "msgListNoAreaSelected", Description: "Shown when no area selected for list"},

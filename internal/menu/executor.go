@@ -556,6 +556,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["READPRIVMAIL"] = runReadPrivateMail                    // Read private mail
 	registry["LISTPRIVMAIL"] = runListPrivateMail                    // List private mail
 	registry["NEWSCANCONFIG"] = runNewscanConfig                     // Configure newscan tagged areas
+	registry["UPDATENEWSCAN"] = runUpdateNewscanPointers             // Update newscan pointers to a specific date
 	registry["NMAILSCAN"] = runNewMailScan                           // New mail scan
 	registry["DISPLAYFILE"] = runLoginDisplayFile                    // Display ANSI file
 	registry["RUNDOOR"] = runLoginDoor                               // Run external script/door

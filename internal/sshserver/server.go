@@ -10,6 +10,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"reflect"
 	"sync"
 
 	"github.com/gliderlabs/ssh"
@@ -147,6 +148,11 @@ type readResult struct {
 // concurrent readers from racing for bytes and silently eating keypresses.
 type BBSSession struct {
 	ssh.Session
+	// rawCh is the underlying gossh.Channel extracted from the gliderlabs
+	// *session struct. gliderlabs' session.Write() converts \n→\r\n whenever
+	// a PTY is accepted, which corrupts binary transfer streams (ZMODEM frame
+	// type byte 0x0A becomes 0x0D 0x0A). rawCh.Write() bypasses this.
+	rawCh         gossh.Channel
 	riMu          sync.Mutex
 	readInterrupt <-chan struct{}
 	// orphanCh is the result channel from a goroutine that was still
@@ -160,9 +166,59 @@ type BBSSession struct {
 }
 
 // WrapSession wraps a gliderlabs ssh.Session to add BBS-specific features
-// (currently: SetReadInterrupt for clean door I/O cancellation).
+// (SetReadInterrupt for clean door I/O cancellation, RawWrite for binary
+// transfers without CRLF corruption).
 func WrapSession(s ssh.Session) *BBSSession {
-	return &BBSSession{Session: s}
+	bs := &BBSSession{Session: s}
+	// Extract the raw gossh.Channel from the gliderlabs session struct so
+	// binary transfers can write without the \n→\r\n CRLF conversion that
+	// gliderlabs applies when a PTY is accepted.
+	bs.rawCh = extractRawChannel(s)
+	if bs.rawCh != nil {
+		log.Printf("DEBUG: BBSSession: raw channel extracted for binary transfer support")
+	} else {
+		log.Printf("WARN: BBSSession: could not extract raw channel; binary transfers may be corrupted by CRLF conversion")
+	}
+	return bs
+}
+
+// extractRawChannel uses reflection to access the gossh.Channel field embedded
+// in gliderlabs' unexported *session struct. This raw channel's Write() skips
+// the \n→\r\n CRLF normalization that gliderlabs applies when a PTY is accepted,
+// making it safe for binary file-transfer protocols (ZMODEM, YMODEM, XMODEM).
+// Returns nil if the field cannot be found (e.g. a mock session in tests).
+func extractRawChannel(s ssh.Session) gossh.Channel {
+	v := reflect.ValueOf(s)
+	if !v.IsValid() {
+		return nil
+	}
+	// s is an interface containing *session; dereference the pointer.
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return nil
+	}
+	f := v.FieldByName("Channel")
+	if !f.IsValid() || !f.CanInterface() {
+		return nil
+	}
+	ch, ok := f.Interface().(gossh.Channel)
+	if !ok || ch == nil {
+		return nil
+	}
+	return ch
+}
+
+// RawWrite writes directly to the underlying SSH channel, bypassing
+// gliderlabs' \n→\r\n CRLF conversion. Use this for binary data such as
+// ZMODEM, YMODEM, or XMODEM frames. Falls back to session.Write() when the
+// raw channel is unavailable (e.g. in tests using mock sessions).
+func (s *BBSSession) RawWrite(p []byte) (int, error) {
+	if s.rawCh != nil {
+		return s.rawCh.Write(p)
+	}
+	return s.Session.Write(p)
 }
 
 // SetReadInterrupt registers a channel that, when closed, causes any

@@ -334,6 +334,14 @@ CfgViewHotKeys         string `json:"cfgViewHotKeys"`
 	ScanConfigError         string `json:"scanConfigError"`
 	ScanConfigLoginRequired string `json:"scanConfigLoginRequired"`
 
+	// Update newscan pointers strings
+	UpdatePtrsLoginRequired string `json:"updatePtrsLoginRequired"`
+	UpdatePtrsCancelled     string `json:"updatePtrsCancelled"`
+	UpdatePtrsDatePrompt    string `json:"updatePtrsDatePrompt"`
+	UpdatePtrsScopePrompt   string `json:"updatePtrsScopePrompt"`
+	UpdatePtrsSuccess       string `json:"updatePtrsSuccess"`
+	UpdatePtrsError         string `json:"updatePtrsError"`
+
 	// Message list strings (V3-specific)
 	MsgListLoginRequired  string `json:"msgListLoginRequired"`
 	MsgListNoAreaSelected string `json:"msgListNoAreaSelected"`

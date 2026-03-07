@@ -67,6 +67,15 @@ func runQWKDownload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|15Building QWK packet...|07\r\n")), outputMode)
 
+	// pendingLastRead accumulates per-area last-read updates.
+	// They are only committed to the database after a successful transfer
+	// so that a failed or cancelled download does not advance the pointers.
+	type lastReadUpdate struct {
+		areaID int
+		msgNum int
+	}
+	var pendingLastRead []lastReadUpdate
+
 	totalMsgs := 0
 	for _, areaTag := range taggedAreas {
 		area, exists := e.MessageMgr.GetAreaByTag(areaTag)
@@ -119,13 +128,12 @@ func runQWKDownload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 			}
 		}
 
-		// Update last read pointer
 		if packed > 0 {
 			newLastRead := highestPacked
 			if newLastRead > msgCount {
 				newLastRead = msgCount
 			}
-			_ = e.MessageMgr.SetLastRead(area.ID, strings.ToLower(currentUser.Username), newLastRead)
+			pendingLastRead = append(pendingLastRead, lastReadUpdate{areaID: area.ID, msgNum: newLastRead})
 		}
 	}
 
@@ -204,6 +212,13 @@ func runQWKDownload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, use
 			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Transfer failed.|07\r\n")), outputMode)
 		}
 	} else {
+		// Transfer succeeded — commit the newscan pointer advances.
+		username := strings.ToLower(currentUser.Username)
+		for _, upd := range pendingLastRead {
+			if err := e.MessageMgr.SetLastRead(upd.areaID, username, upd.msgNum); err != nil {
+				log.Printf("WARN: Node %d: QWK: failed to update lastread for area %d: %v", nodeNumber, upd.areaID, err)
+			}
+		}
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|10QWK packet sent successfully.|07\r\n")), outputMode)
 	}
 	time.Sleep(2 * time.Second)
