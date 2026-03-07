@@ -153,6 +153,29 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 	}
 
+	// Append sysop-only entries (not exposed via BAR file).
+	isSysop := e.isCoSysOpOrAbove(currentUser)
+	if isSysop {
+		defHiSysop := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
+		defLoSysop := colorCodeToAnsi(e.Theme.YesNoRegularColor)
+		sysopCmds := []struct {
+			label  string
+			hotkey string
+		}{
+			{"Edit", "e"},
+			{"Kill", "k"},
+			{"Move", "m"},
+		}
+		for _, d := range sysopCmds {
+			cmdEntries = append(cmdEntries, cmdEntry{
+				label:          d.label,
+				hotkey:         d.hotkey,
+				highlightColor: defHiSysop,
+				regularColor:   defLoSysop,
+			})
+		}
+	}
+
 	// Highlight colors for file rows.
 	hiColorSeq := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
 	if len(hiBarOptions) > 0 {
@@ -1024,6 +1047,120 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				selectedIndex = len(allFiles) - 1
 			}
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			needFullRedraw = true
+
+		case "e": // Edit description (sysop only)
+			if !isSysop || len(allFiles) == 0 {
+				continue
+			}
+			rec := allFiles[selectedIndex]
+			clearFooter := ansi.MoveCursor(separatorRow, 1) + "\x1b[2K" + ansi.MoveCursor(cmdBarRow, 1) + "\x1b[2K"
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(clearFooter), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(cmdBarRow, 1)), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15New description: |07")), outputMode)
+			newDesc, readErr := readLineFromSessionIHAllowAbort(s, terminal)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			if readErr == nil && newDesc != "" {
+				if updErr := e.FileMgr.UpdateFileDescription(rec.ID, newDesc); updErr != nil {
+					log.Printf("ERROR: Node %d: Failed to update description for %s: %v", nodeNumber, rec.Filename, updErr)
+				} else {
+					allFiles = e.FileMgr.GetFilesForArea(currentAreaID)
+				}
+			}
+			needFullRedraw = true
+
+		case "k": // Kill/delete file (sysop only)
+			if !isSysop || len(allFiles) == 0 {
+				continue
+			}
+			rec := allFiles[selectedIndex]
+			confirmPrompt := fmt.Sprintf("Delete %s from disk?", rec.Filename)
+			clearFooter := ansi.MoveCursor(separatorRow, 1) + "\x1b[2K" + ansi.MoveCursor(cmdBarRow, 1) + "\x1b[2K"
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(clearFooter), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(cmdBarRow, 1)), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+			termWidth, termHeight := getTerminalSize(s)
+			proceed, promptErr := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			if promptErr != nil {
+				if errors.Is(promptErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+				needFullRedraw = true
+				continue
+			}
+			if proceed {
+				if delErr := e.FileMgr.DeleteFileRecord(rec.ID, true); delErr != nil {
+					log.Printf("ERROR: Node %d: Failed to delete file %s: %v", nodeNumber, rec.Filename, delErr)
+				} else {
+					log.Printf("INFO: Node %d: Sysop deleted file '%s' from area %d.", nodeNumber, rec.Filename, currentAreaID)
+					allFiles = e.FileMgr.GetFilesForArea(currentAreaID)
+					if selectedIndex >= len(allFiles) && len(allFiles) > 0 {
+						selectedIndex = len(allFiles) - 1
+					}
+				}
+			}
+			needFullRedraw = true
+
+		case "m": // Move file to another area (sysop only)
+			if !isSysop || len(allFiles) == 0 {
+				continue
+			}
+			rec := allFiles[selectedIndex]
+			clearFooter := ansi.MoveCursor(separatorRow, 1) + "\x1b[2K" + ansi.MoveCursor(cmdBarRow, 1) + "\x1b[2K"
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(clearFooter), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(cmdBarRow, 1)), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15Move to area (# or tag): |07")), outputMode)
+			areaInput, readErr := readLineFromSessionIHAllowAbort(s, terminal)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			if readErr != nil || strings.TrimSpace(areaInput) == "" {
+				needFullRedraw = true
+				continue
+			}
+			// Resolve area by ID or tag.
+			var targetAreaID int
+			var targetArea *file.FileArea
+			if n, parseErr := fmt.Sscanf(strings.TrimSpace(areaInput), "%d", &targetAreaID); n == 1 && parseErr == nil {
+				if a, ok := e.FileMgr.GetAreaByID(targetAreaID); ok {
+					targetArea = a
+				}
+			} else {
+				if a, ok := e.FileMgr.GetAreaByTag(strings.TrimSpace(areaInput)); ok {
+					targetArea = a
+					targetAreaID = a.ID
+				}
+			}
+			if targetArea == nil {
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Area not found.|07\r\n")), outputMode)
+				time.Sleep(1 * time.Second)
+				needFullRedraw = true
+				continue
+			}
+			confirmPrompt := fmt.Sprintf("Move %s to %s?", rec.Filename, targetArea.Name)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+			termWidth, termHeight := getTerminalSize(s)
+			proceed, promptErr := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			if promptErr != nil {
+				if errors.Is(promptErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+				needFullRedraw = true
+				continue
+			}
+			if proceed {
+				if mvErr := e.FileMgr.MoveFileRecord(rec.ID, targetAreaID); mvErr != nil {
+					log.Printf("ERROR: Node %d: Failed to move file %s to area %d: %v", nodeNumber, rec.Filename, targetAreaID, mvErr)
+				} else {
+					log.Printf("INFO: Node %d: Sysop moved file '%s' to area %d (%s).", nodeNumber, rec.Filename, targetAreaID, targetArea.Tag)
+					allFiles = e.FileMgr.GetFilesForArea(currentAreaID)
+					if selectedIndex >= len(allFiles) && len(allFiles) > 0 {
+						selectedIndex = len(allFiles) - 1
+					}
+				}
+			}
 			needFullRedraw = true
 		}
 	}

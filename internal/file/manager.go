@@ -482,6 +482,146 @@ func (fm *FileManager) UpdateFileDescription(fileID uuid.UUID, description strin
 	})
 }
 
+// DeleteFileRecord removes a file record by ID. If deleteFromDisk is true,
+// the physical file is also removed from the filesystem.
+func (fm *FileManager) DeleteFileRecord(fileID uuid.UUID, deleteFromDisk bool) error {
+	fm.muFiles.Lock()
+	defer fm.muFiles.Unlock()
+
+	var foundAreaID int = -1
+	var foundIndex int = -1
+	var foundFilename string
+
+searchLoop:
+	for areaID, records := range fm.fileRecords {
+		for i := range records {
+			if records[i].ID == fileID {
+				foundAreaID = areaID
+				foundIndex = i
+				foundFilename = records[i].Filename
+				break searchLoop
+			}
+		}
+	}
+
+	if foundAreaID == -1 {
+		return fmt.Errorf("file record with ID %s not found", fileID)
+	}
+
+	// Remove record from slice.
+	records := fm.fileRecords[foundAreaID]
+	fm.fileRecords[foundAreaID] = append(records[:foundIndex], records[foundIndex+1:]...)
+
+	fm.muFiles.Unlock()
+	saveErr := fm.saveFileRecords(foundAreaID)
+	fm.muFiles.Lock()
+
+	if saveErr != nil {
+		log.Printf("ERROR: Failed to save file records after deleting %s (ID: %s): %v", foundFilename, fileID, saveErr)
+		return saveErr
+	}
+
+	if deleteFromDisk {
+		fm.muAreas.RLock()
+		area, areaExists := fm.fileAreas[foundAreaID]
+		fm.muAreas.RUnlock()
+		if !areaExists {
+			return fmt.Errorf("internal inconsistency: area %d not found after deleting record", foundAreaID)
+		}
+		absBasePath, err := filepath.Abs(fm.basePath)
+		if err != nil {
+			return fmt.Errorf("failed to get absolute base path: %w", err)
+		}
+		fullPath := filepath.Join(absBasePath, area.Path, filepath.Base(foundFilename))
+		if err := os.Remove(fullPath); err != nil && !os.IsNotExist(err) {
+			log.Printf("WARN: Failed to delete file from disk at %s: %v", fullPath, err)
+			return fmt.Errorf("record removed but failed to delete file from disk: %w", err)
+		}
+		log.Printf("INFO: Deleted file from disk: %s", fullPath)
+	}
+
+	log.Printf("INFO: Deleted file record '%s' (ID: %s) from area %d.", foundFilename, fileID, foundAreaID)
+	return nil
+}
+
+// MoveFileRecord moves a file record to a different area, renaming the file on disk.
+func (fm *FileManager) MoveFileRecord(fileID uuid.UUID, targetAreaID int) error {
+	fm.muAreas.RLock()
+	targetArea, targetExists := fm.fileAreas[targetAreaID]
+	fm.muAreas.RUnlock()
+	if !targetExists {
+		return fmt.Errorf("target area ID %d not found", targetAreaID)
+	}
+
+	fm.muFiles.Lock()
+	defer fm.muFiles.Unlock()
+
+	var srcAreaID int = -1
+	var srcIndex int = -1
+
+searchLoop:
+	for areaID, records := range fm.fileRecords {
+		for i := range records {
+			if records[i].ID == fileID {
+				srcAreaID = areaID
+				srcIndex = i
+				break searchLoop
+			}
+		}
+	}
+
+	if srcAreaID == -1 {
+		return fmt.Errorf("file record with ID %s not found", fileID)
+	}
+	if srcAreaID == targetAreaID {
+		return fmt.Errorf("file is already in area %d", targetAreaID)
+	}
+
+	record := fm.fileRecords[srcAreaID][srcIndex]
+
+	fm.muAreas.RLock()
+	srcArea, srcExists := fm.fileAreas[srcAreaID]
+	fm.muAreas.RUnlock()
+	if !srcExists {
+		return fmt.Errorf("internal inconsistency: source area %d not found", srcAreaID)
+	}
+
+	absBasePath, err := filepath.Abs(fm.basePath)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute base path: %w", err)
+	}
+	safeFilename := filepath.Base(record.Filename)
+	srcPath := filepath.Join(absBasePath, srcArea.Path, safeFilename)
+	dstPath := filepath.Join(absBasePath, targetArea.Path, safeFilename)
+
+	if err := os.Rename(srcPath, dstPath); err != nil {
+		return fmt.Errorf("failed to move file from %s to %s: %w", srcPath, dstPath, err)
+	}
+
+	// Remove from source, append to target with updated AreaID.
+	srcRecords := fm.fileRecords[srcAreaID]
+	fm.fileRecords[srcAreaID] = append(srcRecords[:srcIndex], srcRecords[srcIndex+1:]...)
+	record.AreaID = targetAreaID
+	fm.fileRecords[targetAreaID] = append(fm.fileRecords[targetAreaID], record)
+
+	fm.muFiles.Unlock()
+	errSrc := fm.saveFileRecords(srcAreaID)
+	errDst := fm.saveFileRecords(targetAreaID)
+	fm.muFiles.Lock()
+
+	if errSrc != nil {
+		log.Printf("ERROR: Failed to save source area %d after moving %s: %v", srcAreaID, safeFilename, errSrc)
+		return errSrc
+	}
+	if errDst != nil {
+		log.Printf("ERROR: Failed to save target area %d after moving %s: %v", targetAreaID, safeFilename, errDst)
+		return errDst
+	}
+
+	log.Printf("INFO: Moved file '%s' (ID: %s) from area %d to area %d.", safeFilename, fileID, srcAreaID, targetAreaID)
+	return nil
+}
+
 // GetFilePath returns the full, absolute path to a file given its record ID.
 // It checks that the file exists and constructs the path safely.
 func (fm *FileManager) GetFilePath(fileID uuid.UUID) (string, error) {
