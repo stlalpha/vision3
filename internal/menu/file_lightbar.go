@@ -897,7 +897,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 
 			confirmPrompt := fmt.Sprintf("Download %d marked file(s)?", len(currentUser.TaggedFileIDs))
-			_ = terminalio.WriteProcessedBytes(terminal, []byte("\r\n\x1b[K"), outputMode)
+			// Replace the footer lightbar with the confirm prompt instead of printing over the file list.
+			clearFooter := ansi.MoveCursor(separatorRow, 1) + "\x1b[2K" + ansi.MoveCursor(cmdBarRow, 1) + "\x1b[2K"
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(clearFooter), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(cmdBarRow, 1)), outputMode)
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 
 			termWidth, termHeight := getTerminalSize(s)
@@ -913,15 +916,15 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 
 			if !proceed {
-				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Download cancelled.|07")), outputMode)
-				time.Sleep(500 * time.Millisecond)
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
 				needFullRedraw = true
 				continue
 			}
 
 			log.Printf("INFO: Node %d: User %s starting download of %d files.", nodeNumber, currentUser.Handle, len(currentUser.TaggedFileIDs))
-			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Preparing download...\r\n")), outputMode)
+			// Clear the screen before the download process begins.
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[2J\x1b[H"), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Preparing download...\r\n")), outputMode)
 			time.Sleep(500 * time.Millisecond)
 
 			successCount := 0
