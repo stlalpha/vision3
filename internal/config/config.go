@@ -389,6 +389,8 @@ CfgViewHotKeys         string `json:"cfgViewHotKeys"`
 	ConfNoAccessibleConferences string `json:"confNoAccessibleConferences"`
 	ConfNoAccessibleMsgAreas    string `json:"confNoAccessibleMsgAreas"`
 	ConfAreaTemplateError       string `json:"confAreaTemplateError"`
+	ConfCurrentConfFormat       string `json:"confCurrentConfFormat"`
+	ConfNoAccessibleConfs       string `json:"confNoAccessibleConfs"`
 
 	// Executor strings (V3-specific)
 	ExecUnknownCommand      string `json:"execUnknownCommand"`

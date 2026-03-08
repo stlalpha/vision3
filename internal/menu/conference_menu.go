@@ -412,6 +412,110 @@ func findFirstAccessibleAreaInConference(e *MenuExecutor, s ssh.Session, termina
 	return nil
 }
 
+// runNextMsgConf moves to the next accessible message conference.
+func runNextMsgConf(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	return navigateMsgConf(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, outputMode, true)
+}
+
+// runPrevMsgConf moves to the previous accessible message conference.
+func runPrevMsgConf(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	return navigateMsgConf(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, outputMode, false)
+}
+
+// navigateMsgConf handles forward/backward conference navigation.
+func navigateMsgConf(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, outputMode ansi.OutputMode, forward bool) (*user.User, string, error) {
+	direction := "NEXTMSGCONF"
+	if !forward {
+		direction = "PREVMSGCONF"
+	}
+	log.Printf("DEBUG: Node %d: Running %s", nodeNumber, direction)
+
+	if currentUser == nil {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfNavLoginRequired)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	if e.ConferenceMgr == nil {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ConfNoConferences)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
+	// Get accessible conferences
+	accessibleConfs := getAccessibleConferences(e, s, terminal, currentUser, sessionStartTime)
+
+	if len(accessibleConfs) == 0 {
+		msg := e.LoadedStrings.ConfNoAccessibleConfs
+		if msg == "" {
+			msg = "\r\n|12No accessible conferences.|07\r\n"
+		}
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
+	// Find current position
+	currentIdx := -1
+	for i, conf := range accessibleConfs {
+		if conf.ID == currentUser.CurrentMsgConferenceID {
+			currentIdx = i
+			break
+		}
+	}
+
+	// Calculate new index with wrapping
+	var newIdx int
+	if currentIdx == -1 {
+		newIdx = 0
+	} else if forward {
+		newIdx = (currentIdx + 1) % len(accessibleConfs)
+	} else {
+		newIdx = (currentIdx - 1 + len(accessibleConfs)) % len(accessibleConfs)
+	}
+
+	newConf := accessibleConfs[newIdx]
+	e.setUserMsgConference(currentUser, newConf.ID)
+
+	// Set first accessible area in the new conference
+	firstArea := findFirstAccessibleAreaInConference(e, s, terminal, currentUser, newConf.ID, sessionStartTime)
+	if firstArea != nil {
+		currentUser.CurrentMessageAreaID = firstArea.ID
+		currentUser.CurrentMessageAreaTag = firstArea.Tag
+	} else {
+		currentUser.CurrentMessageAreaID = 0
+		currentUser.CurrentMessageAreaTag = ""
+	}
+
+	if err := userManager.UpdateUser(currentUser); err != nil {
+		log.Printf("ERROR: Node %d: Failed to save user after conference change: %v", nodeNumber, err)
+	}
+
+	msg := e.LoadedStrings.ConfCurrentConfFormat
+	if msg == "" {
+		msg = "\r\n|07(|15%s|07) [|14%s|07]\r\n"
+	}
+	formatted := fmt.Sprintf(msg, newConf.Name, newConf.Tag)
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(formatted)), outputMode)
+
+	log.Printf("INFO: Node %d: User %s navigated to conference %d (%s)", nodeNumber, currentUser.Handle, newConf.ID, newConf.Tag)
+
+	return currentUser, "", nil
+}
+
+// getAccessibleConferences returns all conferences the user can access, sorted by Position.
+func getAccessibleConferences(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, sessionStartTime time.Time) []*conference.Conference {
+	allConfs := e.ConferenceMgr.ListConferences()
+	var result []*conference.Conference
+	for _, conf := range allConfs {
+		if !checkACS(conf.ACS, currentUser, s, terminal, sessionStartTime) {
+			continue
+		}
+		result = append(result, conf)
+	}
+	return result
+}
+
 // getAccessibleAreasInConference returns all areas in a conference the user can read, sorted by Position.
 func getAccessibleAreasInConference(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, currentUser *user.User, conferenceID int, sessionStartTime time.Time) []*message.MessageArea {
 	allAreas := e.MessageMgr.ListAreas()
