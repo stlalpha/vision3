@@ -25,6 +25,7 @@
 * **MENU SYSTEM**
 * [Menus & ACS](menus/menu-system.md)
 * [News](menus/news.md)
+* [BBS Listings](menus/bbs-list.md)
 * [Menu Files (.MNU)](menus/menu-system.md#menu-configuration-files-mnu)
 * [Command Files (.CFG)](menus/menu-system.md#command-definition-files-cfg)
 * [ANSI Art (.ANS)](menus/menu-system.md#ansi-art-files-ans)
@@ -53,6 +54,7 @@
 * [Mailer (binkd)](messages/ftn-echomail.md#mailer-external--binkd)
 * [JAM Echomail](messages/jam-echomail.md)
 * [V3Mail](messages/v3mail.md)
+* [Auto-Signature](messages/autosig.md)
 * [Header Placeholders](messages/placeholders.md)
 
 * **FILES**

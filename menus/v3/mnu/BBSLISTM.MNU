@@ -1,0 +1,15 @@
+{
+    "TITLE": "BBS Listings",
+    "CLR": true,
+    "USEPROMPT": true,
+    "PROMPT1": "|15BBS Listings Directory",
+    "PROMPT2": "|08[|15BBS List|08] |07Command |08->|15 ",
+    "FALLBACK": "MAIN",
+    "ACS": "*",
+    "PASS": "",
+    "HELPMENU": "",
+    "FORCEHELPLEVEL": 0,
+    "MES_CONF": 0,
+    "FILE_CONF": 0,
+    "FORCEHOTKEY": false
+}

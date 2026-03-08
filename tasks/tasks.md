@@ -4,6 +4,19 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
 
 ## Recent Completions
 
+*   **[DONE] BBS Listings Directory (2026-03-08):**
+    *   **Goal:** Implement the BBS Listings feature from V2 (BBSLIST.PAS) — a user-contributed directory of other BBS systems.
+    *   **Implementation:**
+        *   Created `internal/menu/bbslist.go` with data model, JSON persistence (`data/bbslist.json`), and 5 command handlers.
+        *   Modernized V2's BBSRec: replaced phone/baud with `Address` (hostname/IP) plus separate `TelnetPort` and `SSHPort` fields, added `Sysop`, `Description` (inline, replacing sector pointers), and `Verified` flag.
+        *   Ownership enforcement: users can only edit/delete their own entries; CoSysOp+ can manage all entries (matches V2's `Match(B.LeftBy,Unam)` + `IsSysop` check).
+        *   CoSysOp+ `BBSLISTVERIFY` command to toggle verified status on entries (handler checks `isCoSysOpOrAbove`, respecting configured `CoSysOpLevel`).
+        *   Created `BBSLISTM.MNU` submenu and `BBSLISTM.CFG` with keys matching the existing `BBSLISTM.ANS` screen (L/A/C/D/V/Q).
+        *   Wired MAIN.CFG B key from `PLACEHOLDER` to `GOTO:BBSLISTM`.
+        *   Added unit tests for data persistence, JSON round-trip, NextID defaulting, and delete compaction.
+    *   **Files:** `internal/menu/bbslist.go`, `internal/menu/bbslist_test.go`, `internal/menu/executor.go`, `menus/v3/mnu/BBSLISTM.MNU`, `menus/v3/cfg/BBSLISTM.CFG`, `menus/v3/cfg/MAIN.CFG`
+    *   **Status:** COMPLETE.
+
 *   **[DONE] Invisible Login for SysOp/CoSysOp (2026-02-20):**
     *   **Goal:** Allow SysOp/CoSysOp users to log in invisibly — hidden from Last Callers, Who's Online, and Chat/Page for regular users. Other SysOp/CoSysOp users can still see and page them.
     *   **Implementation:**
