@@ -6,9 +6,9 @@ The Auto-Signature feature allows users to set a personal signature that is auto
 
 ## How It Works
 
-Each user has an `AutoSignature` field stored in their user record (`data/users/users.json`). When a message is composed and saved, the signature text is appended after two blank lines:
+Each user has an `auto_signature` field stored in their user record (`data/users/users.json`). When a message is composed and saved, the signature text is appended after two blank lines:
 
-```
+```text
 Message body text here.
 
 --- user's auto-signature ---
@@ -29,7 +29,7 @@ The signature is **not** appended to anonymous messages.
 
 Users manage their auto-signature through a simple menu:
 
-```
+```text
 Auto-Signature
 An Auto-Signature is appended to the end of any message you post.
 
@@ -94,7 +94,7 @@ You can add `RUN:CFG_AUTOSIG` to any menu CFG file to make it accessible from ot
 
 If a user's signature exceeds 5 lines, it is silently truncated and a notification is displayed:
 
-```
+```text
 Signature truncated to 5 lines.
 ```
 

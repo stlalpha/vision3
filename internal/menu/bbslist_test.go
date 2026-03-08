@@ -157,6 +157,7 @@ func TestBBSListNextIDStartsAt1(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// With no listings, NextID should default to 1.
 	badData := []byte(`{"listings":[],"next_id":0}`)
 	fp := filepath.Join(dataDir, "bbslist.json")
 	if err := os.WriteFile(fp, badData, 0644); err != nil {
@@ -172,24 +173,99 @@ func TestBBSListNextIDStartsAt1(t *testing.T) {
 	}
 }
 
+func TestBBSListNextIDFromMaxExisting(t *testing.T) {
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// With existing listings and next_id=0, NextID should be max(ID)+1.
+	data := []byte(`{"listings":[{"id":5,"name":"A"},{"id":3,"name":"B"},{"id":10,"name":"C"}],"next_id":0}`)
+	fp := filepath.Join(dataDir, "bbslist.json")
+	if err := os.WriteFile(fp, data, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	bld, err := loadBBSListData(filepath.Join(tmpDir, "configs"))
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	if bld.NextID != 11 {
+		t.Errorf("NextID should be 11 (max existing ID 10 + 1), got %d", bld.NextID)
+	}
+}
+
 func TestBBSListDeleteCompacts(t *testing.T) {
-	listings := []BBSListing{
-		{ID: 1, Name: "First"},
-		{ID: 2, Name: "Second"},
-		{ID: 3, Name: "Third"},
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data")
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(tmpDir, "configs")
+
+	bld := &bbsListData{
+		NextID: 4,
+		Listings: []BBSListing{
+			{ID: 1, Name: "First", AddedBy: "user1"},
+			{ID: 2, Name: "Second", AddedBy: "user2"},
+			{ID: 3, Name: "Third", AddedBy: "user3"},
+		},
 	}
 
+	if err := saveBBSListData(configPath, bld); err != nil {
+		t.Fatalf("save failed: %v", err)
+	}
+
+	// Delete the middle entry (index 1) — same operation as runBBSListDelete
 	idx := 1
-	listings = append(listings[:idx], listings[idx+1:]...)
+	bld.Listings = append(bld.Listings[:idx], bld.Listings[idx+1:]...)
 
-	if len(listings) != 2 {
-		t.Fatalf("expected 2 listings after delete, got %d", len(listings))
+	if err := saveBBSListData(configPath, bld); err != nil {
+		t.Fatalf("save after delete failed: %v", err)
 	}
-	if listings[0].Name != "First" {
-		t.Errorf("listings[0]: got %q, want %q", listings[0].Name, "First")
+
+	// Reload and verify compaction
+	loaded, err := loadBBSListData(configPath)
+	if err != nil {
+		t.Fatalf("load after delete failed: %v", err)
 	}
-	if listings[1].Name != "Third" {
-		t.Errorf("listings[1]: got %q, want %q", listings[1].Name, "Third")
+
+	if len(loaded.Listings) != 2 {
+		t.Fatalf("expected 2 listings after delete, got %d", len(loaded.Listings))
+	}
+	if loaded.Listings[0].Name != "First" {
+		t.Errorf("listings[0]: got %q, want %q", loaded.Listings[0].Name, "First")
+	}
+	if loaded.Listings[0].ID != 1 {
+		t.Errorf("listings[0] ID: got %d, want 1", loaded.Listings[0].ID)
+	}
+	if loaded.Listings[1].Name != "Third" {
+		t.Errorf("listings[1]: got %q, want %q", loaded.Listings[1].Name, "Third")
+	}
+	if loaded.Listings[1].ID != 3 {
+		t.Errorf("listings[1] ID: got %d, want 3", loaded.Listings[1].ID)
+	}
+	if loaded.NextID != 4 {
+		t.Errorf("NextID should be preserved as 4, got %d", loaded.NextID)
+	}
+}
+
+func TestBBSListSanitize(t *testing.T) {
+	tests := []struct {
+		input, expect string
+	}{
+		{"Normal text", "Normal text"},
+		{"|15colored|07 text", "\xc2\xa615colored\xc2\xa607 text"},
+		{"no pipes here", "no pipes here"},
+		{"", ""},
+		{"one|pipe", "one\xc2\xa6pipe"},
+	}
+	for _, tt := range tests {
+		got := bbsListSanitize(tt.input)
+		if got != tt.expect {
+			t.Errorf("bbsListSanitize(%q) = %q, want %q", tt.input, got, tt.expect)
+		}
 	}
 }
 

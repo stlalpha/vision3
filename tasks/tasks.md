@@ -8,9 +8,9 @@ This file tracks active and planned development tasks for the ViSiON/3 BBS proje
     *   **Goal:** Implement the BBS Listings feature from V2 (BBSLIST.PAS) — a user-contributed directory of other BBS systems.
     *   **Implementation:**
         *   Created `internal/menu/bbslist.go` with data model, JSON persistence (`data/bbslist.json`), and 5 command handlers.
-        *   Modernized V2's BBSRec: replaced phone/baud with `Address` field (hostname:port), added `Sysop`, `Description` (inline, replacing sector pointers), and `Verified` flag.
+        *   Modernized V2's BBSRec: replaced phone/baud with `Address` (hostname/IP) plus separate `TelnetPort` and `SSHPort` fields, added `Sysop`, `Description` (inline, replacing sector pointers), and `Verified` flag.
         *   Ownership enforcement: users can only edit/delete their own entries; CoSysOp+ can manage all entries (matches V2's `Match(B.LeftBy,Unam)` + `IsSysop` check).
-        *   SysOp-only `BBSLISTVERIFY` command to toggle verified status on entries.
+        *   CoSysOp+ `BBSLISTVERIFY` command to toggle verified status on entries (handler checks `isCoSysOpOrAbove`, respecting configured `CoSysOpLevel`).
         *   Created `BBSLISTM.MNU` submenu and `BBSLISTM.CFG` with keys matching the existing `BBSLISTM.ANS` screen (L/A/C/D/V/Q).
         *   Wired MAIN.CFG B key from `PLACEHOLDER` to `GOTO:BBSLISTM`.
         *   Added unit tests for data persistence, JSON round-trip, NextID defaulting, and delete compaction.

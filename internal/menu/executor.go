@@ -10279,8 +10279,12 @@ func runLoginWhosOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			sess.Mutex.RLock()
 			sessNodeID := sess.NodeID
 			sessInvisible := sess.Invisible
+			sessUser := sess.User
 			sess.Mutex.RUnlock()
 
+			if sessUser == nil {
+				continue // skip pre-auth sessions
+			}
 			if sessNodeID == nodeNumber {
 				continue
 			}

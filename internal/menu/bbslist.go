@@ -64,7 +64,13 @@ func loadBBSListData(rootConfigPath string) (*bbsListData, error) {
 		return nil, fmt.Errorf("parse bbslist.json: %w", err)
 	}
 	if bld.NextID < 1 {
-		bld.NextID = 1
+		maxID := 0
+		for _, l := range bld.Listings {
+			if l.ID > maxID {
+				maxID = l.ID
+			}
+		}
+		bld.NextID = maxID + 1
 	}
 	return &bld, nil
 }
@@ -75,6 +81,12 @@ func saveBBSListData(rootConfigPath string, bld *bbsListData) error {
 		return fmt.Errorf("marshal bbslist data: %w", err)
 	}
 	return os.WriteFile(bbsListFilePath(rootConfigPath), data, 0644)
+}
+
+// bbsListSanitize replaces pipe characters in user-supplied strings to prevent
+// them from being interpreted as pipe color codes when displayed.
+func bbsListSanitize(s string) string {
+	return strings.ReplaceAll(s, "|", "\xc2\xa6") // replace | with ¦ (U+00A6)
 }
 
 // bbsListConnectionSummary returns a short connection summary for the list view.
@@ -185,7 +197,7 @@ func runBBSList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		if entry.Verified {
 			verifiedMark = "*"
 		}
-		name := entry.Name
+		name := bbsListSanitize(entry.Name)
 		nameWidth := leftPanelWidth - 5 // "V ## " prefix = 5 chars
 		if nameWidth < 5 {
 			nameWidth = 5
@@ -228,7 +240,7 @@ func runBBSList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		if len(val) > valWidth {
 			val = val[:valWidth]
 		}
-		emitPipe(fmt.Sprintf("|08\xb3 |15%-10s |08: %s%-*s", label, valueColor, valWidth, val))
+		emitPipe(fmt.Sprintf("|08\xb3 |15%-10s |08: %s%-*s", bbsListSanitize(label), valueColor, valWidth, bbsListSanitize(val)))
 	}
 
 	renderRightPanel := func(selectedIndex int) {
@@ -306,7 +318,7 @@ func runBBSList(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 				if len(descLine) > maxDesc {
 					descLine = descLine[:maxDesc]
 				}
-				emitPipe("|08\xb3 |07" + descLine)
+				emitPipe("|08\xb3 |07" + bbsListSanitize(descLine))
 				detailRow++
 			}
 		}
@@ -633,16 +645,16 @@ func runBBSListEdit(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 
 	showEditFields := func() {
-		wv(terminal, fmt.Sprintf("\r\n|15Editing: |11%s\r\n", entry.Name), outputMode)
+		wv(terminal, fmt.Sprintf("\r\n|15Editing: |11%s\r\n", bbsListSanitize(entry.Name)), outputMode)
 		wv(terminal, "|08"+strings.Repeat("\xc4", 50)+"\r\n", outputMode)
-		wv(terminal, "|15[|111|15] |07Name        |08: |11"+entry.Name+"\r\n", outputMode)
-		wv(terminal, "|15[|112|15] |07Address     |08: |11"+entry.Address+"\r\n", outputMode)
-		wv(terminal, "|15[|113|15] |07Telnet Port |08: |11"+entry.TelnetPort+"\r\n", outputMode)
-		wv(terminal, "|15[|114|15] |07SSH Port    |08: |11"+entry.SSHPort+"\r\n", outputMode)
-		wv(terminal, "|15[|115|15] |07Web         |08: |11"+entry.Web+"\r\n", outputMode)
-		wv(terminal, "|15[|116|15] |07SysOp       |08: |11"+entry.Sysop+"\r\n", outputMode)
-		wv(terminal, "|15[|117|15] |07Software    |08: |11"+entry.Software+"\r\n", outputMode)
-		wv(terminal, "|15[|118|15] |07Description |08: |11"+entry.Description+"\r\n", outputMode)
+		wv(terminal, "|15[|111|15] |07Name        |08: |11"+bbsListSanitize(entry.Name)+"\r\n", outputMode)
+		wv(terminal, "|15[|112|15] |07Address     |08: |11"+bbsListSanitize(entry.Address)+"\r\n", outputMode)
+		wv(terminal, "|15[|113|15] |07Telnet Port |08: |11"+bbsListSanitize(entry.TelnetPort)+"\r\n", outputMode)
+		wv(terminal, "|15[|114|15] |07SSH Port    |08: |11"+bbsListSanitize(entry.SSHPort)+"\r\n", outputMode)
+		wv(terminal, "|15[|115|15] |07Web         |08: |11"+bbsListSanitize(entry.Web)+"\r\n", outputMode)
+		wv(terminal, "|15[|116|15] |07SysOp       |08: |11"+bbsListSanitize(entry.Sysop)+"\r\n", outputMode)
+		wv(terminal, "|15[|117|15] |07Software    |08: |11"+bbsListSanitize(entry.Software)+"\r\n", outputMode)
+		wv(terminal, "|15[|118|15] |07Description |08: |11"+bbsListSanitize(entry.Description)+"\r\n", outputMode)
 	}
 
 	showEditFields()
@@ -893,6 +905,6 @@ func runBBSListVerify(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 func bbsListQuickList(terminal *term.Terminal, bld *bbsListData, outputMode ansi.OutputMode) {
 	wv(terminal, "\r\n", outputMode)
 	for i, entry := range bld.Listings {
-		wv(terminal, fmt.Sprintf("  |11%2d|07. |15%s |08(|07%s|08)\r\n", i+1, entry.Name, entry.Address), outputMode)
+		wv(terminal, fmt.Sprintf("  |11%2d|07. |15%s |08(|07%s|08)\r\n", i+1, bbsListSanitize(entry.Name), bbsListSanitize(entry.Address)), outputMode)
 	}
 }
