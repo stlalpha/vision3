@@ -4,7 +4,7 @@
     "USEPROMPT": true,
     "PROMPT1": "|08[|07Area|08] |03|CC |09> |11|CAN|00 ",
     "PROMPT2": "|08[|15Message Menu|08] |07Command |08->|15 ",
-    "FALLBACK": "MAIN",
+    "FALLBACK": "",
     "ACS": "*",
     "PASS": "",
     "HELPMENU": "",

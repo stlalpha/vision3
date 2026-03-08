@@ -4,7 +4,7 @@
     "USEPROMPT": true,
     "PROMPT1": "|08[|07|TIME|08] |08[|15Email Menu|08] |07Command |08->|15 ",
     "PROMPT2": "",
-    "FALLBACK": "MAIN",
+    "FALLBACK": "",
     "ACS": "*",
     "PASS": "",
     "HELPMENU": "",

@@ -4,7 +4,7 @@
     "USEPROMPT": true,
     "PROMPT1": "|15BBS Listings Directory",
     "PROMPT2": "|08[|15BBS List|08] |07Command |08->|15 ",
-    "FALLBACK": "MAIN",
+    "FALLBACK": "",
     "ACS": "*",
     "PASS": "",
     "HELPMENU": "",

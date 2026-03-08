@@ -600,6 +600,12 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["BBSLISTEDIT"] = runBBSListEdit         // Edit BBS listing (owner or sysop)
 	registry["BBSLISTDELETE"] = runBBSListDelete     // Delete BBS listing (owner or sysop)
 	registry["BBSLISTVERIFY"] = runBBSListVerify     // SysOp: toggle verified flag
+	registry["RUMORSLIST"] = runRumorsList             // List all rumors
+	registry["RUMORSADD"] = runRumorsAdd              // Add a new rumor
+	registry["RUMORSDELETE"] = runRumorsDelete        // Delete a rumor
+	registry["RUMORSSEARCH"] = runRumorsSearch        // Search rumors
+	registry["RUMORSNEWSCAN"] = runRumorsNewscan      // Rumors newscan (since last login)
+	registry["RANDOMRUMOR"] = runRandomRumor          // Display random rumor (login sequence)
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
@@ -1585,6 +1591,12 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			rawAnsiContent = bytes.ReplaceAll(rawAnsiContent, []byte("|CA"), []byte(currentAreaTag))
 			rawAnsiContent = replaceMenuATCode(rawAnsiContent, "UC", strconv.Itoa(userManager.GetUserCount()))
 			rawAnsiContent = replaceMenuATCode(rawAnsiContent, "U", strconv.Itoa(e.SessionRegistry.ActiveCount()))
+			// @RR@ — Random Rumor text (supports @RR@, @RR:50@, @RR######@)
+			rumorLevel := 1 // default MinLevel when no user context
+			if currentUser != nil {
+				rumorLevel = currentUser.AccessLevel
+			}
+			rawAnsiContent = expandRandomRumorATCode(rawAnsiContent, e.RootConfigPath, rumorLevel)
 		}
 		var ansiProcessResult ansi.ProcessAnsiResult
 		var processErr error
@@ -3079,25 +3091,43 @@ func isLastCallerATCenterAligned(code string) bool {
 	}
 }
 
-// replaceMenuATCode replaces @CODE@, @CODE:N@, and @CODE##…@  patterns in raw
+// replaceMenuATCode replaces @CODE@, @CODE:N@, @CODE##…@, and modifier forms
+// @CODE|L:N@, @CODE|R:N@, @CODE|C:N@ (plus ## visual-width variants) in raw
 // ANSI content with the supplied value, applying width/padding when specified.
-// The visual-hash form (@CODE##@) pads to the full placeholder length so the
-// substituted value occupies the same columns as the original token.
+//
+// Alignment modifiers (between | and width):
+//
+//	L = left-align (default), R = right-align, C = center
+//
+// Examples: @RR@, @RR:60@, @RR|C:60@, @RR|C##########@, @RR|R8@
 func replaceMenuATCode(content []byte, code string, value string) []byte {
-	pat := regexp.MustCompile(`@` + regexp.QuoteMeta(code) + `(?::(\d+)|(#+))?@`)
+	pat := regexp.MustCompile(`@` + regexp.QuoteMeta(code) + `(?:\|([LRC])(\d+)?)?(?::(\d+)|(#+))?@`)
 	return pat.ReplaceAllFunc(content, func(match []byte) []byte {
 		parts := pat.FindSubmatch(match)
-		width := 0
+		// parts[1] = alignment modifier (L/R/C)
+		// parts[2] = digits after modifier (e.g. @RR|C60@)
+		// parts[3] = :N explicit width
+		// parts[4] = ## visual width
+		alignMode := ansi.AlignLeft
 		if len(parts) > 1 && len(parts[1]) > 0 {
+			alignMode = ansi.ParseAlignment(string(parts[1]))
+		}
+
+		width := 0
+		if len(parts) > 2 && len(parts[2]) > 0 {
+			// digits after modifier (e.g. @RR|R8@)
+			width, _ = strconv.Atoi(string(parts[2]))
+		} else if len(parts) > 3 && len(parts[3]) > 0 {
 			// :N explicit width
-			width, _ = strconv.Atoi(string(parts[1]))
-		} else if len(parts) > 2 && len(parts[2]) > 0 {
+			width, _ = strconv.Atoi(string(parts[3]))
+		} else if len(parts) > 4 && len(parts[4]) > 0 {
 			// ## visual width — total placeholder length
 			width = len(match)
 		}
+
 		result := value
 		if width > 0 {
-			result = formatLastCallerATWidth(value, width, false)
+			result = ansi.ApplyWidthConstraintAligned(value, width, alignMode)
 		}
 		return []byte(result)
 	})
@@ -3318,6 +3348,10 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 		data = append([]byte(ansi.ClearScreen()), data...)
 	}
 
+	// Expand AT-codes before pipe code processing.
+	// Use level 1 (default MinLevel) since displayFile lacks user context.
+	data = expandRandomRumorATCode(data, e.RootConfigPath, 1)
+
 	// Process pipe codes before output — ANSI escape sequences produced are
 	// ASCII-safe and work correctly in both CP437 and UTF-8 output modes.
 	data = ansi.ReplacePipeCodes(data)
@@ -3501,8 +3535,15 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		return err // Use original error if includes fail
 	}
 
+	// 2b. Expand @RR@ after file includes so %%file.ans%% content is also processed.
+	rumorLevel := 1 // default MinLevel when no user context
+	if currentUser != nil {
+		rumorLevel = currentUser.AccessLevel
+	}
+	processedPromptBytes := expandRandomRumorATCode([]byte(processedPrompt), e.RootConfigPath, rumorLevel)
+
 	// 3. Process pipe codes in the final string (includes/placeholders already processed)
-	rawPromptBytes := ansi.ReplacePipeCodes([]byte(processedPrompt))
+	rawPromptBytes := ansi.ReplacePipeCodes(processedPromptBytes)
 
 	// 4. Process character encoding based on outputMode (Reverted to manual loop)
 	var finalBuf bytes.Buffer
@@ -3945,6 +3986,7 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		"PRINTNEWS":     runPrintNews,
 		"VOTEMANDATORY": runVoteOnMandatory,
 		"CHECKNUV":      runCheckNUV,
+		"RANDOMRUMOR":   runRandomRumor,
 	}
 
 	for i, item := range loginSequence {

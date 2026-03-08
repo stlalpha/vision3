@@ -26,6 +26,7 @@
 * [Menus & ACS](menus/menu-system.md)
 * [News](menus/news.md)
 * [BBS Listings](menus/bbs-list.md)
+* [Rumors](menus/rumors.md)
 * [Menu Files (.MNU)](menus/menu-system.md#menu-configuration-files-mnu)
 * [Command Files (.CFG)](menus/menu-system.md#command-definition-files-cfg)
 * [ANSI Art (.ANS)](menus/menu-system.md#ansi-art-files-ans)
