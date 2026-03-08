@@ -289,6 +289,11 @@ func runRumorsAdd(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		wv(terminal, "\r\n|04Error saving rumor.\r\n", outputMode)
 		return currentUser, "", nil
 	}
+	if len(rd.Rumors) >= 999 {
+		rumorsMu.Unlock()
+		wv(terminal, "\r\n|04Sorry, there are too many rumors! Ask the SysOp to delete some.\r\n", outputMode)
+		return currentUser, "", nil
+	}
 	newRumor.ID = rd.NextID
 	rd.NextID++
 	rd.Rumors = append(rd.Rumors, newRumor)
@@ -362,7 +367,13 @@ func runRumorsDelete(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 		wv(terminal, "\r\n|07Rumor number to delete: ", outputMode)
 		input, err = readLineFromSessionIH(s, terminal)
-		if err != nil || strings.TrimSpace(input) == "" {
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			return currentUser, "", nil
+		}
+		if strings.TrimSpace(input) == "" {
 			return currentUser, "", nil
 		}
 	}
@@ -577,7 +588,7 @@ func runRandomRumor(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Center the rumor text (V2 centered it on 80-col screen)
 	rumorText := r.Text
-	displayWidth := len(rumorText) + 4 // add brackets + spaces
+	displayWidth := ansi.VisibleLength(rumorText) + 4 // add brackets + spaces
 	padding := 0
 	tw := termWidth
 	if tw <= 0 {

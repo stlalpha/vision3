@@ -3350,6 +3350,12 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 		data = append([]byte(ansi.ClearScreen()), data...)
 	}
 
+	// Expand AT-codes before pipe code processing.
+	// Use level 1 (default MinLevel) since displayFile lacks user context.
+	if bytes.Contains(data, []byte("@RR")) {
+		data = replaceMenuATCode(data, "RR", getRandomRumorText(e.RootConfigPath, 1))
+	}
+
 	// Process pipe codes before output — ANSI escape sequences produced are
 	// ASCII-safe and work correctly in both CP437 and UTF-8 output modes.
 	data = ansi.ReplacePipeCodes(data)
