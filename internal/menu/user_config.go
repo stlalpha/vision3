@@ -17,6 +17,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/stlalpha/vision3/internal/ansi"
+	"github.com/stlalpha/vision3/internal/editor"
 	"github.com/stlalpha/vision3/internal/terminalio"
 	"github.com/stlalpha/vision3/internal/user"
 )
@@ -461,6 +462,17 @@ fmt.Sprintf(e.LoadedStrings.CfgViewHotKeys, boolStr(currentUser.HotKeys)),
 		fmt.Sprintf(e.LoadedStrings.CfgViewNote, currentUser.PrivateNote),
 	}
 
+	// Append auto-signature info
+	if currentUser.AutoSignature != "" {
+		lines = append(lines, "", "|03  Auto-Signature:|07")
+		sigLines := strings.Split(currentUser.AutoSignature, "\n")
+		for _, sl := range sigLines {
+			lines = append(lines, "    "+sl)
+		}
+	} else {
+		lines = append(lines, "", "|08  Auto-Signature: (none)|07")
+	}
+
 	for _, line := range lines {
 		buf.Write(ansi.ReplacePipeCodes([]byte(line)))
 		buf.WriteString("\r\n")
@@ -509,6 +521,115 @@ func runCfgFileListMode(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
 	time.Sleep(500 * time.Millisecond)
 	return currentUser, "", nil
+}
+
+// maxAutoSigLines is the maximum number of lines allowed in an auto-signature.
+const maxAutoSigLines = 5
+
+func runCfgAutoSig(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+	if currentUser == nil {
+		return nil, "", nil
+	}
+
+	for {
+		// Display header
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|15Auto-Signature|07\r\n")), outputMode)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|08An Auto-Signature is appended to the end of any message you post.|07\r\n\r\n")), outputMode)
+
+		// Show current signature
+		if currentUser.AutoSignature == "" {
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|03You currently do not have an Auto-Signature.|07\r\n\r\n")), outputMode)
+		} else {
+			terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|03Your current Auto-Signature is...|07\r\n\r\n")), outputMode)
+			sigLines := strings.Split(currentUser.AutoSignature, "\n")
+			for _, line := range sigLines {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(line)), outputMode)
+				terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			}
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+		}
+
+		// Menu prompt
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|09C|07hange/create  |09D|07elete  |09Q|07uit : ")), outputMode)
+
+		input, err := readLineFromSessionIH(s, terminal)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil, "LOGOFF", io.EOF
+			}
+			return currentUser, "", nil
+		}
+
+		input = strings.TrimSpace(strings.ToUpper(input))
+		if input == "" || input == "Q" {
+			return currentUser, "", nil
+		}
+
+		switch input {
+		case "C":
+			// Launch the ANSI editor with current signature as initial content
+			ih := getSessionIH(s)
+			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+			editorCtx := editor.EditorContext{
+				NodeNumber: nodeNumber,
+				ConfArea:   "Auto-Signature",
+			}
+			body, saved, edErr := editor.RunEditorWithMetadata(
+				currentUser.AutoSignature, s, s, outputMode,
+				"Auto-Signature", "All", currentUser.Handle, false,
+				"", "", "", "", false, nil, ih, editorCtx,
+			)
+			terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
+
+			if edErr != nil {
+				log.Printf("ERROR: Node %d: Editor failed for auto-sig: %v", nodeNumber, edErr)
+				return currentUser, "", nil
+			}
+			if !saved {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Auto-Signature not changed.\r\n")), outputMode)
+				time.Sleep(500 * time.Millisecond)
+				continue
+			}
+
+			// Truncate to maxAutoSigLines lines
+			body = strings.TrimRight(body, "\r\n")
+			if body != "" {
+				lines := strings.Split(body, "\n")
+				if len(lines) > maxAutoSigLines {
+					lines = lines[:maxAutoSigLines]
+					terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(
+						fmt.Sprintf("\r\n|03Signature truncated to %d lines.|07\r\n", maxAutoSigLines),
+					)), outputMode)
+				}
+				body = strings.Join(lines, "\n")
+			}
+
+			currentUser.AutoSignature = body
+			if err := userManager.UpdateUser(currentUser); err != nil {
+				log.Printf("ERROR: Node %d: Failed to save auto-signature: %v", nodeNumber, err)
+				return currentUser, "", nil
+			}
+			if body == "" {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|03Auto-Signature cleared.|07\r\n")), outputMode)
+			} else {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|02Auto-Signature saved!|07\r\n")), outputMode)
+			}
+			time.Sleep(500 * time.Millisecond)
+
+		case "D":
+			if currentUser.AutoSignature == "" {
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|03You don't have an Auto-Signature to delete!|07\r\n")), outputMode)
+			} else {
+				currentUser.AutoSignature = ""
+				if err := userManager.UpdateUser(currentUser); err != nil {
+					log.Printf("ERROR: Node %d: Failed to delete auto-signature: %v", nodeNumber, err)
+					return currentUser, "", nil
+				}
+				terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|03Auto-Signature has been deleted.|07\r\n")), outputMode)
+			}
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
 }
 
 func runCfgCustomPrompt(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {

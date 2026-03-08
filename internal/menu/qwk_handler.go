@@ -324,7 +324,12 @@ func runQWKUpload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 		postMsg := strings.ReplaceAll(e.LoadedStrings.PostingQWKMsg, "|BN", area.Name)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n"+postMsg)), outputMode)
 
-		_, err := e.MessageMgr.AddMessage(area.ID, currentUser.Handle, msg.To, msg.Subject, msg.Body, "")
+		// Append auto-signature if user has one
+		qwkBody := msg.Body
+		if currentUser.AutoSignature != "" {
+			qwkBody = qwkBody + "\n\n" + currentUser.AutoSignature
+		}
+		_, err := e.MessageMgr.AddMessage(area.ID, currentUser.Handle, msg.To, msg.Subject, qwkBody, "")
 		if err != nil {
 			log.Printf("ERROR: Node %d: QWK REP: failed to post to area %d: %v", nodeNumber, area.ID, err)
 			continue
