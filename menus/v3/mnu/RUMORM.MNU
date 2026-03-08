@@ -1,0 +1,15 @@
+{
+    "TITLE": "Rumors",
+    "CLR": true,
+    "USEPROMPT": true,
+    "PROMPT1": "|15Rumors",
+    "PROMPT2": "|08[|15Rumors|08] |07Command |08->|15 ",
+    "FALLBACK": "",
+    "ACS": "*",
+    "PASS": "",
+    "HELPMENU": "",
+    "FORCEHELPLEVEL": 0,
+    "MES_CONF": 0,
+    "FILE_CONF": 0,
+    "FORCEHOTKEY": false
+}
