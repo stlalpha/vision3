@@ -195,8 +195,9 @@ func (t *Tosser) processBundle(path, name string, result *TossResult) {
 	for _, pktPath := range skippedPkts {
 		destPath := filepath.Join(t.paths.InboundPath, filepath.Base(pktPath))
 		if err := os.Rename(pktPath, destPath); err != nil {
-			log.Printf("WARN: tosser[%s]: failed to re-queue skipped packet %s: %v", t.networkName, filepath.Base(pktPath), err)
-			os.Remove(pktPath)
+			// Do not delete on rename failure — a stranded packet in unpack/ is
+			// recoverable; a deleted packet is not.
+			log.Printf("WARN: tosser[%s]: failed to re-queue skipped packet %s: %v — packet left in unpack dir for manual recovery", t.networkName, filepath.Base(pktPath), err)
 		} else {
 			log.Printf("TRACE: tosser[%s]: re-queued skipped packet %s to inbound", t.networkName, filepath.Base(pktPath))
 		}

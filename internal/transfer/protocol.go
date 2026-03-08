@@ -113,6 +113,9 @@ func (p *ProtocolConfig) ExecuteSend(ctx context.Context, s ssh.Session, filePat
 	if len(filePaths) == 0 {
 		return fmt.Errorf("no files provided for send via protocol %q", p.Name)
 	}
+	if !p.BatchSend && len(filePaths) > 1 {
+		return fmt.Errorf("protocol %q does not support batch/multi-file sends (got %d files)", p.Name, len(filePaths))
+	}
 	// Validate all paths are absolute.
 	for _, fp := range filePaths {
 		if !filepath.IsAbs(fp) {

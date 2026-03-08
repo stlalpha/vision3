@@ -192,15 +192,24 @@ func doVoteOnTopic(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 		votingMu.Lock()
 		fresh, loadErr := loadVotingData(e.RootConfigPath)
-		if loadErr == nil && topicIdx < len(fresh.Topics) {
-			fresh.Topics[topicIdx].Options = append(fresh.Topics[topicIdx].Options, strings.TrimSpace(choice))
-			if saveErr := saveVotingData(e.RootConfigPath, fresh); saveErr != nil {
-				log.Printf("ERROR: Failed to save voting data after adding choice: %v", saveErr)
-				votingMu.Unlock()
-				wv(terminal, "|04Error saving choice.\r\n", outputMode)
-				return false
+		if loadErr == nil {
+			freshIdx := -1
+			for i := range fresh.Topics {
+				if fresh.Topics[i].ID == topic.ID {
+					freshIdx = i
+					break
+				}
 			}
-			*vd = *fresh
+			if freshIdx >= 0 {
+				fresh.Topics[freshIdx].Options = append(fresh.Topics[freshIdx].Options, strings.TrimSpace(choice))
+				if saveErr := saveVotingData(e.RootConfigPath, fresh); saveErr != nil {
+					log.Printf("ERROR: Failed to save voting data after adding choice: %v", saveErr)
+					votingMu.Unlock()
+					wv(terminal, "|04Error saving choice.\r\n", outputMode)
+					return false
+				}
+				*vd = *fresh
+			}
 		}
 		votingMu.Unlock()
 		wv(terminal, "|10Choice added!\r\n", outputMode)
@@ -340,12 +349,22 @@ func runVote(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			if strings.ToUpper(strings.TrimSpace(confirm)) == "Y" {
 				votingMu.Lock()
 				fresh, loadErr := loadVotingData(e.RootConfigPath)
-				if loadErr == nil && curIdx < len(fresh.Topics) {
-					fresh.Topics = append(fresh.Topics[:curIdx], fresh.Topics[curIdx+1:]...)
-					if saveErr := saveVotingData(e.RootConfigPath, fresh); saveErr != nil {
-						log.Printf("ERROR: Failed to save voting data after topic deletion: %v", saveErr)
-					} else {
-						vd = fresh
+				if loadErr == nil {
+					freshIdx := -1
+					for i := range fresh.Topics {
+						if fresh.Topics[i].ID == topic.ID {
+							freshIdx = i
+							break
+						}
+					}
+					if freshIdx >= 0 {
+						fresh.Topics = append(fresh.Topics[:freshIdx], fresh.Topics[freshIdx+1:]...)
+						if saveErr := saveVotingData(e.RootConfigPath, fresh); saveErr != nil {
+							log.Printf("ERROR: Failed to save voting data after topic deletion: %v", saveErr)
+						} else {
+							vd = fresh
+							curIdx = freshIdx
+						}
 					}
 				}
 				votingMu.Unlock()

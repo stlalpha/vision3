@@ -280,13 +280,11 @@ func runQWKUpload(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userM
 	}
 
 	// Process the REP packet
-	repFile, err := os.Open(repPath)
+	repInfo, err := os.Stat(repPath)
 	if err != nil {
-		log.Printf("ERROR: Node %d: QWK: failed to open REP: %v", nodeNumber, err)
+		log.Printf("ERROR: Node %d: QWK: failed to stat REP: %v", nodeNumber, err)
 		return currentUser, "", nil
 	}
-	repInfo, _ := repFile.Stat()
-	repFile.Close()
 
 	repData, err := os.ReadFile(repPath)
 	if err != nil {

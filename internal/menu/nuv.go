@@ -249,13 +249,23 @@ func nuvVoteOn(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			comment = strings.TrimSpace(comment)
 			nuvMu.Lock()
 			fresh, loadErr := loadNUVData(e.RootConfigPath)
-			if loadErr == nil && idx < len(fresh.Candidates) {
-				vi := nuvVoteIndex(&fresh.Candidates[idx], currentUser.Handle)
-				if vi >= 0 {
-					fresh.Candidates[idx].Votes[vi].Comment = comment
-					_ = saveNUVData(e.RootConfigPath, fresh)
-					*nd = *fresh
-					c = &nd.Candidates[idx]
+			if loadErr == nil {
+				freshIdx := -1
+				for i := range fresh.Candidates {
+					if strings.EqualFold(fresh.Candidates[i].Handle, c.Handle) {
+						freshIdx = i
+						break
+					}
+				}
+				if freshIdx >= 0 {
+					vi := nuvVoteIndex(&fresh.Candidates[freshIdx], currentUser.Handle)
+					if vi >= 0 {
+						fresh.Candidates[freshIdx].Votes[vi].Comment = comment
+						_ = saveNUVData(e.RootConfigPath, fresh)
+						*nd = *fresh
+						idx = freshIdx
+						c = &nd.Candidates[idx]
+					}
 				}
 			}
 			nuvMu.Unlock()
@@ -266,32 +276,42 @@ func nuvVoteOn(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 			nuvMu.Lock()
 			fresh, loadErr := loadNUVData(e.RootConfigPath)
 			removed := false
-			if loadErr == nil && idx < len(fresh.Candidates) {
-				vi := nuvVoteIndex(&fresh.Candidates[idx], currentUser.Handle)
-				if vi >= 0 {
-					fresh.Candidates[idx].Votes[vi].Yes = castYes
-					if castYes {
-						wv(terminal, "\r\n|10Vote changed to YES.\r\n", outputMode)
-					} else {
-						wv(terminal, "\r\n|12Vote changed to NO.\r\n", outputMode)
-					}
-				} else {
-					fresh.Candidates[idx].Votes = append(fresh.Candidates[idx].Votes, NUVVote{
-						Voter: currentUser.Handle,
-						Yes:   castYes,
-					})
-					if castYes {
-						wv(terminal, "\r\n|10YES vote cast!\r\n", outputMode)
-					} else {
-						wv(terminal, "\r\n|12NO vote cast!\r\n", outputMode)
+			if loadErr == nil {
+				freshIdx := -1
+				for i := range fresh.Candidates {
+					if strings.EqualFold(fresh.Candidates[i].Handle, c.Handle) {
+						freshIdx = i
+						break
 					}
 				}
-				_ = saveNUVData(e.RootConfigPath, fresh)
-				*nd = *fresh
-				c = &nd.Candidates[idx]
-				voterIdx = nuvVoteIndex(c, currentUser.Handle)
-				removed = nuvApplyThresholds(e, nd, idx, userManager)
-				_ = saveNUVData(e.RootConfigPath, nd)
+				if freshIdx >= 0 {
+					vi := nuvVoteIndex(&fresh.Candidates[freshIdx], currentUser.Handle)
+					if vi >= 0 {
+						fresh.Candidates[freshIdx].Votes[vi].Yes = castYes
+						if castYes {
+							wv(terminal, "\r\n|10Vote changed to YES.\r\n", outputMode)
+						} else {
+							wv(terminal, "\r\n|12Vote changed to NO.\r\n", outputMode)
+						}
+					} else {
+						fresh.Candidates[freshIdx].Votes = append(fresh.Candidates[freshIdx].Votes, NUVVote{
+							Voter: currentUser.Handle,
+							Yes:   castYes,
+						})
+						if castYes {
+							wv(terminal, "\r\n|10YES vote cast!\r\n", outputMode)
+						} else {
+							wv(terminal, "\r\n|12NO vote cast!\r\n", outputMode)
+						}
+					}
+					_ = saveNUVData(e.RootConfigPath, fresh)
+					*nd = *fresh
+					idx = freshIdx
+					c = &nd.Candidates[idx]
+					voterIdx = nuvVoteIndex(c, currentUser.Handle)
+					removed = nuvApplyThresholds(e, nd, idx, userManager)
+					_ = saveNUVData(e.RootConfigPath, nd)
+				}
 			}
 			nuvMu.Unlock()
 			if removed {

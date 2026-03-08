@@ -3,8 +3,6 @@ package qwk
 import (
 	"archive/zip"
 	"bytes"
-	"encoding/binary"
-	"math"
 	"strings"
 	"testing"
 	"time"
@@ -198,21 +196,37 @@ func TestFormatMessage_Private(t *testing.T) {
 }
 
 func TestMakeNDXRecord(t *testing.T) {
-	rec := makeNDXRecord(2, 1)
+	// QWK NDX requires Microsoft BASIC single-precision float (MSBIN4), not IEEE 754.
+	// For offset=1 (1.0): IEEE exp=127 → MBF exp=129 (0x81), mantissa=0, sign=0
+	// Expected bytes (little-endian): [0x00, 0x00, 0x00, 0x81, conf]
+	rec := makeNDXRecord(1, 1)
 	if len(rec) != 5 {
 		t.Fatalf("NDX record length: want 5, got %d", len(rec))
 	}
-
-	// Verify the float value decodes to 2.0
-	bits := binary.LittleEndian.Uint32(rec[0:4])
-	val := math.Float32frombits(bits)
-	if val != 2.0 {
-		t.Errorf("NDX float: want 2.0, got %f", val)
+	if rec[0] != 0x00 || rec[1] != 0x00 || rec[2] != 0x00 || rec[3] != 0x81 {
+		t.Errorf("NDX MBF4 bytes for offset=1: want [00 00 00 81], got [%02X %02X %02X %02X]",
+			rec[0], rec[1], rec[2], rec[3])
 	}
-
-	// Conference byte
 	if rec[4] != 1 {
 		t.Errorf("NDX conference: want 1, got %d", rec[4])
+	}
+
+	// offset=2: IEEE exp=128 → MBF exp=130 (0x82), mantissa=0
+	rec2 := makeNDXRecord(2, 3)
+	if rec2[0] != 0x00 || rec2[1] != 0x00 || rec2[2] != 0x00 || rec2[3] != 0x82 {
+		t.Errorf("NDX MBF4 bytes for offset=2: want [00 00 00 82], got [%02X %02X %02X %02X]",
+			rec2[0], rec2[1], rec2[2], rec2[3])
+	}
+	if rec2[4] != 3 {
+		t.Errorf("NDX conference: want 3, got %d", rec2[4])
+	}
+
+	// offset=0: all float bytes must be zero
+	rec0 := makeNDXRecord(0, 0)
+	for i := 0; i < 4; i++ {
+		if rec0[i] != 0 {
+			t.Errorf("NDX MBF4 bytes for offset=0: byte[%d] want 0, got 0x%02X", i, rec0[i])
+		}
 	}
 }
 

@@ -549,6 +549,8 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["CHANGEMSGCONF"] = runChangeMsgConferenceLightbar       // Change message conference (lightbar)
 	registry["NEXTMSGAREA"] = runNextMsgArea                         // Navigate to next message area
 	registry["PREVMSGAREA"] = runPrevMsgArea                         // Navigate to previous message area
+	registry["NEXTMSGCONF"] = runNextMsgConf                         // Navigate to next message conference
+	registry["PREVMSGCONF"] = runPrevMsgConf                         // Navigate to previous message conference
 	registry["NEWUSER"] = runNewUser                                 // Register new user application runnable
 	registry["GETHEADERTYPE"] = runGetHeaderType                     // Message header style selection
 	registry["LISTMSGS"] = runListMsgs                               // List messages in current area
@@ -2264,7 +2266,9 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 							}
 						}
 						if isNumeric {
-							nextAction = cmdRec.Command
+							// Append the entered number as args so executeCommandAction
+							// forwards it to the RUN: handler via runArgs.
+							nextAction = cmdRec.Command + " " + userInput
 							matchedNodeActivity = cmdRec.NodeActivity
 							log.Printf("DEBUG: Matched ## (numeric wildcard, input='%s') to command action: '%s'", userInput, nextAction)
 							matched = true
@@ -3955,6 +3959,7 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		// Check if this is a DOOR: command
 		var nextAction string
 		var err error
+		var updatedUser *user.User
 		if strings.HasPrefix(item.Command, "DOOR:") {
 			// Extract door name and execute via DOOR: handler
 			doorName := strings.TrimPrefix(item.Command, "DOOR:")
@@ -3962,7 +3967,10 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 
 			// Call the DOOR: handler from RunRegistry
 			if doorFunc, exists := e.RunRegistry["DOOR:"]; exists {
-				_, nextAction, err = doorFunc(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, doorName, outputMode, termWidth, termHeight)
+				updatedUser, nextAction, err = doorFunc(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, doorName, outputMode, termWidth, termHeight)
+			if updatedUser != nil {
+				currentUser = updatedUser
+			}
 			} else {
 				log.Printf("ERROR: Node %d: DOOR: handler not registered", nodeNumber)
 				continue
@@ -3981,7 +3989,10 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				itemArgs = item.Data
 			}
 
-			_, nextAction, err = handler(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, itemArgs, outputMode, termWidth, termHeight)
+			updatedUser, nextAction, err = handler(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, itemArgs, outputMode, termWidth, termHeight)
+			if updatedUser != nil {
+				currentUser = updatedUser
+			}
 		}
 		if err != nil {
 			log.Printf("ERROR: Node %d: Error during login item %s: %v", nodeNumber, item.Command, err)
