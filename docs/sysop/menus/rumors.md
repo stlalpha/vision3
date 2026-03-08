@@ -121,6 +121,7 @@ A random rumor can be embedded in any ANSI file or menu prompt using the `@RR@` 
 |--------|--------|
 | `@RR@` | Raw rumor text, no padding |
 | `@RR:60@` | Left-aligned in 60-character field |
+| `@RR\|L:60@` | Left-aligned in 60-character field (explicit) |
 | `@RR\|R:60@` | Right-aligned in 60-character field |
 | `@RR\|C:60@` | Centered in 60-character field |
 | `@RR\|C##########@` | Centered, field width equals placeholder length |

@@ -1592,7 +1592,7 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			rawAnsiContent = replaceMenuATCode(rawAnsiContent, "UC", strconv.Itoa(userManager.GetUserCount()))
 			rawAnsiContent = replaceMenuATCode(rawAnsiContent, "U", strconv.Itoa(e.SessionRegistry.ActiveCount()))
 			// @RR@ — Random Rumor text (supports @RR@, @RR:50@, @RR######@)
-			rumorLevel := 0
+			rumorLevel := 1 // default MinLevel when no user context
 			if currentUser != nil {
 				rumorLevel = currentUser.AccessLevel
 			}
@@ -3536,7 +3536,7 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 	}
 
 	// 2b. Expand @RR@ after file includes so %%file.ans%% content is also processed.
-	rumorLevel := 0
+	rumorLevel := 1 // default MinLevel when no user context
 	if currentUser != nil {
 		rumorLevel = currentUser.AccessLevel
 	}

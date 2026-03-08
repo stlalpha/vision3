@@ -105,6 +105,12 @@ func rumorDisplayAuthor(r *RumorRecord, isSysop bool, anonymousName string) stri
 	return r.Author
 }
 
+// rumorSanitize replaces pipe characters in user-supplied strings to prevent
+// them from being interpreted as pipe color codes when displayed via wv().
+func rumorSanitize(s string) string {
+	return strings.ReplaceAll(s, "|", "\xc2\xa6") // replace | with ¦ (U+00A6)
+}
+
 // rumorAnonName returns the configured anonymous display name.
 func rumorAnonName(e *MenuExecutor) string {
 	name := e.LoadedStrings.AnonymousName
@@ -292,7 +298,7 @@ func runRumorsAdd(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	newRumor := RumorRecord{
 		Author:   author,
 		RealUser: realUser,
-		Text:     rumorText,
+		Text:     rumorSanitize(rumorText),
 		PostedAt: time.Now().UTC(),
 		MinLevel: minLevel,
 	}
