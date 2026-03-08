@@ -3969,9 +3969,9 @@ func runFullLoginSequence(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			// Call the DOOR: handler from RunRegistry
 			if doorFunc, exists := e.RunRegistry["DOOR:"]; exists {
 				updatedUser, nextAction, err = doorFunc(e, s, terminal, userManager, currentUser, nodeNumber, sessionStartTime, doorName, outputMode, termWidth, termHeight)
-			if updatedUser != nil {
-				currentUser = updatedUser
-			}
+				if updatedUser != nil {
+					currentUser = updatedUser
+				}
 			} else {
 				log.Printf("ERROR: Node %d: DOOR: handler not registered", nodeNumber)
 				continue
@@ -10262,8 +10262,33 @@ func replaceWhoOnlineToken(line, token, value string) string {
 
 // runLoginWhosOnline prompts the user with a YES/NO lightbar asking if they want
 // to view users on other nodes. If YES, it displays the Who's Online screen.
+// Skips the prompt entirely if no other visible users are on other nodes.
 func runLoginWhosOnline(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
 	log.Printf("DEBUG: Node %d: Running WHOISONLINE from login sequence", nodeNumber)
+
+	// Check if there are any other visible users on other nodes before prompting
+	if e.SessionRegistry != nil {
+		sessions := e.SessionRegistry.ListActive()
+		otherVisible := 0
+		for _, sess := range sessions {
+			sess.Mutex.RLock()
+			sessNodeID := sess.NodeID
+			sessInvisible := sess.Invisible
+			sess.Mutex.RUnlock()
+
+			if sessNodeID == nodeNumber {
+				continue
+			}
+			if sessInvisible && !e.isCoSysOpOrAbove(currentUser) {
+				continue
+			}
+			otherVisible++
+		}
+		if otherVisible == 0 {
+			log.Printf("DEBUG: Node %d: No other visible users online, skipping WHOISONLINE prompt", nodeNumber)
+			return currentUser, "", nil
+		}
+	}
 
 	// Prompt the user with a YES/NO lightbar
 	result, err := e.PromptYesNo(s, terminal, "|07View users on other nodes?", outputMode, nodeNumber, termWidth, termHeight, false)
