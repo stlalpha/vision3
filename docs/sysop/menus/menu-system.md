@@ -521,6 +521,12 @@ Functions available via `RUN:` command:
 - `COMPOSEMSG` - Write new message
 - `READMSGS` - Read messages
 - `NEWSCAN` - Scan for new messages
+- `SELECTMSGAREA` - Choose message area (lightbar)
+- `CHANGEMSGCONF` - Choose message conference (lightbar)
+- `NEXTMSGAREA` - Navigate to next message area in conference
+- `PREVMSGAREA` - Navigate to previous message area in conference
+- `NEXTMSGCONF` - Navigate to next message conference
+- `PREVMSGCONF` - Navigate to previous message conference
 
 ### File System
 

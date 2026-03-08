@@ -273,6 +273,19 @@ The `LISTMSGAR` function shows areas the user has read access to, grouped by con
 
 The `SELECTMSGAREA` function displays the area list, prompts for a tag or ID, validates read ACS, and updates the user's current area and conference.
 
+### Quick Navigation
+
+The message menu supports quick-navigation keys for cycling through areas and conferences without opening a selection list:
+
+| Key | Command | Behavior |
+|-----|---------|----------|
+| `]` | `NEXTMSGAREA` | Move to next area in current conference (wraps) |
+| `[` | `PREVMSGAREA` | Move to previous area in current conference (wraps) |
+| `}` | `NEXTMSGCONF` | Move to next conference (wraps, selects first area) |
+| `{` | `PREVMSGCONF` | Move to previous conference (wraps, selects first area) |
+
+Navigation respects ACS — only areas and conferences the user has access to are included. When switching conferences, the first accessible area in the new conference is automatically selected.
+
 ### Reading Messages
 
 The `READMSGS` function provides random-access message reading:

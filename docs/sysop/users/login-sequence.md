@@ -254,7 +254,7 @@ The login sequence is loaded at BBS startup from `configs/login.json` and stored
 1. For each item in the array (in order):
    - Check `sec_level` against the user's access level — skip if too low
    - Clear the screen if `clear_screen` is `true`
-   - Execute the command handler
+   - Execute the command handler; if it returns an updated user record (e.g. `NEWUSERVAL` promoting access level), that updated record is used for all remaining steps
    - Show pause prompt if `pause_after` is `true`
    - If any handler returns a navigation action (GOTO or LOGOFF), the sequence ends immediately
 2. After all items complete, the user transitions to the MAIN menu
