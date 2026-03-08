@@ -1592,13 +1592,11 @@ func (e *MenuExecutor) Run(s ssh.Session, terminal *term.Terminal, userManager *
 			rawAnsiContent = replaceMenuATCode(rawAnsiContent, "UC", strconv.Itoa(userManager.GetUserCount()))
 			rawAnsiContent = replaceMenuATCode(rawAnsiContent, "U", strconv.Itoa(e.SessionRegistry.ActiveCount()))
 			// @RR@ — Random Rumor text (supports @RR@, @RR:50@, @RR######@)
-			if bytes.Contains(rawAnsiContent, []byte("@RR")) {
-				rumorLevel := 0
-				if currentUser != nil {
-					rumorLevel = currentUser.AccessLevel
-				}
-				rawAnsiContent = replaceMenuATCode(rawAnsiContent, "RR", getRandomRumorText(e.RootConfigPath, rumorLevel))
+			rumorLevel := 0
+			if currentUser != nil {
+				rumorLevel = currentUser.AccessLevel
 			}
+			rawAnsiContent = expandRandomRumorATCode(rawAnsiContent, e.RootConfigPath, rumorLevel)
 		}
 		var ansiProcessResult ansi.ProcessAnsiResult
 		var processErr error
@@ -3352,9 +3350,7 @@ func (e *MenuExecutor) displayFile(terminal *term.Terminal, filename string, out
 
 	// Expand AT-codes before pipe code processing.
 	// Use level 1 (default MinLevel) since displayFile lacks user context.
-	if bytes.Contains(data, []byte("@RR")) {
-		data = replaceMenuATCode(data, "RR", getRandomRumorText(e.RootConfigPath, 1))
-	}
+	data = expandRandomRumorATCode(data, e.RootConfigPath, 1)
 
 	// Process pipe codes before output — ANSI escape sequences produced are
 	// ASCII-safe and work correctly in both CP437 and UTF-8 output modes.
@@ -3527,14 +3523,6 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 	// Replace @CODE@ AT-codes with width support (@UC@, @UC:5@, @UC##@, @U@, etc.)
 	promptBytes := replaceMenuATCode([]byte(substitutedPrompt), "UC", strconv.Itoa(userManager.GetUserCount()))
 	promptBytes = replaceMenuATCode(promptBytes, "U", strconv.Itoa(e.SessionRegistry.ActiveCount()))
-	// @RR@ — Random Rumor text
-	if bytes.Contains(promptBytes, []byte("@RR")) {
-		rumorLevel := 0
-		if currentUser != nil {
-			rumorLevel = currentUser.AccessLevel
-		}
-		promptBytes = replaceMenuATCode(promptBytes, "RR", getRandomRumorText(e.RootConfigPath, rumorLevel))
-	}
 	substitutedPrompt = string(promptBytes)
 
 	processedPrompt, err := e.processFileIncludes(substitutedPrompt, 0) // Pass 'e'
@@ -3547,8 +3535,15 @@ func (e *MenuExecutor) displayPrompt(terminal *term.Terminal, menu *MenuRecord, 
 		return err // Use original error if includes fail
 	}
 
+	// 2b. Expand @RR@ after file includes so %%file.ans%% content is also processed.
+	rumorLevel := 0
+	if currentUser != nil {
+		rumorLevel = currentUser.AccessLevel
+	}
+	processedPromptBytes := expandRandomRumorATCode([]byte(processedPrompt), e.RootConfigPath, rumorLevel)
+
 	// 3. Process pipe codes in the final string (includes/placeholders already processed)
-	rawPromptBytes := ansi.ReplacePipeCodes([]byte(processedPrompt))
+	rawPromptBytes := ansi.ReplacePipeCodes(processedPromptBytes)
 
 	// 4. Process character encoding based on outputMode (Reverted to manual loop)
 	var finalBuf bytes.Buffer

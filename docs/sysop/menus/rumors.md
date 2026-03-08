@@ -26,7 +26,7 @@ A maximum of 999 rumors can be stored (matching V2's limit).
 
 Clears the screen and displays all visible rumors in a columnar list:
 
-```
+```text
 #   Rumor                                     Author          Date
 ──────────────────────────────────────────────────────────────────────────
 1   The sysop is hiding something...          Anonymous       03/08/26
@@ -90,11 +90,11 @@ Clears the screen and displays all rumors posted since the user's last login. Sh
 
 Displays a single random rumor centered on screen, enclosed in brackets:
 
-```
+```text
                         [ Best BBS ever! ]
 ```
 
-Respects access level filtering. Can be used:
+This respects access level filtering. It can be used:
 
 - From the Rumors Menu via the `*` key
 - In the **login sequence** by adding to `configs/config.json`:
@@ -189,7 +189,7 @@ The following prompts can be customized in `configs/strings.json`:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `addRumorAnonymous` | `Anonymous? @` | Anonymous posting prompt |
-| `enterRumorLevel` | `Level : ` | Minimum level prompt |
+| `enterRumorLevel` | `Level :` | Minimum level prompt |
 | `enterRumorPrompt` | `Enter Rumor (Enter/Abort):` | Rumor text entry prompt |
 | `rumorAdded` | `Rumor has been added!` | Confirmation message |
 | `anonymousName` | `Anonymous` | Display name for anonymous posts |

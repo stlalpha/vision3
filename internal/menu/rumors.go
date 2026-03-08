@@ -1,6 +1,7 @@
 package menu
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -72,7 +73,11 @@ func saveRumorsData(rootConfigPath string, rd *rumorsData) error {
 	if err != nil {
 		return fmt.Errorf("marshal rumors data: %w", err)
 	}
-	return os.WriteFile(rumorsFilePath(rootConfigPath), data, 0644)
+	fp := rumorsFilePath(rootConfigPath)
+	if err := os.MkdirAll(filepath.Dir(fp), 0755); err != nil {
+		return fmt.Errorf("create rumors data directory: %w", err)
+	}
+	return os.WriteFile(fp, data, 0644)
 }
 
 // visibleRumors returns indices of rumors the user can see based on access level.
@@ -107,6 +112,16 @@ func rumorAnonName(e *MenuExecutor) string {
 		return "Anonymous"
 	}
 	return name
+}
+
+// expandRandomRumorATCode replaces @RR@ AT-codes in content with a random
+// visible rumor. Centralises the Contains guard + level resolution so callers
+// don't duplicate the pattern.
+func expandRandomRumorATCode(content []byte, rootConfigPath string, userLevel int) []byte {
+	if !bytes.Contains(content, []byte("@RR")) {
+		return content
+	}
+	return replaceMenuATCode(content, "RR", getRandomRumorText(rootConfigPath, userLevel))
 }
 
 // getRandomRumorText returns a random visible rumor's text for MCI substitution.
