@@ -146,8 +146,8 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 		fields = append(fields,
 			fieldDef{
 				Label: "Network", Help: "FTN network key from ftn.json (e.g. fsxnet)", Type: ftLookup, Col: 3, Row: 14, Width: 20,
-				Get: func() string { return a.Network },
-				Set: func(val string) error { a.Network = val; return nil },
+				Get:         func() string { return a.Network },
+				Set:         func(val string) error { a.Network = val; return nil },
 				LookupItems: func() []LookupItem { return m.buildFTNNetworkLookupItems() },
 			},
 			fieldDef{
@@ -170,8 +170,8 @@ func (m *Model) fieldsMsgArea() []fieldDef {
 		fields = append(fields,
 			fieldDef{
 				Label: "Network", Help: "FTN network key this netmail area serves (e.g. fsxnet)", Type: ftLookup, Col: 3, Row: 14, Width: 20,
-				Get: func() string { return a.Network },
-				Set: func(val string) error { a.Network = val; return nil },
+				Get:         func() string { return a.Network },
+				Set:         func(val string) error { a.Network = val; return nil },
 				LookupItems: func() []LookupItem { return m.buildFTNNetworkLookupItems() },
 			},
 		)

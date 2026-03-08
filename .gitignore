@@ -85,3 +85,7 @@ Thumbs.db
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Beads runtime data
+.beads/*.pid
+.beads/

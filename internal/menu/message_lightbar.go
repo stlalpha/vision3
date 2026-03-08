@@ -224,6 +224,7 @@ func readSingleKey(reader *bufio.Reader) (rune, error) {
 
 // readLineInput reads a line of text input, echoing characters.
 // Returns the entered string (trimmed). Empty string on just Enter.
+// Returns errInputAborted if the user presses ESC.
 func readLineInput(reader *bufio.Reader, terminal *term.Terminal, outputMode ansi.OutputMode, maxLen int) (string, error) {
 	var buf strings.Builder
 
@@ -236,6 +237,9 @@ func readLineInput(reader *bufio.Reader, terminal *term.Terminal, outputMode ans
 		switch {
 		case r == '\r' || r == '\n':
 			return strings.TrimSpace(buf.String()), nil
+		case r == 0x1B: // ESC — abort input
+			terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+			return "", errInputAborted
 		case r == 8 || r == 127: // Backspace or Delete
 			if buf.Len() > 0 {
 				s := buf.String()

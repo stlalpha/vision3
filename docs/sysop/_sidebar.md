@@ -24,6 +24,7 @@
 
 * **MENU SYSTEM**
 * [Menus & ACS](menus/menu-system.md)
+* [News](menus/news.md)
 * [Menu Files (.MNU)](menus/menu-system.md#menu-configuration-files-mnu)
 * [Command Files (.CFG)](menus/menu-system.md#command-definition-files-cfg)
 * [ANSI Art (.ANS)](menus/menu-system.md#ansi-art-files-ans)
@@ -40,11 +41,13 @@
 * [Admin Menu](users/admin-menu.md)
 * [User Editor](users/user-editor.md)
 * [Login Sequence](users/login-sequence.md)
+* [New User Voting (NUV)](users/nuv.md)
 * [Sponsor Menus](users/sponsor-menus.md)
 
 * **MESSAGES**
 * [Message Areas](messages/message-areas.md)
 * [Private Mail](messages/private-mail.md)
+* [QWK Offline Mail](messages/qwk.md)
 * [FTN Echomail](messages/ftn-echomail.md)
 * [Tosser (v3mail)](messages/ftn-echomail.md#tosser-internal--v3mail)
 * [Mailer (binkd)](messages/ftn-echomail.md#mailer-external--binkd)
@@ -66,6 +69,7 @@
 * [Telnet Server](networking/telnet.md)
 
 * **ADVANCED**
+* [Config Editor](configuration/configuration.md#configuration-editor-tui)
 * [Event Scheduler](advanced/event-scheduler.md)
 * [String Editor](advanced/string-editor.md)
 * [Encoding](advanced/encoding.md)

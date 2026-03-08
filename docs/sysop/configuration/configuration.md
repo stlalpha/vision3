@@ -372,6 +372,19 @@ General BBS configuration settings.
 - `maxFailedLogins` - Maximum failed login attempts from a single IP before lockout (default: 5, 0 = disabled)
 - `lockoutMinutes` - Duration of IP lockout in minutes (default: 30)
 
+**New User Voting (NUV):**
+
+- `useNuv` - Enable the NUV system (default: `false`). All NUV commands are silent no-ops when disabled
+- `autoAddNuv` - Automatically add new registrations to the NUV queue (default: `false`)
+- `nuvUseLevel` - Minimum access level required to cast NUV votes (default: `25`)
+- `nuvYesVotes` - YES vote count that triggers the yes threshold (default: `5`)
+- `nuvNoVotes` - NO vote count that triggers the no threshold (default: `5`)
+- `nuvValidate` - If `true`, auto-validate the user when yes threshold is reached; if `false`, log a notice (default: `true`)
+- `nuvKill` - If `true`, auto-soft-delete the user when no threshold is reached; if `false`, log a notice (default: `false`)
+- `nuvLevel` - Access level assigned to auto-validated NUV users (default: `25`)
+
+See [New User Voting](../users/nuv.md) for full details.
+
 **Timezone behavior:**
 
 - Last Callers time fields use `config.json` `timezone` first.

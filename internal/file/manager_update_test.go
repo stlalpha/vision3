@@ -134,3 +134,218 @@ func TestUpdateFileRecord_PersistsToJSON(t *testing.T) {
 	}
 	t.Error("file record not found in metadata.json")
 }
+
+// --- DeleteFileRecord tests ---
+
+func TestDeleteFileRecord_RemovesRecord(t *testing.T) {
+	fm, fileID := setupTestFileManagerForUpdate(t)
+
+	if err := fm.DeleteFileRecord(fileID, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	files := fm.GetFilesForArea(1)
+	for _, f := range files {
+		if f.ID == fileID {
+			t.Error("file record still present after delete")
+		}
+	}
+}
+
+func TestDeleteFileRecord_PersistsToJSON(t *testing.T) {
+	fm, fileID := setupTestFileManagerForUpdate(t)
+
+	if err := fm.DeleteFileRecord(fileID, false); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	metadataPath := filepath.Join(fm.basePath, "utils", "metadata.json")
+	data, err := os.ReadFile(metadataPath)
+	if err != nil {
+		t.Fatalf("failed to read metadata.json: %v", err)
+	}
+	var records []FileRecord
+	if err := json.Unmarshal(data, &records); err != nil {
+		t.Fatalf("failed to parse metadata.json: %v", err)
+	}
+	for _, r := range records {
+		if r.ID == fileID {
+			t.Error("file record still in metadata.json after delete")
+		}
+	}
+}
+
+func TestDeleteFileRecord_DeletesFromDisk(t *testing.T) {
+	fm, fileID := setupTestFileManagerForUpdate(t)
+
+	// Create a real file on disk so os.Remove has something to act on.
+	areaPath := filepath.Join(fm.basePath, "utils")
+	filePath := filepath.Join(areaPath, "TEST.ZIP")
+	if err := os.WriteFile(filePath, []byte("dummy"), 0644); err != nil {
+		t.Fatalf("failed to create dummy file: %v", err)
+	}
+
+	if err := fm.DeleteFileRecord(fileID, true); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Error("expected file to be removed from disk")
+	}
+}
+
+func TestDeleteFileRecord_NotFound(t *testing.T) {
+	fm, _ := setupTestFileManagerForUpdate(t)
+
+	err := fm.DeleteFileRecord(uuid.New(), false)
+	if err == nil {
+		t.Error("expected error for non-existent file ID")
+	}
+}
+
+// --- MoveFileRecord tests ---
+
+func setupTestFileManagerTwoAreas(t *testing.T) (*FileManager, uuid.UUID) {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	dataDir := filepath.Join(tmpDir, "data")
+	configDir := filepath.Join(tmpDir, "configs")
+	os.MkdirAll(dataDir, 0755)
+	os.MkdirAll(configDir, 0755)
+
+	areas := []FileArea{
+		{ID: 1, Tag: "UTILS", Name: "Utilities", Path: "utils"},
+		{ID: 2, Tag: "GAMES", Name: "Games", Path: "games"},
+	}
+	data, _ := json.Marshal(areas)
+	os.WriteFile(filepath.Join(configDir, "file_areas.json"), data, 0644)
+
+	fm, err := NewFileManager(dataDir, configDir)
+	if err != nil {
+		t.Fatalf("failed to create FileManager: %v", err)
+	}
+
+	fileID := uuid.New()
+	rec := FileRecord{
+		ID:          fileID,
+		AreaID:      1,
+		Filename:    "GAME.ZIP",
+		Description: "A great game",
+		Size:        2048,
+		UploadedAt:  time.Now(),
+		UploadedBy:  "TestUser",
+	}
+	if err := fm.AddFileRecord(rec); err != nil {
+		t.Fatalf("failed to add test record: %v", err)
+	}
+
+	// Create physical file so Rename works.
+	srcPath := filepath.Join(fm.basePath, "utils", "GAME.ZIP")
+	if err := os.WriteFile(srcPath, []byte("dummy"), 0644); err != nil {
+		t.Fatalf("failed to create dummy file: %v", err)
+	}
+
+	return fm, fileID
+}
+
+func TestMoveFileRecord_MovesRecordAndFile(t *testing.T) {
+	fm, fileID := setupTestFileManagerTwoAreas(t)
+
+	if err := fm.MoveFileRecord(fileID, 2); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Not in source area.
+	for _, f := range fm.GetFilesForArea(1) {
+		if f.ID == fileID {
+			t.Error("record still in source area after move")
+		}
+	}
+
+	// Present in target area with updated AreaID.
+	found := false
+	for _, f := range fm.GetFilesForArea(2) {
+		if f.ID == fileID {
+			found = true
+			if f.AreaID != 2 {
+				t.Errorf("expected AreaID=2, got %d", f.AreaID)
+			}
+		}
+	}
+	if !found {
+		t.Error("record not found in target area after move")
+	}
+
+	// File exists at destination, not at source.
+	dstPath := filepath.Join(fm.basePath, "games", "GAME.ZIP")
+	if _, err := os.Stat(dstPath); os.IsNotExist(err) {
+		t.Error("file not found at destination after move")
+	}
+	srcPath := filepath.Join(fm.basePath, "utils", "GAME.ZIP")
+	if _, err := os.Stat(srcPath); !os.IsNotExist(err) {
+		t.Error("file still exists at source after move")
+	}
+}
+
+func TestMoveFileRecord_InvalidTargetArea(t *testing.T) {
+	fm, fileID := setupTestFileManagerTwoAreas(t)
+
+	err := fm.MoveFileRecord(fileID, 99)
+	if err == nil {
+		t.Error("expected error for non-existent target area")
+	}
+}
+
+func TestMoveFileRecord_SameArea(t *testing.T) {
+	fm, fileID := setupTestFileManagerTwoAreas(t)
+
+	err := fm.MoveFileRecord(fileID, 1)
+	if err == nil {
+		t.Error("expected error when moving to the same area")
+	}
+}
+
+func TestMoveFileRecord_NotFound(t *testing.T) {
+	fm, _ := setupTestFileManagerTwoAreas(t)
+
+	err := fm.MoveFileRecord(uuid.New(), 2)
+	if err == nil {
+		t.Error("expected error for non-existent file ID")
+	}
+}
+
+func TestMoveFileRecord_TargetCollision(t *testing.T) {
+	fm, fileID := setupTestFileManagerTwoAreas(t)
+
+	// Create a file with the same name already present in the target area.
+	collisionPath := filepath.Join(fm.basePath, "games", "GAME.ZIP")
+	if err := os.WriteFile(collisionPath, []byte("existing"), 0644); err != nil {
+		t.Fatalf("failed to create collision file: %v", err)
+	}
+
+	err := fm.MoveFileRecord(fileID, 2)
+	if err == nil {
+		t.Error("expected error when target file already exists")
+	}
+
+	// Record must still be in the source area.
+	found := false
+	for _, f := range fm.GetFilesForArea(1) {
+		if f.ID == fileID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("record should still be in source area after collision failure")
+	}
+
+	// The existing collision file must not have been overwritten.
+	data, err := os.ReadFile(collisionPath)
+	if err != nil {
+		t.Fatalf("collision file was removed unexpectedly: %v", err)
+	}
+	if string(data) != "existing" {
+		t.Errorf("collision file content = %q, want \"existing\"", string(data))
+	}
+}

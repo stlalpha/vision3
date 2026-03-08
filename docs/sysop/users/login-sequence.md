@@ -128,6 +128,26 @@ Displays `FASTLOGN.ANS` and loads options from `menus/v3/cfg/FASTLOGN.CFG`. The 
 
 If the user selects a jump option (e.g., skip to MAIN), the remaining login items are skipped and the user goes directly to the chosen menu. Placing FASTLOGIN as the first item lets users skip the entire sequence upfront. Placing it at the end lets users jump to a submenu instead of MAIN after seeing everything.
 
+### CHECKNUV
+
+Checks whether the current user is eligible to vote in the New User Voting system (`useNuv` enabled and access level `>= nuvUseLevel`). If there are candidates they haven't voted on, a brief notification is shown with a Y/N prompt to vote immediately. If there are no unvoted candidates, this step is completely silent.
+
+```json
+{"command": "CHECKNUV"}
+```
+
+Place this after `VOTEMANDATORY` so standard voting and NUV both run in the same login pass. See [New User Voting](nuv.md) for configuration details.
+
+### PRINTNEWS
+
+Displays system news items that are new since the user's last login, or flagged as `always` (shown every login). Items are filtered by the user's access level. Each item is displayed using the `NEWSHDR.ANS` header template, followed by its body text. The user presses a key after each item to continue.
+
+```json
+{"command": "PRINTNEWS"}
+```
+
+If no new news items exist, this step is silently skipped. See [News](../menus/news.md) for details on creating and managing news items.
+
 ### WHOISONLINE
 
 Prompts the user with a YES/NO lightbar: "View users on other nodes?" If the user selects YES, the Who's Online display is shown using the `WHOONLN.TOP`, `WHOONLN.MID`, and `WHOONLN.BOT` templates. If the user selects NO, this item is skipped silently.
@@ -259,8 +279,10 @@ All login sequence commands are also registered as menu runnables and can be use
 | NMAILSCAN   | `RUN:NMAILSCAN`              |
 | DISPLAYFILE | `RUN:DISPLAYFILE <filename>` |
 | RUNDOOR     | `RUN:RUNDOOR <script_path>`  |
-| FASTLOGIN   | `RUN:FASTLOGIN`              |
-| WHOISONLINE | `RUN:WHOISONLINE` (existing) |
+| FASTLOGIN      | `RUN:FASTLOGIN`              |
+| WHOISONLINE    | `RUN:WHOISONLINE` (existing) |
+| PRINTNEWS      | `RUN:PRINTNEWS`              |
+| CHECKNUV       | `RUN:CHECKNUV`               |
 
 ## File Locations
 

@@ -55,7 +55,11 @@ type ProtocolConfig struct {
 
 // defaultProtocols returns built-in defaults.
 func defaultProtocols() []ProtocolConfig {
-	return []ProtocolConfig{{Key: "Z", Name: "Zmodem", Description: "Zmodem (lrzsz)", SendCmd: "sz", SendArgs: []string{"-b", "-e"}, RecvCmd: "rz", RecvArgs: []string{"-b", "-r"}, BatchSend: true, UsePTY: true, Default: true}}
+	return []ProtocolConfig{
+		{Key: "Z", Name: "Zmodem", Description: "Zmodem (lrzsz)", SendCmd: "sz", SendArgs: []string{"-b", "-e"}, RecvCmd: "rz", RecvArgs: []string{"-b", "-r"}, BatchSend: true, UsePTY: false, Default: true},
+		{Key: "Y", Name: "Ymodem", Description: "Ymodem batch transfer", SendCmd: "sb", SendArgs: []string{"{filePath}"}, RecvCmd: "rb", RecvArgs: nil, BatchSend: true, UsePTY: false},
+		{Key: "X", Name: "Xmodem", Description: "Xmodem single-file transfer", SendCmd: "sx", SendArgs: []string{"{filePath}"}, RecvCmd: "rx", RecvArgs: nil, BatchSend: false, UsePTY: false},
+	}
 }
 
 // LoadProtocols reads a JSON array of ProtocolConfig definitions from path.
@@ -108,6 +112,9 @@ func DefaultProtocol(protocols []ProtocolConfig) (ProtocolConfig, bool) {
 func (p *ProtocolConfig) ExecuteSend(ctx context.Context, s ssh.Session, filePaths ...string) error {
 	if len(filePaths) == 0 {
 		return fmt.Errorf("no files provided for send via protocol %q", p.Name)
+	}
+	if !p.BatchSend && len(filePaths) > 1 {
+		return fmt.Errorf("protocol %q does not support batch/multi-file sends (got %d files)", p.Name, len(filePaths))
 	}
 	// Validate all paths are absolute.
 	for _, fp := range filePaths {

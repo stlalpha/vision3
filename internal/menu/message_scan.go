@@ -502,13 +502,147 @@ func runNewScanAll(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		}
 	}
 
-	// Newscan complete — restore original conf/area before returning
+	// Newscan complete — restore original conf/area before returning.
+	// The scan loop may have called UpdateUser with a scanned area, so we must
+	// persist the restored state back to DB as well.
 	currentUser.CurrentMessageAreaID = origAreaID
 	currentUser.CurrentMessageAreaTag = origAreaTag
 	currentUser.CurrentMsgConferenceID = origConfID
 	currentUser.CurrentMsgConferenceTag = origConfTag
+	if err := userManager.UpdateUser(currentUser); err != nil {
+		log.Printf("ERROR: Node %d: Failed to restore user area after newscan: %v", nodeNumber, err)
+	}
 
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.ScanComplete)), outputMode)
+	time.Sleep(1 * time.Second)
+
+	return currentUser, "", nil
+}
+
+// runUpdateNewscanPointers allows a user to set newscan pointers to a specific date
+// for the current conference only, or all conferences.
+func runUpdateNewscanPointers(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
+	userManager *user.UserMgr, currentUser *user.User, nodeNumber int,
+	sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
+
+	if currentUser == nil {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.UpdatePtrsLoginRequired)), outputMode)
+		time.Sleep(1 * time.Second)
+		return nil, "", nil
+	}
+
+	scanIH := getSessionIH(s)
+	reader := bufio.NewReader(scanIH)
+
+	cancel := func() (*user.User, string, error) {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.UpdatePtrsCancelled)), outputMode)
+		time.Sleep(1 * time.Second)
+		return currentUser, "", nil
+	}
+
+	// Prompt for target date
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.UpdatePtrsDatePrompt)), outputMode)
+	dateInput, err := readLineInput(reader, terminal, outputMode, 10)
+	if err != nil {
+		if errors.Is(err, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		if errors.Is(err, errInputAborted) {
+			return cancel()
+		}
+		return nil, "", err
+	}
+
+	// Parse the date input: A=all new, N=mark all read, or a date string
+	// scanDate: -2 = mark all read (LastRead = totalCount), 0 = all new (LastRead = 0), >0 = unix timestamp
+	var scanDate int64 = -1 // sentinel: will be rejected below if not set
+	dateInput = strings.TrimSpace(dateInput)
+	if dateInput == "" {
+		return cancel()
+	}
+	switch unicode.ToUpper(rune(dateInput[0])) {
+	case 'A':
+		scanDate = 0 // all new — set LastRead to 0
+	case 'N':
+		scanDate = -2 // none new — mark all read
+	default:
+		t, tErr := time.Parse("01/02/06", dateInput)
+		if tErr != nil {
+			return cancel()
+		}
+		scanDate = t.Unix()
+	}
+
+	// Prompt for scope: current conference or all
+	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.UpdatePtrsScopePrompt)), outputMode)
+	scopeKey, keyErr := readSingleKey(reader)
+	if keyErr != nil {
+		if errors.Is(keyErr, io.EOF) {
+			return nil, "LOGOFF", io.EOF
+		}
+		return nil, "", keyErr
+	}
+	terminalio.WriteProcessedBytes(terminal, []byte("\r\n"), outputMode)
+
+	if unicode.ToUpper(scopeKey) == rune(0x1B) { // ESC
+		return cancel()
+	}
+
+	allConferences := unicode.ToUpper(scopeKey) == 'A'
+
+	// Iterate areas and update pointers
+	allAreas := e.MessageMgr.ListAreas()
+	updatedCount := 0
+	saveErr := false
+
+	for _, area := range allAreas {
+		// Check ACS
+		if !checkACS(area.ACSRead, currentUser, s, terminal, sessionStartTime) {
+			continue
+		}
+
+		// Filter by scope
+		if !allConferences && area.ConferenceID != currentUser.CurrentMsgConferenceID {
+			continue
+		}
+
+		totalCount, countErr := e.MessageMgr.GetMessageCountForArea(area.ID)
+		if countErr != nil {
+			continue
+		}
+
+		var newLastRead int
+		switch {
+		case scanDate == 0:
+			// All new: reset pointer to 0 so all messages appear unread
+			newLastRead = 0
+		case scanDate == -2:
+			// Mark all read: set pointer to totalCount
+			newLastRead = totalCount
+		default:
+			// Date-based: find first message on/after target date, set pointer to one before it
+			cfg := &ScanConfig{ScanDate: scanDate}
+			startMsg := determineStartMessage(e, cfg, area.ID, currentUser.Handle, totalCount)
+			newLastRead = startMsg - 1
+			if newLastRead < 0 {
+				newLastRead = 0
+			}
+		}
+
+		if setErr := e.MessageMgr.SetLastRead(area.ID, currentUser.Handle, newLastRead); setErr != nil {
+			log.Printf("ERROR: Node %d: Failed to set lastread for area %d: %v", nodeNumber, area.ID, setErr)
+			saveErr = true
+			continue
+		}
+		updatedCount++
+	}
+
+	if saveErr {
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(e.LoadedStrings.UpdatePtrsError)), outputMode)
+	} else {
+		msg := fmt.Sprintf(e.LoadedStrings.UpdatePtrsSuccess, updatedCount)
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(msg)), outputMode)
+	}
 	time.Sleep(1 * time.Second)
 
 	return currentUser, "", nil

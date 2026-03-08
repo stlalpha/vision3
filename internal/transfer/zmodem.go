@@ -25,6 +25,19 @@ type readInterrupter interface {
 	SetReadInterrupt(ch <-chan struct{})
 }
 
+// rawBinaryWriter is implemented by BBSSession (and TelnetSessionAdapter) to
+// provide a write path that bypasses gliderlabs' \n→\r\n CRLF conversion.
+// Without this, ZMODEM frame type byte 0x0A (ZDATA) is expanded to 0x0D 0x0A,
+// shifting the header and causing CRC mismatches at the receiver.
+type rawBinaryWriter interface {
+	RawWrite(p []byte) (int, error)
+}
+
+// writeFunc adapts a func([]byte)(int,error) to the io.Writer interface.
+type writeFunc func([]byte) (int, error)
+
+func (f writeFunc) Write(p []byte) (int, error) { return f(p) }
+
 // RunCommandDirect executes an external command with its stdin/stdout/stderr
 // piped directly to the SSH session — no PTY allocated. This is essential for
 // binary file-transfer protocols (ZMODEM, YMODEM, XMODEM) where a PTY's line
@@ -179,10 +192,16 @@ func RunCommandDirect(ctx context.Context, s ssh.Session, cmd *exec.Cmd, stdinId
 		}()
 	}
 
-	// command stdout → session
+	// command stdout → session (raw bytes, no CRLF conversion)
+	// Use RawWrite when available to bypass gliderlabs' \n→\r\n expansion,
+	// which corrupts ZMODEM and other binary transfer protocol streams.
 	go func() {
 		defer close(outputDone)
-		n, cpErr := io.Copy(s, stdoutPipe)
+		dst := io.Writer(s)
+		if rw, ok := s.(rawBinaryWriter); ok {
+			dst = writeFunc(rw.RawWrite)
+		}
+		n, cpErr := io.Copy(dst, stdoutPipe)
 		log.Printf("DEBUG: (%s) direct stdout copy finished. Bytes: %d, Error: %v", cmd.Path, n, cpErr)
 	}()
 

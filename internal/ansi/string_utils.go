@@ -2,6 +2,7 @@ package ansi
 
 import (
 	"strings"
+	"unicode/utf8"
 )
 
 // VisibleLength returns the display width of a string, ignoring ANSI escape sequences.
@@ -21,9 +22,10 @@ func VisibleLength(s string) int {
 				i++ // Skip terminator
 			}
 		} else {
-			// Count visible character
+			// Count visible character (advance by full rune, not just one byte)
+			_, size := utf8.DecodeRuneInString(s[i:])
 			visCount++
-			i++
+			i += size
 		}
 	}
 
@@ -64,11 +66,12 @@ func TruncateVisible(s string, maxVisible int) string {
 				lastResetSeq = escSeq
 			}
 		} else {
-			// Visible character
+			// Visible character (handle multi-byte UTF-8 runes)
+			_, size := utf8.DecodeRuneInString(s[i:])
 			if visCount < maxVisible {
-				result.WriteByte(s[i])
+				result.WriteString(s[i : i+size])
 				visCount++
-				i++
+				i += size
 			} else {
 				// Reached limit - append reset if we had colors
 				if lastResetSeq != "" && !strings.HasSuffix(result.String(), lastResetSeq) {

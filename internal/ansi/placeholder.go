@@ -108,7 +108,7 @@ func FindEditorPlaceholderPos(template []byte, code byte) (row, col int, colorEs
 	n := len(template)
 
 	// SGR attribute accumulator — tracks the "current color" state as we scan.
-	var sgr sgrState
+	sgr := sgrState{fg: -1, bg: -1}
 
 	for i < n {
 		// Detect our placeholder: starts with @<code> followed by @, :, #, or |
@@ -337,7 +337,7 @@ func FindEditorColorAtPos(template []byte, targetRow, targetCol int) string {
 	i := 0
 	n := len(template)
 
-	var sgr sgrState
+	sgr := sgrState{fg: -1, bg: -1}
 
 	for i < n {
 		// Process ANSI/VT escape sequences first — they update SGR/cursor without

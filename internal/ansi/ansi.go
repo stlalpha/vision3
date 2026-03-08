@@ -43,6 +43,51 @@ var cp437ToVT100 = map[byte]byte{
 	0xDB: '0', // █ full block (approximate)
 }
 
+// ConvertCP437ToUTF8 converts raw CP437-encoded bytes to valid UTF-8.
+// ANSI escape sequences (ESC [ ... <letter>) are preserved unchanged.
+// Bytes < 0x80 are passed through as-is (ASCII).
+// Bytes 0x80–0xFF are converted via the CP437→Unicode table strictly
+// one byte at a time — no UTF-8 auto-detection — so that CP437 byte
+// pairs that happen to form valid UTF-8 sequences (e.g. 0xDB 0xB2 = U+06F2)
+// are correctly rendered as two separate CP437 glyphs (█ ▓) instead of
+// an Arabic digit.
+func ConvertCP437ToUTF8(data []byte) []byte {
+	out := make([]byte, 0, len(data)*2)
+	i := 0
+	for i < len(data) {
+		b := data[i]
+		if b == 0x1b {
+			// ANSI escape sequence — pass through untouched.
+			out = append(out, b)
+			i++
+			if i < len(data) && data[i] == '[' {
+				out = append(out, data[i])
+				i++
+				for i < len(data) && !((data[i] >= 'A' && data[i] <= 'Z') || (data[i] >= 'a' && data[i] <= 'z')) {
+					out = append(out, data[i])
+					i++
+				}
+				if i < len(data) {
+					out = append(out, data[i])
+					i++
+				}
+			}
+			continue
+		}
+		if b < 0x80 {
+			out = append(out, b)
+			i++
+			continue
+		}
+		// CP437 high byte: convert to UTF-8 via the Unicode map.
+		if r := Cp437ToUnicode[b]; r != 0 {
+			out = append(out, []byte(string(r))...)
+		}
+		i++
+	}
+	return out
+}
+
 // This array maps CP437 bytes (0-255) to their Unicode equivalents
 var Cp437ToUnicode = [256]rune{
 	// ASCII characters (0-127)
@@ -601,26 +646,34 @@ func ReplacePipeCodes(data []byte) []byte {
 			continue
 		}
 
-		// Check for potential |XX code
-		if data[i] == '|' && i+2 < dataLen {
+		// Check for potential pipe codes (try longest match first)
+		if data[i] == '|' && i+1 < dataLen {
+			// Try 4-char code first (e.g., |B10)
 			if i+3 < dataLen {
 				code := string(data[i : i+4])
 				if replacement, ok := pipeCodeReplacements[code]; ok {
-					// Valid |XXX code found, write ANSI replacement
 					buf.WriteString(replacement)
-					i += 4   // Advance past |XXX
-					continue // Continue loop
+					i += 4
+					continue
 				}
 			}
-			code := string(data[i : i+3])
-			if replacement, ok := pipeCodeReplacements[code]; ok {
-				// Valid |XX code found, write ANSI replacement
-				buf.WriteString(replacement)
-				i += 3   // Advance past |XX
-				continue // Continue loop
+			// Try 3-char code (e.g., |PP, |CL, |01)
+			if i+2 < dataLen {
+				code := string(data[i : i+3])
+				if replacement, ok := pipeCodeReplacements[code]; ok {
+					buf.WriteString(replacement)
+					i += 3
+					continue
+				}
 			}
-			// If not a valid |XX code, treat '|' as a literal byte
-			// (fall through to default byte handling)
+			// Try 2-char code (e.g., |P save cursor)
+			code := string(data[i : i+2])
+			if replacement, ok := pipeCodeReplacements[code]; ok {
+				buf.WriteString(replacement)
+				i += 2
+				continue
+			}
+			// Not a valid pipe code; treat '|' as a literal byte
 		}
 
 		// Default: Write the current byte directly if it wasn't part of a valid |XX sequence
@@ -1111,39 +1164,17 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 		case '|': // --- ViSiON/2 Pipe Codes ---
 			pipeCodeFound := false
 			if i+1 < len(content) { // Need at least |X
-				char1 := content[i+1]
-				// Check for placeholder codes |XX or |X (These get consumed, not written)
-				if char1 >= 'A' && char1 <= 'Z' {
-					if i+2 < len(content) && content[i+2] >= 'A' && content[i+2] <= 'Z' {
-						// Double letter |XX
-						placeholderCode := string(content[i+1 : i+3])
-						result.FieldCoords[placeholderCode] = struct{ X, Y int }{X: currentX, Y: currentY}
-						result.FieldColors[placeholderCode] = buildColorSequence()
-						log.Printf("DEBUG: ProcessAnsi recorded placeholder coord '%s' at (%d, %d) with color '%s'", placeholderCode, currentX, currentY, buildColorSequence())
-						consumed = 3
-						pipeCodeFound = true
-					} else if i+1 < len(content) { // Check bounds for single letter
-						// Single letter |X
-						placeholderCode := string(content[i+1 : i+2])
-						result.FieldCoords[placeholderCode] = struct{ X, Y int }{X: currentX, Y: currentY}
-						result.FieldColors[placeholderCode] = buildColorSequence()
-						log.Printf("DEBUG: ProcessAnsi recorded placeholder coord '%s' at (%d, %d) with color '%s'", placeholderCode, currentX, currentY, buildColorSequence())
-						consumed = 2
-						pipeCodeFound = true
-					}
-				} // End placeholder check
+				// Priority: check pipeCodeReplacements FIRST (commands take precedence over placeholders).
+				// This ensures |CL, |CR, |PP etc. are handled as commands, not field placeholders.
 
-				// If not a placeholder, check for other |XX codes (colors, commands)
-				// Only check if i+2 is valid
+				// Try 3-char code |XX (colors, commands)
 				if !pipeCodeFound && i+2 < len(content) {
-					codeBytes := content[i : i+3] // Get the full |XX
-					codeStr := string(codeBytes)
+					codeStr := string(content[i : i+3])
 					if replacement, ok := pipeCodeReplacements[codeStr]; ok {
 						displayBuf.WriteString(replacement)
 						consumed = 3
 						pipeCodeFound = true
 						// Update SGR state so FieldColors captures correct colors after pipe codes.
-						// Parse SGR params from the replacement ANSI string (e.g. "\x1b[0;34m" -> [0,34]).
 						for ri := 0; ri < len(replacement); ri++ {
 							if replacement[ri] == 0x1b && ri+1 < len(replacement) && replacement[ri+1] == '[' {
 								ri += 2
@@ -1201,11 +1232,50 @@ func ProcessAnsiAndExtractCoords(rawContent []byte, outputMode OutputMode) (Proc
 								}
 							}
 						}
-						if codeStr == "|CL" {
+						// Cursor tracking for cursor-moving pipe codes
+						switch codeStr {
+						case "|CL":
 							currentX = 1
 							currentY = 1
+						case "|CR":
+							currentY++
+							currentX = 1
 						}
-					} // Add other non-placeholder pipe codes if needed
+					}
+				}
+
+				// Try 2-char code |X (e.g., |P save cursor)
+				if !pipeCodeFound {
+					codeStr := string(content[i : i+2])
+					if replacement, ok := pipeCodeReplacements[codeStr]; ok {
+						displayBuf.WriteString(replacement)
+						consumed = 2
+						pipeCodeFound = true
+					}
+				}
+
+				// Only if not a known pipe code, check for field placeholder codes |XX or |X
+				if !pipeCodeFound {
+					char1 := content[i+1]
+					if char1 >= 'A' && char1 <= 'Z' {
+						if i+2 < len(content) && content[i+2] >= 'A' && content[i+2] <= 'Z' {
+							// Double letter |XX placeholder
+							placeholderCode := string(content[i+1 : i+3])
+							result.FieldCoords[placeholderCode] = struct{ X, Y int }{X: currentX, Y: currentY}
+							result.FieldColors[placeholderCode] = buildColorSequence()
+							log.Printf("DEBUG: ProcessAnsi recorded placeholder coord '%s' at (%d, %d) with color '%s'", placeholderCode, currentX, currentY, buildColorSequence())
+							consumed = 3
+							pipeCodeFound = true
+						} else {
+							// Single letter |X placeholder
+							placeholderCode := string(content[i+1 : i+2])
+							result.FieldCoords[placeholderCode] = struct{ X, Y int }{X: currentX, Y: currentY}
+							result.FieldColors[placeholderCode] = buildColorSequence()
+							log.Printf("DEBUG: ProcessAnsi recorded placeholder coord '%s' at (%d, %d) with color '%s'", placeholderCode, currentX, currentY, buildColorSequence())
+							consumed = 2
+							pipeCodeFound = true
+						}
+					}
 				}
 			}
 

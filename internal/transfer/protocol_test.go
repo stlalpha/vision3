@@ -142,12 +142,24 @@ func TestLoadProtocols_missing_file_returns_defaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no error for missing file, got: %v", err)
 	}
-	if len(loaded) == 0 {
-		t.Fatal("expected built-in defaults when file missing, got empty slice")
+	if len(loaded) != 3 {
+		t.Fatalf("expected 3 built-in defaults (Z/Y/X), got %d", len(loaded))
 	}
 	def, ok := DefaultProtocol(loaded)
 	if !ok || def.SendCmd == "" {
 		t.Errorf("built-in default has no SendCmd: %+v", def)
+	}
+	if def.Key != "Z" {
+		t.Errorf("expected default key Z, got %q", def.Key)
+	}
+	// Verify YMODEM and XMODEM are present
+	_, yFound := FindProtocol(loaded, "Y")
+	if !yFound {
+		t.Error("expected Ymodem protocol in defaults")
+	}
+	_, xFound := FindProtocol(loaded, "X")
+	if !xFound {
+		t.Error("expected Xmodem protocol in defaults")
 	}
 }
 

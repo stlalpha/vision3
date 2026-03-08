@@ -25,14 +25,14 @@ type LookupItem struct {
 
 // fieldDef defines a single editable field on a config screen.
 type fieldDef struct {
-	Label       string               // Display label
-	Help        string               // 1-line help text shown when field is active
-	Type        fieldType            // Edit type
-	Col         int                  // Column position (x) inside box
-	Row         int                  // Row position (y) inside box
-	Width       int                  // Input field width
-	Min         int                  // Minimum value (for ftInteger)
-	Max         int                  // Maximum value (for ftInteger)
+	Label       string    // Display label
+	Help        string    // 1-line help text shown when field is active
+	Type        fieldType // Edit type
+	Col         int       // Column position (x) inside box
+	Row         int       // Row position (y) inside box
+	Width       int       // Input field width
+	Min         int       // Minimum value (for ftInteger)
+	Max         int       // Maximum value (for ftInteger)
 	Get         func() string
 	Set         func(val string) error
 	AfterSet    func(m *Model, val string) // called after Set succeeds, on the current model

@@ -291,31 +291,43 @@ func shouldRemoveFile(name string, patterns []string) bool {
 	return false
 }
 
-// findAndReadDIZ searches for FILE_ID.DIZ (case-insensitive) in the work directory
-// and one level of subdirectories, returning its content.
+// findAndReadDIZ searches for FILE_ID.ANS (preferred) or FILE_ID.DIZ
+// (case-insensitive) in the work directory and one level of subdirectories.
 func (p *Processor) findAndReadDIZ(workDir string) string {
-	var found string
+	var ansPath, dizPath string
 	filepath.WalkDir(workDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
-		// Skip directories deeper than one level below workDir
 		rel, _ := filepath.Rel(workDir, path)
 		if d.IsDir() && strings.Count(rel, string(filepath.Separator)) > 1 {
 			return filepath.SkipDir
 		}
-		if !d.IsDir() && strings.EqualFold(d.Name(), "FILE_ID.DIZ") {
-			data, readErr := os.ReadFile(path)
-			if readErr != nil {
-				log.Printf("WARN: found FILE_ID.DIZ but failed to read: %v", readErr)
-				return nil
+		if !d.IsDir() {
+			switch {
+			case strings.EqualFold(d.Name(), "FILE_ID.ANS"):
+				ansPath = path
+			case strings.EqualFold(d.Name(), "FILE_ID.DIZ") && ansPath == "":
+				dizPath = path
 			}
-			found = cleanDIZ(string(data))
-			return filepath.SkipAll
 		}
 		return nil
 	})
-	return found
+
+	target := ansPath
+	if target == "" {
+		target = dizPath
+	}
+	if target == "" {
+		return ""
+	}
+
+	data, readErr := os.ReadFile(target)
+	if readErr != nil {
+		log.Printf("WARN: found %s but failed to read: %v", filepath.Base(target), readErr)
+		return ""
+	}
+	return cleanDIZ(string(stripSauceMetadata(data)))
 }
 
 // loadRemovePatterns reads filenames to remove from the patterns file.

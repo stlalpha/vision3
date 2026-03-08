@@ -366,6 +366,12 @@ func runSelectMessageAreaLightbar(e *MenuExecutor, s ssh.Session, terminal *term
 			if err := userManager.UpdateUser(currentUser); err != nil {
 				log.Printf("ERROR: Node %d: Failed to save user after area change: %v", nodeNumber, err)
 			}
+
+			confirmMsg := "|08[ |15" + area.Name + " |08] |15Area Joined!|07"
+			hintLine := ansi.MoveCursor(hintRow, 1) + "\x1b[2K" + string(ansi.ReplacePipeCodes([]byte(confirmMsg)))
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(hintLine), outputMode)
+			time.Sleep(1 * time.Second)
+
 			log.Printf("INFO: Node %d: User %s changed message area to ID %d ('%s')",
 				nodeNumber, currentUser.Handle, area.ID, area.Tag)
 			return currentUser, "", nil

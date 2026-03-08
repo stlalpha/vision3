@@ -153,6 +153,29 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 	}
 
+	// Append sysop-only entries (not exposed via BAR file).
+	isSysop := e.isCoSysOpOrAbove(currentUser)
+	if isSysop {
+		defHiSysop := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
+		defLoSysop := colorCodeToAnsi(e.Theme.YesNoRegularColor)
+		sysopCmds := []struct {
+			label  string
+			hotkey string
+		}{
+			{"Edit", "e"},
+			{"Kill", "k"},
+			{"Move", "m"},
+		}
+		for _, d := range sysopCmds {
+			cmdEntries = append(cmdEntries, cmdEntry{
+				label:          d.label,
+				hotkey:         d.hotkey,
+				highlightColor: defHiSysop,
+				regularColor:   defLoSysop,
+			})
+		}
+	}
+
 	// Highlight colors for file rows.
 	hiColorSeq := colorCodeToAnsi(e.Theme.YesNoHighlightColor)
 	if len(hiBarOptions) > 0 {
@@ -210,7 +233,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		if size < 1024 {
 			return fmt.Sprintf("%dB", size)
 		}
-		return fmt.Sprintf("%dk", size/1024)
+		if size < 10*1024*1024 {
+			return fmt.Sprintf("%dk", size/1024)
+		}
+		return fmt.Sprintf("%dM", size/(1024*1024))
 	}
 
 	// stripAnsi removes all ANSI escape sequences from a string.
@@ -219,13 +245,21 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		return ansiRe.ReplaceAllString(s, "")
 	}
 
-	// Description widths used below are calculated dynamically from the MID
-	// template; the DIZ-level constraints (45 cols, 11 lines) are applied by
-	// formatDIZLines before the display-width pass.
-
-	// Description is rendered on separate continuation lines below the
-	// metadata row; the DIZ-level constraints (45 cols, 11 lines) are
-	// applied by formatDIZLines before any display-width truncation.
+	// All template placeholders are fixed-width, so the description column
+	// width is constant across all file entries. Precompute once for both
+	// fileEntryHeight and buildFileEntry.
+	sample := strings.ReplaceAll(processedMidTemplate, "^MARK", " ")
+	sample = strings.ReplaceAll(sample, "^NUM", "  1")
+	sample = strings.ReplaceAll(sample, "^NAME", "            ")
+	sample = strings.ReplaceAll(sample, "^DATE", "01/01/00")
+	sample = strings.ReplaceAll(sample, "^SIZE", "     ")
+	sample = strings.ReplaceAll(sample, "^DESC", "")
+	descPrefixLen := len(stripAnsi(string(ansi.ReplacePipeCodes([]byte(sample)))))
+	descColWidth := termWidth - descPrefixLen - 1
+	if descColWidth < 20 {
+		descColWidth = 20
+	}
+	descIndentStr := strings.Repeat(" ", descPrefixLen)
 
 	// fileEntryHeight returns the number of screen lines a file at idx takes:
 	// first line (metadata + first DIZ line) + continuation DIZ lines.
@@ -233,7 +267,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		if idx < 0 || idx >= len(allFiles) {
 			return 1
 		}
-		dizCount := len(formatDIZLines(allFiles[idx].Description, dizMaxWidth, dizMaxLines))
+		dizCount := len(formatDIZLines(allFiles[idx].Description, descColWidth, dizMaxLines))
 		if dizCount < 1 {
 			return 1
 		}
@@ -251,7 +285,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				break
 			}
 			if usedLines+h > visibleRows {
-				h = 1 // truncate DIZ, first line still fits
+				h = visibleRows - usedLines // show as many DIZ lines as fit
 			}
 			usedLines += h
 			count++
@@ -297,7 +331,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 					break
 				}
 				if usedLines+h > visibleRows {
-					h = 1
+					h = visibleRows - usedLines
 				}
 				usedLines += h
 				idx++
@@ -331,7 +365,11 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 		// Scroll down: advance topIndex until selectedIndex fits within the
 		// visible screen area, accounting for multi-line file entries.
-		for topIndex < selectedIndex {
+		// We keep advancing until the selected entry either fits at full
+		// height or is at the very top of the viewport (so large entries
+		// like 21-line ANS art are always shown from the top, not crammed
+		// at the bottom with only a few lines visible).
+		for topIndex <= selectedIndex {
 			usedLines := 0
 			fits := false
 			for idx := topIndex; idx < len(allFiles) && usedLines < visibleRows; idx++ {
@@ -339,16 +377,21 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				if usedLines+1 > visibleRows {
 					break // can't fit even the first line
 				}
+				fullH := h
 				if usedLines+h > visibleRows {
-					h = 1 // truncate continuation lines, first line still fits
+					h = visibleRows - usedLines
 				}
 				usedLines += h
 				if idx == selectedIndex {
-					fits = true
+					// Fits fully, or entry is already at top of viewport
+					// (can't scroll any higher without losing the selection).
+					if h == fullH || idx == topIndex {
+						fits = true
+					}
 					break
 				}
 			}
-			if fits {
+			if fits || topIndex >= selectedIndex {
 				break
 			}
 			topIndex++
@@ -382,9 +425,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 		fileNameStr := fmt.Sprintf("%-12s", name)
 		dateStr := fileRec.UploadedAt.Format("01/02/06")
-		sizeStr := fmt.Sprintf("%7s", formatSize(fileRec.Size))
-
-		dizLines := formatDIZLines(fileRec.Description, dizMaxWidth, dizMaxLines)
+		sizeStr := fmt.Sprintf("%5s", formatSize(fileRec.Size))
 
 		markStr := " "
 		if isFileTagged(fileRec.ID) {
@@ -398,42 +439,37 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		line = strings.ReplaceAll(line, "^DATE", dateStr)
 		line = strings.ReplaceAll(line, "^SIZE", sizeStr)
 
-		// Build prefix (everything except desc) for highlight and indent calc.
+		// Build prefix for highlight rendering (ANSI-stripped).
 		prefixLine := strings.ReplaceAll(line, "^DESC", "")
 		processedPrefix := string(ansi.ReplacePipeCodes([]byte(prefixLine)))
-		prefixLen := len(stripAnsi(processedPrefix))
-		descIndent := strings.Repeat(" ", prefixLen)
-		descWidth := termWidth - prefixLen - 1
-		if descWidth < 20 {
-			descWidth = 20
-		}
+
+		dizLines := formatDIZLines(fileRec.Description, descColWidth, dizMaxLines)
 
 		firstDesc := ""
 		if len(dizLines) > 0 {
 			firstDesc = dizLines[0]
-			if ansi.VisibleLength(firstDesc) > descWidth {
-				firstDesc = ansi.TruncateVisible(firstDesc, descWidth)
-			}
 		}
 
 		var contLines []string
 		for i := 1; i < len(dizLines); i++ {
-			cl := dizLines[i]
-			if ansi.VisibleLength(cl) > descWidth {
-				cl = ansi.TruncateVisible(cl, descWidth)
-			}
-			contLines = append(contLines, cl)
+			contLines = append(contLines, dizLines[i])
 		}
 
-		if 1+len(contLines) > maxLines {
-			contLines = nil
+		if len(contLines) > maxLines-1 {
+			contLines = contLines[:maxLines-1]
 		}
 
 		var result []string
 
 		if highlighted {
 			plainPrefix := stripAnsi(processedPrefix)
-			result = append(result, hiColorSeq+plainPrefix+"\x1b[0m"+firstDesc)
+			plainDesc := stripAnsi(firstDesc)
+			rowText := plainPrefix + plainDesc
+			visLen := ansi.VisibleLength(rowText)
+			if visLen < termWidth {
+				rowText += strings.Repeat(" ", termWidth-visLen)
+			}
+			result = append(result, hiColorSeq+rowText+"\x1b[0m")
 		} else {
 			fullLine := strings.ReplaceAll(line, "^DESC", firstDesc)
 			processed := string(ansi.ReplacePipeCodes([]byte(fullLine)))
@@ -441,7 +477,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 		}
 
 		for _, cl := range contLines {
-			result = append(result, string(ansi.ReplacePipeCodes([]byte("|07"+descIndent+cl))))
+			result = append(result, string(ansi.ReplacePipeCodes([]byte("|07"+descIndentStr+cl))))
 		}
 
 		return result
@@ -458,7 +494,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			h := fileEntryHeight(idx)
 			remaining := visibleRows - (row - fileAreaStartRow)
 			if h > remaining {
-				h = 1
+				h = remaining
 			}
 			if remaining < 1 {
 				break
@@ -527,7 +563,7 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				h := fileEntryHeight(idx)
 				remaining := visibleRows - linesUsed
 				if h > remaining {
-					h = 1
+					h = remaining
 				}
 				if remaining < 1 {
 					break
@@ -897,7 +933,10 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 
 			confirmPrompt := fmt.Sprintf("Download %d marked file(s)?", len(currentUser.TaggedFileIDs))
-			_ = terminalio.WriteProcessedBytes(terminal, []byte("\r\n\x1b[K"), outputMode)
+			// Replace the footer lightbar with the confirm prompt instead of printing over the file list.
+			clearFooter := ansi.MoveCursor(separatorRow, 1) + "\x1b[2K" + ansi.MoveCursor(cmdBarRow, 1) + "\x1b[2K"
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(clearFooter), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(cmdBarRow, 1)), outputMode)
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
 
 			termWidth, termHeight := getTerminalSize(s)
@@ -913,15 +952,15 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 
 			if !proceed {
-				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Download cancelled.|07")), outputMode)
-				time.Sleep(500 * time.Millisecond)
 				_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
 				needFullRedraw = true
 				continue
 			}
 
 			log.Printf("INFO: Node %d: User %s starting download of %d files.", nodeNumber, currentUser.Handle, len(currentUser.TaggedFileIDs))
-			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|07Preparing download...\r\n")), outputMode)
+			// Clear the screen before the download process begins.
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[2J\x1b[H"), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|07Preparing download...\r\n")), outputMode)
 			time.Sleep(500 * time.Millisecond)
 
 			successCount := 0
@@ -974,8 +1013,9 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 				failCount = len(currentUser.TaggedFileIDs)
 			}
 
-			// Clear tags and save.
+			// Clear tags, update download count, and save.
 			currentUser.TaggedFileIDs = nil
+			currentUser.NumDownloads += successCount
 			if saveErr := userManager.UpdateUser(currentUser); saveErr != nil {
 				log.Printf("ERROR: Node %d: Failed to save user data after download: %v", nodeNumber, saveErr)
 			}
@@ -1008,13 +1048,135 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 			}
 			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
 			needFullRedraw = true
+
+		case "e": // Edit description (sysop only)
+			if !isSysop || len(allFiles) == 0 {
+				continue
+			}
+			rec := allFiles[selectedIndex]
+			clearFooter := ansi.MoveCursor(separatorRow, 1) + "\x1b[2K" + ansi.MoveCursor(cmdBarRow, 1) + "\x1b[2K"
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(clearFooter), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(cmdBarRow, 1)), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15New description: |07")), outputMode)
+			newDesc, readErr := readLineFromSessionIHAllowAbort(s, terminal)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			if readErr == nil && newDesc != "" {
+				if updErr := e.FileMgr.UpdateFileDescription(rec.ID, newDesc); updErr != nil {
+					log.Printf("ERROR: Node %d: Failed to update description for %s: %v", nodeNumber, rec.Filename, updErr)
+				} else {
+					allFiles = e.FileMgr.GetFilesForArea(currentAreaID)
+				}
+			}
+			needFullRedraw = true
+
+		case "k": // Kill/delete file (sysop only)
+			if !isSysop || len(allFiles) == 0 {
+				continue
+			}
+			rec := allFiles[selectedIndex]
+			confirmPrompt := fmt.Sprintf("Delete %s from disk?", rec.Filename)
+			clearFooter := ansi.MoveCursor(separatorRow, 1) + "\x1b[2K" + ansi.MoveCursor(cmdBarRow, 1) + "\x1b[2K"
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(clearFooter), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(cmdBarRow, 1)), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+			termWidth, termHeight := getTerminalSize(s)
+			proceed, promptErr := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			if promptErr != nil {
+				if errors.Is(promptErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+				needFullRedraw = true
+				continue
+			}
+			if proceed {
+				if delErr := e.FileMgr.DeleteFileRecord(rec.ID, true); delErr != nil {
+					log.Printf("ERROR: Node %d: Failed to delete file %s: %v", nodeNumber, rec.Filename, delErr)
+				} else {
+					log.Printf("INFO: Node %d: Sysop deleted file '%s' from area %d.", nodeNumber, rec.Filename, currentAreaID)
+					// Remove from user's tag list so stale IDs don't reach batch download.
+					filtered := currentUser.TaggedFileIDs[:0]
+					for _, tid := range currentUser.TaggedFileIDs {
+						if tid != rec.ID {
+							filtered = append(filtered, tid)
+						}
+					}
+					currentUser.TaggedFileIDs = filtered
+					allFiles = e.FileMgr.GetFilesForArea(currentAreaID)
+					if selectedIndex >= len(allFiles) && len(allFiles) > 0 {
+						selectedIndex = len(allFiles) - 1
+					}
+				}
+			}
+			needFullRedraw = true
+
+		case "m": // Move file to another area (sysop only)
+			if !isSysop || len(allFiles) == 0 {
+				continue
+			}
+			rec := allFiles[selectedIndex]
+			clearFooter := ansi.MoveCursor(separatorRow, 1) + "\x1b[2K" + ansi.MoveCursor(cmdBarRow, 1) + "\x1b[2K"
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(clearFooter), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte(ansi.MoveCursor(cmdBarRow, 1)), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+			_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("|15Move to area (# or tag): |07")), outputMode)
+			areaInput, readErr := readLineFromSessionIHAllowAbort(s, terminal)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			if readErr != nil || strings.TrimSpace(areaInput) == "" {
+				needFullRedraw = true
+				continue
+			}
+			// Resolve area by ID or tag.
+			var targetAreaID int
+			var targetArea *file.FileArea
+			if n, parseErr := fmt.Sscanf(strings.TrimSpace(areaInput), "%d", &targetAreaID); n == 1 && parseErr == nil {
+				if a, ok := e.FileMgr.GetAreaByID(targetAreaID); ok {
+					targetArea = a
+				}
+			} else {
+				if a, ok := e.FileMgr.GetAreaByTag(strings.TrimSpace(areaInput)); ok {
+					targetArea = a
+					targetAreaID = a.ID
+				}
+			}
+			if targetArea == nil {
+				_ = terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte("\r\n|01Area not found.|07\r\n")), outputMode)
+				time.Sleep(1 * time.Second)
+				needFullRedraw = true
+				continue
+			}
+			confirmPrompt := fmt.Sprintf("Move %s to %s?", rec.Filename, targetArea.Name)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25h"), outputMode)
+			termWidth, termHeight := getTerminalSize(s)
+			proceed, promptErr := e.PromptYesNo(s, terminal, confirmPrompt, outputMode, nodeNumber, termWidth, termHeight, false)
+			_ = terminalio.WriteProcessedBytes(terminal, []byte("\x1b[?25l"), outputMode)
+			if promptErr != nil {
+				if errors.Is(promptErr, io.EOF) {
+					return nil, "LOGOFF", io.EOF
+				}
+				needFullRedraw = true
+				continue
+			}
+			if proceed {
+				if mvErr := e.FileMgr.MoveFileRecord(rec.ID, targetAreaID); mvErr != nil {
+					log.Printf("ERROR: Node %d: Failed to move file %s to area %d: %v", nodeNumber, rec.Filename, targetAreaID, mvErr)
+				} else {
+					log.Printf("INFO: Node %d: Sysop moved file '%s' to area %d (%s).", nodeNumber, rec.Filename, targetAreaID, targetArea.Tag)
+					allFiles = e.FileMgr.GetFilesForArea(currentAreaID)
+					if selectedIndex >= len(allFiles) && len(allFiles) > 0 {
+						selectedIndex = len(allFiles) - 1
+					}
+				}
+			}
+			needFullRedraw = true
 		}
 	}
 }
 
 const (
 	dizMaxWidth = 45
-	dizMaxLines = 11
+	dizMaxLines = 22
 )
 
 // formatDIZLines splits FILE_ID.DIZ content into display-ready lines.

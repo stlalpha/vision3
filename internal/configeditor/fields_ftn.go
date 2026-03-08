@@ -303,4 +303,3 @@ func (m Model) ftnLinkCount() int {
 	}
 	return total
 }
-

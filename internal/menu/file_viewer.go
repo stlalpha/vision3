@@ -2,6 +2,7 @@ package menu
 
 import (
 	"bufio"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -154,16 +155,49 @@ func viewFileByRecord(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, r
 	}
 }
 
+// maxTextFilePagingBytes caps how large a file can be before displayTextWithPaging
+// refuses to load it entirely into memory.  BBS text files (NFO, docs, source)
+// are almost always well under this; the cap guards against accidental OOM when
+// a user points the viewer at a large binary or log file.
+const maxTextFilePagingBytes = 4 * 1024 * 1024 // 4 MB
+
 // displayTextWithPaging shows text file contents with paging on the terminal.
 func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath string, filename string, outputMode ansi.OutputMode, termHeight int, viewingHeaderFmt string, endOfFile string, morePrompt string, pausePromptStr string, openError string) {
-	f, err := os.Open(filePath)
+	fi, statErr := os.Stat(filePath)
+	if statErr == nil && fi.Size() > maxTextFilePagingBytes {
+		log.Printf("WARN: File %s too large for text paging (%d bytes), refusing to load", filePath, fi.Size())
+		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(openError)), outputMode)
+		time.Sleep(1 * time.Second)
+		return
+	}
+
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		log.Printf("ERROR: Failed to open file %s: %v", filePath, err)
 		terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(openError)), outputMode)
 		time.Sleep(1 * time.Second)
 		return
 	}
-	defer f.Close()
+
+	// Strip SAUCE metadata before displaying so binary SAUCE bytes don't
+	// appear as garbled characters or "?" in the output.
+	data = stripSauceMetadata(data)
+
+	// For UTF-8 terminals, convert CP437 high bytes to their Unicode
+	// equivalents one byte at a time.  writeUTF8Mode's heuristic of
+	// "keep valid UTF-8 sequences" incorrectly passes CP437 byte pairs
+	// that happen to form valid 2-byte UTF-8 sequences (e.g. 0xDB 0xB2 →
+	// U+06F2) through untouched, and WriteStringCP437 has the same problem
+	// in reverse (can't find U+06F2 in UnicodeToCP437 → outputs '?').
+	// Pre-converting here means file content is written directly to the
+	// terminal without any further encoding conversion.
+	if outputMode == ansi.OutputModeUTF8 {
+		data = ansi.ConvertCP437ToUTF8(data)
+	}
+	// For CP437 terminals the bytes are already correct as-is.
+
+	// Clear screen before showing the file.
+	terminalio.WriteProcessedBytes(terminal, []byte(ansi.ClearScreen()), outputMode)
 
 	header := fmt.Sprintf(viewingHeaderFmt, sanitizeControlChars(filename))
 	terminalio.WriteProcessedBytes(terminal, ansi.ReplacePipeCodes([]byte(header)), outputMode)
@@ -174,12 +208,16 @@ func displayTextWithPaging(s ssh.Session, terminal *term.Terminal, filePath stri
 	}
 
 	lineCount := 0
-	scanner := bufio.NewScanner(f)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
 	scanner.Buffer(make([]byte, 4096), 4096)
 
 	for scanner.Scan() {
-		line := scanner.Text()
-		terminalio.WriteProcessedBytes(terminal, []byte(line+"\r\n"), outputMode)
+		line := scanner.Bytes()
+		// Write directly: data is already in the correct encoding
+		// (UTF-8 after ConvertCP437ToUTF8, or raw CP437 for CP437 terminals).
+		// Going through WriteProcessedBytes would re-interpret the bytes and
+		// produce '?' for byte pairs that form false UTF-8 sequences.
+		terminal.Write(append(line, '\r', '\n'))
 		lineCount++
 
 		if lineCount >= linesPerPage {
