@@ -314,3 +314,38 @@ func TestMoveFileRecord_NotFound(t *testing.T) {
 		t.Error("expected error for non-existent file ID")
 	}
 }
+
+func TestMoveFileRecord_TargetCollision(t *testing.T) {
+	fm, fileID := setupTestFileManagerTwoAreas(t)
+
+	// Create a file with the same name already present in the target area.
+	collisionPath := filepath.Join(fm.basePath, "games", "GAME.ZIP")
+	if err := os.WriteFile(collisionPath, []byte("existing"), 0644); err != nil {
+		t.Fatalf("failed to create collision file: %v", err)
+	}
+
+	err := fm.MoveFileRecord(fileID, 2)
+	if err == nil {
+		t.Error("expected error when target file already exists")
+	}
+
+	// Record must still be in the source area.
+	found := false
+	for _, f := range fm.GetFilesForArea(1) {
+		if f.ID == fileID {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("record should still be in source area after collision failure")
+	}
+
+	// The existing collision file must not have been overwritten.
+	data, err := os.ReadFile(collisionPath)
+	if err != nil {
+		t.Fatalf("collision file was removed unexpectedly: %v", err)
+	}
+	if string(data) != "existing" {
+		t.Errorf("collision file content = %q, want \"existing\"", string(data))
+	}
+}

@@ -1095,6 +1095,14 @@ func runListFilesLightbar(e *MenuExecutor, s ssh.Session, terminal *term.Termina
 					log.Printf("ERROR: Node %d: Failed to delete file %s: %v", nodeNumber, rec.Filename, delErr)
 				} else {
 					log.Printf("INFO: Node %d: Sysop deleted file '%s' from area %d.", nodeNumber, rec.Filename, currentAreaID)
+					// Remove from user's tag list so stale IDs don't reach batch download.
+					filtered := currentUser.TaggedFileIDs[:0]
+					for _, tid := range currentUser.TaggedFileIDs {
+						if tid != rec.ID {
+							filtered = append(filtered, tid)
+						}
+					}
+					currentUser.TaggedFileIDs = filtered
 					allFiles = e.FileMgr.GetFilesForArea(currentAreaID)
 					if selectedIndex >= len(allFiles) && len(allFiles) > 0 {
 						selectedIndex = len(allFiles) - 1

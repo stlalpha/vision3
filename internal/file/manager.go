@@ -596,6 +596,11 @@ searchLoop:
 	srcPath := filepath.Join(absBasePath, srcArea.Path, safeFilename)
 	dstPath := filepath.Join(absBasePath, targetArea.Path, safeFilename)
 
+	// Guard against silently overwriting an existing file in the target area.
+	if _, err := os.Stat(dstPath); err == nil {
+		return fmt.Errorf("file %q already exists in target area %d", safeFilename, targetAreaID)
+	}
+
 	if err := os.Rename(srcPath, dstPath); err != nil {
 		return fmt.Errorf("failed to move file from %s to %s: %w", srcPath, dstPath, err)
 	}
@@ -612,16 +617,27 @@ searchLoop:
 	fm.muFiles.Lock()
 
 	if errSrc != nil || errDst != nil {
-		// Metadata save failed — roll back the filesystem rename so disk and
-		// metadata remain consistent and the operation is retryable.
+		// At least one metadata save failed. Roll back the filesystem rename so
+		// the file returns to the source directory and the operation is retryable.
 		if renameBackErr := os.Rename(dstPath, srcPath); renameBackErr != nil {
 			log.Printf("ERROR: Failed to roll back file rename after metadata save failure (%s -> %s): %v", dstPath, srcPath, renameBackErr)
 		} else {
-			// Restore in-memory state on successful rollback.
+			// Restore in-memory state.
 			tgtRecords := fm.fileRecords[targetAreaID]
 			fm.fileRecords[targetAreaID] = tgtRecords[:len(tgtRecords)-1]
 			record.AreaID = srcAreaID
 			fm.fileRecords[srcAreaID] = append(fm.fileRecords[srcAreaID], record)
+			// Re-persist both areas so disk reflects the restored in-memory state.
+			// A partial save (e.g. errSrc==nil but errDst!=nil) may have already
+			// written one side; re-saving corrects any such divergence.
+			fm.muFiles.Unlock()
+			if resaveErr := fm.saveFileRecords(srcAreaID); resaveErr != nil {
+				log.Printf("ERROR: Failed to re-save source area %d during rollback: %v", srcAreaID, resaveErr)
+			}
+			if resaveErr := fm.saveFileRecords(targetAreaID); resaveErr != nil {
+				log.Printf("ERROR: Failed to re-save target area %d during rollback: %v", targetAreaID, resaveErr)
+			}
+			fm.muFiles.Lock()
 		}
 		if errSrc != nil {
 			log.Printf("ERROR: Failed to save source area %d after moving %s: %v", srcAreaID, safeFilename, errSrc)
