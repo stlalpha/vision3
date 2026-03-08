@@ -1035,6 +1035,11 @@ func handleReply(e *MenuExecutor, s ssh.Session, ih *editor.InputHandler, termin
 		return ""
 	}
 
+	// Append auto-signature if user has one
+	if currentUser.AutoSignature != "" {
+		replyBody = replyBody + "\n\n" + currentUser.AutoSignature
+	}
+
 	// Save reply
 	replyMsgID := currentMsg.MsgID
 	_, err := e.MessageMgr.AddMessage(currentAreaID, currentUser.Handle, currentMsg.From,

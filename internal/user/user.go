@@ -68,6 +68,7 @@ type User struct {
 	CustomPrompt    string `json:"customPrompt,omitempty"`
 	OutputMode      string `json:"outputMode,omitempty"`
 	FileListingMode string `json:"fileListingMode,omitempty"` // "lightbar" or "classic" (empty = server default)
+	AutoSignature   string `json:"autoSignature,omitempty"`   // Auto-signature appended to messages (max 5 lines)
 	Colors           [7]int `json:"colors,omitempty"`
 
 	// Soft Delete (user marked as deleted but data preserved)

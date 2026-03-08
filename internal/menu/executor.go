@@ -582,6 +582,7 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["CFG_COLOR"] = runCfgColor
 	registry["CFG_PASSWORD"] = runCfgPassword
 	registry["CFG_FILELISTMODE"] = runCfgFileListMode
+	registry["CFG_AUTOSIG"] = runCfgAutoSig
 	registry["CFG_VIEWCONFIG"] = runCfgViewConfig
 	registry["CHAT"] = runChat
 	registry["PAGE"] = runPage
@@ -7620,7 +7621,12 @@ func runComposeMessageWithIH(e *MenuExecutor, s ssh.Session, ih *editor.InputHan
 		return nil, "", nil // Return to current menu
 	}
 
-	// 7. Save the Message via JAM backend (fromName already computed above)
+	// 7. Append auto-signature if user has one and message is not anonymous
+	if !isAnonymous && currentUser.AutoSignature != "" {
+		body = body + "\n\n" + currentUser.AutoSignature
+	}
+
+	// 8. Save the Message via JAM backend (fromName already computed above)
 
 	msgNum, err := e.MessageMgr.AddMessage(area.ID, fromName, toUser, subject, body, "")
 	if err != nil {
@@ -10038,6 +10044,11 @@ func runSendPrivateMail(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 		terminalio.WriteProcessedBytes(terminal, []byte("\r\nMessage body empty. Aborting.\r\n"), outputMode)
 		time.Sleep(1 * time.Second)
 		return nil, "", nil
+	}
+
+	// Append auto-signature if user has one
+	if currentUser.AutoSignature != "" {
+		body = body + "\n\n" + currentUser.AutoSignature
 	}
 
 	// Save the private message with MSG_PRIVATE flag
