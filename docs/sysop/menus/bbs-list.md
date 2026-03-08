@@ -52,12 +52,13 @@ Verified entries show a `*` marker next to their name.
 Prompts the user for each field in sequence:
 
 1. **BBS Name** (required)
-2. **Telnet Port** (optional)
-3. **SSH Port** (optional)
-4. **Web URL** (optional)
-5. **SysOp** (optional)
-6. **Software** (defaults to "ViSiON/3" if blank)
-7. **Description** (optional)
+2. **Address** (hostname or IP address, required)
+3. **Telnet Port** (optional)
+4. **SSH Port** (optional)
+5. **Web URL** (optional)
+6. **SysOp** (optional)
+7. **Software** (defaults to "ViSiON/3" if blank)
+8. **Description** (optional)
 
 At least one connection method (Telnet, SSH, or Web) should be provided, though this is not strictly enforced — the address field itself is required.
 

@@ -80,7 +80,11 @@ func saveBBSListData(rootConfigPath string, bld *bbsListData) error {
 	if err != nil {
 		return fmt.Errorf("marshal bbslist data: %w", err)
 	}
-	return os.WriteFile(bbsListFilePath(rootConfigPath), data, 0644)
+	fp := bbsListFilePath(rootConfigPath)
+	if err := os.MkdirAll(filepath.Dir(fp), 0755); err != nil {
+		return fmt.Errorf("ensure bbslist directory: %w", err)
+	}
+	return os.WriteFile(fp, data, 0644)
 }
 
 // bbsListSanitize replaces pipe characters in user-supplied strings to prevent
@@ -820,7 +824,7 @@ func runBBSListDelete(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 
 	// Confirm deletion
 	confirm, err := e.PromptYesNo(s, terminal,
-		fmt.Sprintf("\r\n|07Delete |15%s|07? ", entry.Name),
+		fmt.Sprintf("\r\n|07Delete |15%s|07? ", bbsListSanitize(entry.Name)),
 		outputMode, nodeNumber, termWidth, termHeight, false)
 	if err != nil || !confirm {
 		wv(terminal, "\r\n|07Cancelled.\r\n", outputMode)
@@ -897,7 +901,7 @@ func runBBSListVerify(e *MenuExecutor, s ssh.Session, terminal *term.Terminal,
 	}
 	bbsListMu.Unlock()
 
-	wv(terminal, fmt.Sprintf("\r\n|10%s is now %s.\r\n", bld.Listings[idx].Name, status), outputMode)
+	wv(terminal, fmt.Sprintf("\r\n|10%s is now %s.\r\n", bbsListSanitize(bld.Listings[idx].Name), status), outputMode)
 	return currentUser, "", nil
 }
 
