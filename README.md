@@ -86,7 +86,6 @@ If you aren't old enough to have experienced it first-hand, have you read a weir
 **Areas where we need help:**
 
 - File transfer protocols beyond Zmodem (XMODEM, YMODEM)
-- QWK networking support
 - Performance optimization and scalability
 - Terminal emulation improvements
 - Modern features while maintaining the classic feel
@@ -106,24 +105,33 @@ Your reward? The satisfaction of knowing that somewhere, someone is reliving the
 | **Users**                     |               |                                                                                                                     |
 | Signup & Authentication       | ✅ Working     | bcrypt hashed passwords, JSON persistence                                                                           |
 | User Listings & Stats         | ✅ Working     | Last callers, user listing, call history, stats display                                                             |
+| NUV (New User Verification)   | ✅ Working     | Voting-based approval system for new user accounts                                                                  |
 | TUI User Editor (`ue`)        | ✅ Working     | Full-screen terminal user management                                                                                |
 | **Menus**                     |               |                                                                                                                     |
 | Menu System                   | ✅ Working     | `.MNU`, `.CFG`, `.ANS` files, ACS evaluation, password protection                                                   |
+| TUI Menu Editor (`menuedit`)  | ✅ Working     | Full-screen menu configuration editor                                                                               |
 | **Messaging**                 |               |                                                                                                                     |
 | Message Areas                 | ✅ Working     | JAM format, echomail/netmail, conferences, lightbar reader, threading, quoting, vi-style editor, newscan, last read |
 | Private Mail                  | ✅ Working     | User-to-user messaging, send/read/list                                                                              |
 | Message List View (scan)      | ✅ Working     | Title/subject scan view                                                                                             |
+| QWK Offline Mail              | ✅ Working     | QWK packet download/upload for offline reading                                                                      |
 | **Files**                     |               |                                                                                                                     |
-| File Areas (basic)            | ✅ Working     | List areas, list files, select area                                                                                 |
-| File Transfers                | ✅ Working     | ZMODEM working via `sexyz`                                                                                          |
-| Full File Base                | 📋 In Progress | Tagging, batch downloads, upload processing                                                                         |
+| File Areas                    | ✅ Working     | List areas, list files, select area, archive viewing                                                                |
+| File Transfers                | ✅ Working     | ZMODEM upload/download via `sexyz`                                                                                  |
+| File Management               | ✅ Working     | SysOp file delete, move between areas, edit descriptions                                                            |
 | **Doors**                     |               |                                                                                                                     |
 | Door/External Programs        | ✅ Working     | Dropfile generation, PTY passthrough                                                                                |
 | **Networking/FTN**            |               |                                                                                                                     |
 | FTN Echomail/Netmail          | ✅ Working     | JAM-backed, tosser, import/export, dupe checking                                                                    |
+| **Community Features**        |               |                                                                                                                     |
+| Voting System                 | ✅ Working     | Voting booths, mandatory topics, SysOp management                                                                   |
+| News System                   | ✅ Working     | SysOp-managed news items, auto-display on login                                                                     |
+| Chat & SysOp Paging           | ✅ Working     | Inter-node chat, SysOp page                                                                                         |
+| One-liner System              | ✅ Working     |                                                                                                                      |
+| Sponsor Menus                 | ✅ Working     | Area management for SysOps and area sponsors                                                                        |
 | **Admin & Tools**             |               |                                                                                                                     |
 | Event Scheduler               | ✅ Working     | Cron-style, automated maintenance, FTN polling                                                                      |
-| One-liner System              | ✅ Working     |                                                                                                    |
+| Admin Functions               | ✅ Working     | User validation, banning, deletion, purge                                                                           |
 | TUI String Editor (`strings`) | ✅ Working     | Full-screen BBS string customizations                                                                               |
 | Config Hot Reload             | ✅ Working     | Live reload via fsnotify, no restart required                                                                       |
 | Invisible SysOp Login         | ✅ Working     | SysOp/CoSysOp login without appearing in caller log                                                                 |
@@ -169,12 +177,14 @@ vision3/
 │   ├── ansitest/           # ANSI color test utility
 │   ├── config/             # TUI system configuration editor
 │   ├── helper/             # FTN setup utility (import echomail areas)
+│   ├── menuedit/           # TUI menu editor
 │   ├── strings/            # TUI string configuration editor
 │   ├── ue/                 # TUI user editor
 │   ├── v3mail/             # JAM message base and FTN mail processor
 │   └── vision3/            # Main BBS server application
 ├── configs/                # Active configuration files (not tracked in git)
 │   ├── allowlist.txt       # IP allowlist for connection filtering
+│   ├── archivers.json      # Archive handler configurations
 │   ├── blocklist.txt       # IP blocklist for connection filtering
 │   ├── config.json         # Main BBS configuration
 │   ├── conferences.json    # Message/file conference definitions
@@ -199,6 +209,7 @@ vision3/
 │   └── logs/               # Application logs
 ├── internal/               # Internal packages
 │   ├── ansi/               # ANSI/pipe code processing
+│   ├── archiver/           # Archive format handling (ZIP, etc.)
 │   ├── chat/               # Inter-node chat and sysop paging
 │   ├── config/             # Configuration loading
 │   ├── configeditor/       # TUI configuration editor (BubbleTea)
@@ -208,7 +219,9 @@ vision3/
 │   ├── ftn/                # FidoNet/echomail support
 │   ├── jam/                # JAM message base format
 │   ├── menu/               # Menu system & lightbar UI
+│   ├── menueditor/         # TUI menu editor (BubbleTea)
 │   ├── message/            # Message base management
+│   ├── qwk/                # QWK offline mail packet format
 │   ├── scheduler/          # Cron-style event scheduler
 │   ├── session/            # Session management
 │   ├── sshserver/          # pure-Go SSH server (gliderlabs/ssh wrapper)
@@ -229,7 +242,7 @@ vision3/
 │   ├── cfg/                # Menu configuration files
 │   ├── mnu/                # Menu definition files
 │   └── templates/          # Display templates
-│       └── message_headers/ # Customizable message header styles (unlimited, 14 included)
+│       └── message_headers/ # Customizable message header styles (unlimited, 16 included)
 ├── bin/                    # External helper binaries (not tracked in git)
 ├── output/                 # Output support files
 ├── scripts/                # Utility scripts
@@ -283,7 +296,7 @@ See [Docker Deployment Guide](docs/sysop/getting-started/docker.md) for detailed
     .\setup.ps1         # Windows (PowerShell)
     ```
 
-    `setup.sh` will generate SSH host keys, copy template configs to `configs/`, create the required directory structure, and build all binaries (`vision3`, `helper`, `v3mail`, `strings`, `ue`, `config`).
+    `setup.sh` will generate SSH host keys, copy template configs to `configs/`, create the required directory structure, and build all binaries (`vision3`, `helper`, `v3mail`, `strings`, `ue`, `config`, `menuedit`).
 
 2. **Configure your BBS:**
     ```bash
