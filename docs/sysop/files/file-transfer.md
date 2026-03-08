@@ -104,7 +104,7 @@ The default protocol configuration in `configs/protocols.json`:
 | `send_args`       | string[] | Arguments for send command                                 |
 | `recv_cmd`        | string   | Executable path for receiving files (upload from user)     |
 | `recv_args`       | string[] | Arguments for receive command                              |
-| `batch_send`      | bool     | Whether the protocol supports multi-file batch sends       |
+| `batch_send`      | bool     | Whether the protocol supports multi-file batch sends. When `false`, attempting a multi-file send (e.g. tagged batch download) returns an error — use a batch protocol (ZModem, YModem) for that. |
 | `use_pty`         | bool     | Whether the command requires a PTY (pseudo-terminal)       |
 | `default`         | bool     | Sets this as the default protocol when user doesn't choose |
 | `connection_type` | string   | `""` = any, `"ssh"` = SSH only, `"telnet"` = telnet only  |
