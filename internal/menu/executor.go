@@ -595,6 +595,11 @@ func registerAppRunnables(registry map[string]RunnableFunc) { // Use local Runna
 	registry["VOTEMANDATORY"] = runVoteOnMandatory   // Mandatory voting check (login sequence)
 	registry["LISTNUV"] = runNUVList                 // List NUV candidates and vote tallies
 	registry["SCANNUV"] = runNUVScan                 // Vote on pending NUV candidates
+	registry["BBSLIST"] = runBBSList                 // List BBS directory entries
+	registry["BBSLISTADD"] = runBBSListAdd           // Add new BBS listing
+	registry["BBSLISTEDIT"] = runBBSListEdit         // Edit BBS listing (owner or sysop)
+	registry["BBSLISTDELETE"] = runBBSListDelete     // Delete BBS listing (owner or sysop)
+	registry["BBSLISTVERIFY"] = runBBSListVerify     // SysOp: toggle verified flag
 }
 
 func runPlaceholderCommand(e *MenuExecutor, s ssh.Session, terminal *term.Terminal, userManager *user.UserMgr, currentUser *user.User, nodeNumber int, sessionStartTime time.Time, args string, outputMode ansi.OutputMode, termWidth int, termHeight int) (*user.User, string, error) {
